@@ -12,6 +12,11 @@ Everything below this block is user-facing and ships as-is.
 - Vault structure, install scripts, skills, MCPs → HERE (dex-core)
 - Cross-repo work → open from `~/dex/` workspace root
 
+**Commercial model:**
+- **Free (Dex Core = this repo):** Builds the vault — notes, rituals, entity graph. Local, private. The free product creates the data asset.
+- **Paid (Dex Mobile):** Makes the vault indispensable — entity-connected meeting prep, voice debrief, meeting recording. Users pay for mobile because that's where the magic is FELT.
+- **The insight:** Free builds the vault. Paid makes you look like a genius walking into every meeting.
+
 **What dex-core owns:**
 - `core/` — Python path contracts, CLI runtime
 - `System/` — vault system files (product-context, backlog, etc.)
