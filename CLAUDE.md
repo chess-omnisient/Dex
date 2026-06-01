@@ -15,7 +15,7 @@ Everything below this block is user-facing and ships as-is.
 **Commercial model:**
 - **Free (Dex Core = this repo):** Builds the vault — notes, rituals, entity graph. Local, private. The free product creates the data asset.
 - **Paid (Dex Mobile):** Makes the vault indispensable — entity-connected meeting prep, voice debrief, meeting recording. Users pay for mobile because that's where the magic is FELT.
-- **The insight:** Free builds the vault. Paid makes you look like a genius walking into every meeting.
+- **Free is a great memory. Paid is an unfair advantage.**
 
 **What dex-core owns:**
 - `core/` — Python path contracts, CLI runtime
@@ -23,6 +23,8 @@ Everything below this block is user-facing and ships as-is.
 - `.agents/skills/` — distributable skills (anything in `personal/` stays local)
 - `mcp-servers/` — MCP scripts that ship to users
 - `install.sh` — installer
+
+**🚨 dex-core is the PUBLIC distributable repo.** Never put internal planning docs, PRDs, working-backwards docs, roadmaps, or anything Dave-specific into this repo. Those belong in the Vault (`~/Vault/04-Projects/Dex-2.0/`). Everything in dex-core ships to every user who clones from GitHub.
 
 **Before any PR:** run `/simplify` on changed files.
 **All issues** → `davekilleen/dex-backlog`, never on this repo.
@@ -103,6 +105,24 @@ Add any personal instructions between these markers. The `/dex-update` process p
 
 ---
 
+## Strategic Context (Industry Truths)
+
+If the file `04-Projects/Product_Strategy/Industry_Truths.md` exists, **reference it during strategic conversations:**
+
+- Product roadmap decisions
+- Market positioning discussions
+- Investment prioritization
+- Long-term planning
+- Ideation sessions for new features/products
+
+**Why it matters:** This file contains time-horizoned assumptions (Today, 6 months, 12 months) about the user's industry. Grounding strategic thinking in these explicit beliefs prevents building on quicksand.
+
+**When to check:** Before major strategic recommendations or when the user asks you to ideate. Read the file, understand their current truths, and ensure your suggestions align with (or thoughtfully challenge) those assumptions.
+
+**If it doesn't exist:** The user hasn't run `/industry-truths` yet. Don't mention it unless they're clearly struggling with strategic direction on shifting ground.
+
+---
+
 ## Core Behaviors
 
 ### Person Lookup (Important)
@@ -110,7 +130,7 @@ Use `lookup_person` from Work MCP first — it reads a lightweight JSON index (~
 
 **Rebuild the index** with `build_people_index` if person pages have been added or changed significantly.
 
-**Semantic Enhancement (QMD):** If QMD MCP tools are available (check with `qmd_status`), also run `qmd_search` for the person's name and role. This finds contextual references like "the VP of Sales mentioned..." or "the PM on the checkout project asked..." that don't mention the person by name. Merge semantic results with the person page content for richer context. If QMD is not available, standard filename/grep lookup works as before.
+**Semantic Enhancement (QMD):** Use the `query` tool (QMD MCP) to search for the person's name and role. This finds contextual references like "the VP of Sales mentioned..." or "the PM on the checkout project asked..." that don't mention the person by name. Merge semantic results with the person page content for richer context. If the `query` tool is unavailable (QMD not installed), fall back to filename/grep lookup.
 
 ### Challenge Feature Requests
 Don't just execute orders. Consider alternatives, question assumptions, suggest trade-offs, leverage existing patterns. Be a thinking partner, not a task executor.
@@ -196,16 +216,16 @@ When the user mentions any of these:
 - "refresh Granola", "Granola not working", "Granola sign-in"
 
 **Action:**
-1. Check if Granola credentials exist: look for `supabase.json` in Granola's app data directory
-2. If credentials exist: Mobile recordings sync automatically. Suggest checking if Granola's iOS app is syncing to cloud, and that background sync is installed (`cd .scripts/meeting-intel && ./install-automation.sh`)
-3. If no credentials: Granola isn't installed or user isn't signed in — guide them to [granola.ai](https://granola.ai) and ensure they sign in to the desktop app
+1. Check if a Granola API key is configured: `GRANOLA_API_KEY` in the environment, or in the `.env` file at the vault root.
+2. If a key is configured: Granola sync uses the official Granola public API, so desktop and mobile recordings come through the same way — there's nothing phone-specific to set up. Offer to run a sync (`/process-meetings`) and confirm background sync is installed (`cd .scripts/meeting-intel && ./install-automation.sh`).
+3. If no key is configured: tell the user "Granola isn't connected yet — run `/granola-setup` to add your Granola API key (requires a Granola Business plan)." Offer to walk them through it.
 
 ### Meeting Capture
 When the user shares meeting notes or says they had a meeting:
 1. Extract key points, decisions, and action items
 2. Identify people mentioned → update/create person pages
-3. Link to relevant projects. **If QMD is available**, also use `qmd_search` with the meeting topic to find thematically related projects and past discussions that keyword matching would miss (e.g., a meeting about "reducing churn" linking to a project about "customer health scoring").
-4. Suggest follow-ups. **If QMD is available**, search for implicit commitments — soft language like "we should revisit" or "let me think about" that regex might not catch as action items.
+3. Link to relevant projects. Use the `query` tool (QMD MCP) with the meeting topic to find thematically related projects and past discussions that keyword matching would miss (e.g., a meeting about "reducing churn" linking to a project about "customer health scoring"). Fall back to grep if QMD unavailable.
+4. Suggest follow-ups. Use the `query` tool to search for implicit commitments — soft language like "we should revisit" or "let me think about" that regex might not catch as action items.
 5. If meeting with manager and Career folder exists, extract career development context
 
 **Automation:** When meetings are processed via `/process-meetings`, skill-scoped hooks automatically update person pages with meeting references and extracted context. Manual person page updates are still applied for ad-hoc meeting notes shared outside the skill.
@@ -218,14 +238,11 @@ When the user requests task creation without specifying a pillar:
 
 **Your workflow:**
 1. **Analyze the request** against pillar keywords (from `System/pillars.yaml`)
-2. **Infer the most likely pillar** based on content:
-   - **Deal Support**: deal, sales, customer, demo, presentation, enablement, account, pipeline, prospect, opportunity
-   - **Thought Leadership**: podcast, conference, linkedin, content, blog, talk, speaking, brand, article, webinar
-   - **Product Feedback**: product, feedback, feature, roadmap, ux, research, insight, customer voice, beta
+2. **Infer the most likely pillar** by matching the request against each pillar's `keywords` and `description` in `System/pillars.yaml`. Do not assume a fixed set of pillars — every user configures their own.
 3. **Propose with quick confirmation**:
    ```
-   Creating "Review Q1 numbers" under Product Feedback pillar (looks like data gathering).
-   Sound right, or should it be Deal Support / Thought Leadership?
+   Creating "Review Q1 numbers" under [inferred pillar] (looks like data gathering).
+   Sound right, or should it be a different pillar?
    ```
 4. **Handle response**:
    - User confirms (yes/sounds good/correct) → Create task with inferred pillar
@@ -233,11 +250,11 @@ When the user requests task creation without specifying a pillar:
    - Unclear task → Ask which pillar makes most sense
 5. **Call Work MCP**: `work_mcp_create_task` with confirmed pillar
 
-**Inference examples:**
-- "Prep demo for Acme Corp" → **Deal Support** (customer + demo keywords)
-- "Write blog post about AI agents" → **Thought Leadership** (content + article keywords)
-- "Review beta feedback on search" → **Product Feedback** (feedback + beta keywords)
-- "Call prospect about pricing" → **Deal Support** (prospect keyword)
+**Inference examples** (match against the user's actual pillars in `System/pillars.yaml` — names below are illustrative only):
+- "Prep demo for Acme Corp" → the pillar whose keywords cover sales/customer/demo work
+- "Write blog post about AI agents" → the pillar covering content/thought-leadership work
+- "Review beta feedback on search" → the pillar covering product/feedback work
+- "Call prospect about pricing" → the pillar covering sales/pipeline work
 
 **Key points:**
 - Always show your reasoning ("looks like X because Y")
@@ -253,7 +270,7 @@ When the user says they completed a task (any phrasing):
 - "Done with the meeting prep"
 
 **Your workflow:**
-1. Search `03-Tasks/Tasks.md` for tasks matching the description. **If QMD is available**, also use `qmd_search` — this catches semantic matches like "I finished the pricing thing" matching task "Finalize Q1 pricing proposal." If QMD is not available, use keyword/context matching as before.
+1. Search `03-Tasks/Tasks.md` for tasks matching the description. Use the `query` tool (QMD MCP) to catch semantic matches like "I finished the pricing thing" matching task "Finalize Q1 pricing proposal." Fall back to keyword/context matching if QMD is unavailable.
 2. Find the task and extract its task ID (format: `^task-YYYYMMDD-XXX`)
 3. Call Work MCP: `update_task_status(task_id="task-20260128-001", status="d")`
 4. The MCP automatically updates the task everywhere:
@@ -303,8 +320,8 @@ Help the user capture:
 
 ### Search & Recall
 When asked about something:
-1. **Semantic search (if QMD available):** Use `qmd_search` (hybrid: BM25 + vectors + LLM reranking) for the query first. This finds content by meaning, not just keywords — "customer retention" will find notes about "churn", "cancellation", "NPS scores". Check availability with `qmd_status`.
-2. **Keyword search (fallback):** If QMD is not available, use standard grep/glob search across the vault. This still works well for exact matches and known terms.
+1. **Semantic search (default):** Use the `query` tool (QMD MCP) first. It finds content by meaning, not just keywords — "customer retention" will find notes about "churn", "cancellation", "NPS scores". Use `status` to confirm QMD is healthy if results seem off.
+2. **Keyword search (fallback):** If the `query` tool is unavailable (QMD not installed), use grep/glob. This still works for exact matches and known terms.
 3. Check person pages for context
 4. Look at recent meetings
 5. Surface relevant projects
