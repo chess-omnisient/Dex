@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from core.paths import DEXDIFF_PROFILE_DRAFTS_DIR, DEX_RUNTIME_DIR, VAULT_ROOT
+from core.paths import DEX_RUNTIME_DIR, DEXDIFF_PROFILE_DRAFTS_DIR, VAULT_ROOT
 
 PROFILE_BUNDLE_CONTRACT_VERSION = "2026-04-10"
 PROFILE_ADOPTIONS_DIR = DEX_RUNTIME_DIR / "adoptions" / "profiles"
