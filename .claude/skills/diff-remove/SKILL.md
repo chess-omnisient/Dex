@@ -34,8 +34,8 @@ Which one would you like to remove?
 ```
 
 To get the list, read all JSON files in **both** adoption locations:
-- `.dex/adoptions/` — single-workflow adoptions from `/diff-adopt`
-- `System/.dex/adoptions/profiles/` — whole-profile adoptions from `/diff-adopt-profile` (these are profile-level records; removing one means removing the skills generated for that profile's workflows, then deleting the profile log)
+- `.dex/adoptions/` - single-workflow adoptions from `/diff-adopt`
+- `System/.dex/adoptions/profiles/` - whole-profile adoptions from `/diff-adopt-profile` (these are profile-level records; removing one means removing the skills generated for that profile's workflows, then deleting the profile log)
 
 ---
 

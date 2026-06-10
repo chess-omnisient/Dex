@@ -90,7 +90,7 @@ function readStdin() {
 }
 
 // ---------------------------------------------------------------------------
-// Transcript parsing — JSONL first (current format), legacy array fallback
+// Transcript parsing, JSONL first (current format), legacy array fallback
 // ---------------------------------------------------------------------------
 function parseTranscriptEntries(raw) {
   const trimmed = raw.trim();
@@ -98,13 +98,13 @@ function parseTranscriptEntries(raw) {
 
   // Legacy single-document format: one JSON array (or {messages: [...]})
   if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
-    // Could still be JSONL whose first line starts with "{" — try whole-file
+    // Could still be JSONL whose first line starts with "{", try whole-file
     // parse first, fall back to line-by-line.
     try {
       const document = JSON.parse(trimmed);
       if (Array.isArray(document)) return document;
       if (document && Array.isArray(document.messages)) return document.messages;
-      // A single JSON object that isn't a container — treat as one entry
+      // A single JSON object that isn't a container, treat as one entry
       if (document && typeof document === "object") return [document];
     } catch {
       /* fall through to JSONL */
@@ -120,7 +120,7 @@ function parseTranscriptEntries(raw) {
     try {
       entries.push(JSON.parse(candidate));
     } catch {
-      /* skip unparseable lines — never abort the whole scan */
+      /* skip unparseable lines, never abort the whole scan */
     }
   }
   return entries;
@@ -198,7 +198,7 @@ try {
   const now = new Date().toISOString();
   const candidates = [];
 
-  // Scan for delight signals (skipped naturally when there are no messages —
+  // Scan for delight signals (skipped naturally when there are no messages -
   // the milestone check below must still run)
   for (const msg of userMessages) {
     for (const pattern of DELIGHT_PATTERNS) {
@@ -225,7 +225,7 @@ try {
   }
 
   // Check milestones (skill reaches 5+ invocations). Runs regardless of
-  // whether any user messages were found — previously unreachable when the
+  // whether any user messages were found, previously unreachable when the
   // transcript parse failed or the turn had no user text.
   if (fs.existsSync(WORKFLOW_MODEL)) {
     try {

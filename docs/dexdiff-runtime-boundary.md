@@ -29,10 +29,10 @@ Reference-only planning/docs:
 
 ## Current Hosted Contract
 
-Host split (this has been broken before — keep it straight):
+Host split (this has been broken before - keep it straight):
 
-- `https://heydex.ai` — pages only (Caddy static + React). It has **no** `/api/*` routes.
-- `https://api.heydex.ai` — every API endpoint below (Convex HTTP actions).
+- `https://heydex.ai` - pages only (Caddy static + React). It has **no** `/api/*` routes.
+- `https://api.heydex.ai` - every API endpoint below (Convex HTTP actions).
 
 All portable-runtime API calls go to `api.heydex.ai`. Local stubs override via the
 `DEXDIFF_API_BASE` environment variable.

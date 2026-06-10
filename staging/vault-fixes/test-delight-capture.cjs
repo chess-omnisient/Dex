@@ -73,7 +73,7 @@ function readLog(vaultDir) {
     }),
     JSON.stringify({
       type: "assistant",
-      message: { role: "assistant", content: [{ type: "text", text: "Done — brief is ready." }] },
+      message: { role: "assistant", content: [{ type: "text", text: "Done, brief is ready." }] },
     }),
     JSON.stringify({
       type: "user",

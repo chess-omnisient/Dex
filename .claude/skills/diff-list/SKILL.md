@@ -24,10 +24,10 @@ None.
 
 ### Step 1: Read Adoption Logs (both locations)
 
-Adoptions live in two places — read **both**:
+Adoptions live in two places - read **both**:
 
-1. `.dex/adoptions/` — single-workflow adoptions from `/diff-adopt` (one JSON per workflow)
-2. `System/.dex/adoptions/profiles/` — whole-profile adoptions from `/diff-adopt-profile` (one JSON per profile, with `workflow_ids` inside)
+1. `.dex/adoptions/` - single-workflow adoptions from `/diff-adopt` (one JSON per workflow)
+2. `System/.dex/adoptions/profiles/` - whole-profile adoptions from `/diff-adopt-profile` (one JSON per profile, with `workflow_ids` inside)
 
 If neither directory exists or both are empty:
 ```
@@ -60,7 +60,7 @@ For each profile adoption log, show the profile as a group:
 ```
 Adopted profiles:
 
-  @davekilleen — Dave Killeen
+  @davekilleen - Dave Killeen
     Adopted: 2026-06-16
     Workflows: meeting-intelligence, deal-intelligence, operating-rhythm, ...
     Bundle saved at: 04-Projects/DexDiff/beta/profile/adopted/davekilleen/

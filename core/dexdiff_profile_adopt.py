@@ -2,7 +2,7 @@
 
 The hosted contract lives on ``https://api.heydex.ai`` (Convex HTTP actions).
 The website host ``https://heydex.ai`` serves pages only and has no ``/api/*``
-routes — fetching the bundle from there is the historical break 1 from the
+routes, fetching the bundle from there is the historical break 1 from the
 2026-06-10 end-to-end review. Keep all API calls on the API host.
 """
 
@@ -89,7 +89,7 @@ def fetch_profile_bundle(
     """Fetch and validate a hosted profile bundle.
 
     Raises a ProfileBundleError subclass with a plain-language
-    ``user_message`` on every failure path — never fails silently.
+    ``user_message`` on every failure path, never fails silently.
     """
     normalized_handle = normalize_handle(handle)
     url = build_profile_bundle_url(base_url, normalized_handle)
@@ -113,7 +113,7 @@ def fetch_profile_bundle(
         ) from error
     except (urllib.error.URLError, TimeoutError, OSError) as error:
         raise ProfileBundleNetworkError(
-            f"Could not reach {url.split('/api/')[0]} — check your internet "
+            f"Could not reach {url.split('/api/')[0]}, check your internet "
             "connection and try again. Nothing was changed locally."
         ) from error
 
@@ -128,7 +128,7 @@ def fetch_profile_bundle(
     except json.JSONDecodeError as error:
         raise ProfileBundlePayloadError(
             "The Heydex API returned something that is not valid JSON. "
-            "This is a server-side problem — try again in a minute."
+            "This is a server-side problem, try again in a minute."
         ) from error
 
     try:
@@ -136,7 +136,7 @@ def fetch_profile_bundle(
     except ValueError as error:
         raise ProfileBundlePayloadError(
             f"The profile bundle for @{normalized_handle} is malformed: {error}. "
-            "The published profile may need to be re-published — nothing was "
+            "The published profile may need to be re-published, nothing was "
             "changed locally."
         ) from error
 
@@ -296,12 +296,12 @@ def methodology_quality_warnings(bundle: dict[str, Any]) -> list[str]:
         diff_id = workflow.get("diffId", "?")
         if "dexdiff_schema" not in methodology:
             warnings.append(
-                f"{diff_id}: methodology has no dexdiff_schema marker — looks "
+                f"{diff_id}: methodology has no dexdiff_schema marker, looks "
                 "like a v1 summary, too thin to regenerate a workflow from"
             )
         elif len(methodology) < 1000:
             warnings.append(
-                f"{diff_id}: methodology is only {len(methodology)} characters — "
+                f"{diff_id}: methodology is only {len(methodology)} characters, "
                 "suspiciously thin for a v2 document"
             )
     return warnings

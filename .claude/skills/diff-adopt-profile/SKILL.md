@@ -1,6 +1,6 @@
 ---
 name: diff-adopt-profile
-description: Set me up like someone — adopt a full Heydex profile by handle (e.g. "set me up like Dave" means /diff-adopt-profile @davekilleen). Fetches the published profile bundle, saves the ordered workflows locally, and guides the user through installing the whole set into Dex
+description: Set me up like someone - adopt a full Heydex profile by handle (e.g. "set me up like Dave" means /diff-adopt-profile @davekilleen). Fetches the published profile bundle, saves the ordered workflows locally, and guides the user through installing the whole set into Dex
 ---
 
 ## What This Command Does
@@ -38,7 +38,7 @@ Always fetch the bundle from the **API host**:
 GET https://api.heydex.ai/api/profile-bundle?handle=<handle>
 ```
 
-Critical: the API lives on `api.heydex.ai` (Convex HTTP actions). The website host `heydex.ai` serves pages only — it has **no** `/api/*` routes, and fetching the bundle from `https://heydex.ai/api/...` returns a bare 404. Never use the website host for API calls. (Local stubs and rehearsals override the base with the `DEXDIFF_API_BASE` environment variable.)
+Critical: the API lives on `api.heydex.ai` (Convex HTTP actions). The website host `heydex.ai` serves pages only - it has **no** `/api/*` routes, and fetching the bundle from `https://heydex.ai/api/...` returns a bare 404. Never use the website host for API calls. (Local stubs and rehearsals override the base with the `DEXDIFF_API_BASE` environment variable.)
 
 Expected contract:
 - `contractVersion: "2026-04-10"`
@@ -50,7 +50,7 @@ Do **not** use the normal public profile page payload for this command. The whol
 
 ## The Deterministic Half Is A Script
 
-This skill ships with `scripts/adopt_profile.py` (stdlib-only Python). Use it for fetch, validation, and saving — do not hand-roll HTTP calls or file writes:
+This skill ships with `scripts/adopt_profile.py` (stdlib-only Python). Use it for fetch, validation, and saving - do not hand-roll HTTP calls or file writes:
 
 ```bash
 # Step 1 of the flow (fetch + report, writes nothing):
@@ -60,20 +60,20 @@ python3 <skill-dir>/scripts/adopt_profile.py @<handle> --fetch-only --json
 python3 <skill-dir>/scripts/adopt_profile.py @<handle> --json
 ```
 
-Exit codes: `0` success, `2` bad handle, `3` network down, `4` profile not found, `5` malformed payload or server error, `6` not inside a Dex vault. Every non-zero exit prints a plain-language explanation on stdout — relay it to the user verbatim, then stop. Never improvise around a failure, and never fail silently.
+Exit codes: `0` success, `2` bad handle, `3` network down, `4` profile not found, `5` malformed payload or server error, `6` not inside a Dex vault. Every non-zero exit prints a plain-language explanation on stdout - relay it to the user verbatim, then stop. Never improvise around a failure, and never fail silently.
 
-If `python3` is not available on the machine, fall back to fetching `https://api.heydex.ai/api/profile-bundle?handle=<handle>` yourself (WebFetch or curl), validate the contract fields listed above, and perform the same writes by hand — but say so explicitly and keep the same stop-on-failure behavior.
+If `python3` is not available on the machine, fall back to fetching `https://api.heydex.ai/api/profile-bundle?handle=<handle>` yourself (WebFetch or curl), validate the contract fields listed above, and perform the same writes by hand - but say so explicitly and keep the same stop-on-failure behavior.
 
 ## Flow
 
 ### 1. Resolve and fetch
 
-1. Resolve the handle from the argument (`@handle` or a profile URL both work — the script parses either).
+1. Resolve the handle from the argument (`@handle` or a profile URL both work - the script parses either).
 2. Run the bundled script with `--fetch-only --json`.
 3. On failure, relay the script's explanation and stop. Typical cases to recognise:
    - **Profile not found (exit 4):** the handle is wrong or the profile is not public. Tell the user exactly that, suggest checking the spelling and the profile page `https://heydex.ai/diff/@<handle>/`.
    - **Network down (exit 3):** tell the user nothing was changed and to retry once they are online.
-   - **Malformed bundle (exit 5):** the published profile is broken server-side; the user cannot fix this — tell them to let the author know.
+   - **Malformed bundle (exit 5):** the published profile is broken server-side; the user cannot fix this - tell them to let the author know.
 4. If the report includes `warnings` about v1-summary methodologies, tell the user plainly: those workflows were published in an old thin format and cannot be regenerated faithfully; offer to continue with only the full-fidelity workflows.
 
 ### 2. Introduce the profile
@@ -119,7 +119,7 @@ The log includes:
 - `workflow_paths`
 - `love_letter_path`
 
-Relay the script's printed file list to the user so they can see exactly what landed where. If the script exits 6 ("not a Dex vault"), the user is running from the wrong folder — help them locate their Dex vault and re-run from there.
+Relay the script's printed file list to the user so they can see exactly what landed where. If the script exits 6 ("not a Dex vault"), the user is running from the wrong folder - help them locate their Dex vault and re-run from there.
 
 ### 4. Discovery pass across the whole profile
 
@@ -162,7 +162,7 @@ End by explaining:
 ## Important Rules
 
 - Treat this as a real runtime command, not future-state.
-- Always use the dedicated profile bundle contract on `api.heydex.ai` — never the website host.
+- Always use the dedicated profile bundle contract on `api.heydex.ai` - never the website host.
 - Use the bundled `scripts/adopt_profile.py` for fetch and save; do not hand-roll the deterministic steps.
 - Every failure gets a plain-language explanation and a clean stop. Never fail silently, never half-complete.
 - Keep single-workflow adoption as `/diff-adopt @handle/diffId`.

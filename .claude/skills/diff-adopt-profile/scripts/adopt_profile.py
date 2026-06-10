@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic half of /diff-adopt-profile — standalone edition.
+"""Deterministic half of /diff-adopt-profile, standalone edition.
 
 This script travels WITH the skill (installed by the heydex.ai bootstrap as
 well as by a normal dex-core install), so it must not import anything from
@@ -42,7 +42,7 @@ ADOPTION_LOG_RELATIVE = Path("System/.dex/adoptions/profiles")
 
 
 # ---------------------------------------------------------------------------
-# Errors — user_message is always safe to show a non-technical user
+# Errors, user_message is always safe to show a non-technical user
 # ---------------------------------------------------------------------------
 class BundleError(Exception):
     exit_code = 5
@@ -97,7 +97,7 @@ def build_profile_bundle_url(base_url: "str | None", handle: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Vault resolution — never write outside a real Dex vault
+# Vault resolution, never write outside a real Dex vault
 # ---------------------------------------------------------------------------
 def resolve_vault_root() -> Path:
     candidate = Path(os.environ.get("VAULT_PATH") or Path.cwd())
@@ -135,7 +135,7 @@ def fetch_profile_bundle(handle: str, base_url: "str | None" = None, timeout: fl
         )
     except (urllib.error.URLError, TimeoutError, OSError):
         raise NetworkError(
-            f"Could not reach {get_api_base_url(base_url)} — check your internet "
+            f"Could not reach {get_api_base_url(base_url)}, check your internet "
             "connection and try again. Nothing was changed locally."
         )
 
@@ -150,7 +150,7 @@ def fetch_profile_bundle(handle: str, base_url: "str | None" = None, timeout: fl
     except json.JSONDecodeError:
         raise PayloadError(
             "The Heydex API returned something that is not valid JSON. "
-            "This is a server-side problem — try again in a minute."
+            "This is a server-side problem, try again in a minute."
         )
 
     try:
@@ -158,7 +158,7 @@ def fetch_profile_bundle(handle: str, base_url: "str | None" = None, timeout: fl
     except ValueError as error:
         raise PayloadError(
             f"The profile bundle for @{normalized_handle} is malformed: {error}. "
-            "The published profile may need to be re-published — nothing was "
+            "The published profile may need to be re-published, nothing was "
             "changed locally."
         )
 
@@ -209,12 +209,12 @@ def methodology_quality_warnings(bundle: dict) -> list:
         diff_id = workflow.get("diffId", "?")
         if "dexdiff_schema" not in methodology:
             warnings.append(
-                f"{diff_id}: methodology has no dexdiff_schema marker — looks "
+                f"{diff_id}: methodology has no dexdiff_schema marker, looks "
                 "like a v1 summary, too thin to regenerate a workflow from"
             )
         elif len(methodology) < 1000:
             warnings.append(
-                f"{diff_id}: methodology is only {len(methodology)} characters — "
+                f"{diff_id}: methodology is only {len(methodology)} characters, "
                 "suspiciously thin for a v2 document"
             )
     return warnings
