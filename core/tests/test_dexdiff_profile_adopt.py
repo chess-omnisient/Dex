@@ -58,8 +58,51 @@ def _bundle() -> dict:
 
 
 def test_build_profile_bundle_url_trims_at_prefix():
-    url = dexdiff_profile_adopt.build_profile_bundle_url("https://heydex.ai/", "@dave")
-    assert url == "https://heydex.ai/api/profile-bundle?handle=dave"
+    url = dexdiff_profile_adopt.build_profile_bundle_url("https://example.test/", "@dave")
+    assert url == "https://example.test/api/profile-bundle?handle=dave"
+
+
+def test_build_profile_bundle_url_defaults_to_api_host(monkeypatch):
+    monkeypatch.delenv("DEXDIFF_API_BASE", raising=False)
+    url = dexdiff_profile_adopt.build_profile_bundle_url(handle="@dave")
+    assert url == "https://api.heydex.ai/api/profile-bundle?handle=dave"
+
+
+def test_api_base_env_override(monkeypatch):
+    monkeypatch.setenv("DEXDIFF_API_BASE", "http://127.0.0.1:9999/")
+    url = dexdiff_profile_adopt.build_profile_bundle_url(handle="dave")
+    assert url == "http://127.0.0.1:9999/api/profile-bundle?handle=dave"
+
+
+@pytest.mark.parametrize(
+    "argument,expected",
+    [
+        ("@dave", "dave"),
+        ("dave", "dave"),
+        ("https://heydex.ai/diff/@dave/", "dave"),
+        ("https://heydex.ai/diff/@davekilleen", "davekilleen"),
+    ],
+)
+def test_parse_handle_argument(argument, expected):
+    assert dexdiff_profile_adopt.parse_handle_argument(argument) == expected
+
+
+def test_methodology_quality_warnings_flags_v1_summaries():
+    bundle = _bundle()
+    bundle["workflows"][0]["methodology"] = "One sentence summary."
+    warnings = dexdiff_profile_adopt.methodology_quality_warnings(bundle)
+    # workflow 0: no schema marker (v1 summary); workflow 1: marker present but thin
+    assert len(warnings) == 2
+    assert "meeting-prep" in warnings[0] and "v1 summary" in warnings[0]
+    assert "follow-through" in warnings[1] and "thin" in warnings[1]
+
+
+def test_methodology_quality_warnings_passes_real_v2_documents():
+    bundle = _bundle()
+    real_v2 = 'dexdiff_schema: "2.0"\n' + ("methodology:\n  problem: |\n    x\n" * 100)
+    for workflow in bundle["workflows"]:
+        workflow["methodology"] = real_v2
+    assert dexdiff_profile_adopt.methodology_quality_warnings(bundle) == []
 
 
 def test_validate_profile_bundle_requires_supported_contract_version():
@@ -71,6 +114,94 @@ def test_validate_profile_bundle_requires_supported_contract_version():
                 "workflows": [{"diffId": "meeting-prep", "methodology": "x"}],
             }
         )
+
+
+class _StubHandler:
+    """Factory for a one-route stub of GET /api/profile-bundle."""
+
+    @staticmethod
+    def build(response_status: int, response_body: str):
+        from http.server import BaseHTTPRequestHandler
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802 (http.server API)
+                body = response_body.encode("utf-8")
+                self.send_response(response_status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):  # silence test output
+                pass
+
+        return Handler
+
+
+@pytest.fixture
+def stub_server():
+    """Yield a helper that serves a fixed response on a random local port."""
+    import threading
+    from http.server import HTTPServer
+
+    servers = []
+
+    def start(status: int, body: str) -> str:
+        server = HTTPServer(("127.0.0.1", 0), _StubHandler.build(status, body))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        servers.append(server)
+        return f"http://127.0.0.1:{server.server_address[1]}"
+
+    yield start
+    for server in servers:
+        server.shutdown()
+        server.server_close()
+
+
+def test_fetch_profile_bundle_happy_path(stub_server):
+    base = stub_server(200, json.dumps(_bundle()))
+    bundle = dexdiff_profile_adopt.fetch_profile_bundle("@dave", base_url=base)
+    assert bundle["profile"]["handle"] == "dave"
+    assert len(bundle["workflows"]) == 2
+
+
+def test_fetch_profile_bundle_404_raises_not_found(stub_server):
+    base = stub_server(404, '{"error":"Profile bundle not found"}')
+    with pytest.raises(dexdiff_profile_adopt.ProfileBundleNotFoundError) as excinfo:
+        dexdiff_profile_adopt.fetch_profile_bundle("@ghost", base_url=base)
+    assert "No public profile found for @ghost" in excinfo.value.user_message
+
+
+def test_fetch_profile_bundle_500_raises_http_error(stub_server):
+    base = stub_server(500, "oops")
+    with pytest.raises(dexdiff_profile_adopt.ProfileBundleHTTPError) as excinfo:
+        dexdiff_profile_adopt.fetch_profile_bundle("@dave", base_url=base)
+    assert "HTTP 500" in excinfo.value.user_message
+
+
+def test_fetch_profile_bundle_non_json_raises_payload_error(stub_server):
+    base = stub_server(200, "<html>not json</html>")
+    with pytest.raises(dexdiff_profile_adopt.ProfileBundlePayloadError):
+        dexdiff_profile_adopt.fetch_profile_bundle("@dave", base_url=base)
+
+
+def test_fetch_profile_bundle_wrong_contract_raises_payload_error(stub_server):
+    bad = _bundle()
+    bad["contractVersion"] = "1999-01-01"
+    base = stub_server(200, json.dumps(bad))
+    with pytest.raises(dexdiff_profile_adopt.ProfileBundlePayloadError) as excinfo:
+        dexdiff_profile_adopt.fetch_profile_bundle("@dave", base_url=base)
+    assert "malformed" in excinfo.value.user_message
+
+
+def test_fetch_profile_bundle_connection_refused_raises_network_error():
+    with pytest.raises(dexdiff_profile_adopt.ProfileBundleNetworkError) as excinfo:
+        dexdiff_profile_adopt.fetch_profile_bundle(
+            "@dave", base_url="http://127.0.0.1:1", timeout=2
+        )
+    assert "internet connection" in excinfo.value.user_message
+    assert "Nothing was changed locally" in excinfo.value.user_message
 
 
 def test_write_profile_bundle_creates_manifest_workflows_love_letter_and_log(monkeypatch, tmp_path):
