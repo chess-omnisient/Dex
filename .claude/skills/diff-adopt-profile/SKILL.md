@@ -1,6 +1,6 @@
 ---
 name: diff-adopt-profile
-description: Adopt a full Heydex profile — fetch the published profile bundle, save the ordered workflows locally, and guide the user through installing the whole set into Dex
+description: Set me up like someone — adopt a full Heydex profile by handle (e.g. "set me up like Dave" means /diff-adopt-profile @davekilleen). Fetches the published profile bundle, saves the ordered workflows locally, and guides the user through installing the whole set into Dex
 ---
 
 ## What This Command Does
