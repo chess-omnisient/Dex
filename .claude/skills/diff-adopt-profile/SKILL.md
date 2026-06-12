@@ -10,7 +10,7 @@ description: Set me up like someone - adopt a full Heydex profile by handle (e.g
 **How to run it:**
 ```text
 /diff-adopt-profile @davekilleen
-/diff-adopt-profile https://heydex.ai/diff/@davekilleen/
+/diff-adopt-profile https://heydex.ai/diff/davekilleen/
 ```
 
 Natural-language triggers count too: when a user says "set me up like Dave" (or like any named person with a Heydex handle), treat it as `/diff-adopt-profile @<their-handle>`.
@@ -19,7 +19,7 @@ Natural-language triggers count too: when a user says "set me up like Dave" (or 
 
 `$ARGUMENTS` must be either:
 - a handle like `@davekilleen`
-- a public Heydex profile URL like `https://heydex.ai/diff/@davekilleen/`
+- a public Heydex profile URL like `https://heydex.ai/diff/davekilleen/`
 
 If missing or invalid:
 ```text
@@ -27,7 +27,7 @@ If missing or invalid:
 
 Examples:
   /diff-adopt-profile @davekilleen
-  /diff-adopt-profile https://heydex.ai/diff/@davekilleen/
+  /diff-adopt-profile https://heydex.ai/diff/davekilleen/
 ```
 
 ## Hosted Contract
@@ -71,7 +71,7 @@ If `python3` is not available on the machine, fall back to fetching `https://api
 1. Resolve the handle from the argument (`@handle` or a profile URL both work - the script parses either).
 2. Run the bundled script with `--fetch-only --json`.
 3. On failure, relay the script's explanation and stop. Typical cases to recognise:
-   - **Profile not found (exit 4):** the handle is wrong or the profile is not public. Tell the user exactly that, suggest checking the spelling and the profile page `https://heydex.ai/diff/@<handle>/`.
+   - **Profile not found (exit 4):** the handle is wrong or the profile is not public. Tell the user exactly that, suggest checking the spelling and the profile page `https://heydex.ai/diff/<handle>/`.
    - **Network down (exit 3):** tell the user nothing was changed and to retry once they are online.
    - **Malformed bundle (exit 5):** the published profile is broken server-side; the user cannot fix this - tell them to let the author know.
 4. If the report includes `warnings` about v1-summary methodologies, tell the user plainly: those workflows were published in an old thin format and cannot be regenerated faithfully; offer to continue with only the full-fidelity workflows.

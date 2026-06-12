@@ -15,7 +15,7 @@ description: Adopt a DexDiff methodology — guided onboarding that reads a work
 **How to run it:**
 ```
 /diff-adopt @davekilleen/meeting-intelligence
-/diff-adopt https://heydex.ai/diff/@davekilleen/meeting-intelligence
+/diff-adopt https://heydex.ai/diff/davekilleen/meeting-intelligence
 /diff-adopt 04-Projects/DexDiff/beta/diffs/meeting-prep.yaml
 ```
 
@@ -26,7 +26,7 @@ description: Adopt a DexDiff methodology — guided onboarding that reads a work
 `$ARGUMENTS` - A reference to one methodology document:
 - A hosted reference `@<handle>/<diff-id>` - fetch the raw methodology from the API host:
   `GET https://api.heydex.ai/api/diff?author=<handle>&id=<diff-id>`
-- A page URL like `https://heydex.ai/diff/@<handle>/<diff-id>` - parse out the handle and diff id, then make the same API call. Never WebFetch the page itself: heydex.ai pages are a React app shell and contain no methodology text. The API lives on `api.heydex.ai`; the website host has no `/api/*` routes.
+- A page URL like `https://heydex.ai/diff/<handle>/<diff-id>` - parse out the handle and diff id, then make the same API call. Never WebFetch the page itself: heydex.ai pages are a React app shell and contain no methodology text. The API lives on `api.heydex.ai`; the website host has no `/api/*` routes.
 - A local path from the DexDiff draft area, usually under `DEXDIFF_DIFFS_DIR` (default `04-Projects/DexDiff/beta/diffs/meeting-prep.yaml`) (read directly)
 
 The argument is always an explicit location — never a bare name.
@@ -42,7 +42,7 @@ If no argument or invalid input:
 
 Examples:
   /diff-adopt @davekilleen/meeting-intelligence
-  /diff-adopt https://heydex.ai/diff/@davekilleen/meeting-intelligence
+  /diff-adopt https://heydex.ai/diff/davekilleen/meeting-intelligence
   /diff-adopt 04-Projects/DexDiff/beta/diffs/meeting-prep.yaml
 ```
 

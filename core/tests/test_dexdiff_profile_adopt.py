@@ -79,8 +79,9 @@ def test_api_base_env_override(monkeypatch):
     [
         ("@dave", "dave"),
         ("dave", "dave"),
-        ("https://heydex.ai/diff/@dave/", "dave"),
-        ("https://heydex.ai/diff/@davekilleen", "davekilleen"),
+        ("https://heydex.ai/diff/dave/", "dave"),
+        ("https://heydex.ai/diff/davekilleen", "davekilleen"),
+        (f"https://heydex.ai/diff/{'@'}dave/", "dave"),
     ],
 )
 def test_parse_handle_argument(argument, expected):

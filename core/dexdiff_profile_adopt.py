@@ -67,9 +67,9 @@ def normalize_handle(handle: str) -> str:
 
 def parse_handle_argument(argument: str) -> str:
     """Accept ``@handle``, ``handle``, or a public profile URL like
-    ``https://heydex.ai/diff/@handle/`` and return the bare handle."""
+    ``https://heydex.ai/diff/handle/`` and return the bare handle."""
     candidate = argument.strip()
-    match = re.search(r"/diff/@([^/?#]+)", candidate)
+    match = re.search(r"/diff/(?:@)?([^/?#]+)", candidate)
     if match:
         candidate = match.group(1)
     return normalize_handle(candidate)
@@ -104,7 +104,7 @@ def fetch_profile_bundle(
             raise ProfileBundleNotFoundError(
                 f"No public profile found for @{normalized_handle}. "
                 "The profile may be private, or the handle may be misspelled. "
-                f"Check https://heydex.ai/diff/@{normalized_handle}/ in a browser."
+                f"Check https://heydex.ai/diff/{normalized_handle}/ in a browser."
             ) from error
         raise ProfileBundleHTTPError(
             f"The Heydex API answered with HTTP {error.code} for @{normalized_handle}. "
