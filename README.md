@@ -136,15 +136,18 @@ Copy and paste this command and press Enter:
 
 **When it's done:** You'll see your cursor blinking again, ready for the next command.
 
+**Your system Python stays clean:** The installer creates a project-local virtual environment (`.venv`) inside your vault and installs all Python dependencies there — your system, Homebrew, or pyenv Python is never modified. No global installs, and no `pipx` needed.
+
 ⚠️ **IMPORTANT: You're not done yet. Complete Steps 2B and 3 to finish setup.**
 
 **Verify MCP servers:** Cursor should automatically detect `.mcp.json` and enable the MCP servers. Look for the MCP icon in Cursor's bottom panel - you should see server names with green checkmarks.
 
-**If you see errors:** The most common issue is Python dependencies. First upgrade pip, then install packages:
+**If you see errors:** The most common issue is Python dependencies not landing in Dex's virtual environment. Recreate it and reinstall — this keeps everything inside `.venv` and never touches your system Python:
 
 ```bash
-python3 -m pip install --upgrade pip
-pip3 install --user "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r core/mcp/requirements.txt
 ```
 
 Then restart Cursor.
@@ -225,18 +228,20 @@ Git for Windows isn't installed.
 
 The installer tries two methods automatically. If both fail, your pip version might be too old.
 
-**Fix (upgrade pip first, then install):**
+**Fix (reinstall into Dex's virtual environment):**
 
 ```bash
-python3 -m pip install --upgrade pip
-pip3 install --user "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r core/mcp/requirements.txt
 ```
 
 **Windows:**
 
 ```bash
-python -m pip install --upgrade pip
-pip install --user "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil
+python -m venv .venv
+.venv\Scripts\pip install --upgrade pip
+.venv\Scripts\pip install -r core/mcp/requirements.txt
 ```
 
 ---
@@ -247,11 +252,12 @@ If you see red error indicators next to MCP server names in Cursor:
 
 **"No server info found" error:**
 
-This means the Python MCP servers can't start. Most common fix (upgrade pip first):
+This means the Python MCP servers can't start. Most common fix — reinstall the dependencies into Dex's virtual environment:
 
 ```bash
-python3 -m pip install --upgrade pip
-pip3 install --user "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r core/mcp/requirements.txt
 ```
 
 Then **restart Cursor completely** (Cmd+Q and reopen, or File → Quit).
@@ -294,7 +300,7 @@ If `/daily-plan` doesn't show your meetings, or your recurring meetings (e.g. we
 
 1. **Add Google to the Calendar app** — Open **Calendar** (Mac's built-in app) → **Calendar** → **Add Account…** → **Google** → sign in. Dex reads from this app.
 2. **Let Cursor see your calendar** — **System Settings** → **Privacy & Security** → **Calendars** → turn **Cursor** on, then click **Cursor** and set access to **Full** (not "Add Only"). Restart Cursor after changing it.
-3. **If you skipped the installer or fixed Python yourself** — The installer normally sets up calendar support on Mac. If you didn't run it or installed packages by hand, in Terminal run: `pip3 install --user pyobjc-framework-EventKit`, then restart Cursor.
+3. **If you skipped the installer or fixed Python yourself** — The installer normally sets up calendar support on Mac. If you didn't run it or installed packages by hand, in Terminal run: `.venv/bin/pip install -r core/mcp/requirements.txt`, then restart Cursor.
 
 See **[Calendar_Setup.md](06-Resources/Dex_System/Calendar_Setup.md)** for the full guide.
 

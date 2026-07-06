@@ -44,6 +44,28 @@ Before anything else, check if demo mode is active:
 
 ---
 
+## Step 0.5: Process Unprocessed Meetings
+
+Before gathering context, ensure recent meetings are in the vault by running `/process-meetings`. This pulls any unprocessed meetings from the meeting source (Otter.ai, Granola, etc.), creates meeting notes, updates person/company pages, and extracts tasks — so the daily plan has complete data from yesterday and any earlier gaps.
+
+- If no new meetings are found, continue silently
+- If meetings are processed, note the count and use the extracted context in the plan
+- Do NOT ask for a skill rating after this sub-step — save that for the end of the full plan
+
+## Step 0.6: Dex Inbox Check (Phone Captures)
+
+Check for tasks captured from phone that haven't been triaged:
+
+```
+Use: reminders_list_items(list_name="Dex Inbox")
+```
+
+If items found, triage them before building the plan so task counts are accurate. See Step 5.10a for the full triage flow.
+
+**If empty:** Skip silently.
+
+---
+
 ## Step 1: Background Checks (Silent)
 
 Run these silently without user-facing output:
@@ -365,6 +387,8 @@ Flag potential issues:
 ---
 
 ## Step 7: Generate Daily Plan
+
+**ALWAYS generate and save a new plan file.** Never skip generation because a plan from a previous day exists in the conversation or vault. Even if context from a prior plan is visible, today is a new day and requires its own plan. If a plan for today's date already exists, overwrite it (the user is requesting a refresh).
 
 Create `07-Archives/Plans/YYYY-MM-DD.md`:
 
