@@ -10,7 +10,7 @@ core/tests/             export-ignore
 .scripts/meeting-intel/__tests__/ export-ignore
 CONTRIBUTING.md         export-ignore
 DISTRIBUTION_READY.md   export-ignore
-scripts/                export-ignore
+/scripts/               export-ignore
 .ao-issue.md            export-ignore
 .distignore             export-ignore
 .gitattributes          export-ignore
