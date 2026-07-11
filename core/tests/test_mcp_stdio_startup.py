@@ -13,24 +13,55 @@ from core.utils.mcp_handshake import mcp_stdio_handshake
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MCP_TEMPLATE = REPO_ROOT / "System" / ".mcp.json.example"
+VAULT_PLACEHOLDER = "{{VAULT_PATH}}"
+CONFIGURED_PYTHON = f"{VAULT_PLACEHOLDER}/.venv/bin/python"
+DEX_SCRIPT_PREFIX = f"{VAULT_PLACEHOLDER}/core/mcp/"
 
 
-def _dex_owned_servers() -> list[tuple[str, Path, dict[str, str]]]:
-    config = json.loads(MCP_TEMPLATE.read_text(encoding="utf-8"))
+def _dex_owned_servers(
+    config: object | None = None,
+) -> list[tuple[str, str, tuple[str, ...], dict[str, str]]]:
+    if config is None:
+        config = json.loads(MCP_TEMPLATE.read_text(encoding="utf-8"))
+    if not isinstance(config, dict) or not isinstance(config.get("mcpServers"), dict):
+        raise AssertionError("System/.mcp.json.example must contain an mcpServers object")
+
     servers = []
-    prefix = "{{VAULT_PATH}}/"
     for name, entry in config["mcpServers"].items():
+        if not isinstance(entry, dict):
+            continue
         command = entry.get("command")
         args = entry.get("args", [])
+        is_candidate = command == CONFIGURED_PYTHON or "core/mcp/" in json.dumps(args)
+        if not is_candidate:
+            continue
+        if command != CONFIGURED_PYTHON:
+            raise AssertionError(
+                f"{name}: Dex-owned server command must be {CONFIGURED_PYTHON!r}"
+            )
+        if not isinstance(args, list) or not all(isinstance(argument, str) for argument in args):
+            raise AssertionError(f"{name}: Dex-owned server args must be a list of strings")
+
         script_args = [
             argument
             for argument in args
-            if isinstance(argument, str) and argument.startswith(f"{prefix}core/mcp/")
+            if argument.startswith(DEX_SCRIPT_PREFIX)
         ]
-        if not isinstance(command, str) or not command.endswith("/.venv/bin/python") or len(script_args) != 1:
-            continue
-        script = REPO_ROOT / script_args[0].removeprefix(prefix)
-        servers.append((name, script, entry.get("env", {})))
+        if len(script_args) != 1:
+            raise AssertionError(
+                f"{name}: Dex-owned server must have exactly one {DEX_SCRIPT_PREFIX} argument"
+            )
+        script = REPO_ROOT / script_args[0].removeprefix(f"{VAULT_PLACEHOLDER}/")
+        if not script.is_file():
+            raise AssertionError(f"{name}: configured server script does not exist: {script}")
+
+        configured_env = entry.get("env", {})
+        if not isinstance(configured_env, dict) or not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in configured_env.items()
+        ):
+            raise AssertionError(f"{name}: Dex-owned server env must contain string values")
+        servers.append((name, command, tuple(args), configured_env))
     return servers
 
 
@@ -39,13 +70,14 @@ assert DEX_OWNED_SERVERS, "System/.mcp.json.example contains no Dex-owned Python
 
 
 @pytest.mark.parametrize(
-    ("server_name", "script", "configured_env"),
+    ("server_name", "configured_command", "configured_args", "configured_env"),
     DEX_OWNED_SERVERS,
-    ids=[name for name, _script, _env in DEX_OWNED_SERVERS],
+    ids=[name for name, _command, _args, _env in DEX_OWNED_SERVERS],
 )
 def test_dex_owned_server_completes_stdio_initialize(
     server_name: str,
-    script: Path,
+    configured_command: str,
+    configured_args: tuple[str, ...],
     configured_env: dict[str, str],
     fixture_vault: Path,
     tmp_path: Path,
@@ -69,8 +101,15 @@ def test_dex_owned_server_completes_stdio_initialize(
         }
     )
 
+    resolved_command = configured_command.replace(VAULT_PLACEHOLDER, str(REPO_ROOT))
+    assert resolved_command == str(REPO_ROOT / ".venv/bin/python")
+    resolved_args = [
+        argument.replace(VAULT_PLACEHOLDER, str(REPO_ROOT))
+        for argument in configured_args
+    ]
+
     result = mcp_stdio_handshake(
-        [sys.executable, str(script)],
+        [sys.executable, *resolved_args],
         cwd=REPO_ROOT,
         env=env,
         timeout=10,
@@ -82,3 +121,27 @@ def test_dex_owned_server_completes_stdio_initialize(
     assert result.response["id"] == 1
     assert isinstance(result.response["result"]["capabilities"], dict)
     assert isinstance(result.response["result"]["serverInfo"], dict)
+
+
+@pytest.mark.parametrize(
+    ("entry", "expected_error"),
+    [
+        (
+            {"command": "python", "args": [f"{DEX_SCRIPT_PREFIX}work_server.py"]},
+            "command must be",
+        ),
+        (
+            {"command": CONFIGURED_PYTHON, "args": f"{DEX_SCRIPT_PREFIX}work_server.py"},
+            "args must be a list of strings",
+        ),
+        (
+            {"command": CONFIGURED_PYTHON, "args": []},
+            "must have exactly one",
+        ),
+    ],
+)
+def test_dex_owned_server_discovery_rejects_malformed_candidates(
+    entry: dict[str, object], expected_error: str
+) -> None:
+    with pytest.raises(AssertionError, match=expected_error):
+        _dex_owned_servers({"mcpServers": {"broken": entry}})

@@ -104,6 +104,74 @@ class TestSetupMcpConfig:
         assert "Invalid JSON after substitution" in err
         assert not target.exists()
 
+    def test_preserves_existing_servers_and_adds_only_missing_defaults(
+        self, tmp_path, monkeypatch
+    ):
+        example = _write_example(
+            tmp_path,
+            {
+                "work-mcp": {
+                    "command": "{{VAULT_PATH}}/.venv/bin/python",
+                    "args": ["{{VAULT_PATH}}/core/mcp/work_server.py"],
+                },
+                "calendar-mcp": {
+                    "command": "{{VAULT_PATH}}/.venv/bin/python",
+                    "args": ["{{VAULT_PATH}}/core/mcp/calendar_server.py"],
+                },
+            },
+        )
+        target = tmp_path / ".mcp.json"
+        existing_work = {
+            "command": "custom-python",
+            "args": ["custom-work-server.py"],
+            "env": {"CUSTOM": "preserve-me"},
+        }
+        custom_server = {
+            "command": "npx",
+            "args": ["-y", "custom-mcp"],
+        }
+        target.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "work-mcp": existing_work,
+                        "custom-mcp": custom_server,
+                    },
+                    "customTopLevel": {"preserve": True},
+                },
+                indent=2,
+            )
+        )
+        _redirect_config(monkeypatch, example, target)
+
+        ok, err = onboarding_server.setup_mcp_config(tmp_path)
+
+        assert ok is True
+        assert err is None
+        config = json.loads(target.read_text())
+        assert config["mcpServers"]["work-mcp"] == existing_work
+        assert config["mcpServers"]["custom-mcp"] == custom_server
+        assert config["customTopLevel"] == {"preserve": True}
+        assert config["mcpServers"]["calendar-mcp"]["command"] == str(tmp_path / ".venv/bin/python")
+
+    def test_invalid_existing_config_returns_error_without_overwriting(
+        self, tmp_path, monkeypatch
+    ):
+        example = _write_example(
+            tmp_path,
+            {"work-mcp": {"command": "python", "args": ["work_server.py"]}},
+        )
+        target = tmp_path / ".mcp.json"
+        invalid_content = '{ "mcpServers": { not valid json }'
+        target.write_text(invalid_content)
+        _redirect_config(monkeypatch, example, target)
+
+        ok, err = onboarding_server.setup_mcp_config(tmp_path)
+
+        assert ok is False
+        assert "Existing .mcp.json is invalid JSON" in err
+        assert target.read_text() == invalid_content
+
     def test_onboarding_output_is_the_config_preflight_and_doctor_read(
         self, tmp_path, monkeypatch
     ):

@@ -500,6 +500,28 @@ def setup_mcp_config(vault_path: Path) -> tuple[bool, Optional[str]]:
             ]
             for name in to_remove:
                 del config['mcpServers'][name]
+
+        # Preserve user-added MCPs when onboarding writes the canonical root
+        # config. Existing entries win, including entries with shipped names.
+        if MCP_CONFIG_TARGET.exists():
+            try:
+                existing_config = json.loads(MCP_CONFIG_TARGET.read_text())
+            except json.JSONDecodeError as e:
+                return False, f"Existing .mcp.json is invalid JSON: {e}"
+
+            if not isinstance(existing_config, dict):
+                return False, "Existing .mcp.json must contain a JSON object"
+
+            existing_servers = existing_config.get('mcpServers')
+            if existing_servers is None:
+                existing_servers = {}
+                existing_config['mcpServers'] = existing_servers
+            elif not isinstance(existing_servers, dict):
+                return False, "Existing .mcp.json mcpServers must contain a JSON object"
+
+            for server_name, server_config in config.get('mcpServers', {}).items():
+                existing_servers.setdefault(server_name, server_config)
+            config = existing_config
         
         # Write to target
         with open(MCP_CONFIG_TARGET, 'w') as f:

@@ -10,6 +10,7 @@ const FIXTURE_VAULT = path.resolve(__dirname, '../../../core/tests/fixtures/vaul
 const HOOK_PROGRAMS = fs.readdirSync(HOOKS_DIR)
   .filter((name) => name.endsWith('.cjs') || name.endsWith('.sh'))
   .sort();
+const DIRECT_SHELL_HOOKS = new Set(['session-end.sh']);
 
 assert.ok(HOOK_PROGRAMS.length > 0, 'no root hook programs discovered');
 
@@ -38,8 +39,18 @@ for (const hookName of HOOK_PROGRAMS) {
   test(`benign stdin exits cleanly: ${hookName}`, (t) => {
     const sandbox = createSandbox(t);
     const hookPath = path.join(HOOKS_DIR, hookName);
-    const command = hookName.endsWith('.sh') ? '/bin/bash' : process.execPath;
-    const result = spawnSync(command, [hookPath], {
+    const isShellHook = hookName.endsWith('.sh');
+    if (isShellHook) {
+      assert.notEqual(
+        fs.statSync(hookPath).mode & 0o111,
+        0,
+        `${hookName} must retain an executable mode`,
+      );
+    }
+    const directInvocation = DIRECT_SHELL_HOOKS.has(hookName);
+    const command = directInvocation ? hookPath : isShellHook ? '/bin/bash' : process.execPath;
+    const args = directInvocation ? [] : [hookPath];
+    const result = spawnSync(command, args, {
       cwd: sandbox.vault,
       encoding: 'utf-8',
       env: minimalEnv(sandbox),
@@ -54,6 +65,32 @@ for (const hookName of HOOK_PROGRAMS) {
     );
   });
 }
+
+test('session end runs directly and records its transcript', (t) => {
+  const sandbox = createSandbox(t);
+  const hookPath = path.join(HOOKS_DIR, 'session-end.sh');
+  const transcriptPath = path.join(sandbox.vault, 'session-transcript.jsonl');
+  fs.writeFileSync(transcriptPath, '{"type":"test"}\n');
+
+  const result = spawnSync(hookPath, [transcriptPath], {
+    cwd: sandbox.vault,
+    encoding: 'utf-8',
+    env: minimalEnv(sandbox),
+    timeout: 10_000,
+  });
+
+  assert.equal(
+    result.status,
+    0,
+    `session-end.sh exited ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+  );
+  const learningsDir = path.join(sandbox.vault, 'System', 'Session_Learnings');
+  const learningFiles = fs.readdirSync(learningsDir).filter((name) => name.endsWith('.md'));
+  assert.equal(learningFiles.length, 1);
+  const learning = fs.readFileSync(path.join(learningsDir, learningFiles[0]), 'utf-8');
+  assert.match(learning, /Session completed/);
+  assert.ok(learning.includes(transcriptPath));
+});
 
 test('safety guard uses its documented exit 2 contract for blocked commands', (t) => {
   const sandbox = createSandbox(t);
