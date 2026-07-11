@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.28.0] - Installs now contain the Dex features they promise (2026-07-11)
+
+Some install and update paths looked successful while quietly leaving out working parts of Dex, carrying developer-only test files, or writing MCP settings somewhere Claude Code never reads. This release fixes those distribution gaps and makes the release checks exercise the same paths you do.
+
+**What this fixes for you:**
+
+* **GitHub ZIP installs keep every skill's working parts.** ZIP downloads were stripping the implementation scripts nested inside skills, so document, presentation, PDF, and other scripted skills could arrive as instructions with no code behind them. Those nested scripts now ship; only Dex's top-level release tooling stays out.
+* **Updates no longer bring 58 internal test files into your vault.** The release builder now removes every Python and hook test surface reliably, including filenames with spaces, and no longer leaves behind developer dependencies or a broken `test:hooks` command pointing at files you do not have.
+* **Onboarding and Claude Code now agree on MCP settings.** Onboarding wrote `System/.mcp.json`, while Claude Code and Dex's health checks read the root `.mcp.json`. New setup now writes the root file consistently. Existing vaults with only the old System file are still read safely and are told when that fallback is in use.
+* **Release checks now use Dex the way you do.** CI completes real onboarding and task journeys, verifies meeting writeback, starts every built-in MCP server over its real stdio protocol, validates every shipped skill, and runs every hook in an isolated vault. Packaging and startup failures should be caught before an update reaches you.
+
+*Version note: package metadata moves from 1.26.0 to 1.28.0 to catch up with the already-published 1.27.0 changelog entry.*
+
+---
+
 ## [1.27.0] - /dex-doctor: a real system checkup that tells the truth (2026-07-11)
 
 Replaces `/health-check` with a rigorous whole-system diagnostic that knows the difference between "off", "broken", "couldn't check", and "fine" — built against the exact failure modes the July 2026 audit uncovered.
