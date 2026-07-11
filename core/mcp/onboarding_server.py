@@ -1224,7 +1224,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 # Configs that would be updated
                 would_update_configs = ['CLAUDE.md (User Profile section)']
                 if MCP_CONFIG_EXAMPLE.exists():
-                    would_update_configs.append('System/.mcp.json')
+                    would_update_configs.append('.mcp.json')
 
                 # Build preview of user-profile.yaml content
                 data = session['data']
@@ -1322,7 +1322,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 logger.info("Setting up .mcp.json")
                 success, error = setup_mcp_config(BASE_DIR)
                 if success:
-                    summary['configs_updated'].append('System/.mcp.json')
+                    summary['configs_updated'].append('.mcp.json')
                 else:
                     summary['errors'].append(f"MCP config error: {error}")
 
