@@ -7,6 +7,29 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.29.0] - Dex can prove your setup still works (2026-07-11)
+
+Dex can now tell you when YOUR customizations break it — and updates prove themselves
+before declaring success. The checks keep your files and commands safe while separating
+problems in your setup from problems in Dex itself.
+
+**What this fixes for you:**
+
+* **Your custom skills and connections get an exact diagnosis.** `/dex-doctor` names the
+  file that needs attention and tells you to fix or remove that customization, rather
+  than blaming Dex or suggesting an unrelated rollback.
+* **Deep checks exercise real journeys without risking your vault.** Dex loads configs,
+  creates and updates a task, starts only trusted built-in services, and validates skills
+  and hooks in temporary copies. It never runs your custom commands, contacts the network,
+  or writes into your live vault.
+* **Updates and rollbacks verify the result.** Both flows run the doctor and smoke tests
+  before declaring success, and rollback cleanup uses shipped manifests so files you
+  created remain yours.
+* **Changes to shipped Dex files are visible before an update.** The doctor warns which
+  modified files may conflict while leaving sanctioned customization surfaces alone.
+
+---
+
 ## [1.28.0] - Installs now contain the Dex features they promise (2026-07-11)
 
 Some install and update paths looked successful while quietly leaving out working parts of Dex, carrying developer-only files, or saving connection settings somewhere Claude Code never reads. This release makes installs complete and checks them through the same journeys you use.
