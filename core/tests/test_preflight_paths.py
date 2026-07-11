@@ -8,6 +8,8 @@ actually live at ``<vault>/core/mcp``. These tests pin the corrected path so the
 ``dex-core`` segment can never creep back in.
 """
 
+import json
+
 from core.utils import preflight
 
 
@@ -51,3 +53,26 @@ def test_check_server_ignores_stale_dexcore_path(tmp_path, monkeypatch):
 
     assert result["status"] == "error"
     assert result["error"] == f"Server file not found: {module_file}"
+
+
+def test_mcp_config_path_prefers_root_when_both_configs_exist(tmp_path, monkeypatch):
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    root = tmp_path / ".mcp.json"
+    legacy = tmp_path / "System" / ".mcp.json"
+    legacy.parent.mkdir()
+    root.write_text(json.dumps({"mcpServers": {"root": {}}}))
+    legacy.write_text(json.dumps({"mcpServers": {"legacy": {}}}))
+
+    assert preflight.get_mcp_config_path() == root
+    assert preflight.get_configured_servers() == ["root"]
+
+
+def test_mcp_config_path_falls_back_to_legacy_when_root_is_absent(tmp_path, monkeypatch):
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    legacy = tmp_path / "System" / ".mcp.json"
+    legacy.parent.mkdir()
+    legacy.write_text(json.dumps({"mcpServers": {"legacy": {}}}))
+
+    assert preflight.get_mcp_config_path() == legacy
+    assert preflight.get_configured_servers() == ["legacy"]
+    assert not (tmp_path / ".mcp.json").exists()

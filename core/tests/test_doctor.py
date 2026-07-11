@@ -503,6 +503,30 @@ def test_mcp_orphans_compares_server_targets_not_registry_names(context):
     assert "beta_server.py" in result.detail
 
 
+def test_mcp_probes_read_legacy_config_without_moving_it(context):
+    mcp_dir = context.vault_root / "core" / "mcp"
+    mcp_dir.mkdir(parents=True)
+    server = mcp_dir / "alpha_server.py"
+    server.touch()
+    legacy = context.vault_root / "System" / ".mcp.json"
+    legacy.write_text(
+        json.dumps(
+            {"mcpServers": {"alpha": {"command": sys.executable, "args": [str(server)]}}}
+        )
+    )
+
+    before = _tree_snapshot(context.vault_root)
+    registered = doctor._probe_mcp_registered(context)
+    orphans = doctor._probe_mcp_orphans(context)
+
+    assert registered.verdict == "OK"
+    assert orphans.verdict == "OK"
+    assert "legacy System/.mcp.json" in registered.detail
+    assert "legacy System/.mcp.json" in orphans.detail
+    assert _tree_snapshot(context.vault_root) == before
+    assert not (context.vault_root / ".mcp.json").exists()
+
+
 def test_mcp_orphans_invalid_registry_becomes_unknown_in_the_runner(monkeypatch, context):
     mcp_dir = context.vault_root / "core" / "mcp"
     mcp_dir.mkdir(parents=True)

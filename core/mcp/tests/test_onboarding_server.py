@@ -9,6 +9,7 @@ Run with: pytest core/mcp/tests/test_onboarding_server.py -v
 
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # core/mcp/tests -> repo root (for `core.paths`) and core/mcp (for the module).
@@ -17,6 +18,8 @@ sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "core" / "mcp"))
 
 import onboarding_server  # noqa: E402
+
+from core.utils import doctor, preflight  # noqa: E402
 
 
 def _write_example(tmp_path: Path, servers: dict) -> Path:
@@ -32,6 +35,9 @@ def _redirect_config(monkeypatch, example: Path, target: Path) -> None:
 
 class TestSetupMcpConfig:
     """setup_mcp_config substitution, validation, and filtering."""
+
+    def test_production_target_is_root_mcp_config(self):
+        assert onboarding_server.MCP_CONFIG_TARGET == onboarding_server.BASE_DIR / ".mcp.json"
 
     def test_resolves_vault_path_and_strips_placeholder_and_comment_servers(
         self, tmp_path, monkeypatch
@@ -97,3 +103,96 @@ class TestSetupMcpConfig:
         assert ok is False
         assert "Invalid JSON after substitution" in err
         assert not target.exists()
+
+    def test_preserves_existing_servers_and_adds_only_missing_defaults(
+        self, tmp_path, monkeypatch
+    ):
+        example = _write_example(
+            tmp_path,
+            {
+                "work-mcp": {
+                    "command": "{{VAULT_PATH}}/.venv/bin/python",
+                    "args": ["{{VAULT_PATH}}/core/mcp/work_server.py"],
+                },
+                "calendar-mcp": {
+                    "command": "{{VAULT_PATH}}/.venv/bin/python",
+                    "args": ["{{VAULT_PATH}}/core/mcp/calendar_server.py"],
+                },
+            },
+        )
+        target = tmp_path / ".mcp.json"
+        existing_work = {
+            "command": "custom-python",
+            "args": ["custom-work-server.py"],
+            "env": {"CUSTOM": "preserve-me"},
+        }
+        custom_server = {
+            "command": "npx",
+            "args": ["-y", "custom-mcp"],
+        }
+        target.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "work-mcp": existing_work,
+                        "custom-mcp": custom_server,
+                    },
+                    "customTopLevel": {"preserve": True},
+                },
+                indent=2,
+            )
+        )
+        _redirect_config(monkeypatch, example, target)
+
+        ok, err = onboarding_server.setup_mcp_config(tmp_path)
+
+        assert ok is True
+        assert err is None
+        config = json.loads(target.read_text())
+        assert config["mcpServers"]["work-mcp"] == existing_work
+        assert config["mcpServers"]["custom-mcp"] == custom_server
+        assert config["customTopLevel"] == {"preserve": True}
+        assert config["mcpServers"]["calendar-mcp"]["command"] == str(tmp_path / ".venv/bin/python")
+
+    def test_invalid_existing_config_returns_error_without_overwriting(
+        self, tmp_path, monkeypatch
+    ):
+        example = _write_example(
+            tmp_path,
+            {"work-mcp": {"command": "python", "args": ["work_server.py"]}},
+        )
+        target = tmp_path / ".mcp.json"
+        invalid_content = '{ "mcpServers": { not valid json }'
+        target.write_text(invalid_content)
+        _redirect_config(monkeypatch, example, target)
+
+        ok, err = onboarding_server.setup_mcp_config(tmp_path)
+
+        assert ok is False
+        assert "Existing .mcp.json is invalid JSON" in err
+        assert target.read_text() == invalid_content
+
+    def test_onboarding_output_is_the_config_preflight_and_doctor_read(
+        self, tmp_path, monkeypatch
+    ):
+        example = _write_example(
+            tmp_path,
+            {"work-mcp": {"command": "python", "args": ["{{VAULT_PATH}}/core/mcp/work_server.py"]}},
+        )
+        target = tmp_path / ".mcp.json"
+        _redirect_config(monkeypatch, example, target)
+        monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+
+        ok, err = onboarding_server.setup_mcp_config(tmp_path)
+
+        assert ok is True
+        assert err is None
+        assert preflight.get_mcp_config_path() == target
+        context = doctor.DoctorContext(
+            vault_root=tmp_path,
+            repo_root=tmp_path,
+            home=tmp_path,
+            now=datetime.now(timezone.utc),
+        )
+        assert doctor._mcp_config_path(context) == target
+        assert doctor._load_mcp_config(context) == json.loads(target.read_text())

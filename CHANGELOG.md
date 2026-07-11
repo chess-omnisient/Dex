@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.28.0] - Installs now contain the Dex features they promise (2026-07-11)
+
+Some install and update paths looked successful while quietly leaving out working parts of Dex, carrying developer-only files, or saving connection settings somewhere Claude Code never reads. This release makes installs complete and checks them through the same journeys you use.
+
+**What this fixes for you:**
+
+* **GitHub ZIP installs keep every skill's working parts.** Document, presentation, PDF, and other scripted skills could arrive as instructions with no working code behind them. ZIP downloads now include everything those skills need to run.
+* **Updates no longer bring 58 internal test files into your vault.** Releases now leave out test suites and developer setup files reliably, even when filenames contain spaces, and no longer include commands that point at files you do not have.
+* **Onboarding and Claude Code now use the same connection settings.** New setup, Claude Code, and Dex's health checks all look in one place. Existing vaults that use the old location still work, and Dex tells you when it is relying on that fallback.
+* **Release checks now use Dex the way you do.** They complete real onboarding and task journeys, confirm meeting updates are written back, start every built-in service, validate every shipped skill, and run every hook in an isolated vault. Packaging and startup failures should be caught before an update reaches you.
+
+*Version note: package metadata moves from 1.26.0 to 1.28.0 to catch up with the already-published 1.27.0 changelog entry.*
+
+---
+
 ## [1.27.0] - /dex-doctor: a real system checkup that tells the truth (2026-07-11)
 
 Replaces `/health-check` with a rigorous whole-system diagnostic that knows the difference between "off", "broken", "couldn't check", and "fine" — built against the exact failure modes the July 2026 audit uncovered.

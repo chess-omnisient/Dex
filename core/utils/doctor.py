@@ -478,6 +478,13 @@ def _load_mcp_config(context: DoctorContext) -> dict[str, Any]:
     return loaded
 
 
+def _with_mcp_config_note(context: DoctorContext, detail: str) -> str:
+    legacy_path = context.vault_root / "System" / ".mcp.json"
+    if _mcp_config_path(context) == legacy_path:
+        return f"{detail} (using legacy System/.mcp.json because root .mcp.json is absent)"
+    return detail
+
+
 def _expand_path_token(token: str, context: DoctorContext) -> str:
     expanded = token.replace("{{VAULT_PATH}}", str(context.vault_root))
     expanded = expanded.replace("__VAULT_PATH__", str(context.vault_root))
@@ -574,16 +581,22 @@ def _probe_mcp_registered(context: DoctorContext) -> ProbeResult:
     except (OSError, ValueError, json.JSONDecodeError) as error:
         return ProbeResult(
             "BROKEN",
-            f".mcp.json is invalid: {_one_line(error)}",
+            _with_mcp_config_note(context, f".mcp.json is invalid: {_one_line(error)}"),
             Heal(tier=3, action="Repair .mcp.json by hand while preserving user-added servers.", applied=False),
         )
     if missing:
         return ProbeResult(
             "BROKEN",
-            f"Registered MCP targets are missing: {', '.join(missing)}",
+            _with_mcp_config_note(context, f"Registered MCP targets are missing: {', '.join(missing)}"),
             Heal(tier=2, action="Repair the missing MCP target paths in .mcp.json.", applied=False),
         )
-    return ProbeResult("OK", f"All {len(config['mcpServers'])} registered MCP entries have valid targets")
+    return ProbeResult(
+        "OK",
+        _with_mcp_config_note(
+            context,
+            f"All {len(config['mcpServers'])} registered MCP entries have valid targets",
+        ),
+    )
 
 
 def _probe_mcp_orphans(context: DoctorContext) -> ProbeResult:
@@ -602,10 +615,16 @@ def _probe_mcp_orphans(context: DoctorContext) -> ProbeResult:
     if orphans:
         return ProbeResult(
             "BROKEN",
-            f"Core MCP servers are not registered: {', '.join(sorted(orphans))}",
+            _with_mcp_config_note(
+                context,
+                f"Core MCP servers are not registered: {', '.join(sorted(orphans))}",
+            ),
             Heal(tier=2, action="Add the orphaned core MCP servers to .mcp.json.", applied=False),
         )
-    return ProbeResult("OK", f"All {len(shipped)} core MCP server files are registered")
+    return ProbeResult(
+        "OK",
+        _with_mcp_config_note(context, f"All {len(shipped)} core MCP server files are registered"),
+    )
 
 
 def _python_import_check(python: Path) -> tuple[bool, list[str]]:

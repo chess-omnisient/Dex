@@ -330,12 +330,19 @@ function isGranolaConfigured() {
     return /granola:[\s\S]*?enabled:\s*true/.test(config);
   } catch {
     // Also check if Granola MCP is in the server list
-    try {
-      const mcpConfig = fs.readFileSync(path.join(VAULT_ROOT, 'System', '.mcp.json'), 'utf-8');
-      return mcpConfig.includes('granola');
-    } catch {
-      return false;
+    const mcpConfigPaths = [
+      path.join(VAULT_ROOT, '.mcp.json'),
+      path.join(VAULT_ROOT, 'System', '.mcp.json'),
+    ];
+    for (const mcpConfigPath of mcpConfigPaths) {
+      try {
+        const mcpConfig = fs.readFileSync(mcpConfigPath, 'utf-8');
+        return mcpConfig.includes('granola');
+      } catch {
+        // Root config is canonical; System/.mcp.json is a legacy fallback.
+      }
     }
+    return false;
   }
 }
 

@@ -86,7 +86,7 @@ MARKER_FILE = SYSTEM_DIR / '.onboarding-complete'
 USER_PROFILE_TEMPLATE = SYSTEM_DIR / 'user-profile-template.yaml'
 CLAUDE_MD = VAULT_ROOT / 'CLAUDE.md'
 MCP_CONFIG_EXAMPLE = SYSTEM_DIR / '.mcp.json.example'
-MCP_CONFIG_TARGET = SYSTEM_DIR / '.mcp.json'
+MCP_CONFIG_TARGET = VAULT_ROOT / '.mcp.json'
 OBSIDIAN_SYNC_LOG = SYSTEM_DIR / 'obsidian-sync.log'
 RITUAL_INTELLIGENCE_DB_FILE = DEX_RUNTIME_DIR / 'ritual-intelligence.db'
 

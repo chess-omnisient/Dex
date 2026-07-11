@@ -376,7 +376,7 @@ Call `finalize_onboarding()` from onboarding-mcp. This single call handles:
 4. Write System/user-profile.yaml from session data
 5. Write System/pillars.yaml from pillars
 6. Update CLAUDE.md User Profile section
-7. Setup System/.mcp.json (replace {{VAULT_PATH}} automatically)
+7. Setup root .mcp.json (replace {{VAULT_PATH}} automatically)
 8. Delete session file on success
 
 The MCP returns a summary of what was created (folders, files, configs).

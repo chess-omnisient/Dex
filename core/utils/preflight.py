@@ -27,7 +27,12 @@ def get_vault_path() -> str:
 
 
 def get_mcp_config_path() -> Path:
-    return Path(get_vault_path()) / ".mcp.json"
+    vault_root = Path(get_vault_path())
+    root_config = vault_root / ".mcp.json"
+    legacy_config = vault_root / "System" / ".mcp.json"
+    if root_config.exists() or not legacy_config.exists():
+        return root_config
+    return legacy_config
 
 
 def get_health_path() -> Path:
