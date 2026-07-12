@@ -322,6 +322,7 @@ fi
             echo "⏰ $JOB_LABEL last ran $JOB_AGE $JOB_AGE_UNIT ago (expected every $JOB_EXPECTED_CADENCE) — run /dex-doctor to investigate."
         fi
     done <<'EOF'
+com.dex.smoke-nightly|.scripts/logs/smoke-nightly.log|93600|26 hours|Nightly smoke
 com.dex.meeting-intel|.scripts/logs/meeting-intel.log|172800|2 days|Meeting sync
 com.dex.changelog-checker|.scripts/logs/changelog-checker.log|604800|7 days|Claude update watcher
 com.dex.learning-review|.scripts/logs/learning-review.log|604800|7 days|Learning review

@@ -127,6 +127,10 @@ PARA_PATH_NAMES = (
 
 # Keep in sync with .claude/hooks/session-start.sh's background-job staleness table.
 JOB_FRESHNESS = {
+    "com.dex.smoke-nightly": JobFreshness(
+        Path(".scripts/logs/smoke-nightly.log"),
+        timedelta(hours=26),
+    ),
     "com.dex.meeting-intel": JobFreshness(
         Path(".scripts/logs/meeting-intel.log"),
         timedelta(hours=48),
@@ -148,6 +152,7 @@ SHIPPED_LAUNCH_AGENT_LABELS = frozenset(
         "com.dex.learning-review",
         "com.dex.meeting-intel",
         "com.dex.obsidian-sync",
+        "com.dex.smoke-nightly",
     }
 )
 

@@ -1080,6 +1080,7 @@ def test_jobs_loaded_degrades_to_unknown_off_macos(monkeypatch, context):
 @pytest.mark.parametrize(
     ("label", "expected_max_age"),
     [
+        ("com.dex.smoke-nightly", timedelta(hours=26)),
         ("com.dex.meeting-intel", timedelta(hours=48)),
         ("com.dex.changelog-checker", timedelta(days=7)),
         ("com.dex.learning-review", timedelta(days=7)),
