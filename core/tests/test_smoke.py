@@ -93,7 +93,7 @@ def _release_repo(tmp_path: Path, *, release_validators: str | None = None) -> P
     shutil.copytree(
         REPO_ROOT / "core",
         repo / "core",
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "paths.json"),
     )
     if release_validators is not None:
         (repo / "core" / "utils" / "validators.py").write_text(
@@ -337,14 +337,97 @@ def test_runner_materialization_excludes_untracked_core_files(
     )
     subprocess.run(["git", "add", "--", "core"], cwd=source, check=True)
     subprocess.run(["git", "commit", "--quiet", "-m", "tracked fixture"], cwd=source, check=True)
-    untracked = source / "core" / "mcp" / "__init__.py"
-    untracked.write_text("raise RuntimeError('untracked code executed')\n", encoding="utf-8")
+    evil_shadow = source / "core" / "utils" / "evil_shadow.py"
+    evil_shadow.parent.mkdir(parents=True, exist_ok=True)
+    evil_shadow.write_text("raise RuntimeError('untracked code executed')\n", encoding="utf-8")
+    evil_server = source / "core" / "mcp" / "evil_server.py"
+    evil_server.write_text("raise RuntimeError('untracked code executed')\n", encoding="utf-8")
     monkeypatch.setattr(smoke, "RUNNER_ROOT", source)
 
     runner = smoke._materialize_runner(tmp_path / "runner")
 
     assert (runner / "core" / "mcp" / "work_server.py").is_file()
-    assert not (runner / "core" / "mcp" / "__init__.py").exists()
+    assert not (runner / "core" / "utils" / "evil_shadow.py").exists()
+    assert not (runner / "core" / "mcp" / "evil_server.py").exists()
+
+
+def test_release_gate_ignores_untracked_runtime_artifacts(monkeypatch, tmp_path: Path) -> None:
+    repo = _release_repo(tmp_path)
+    release_root = tmp_path / "release"
+    reference, detail = smoke._materialize_release_core(
+        repo,
+        release_root,
+        timeout_seconds=3.0,
+    )
+    assert detail == "verified installed release snapshot"
+    assert reference is not None
+
+    (repo / "core" / "paths.json").write_text("{}\n", encoding="utf-8")
+    cache = repo / "core" / "__pycache__"
+    cache.mkdir()
+    (cache / "x.pyc").write_bytes(b"runtime cache")
+    monkeypatch.setattr(smoke, "RUNNER_ROOT", repo)
+
+    assert smoke._release_execution_reason(repo, release_root, reference) is None
+
+
+def test_runtime_artifacts_and_untracked_code_do_not_enter_verified_journeys(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    vault = _write_valid_vault(tmp_path)
+    repo = _release_repo(tmp_path)
+    (vault / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "work-mcp": {
+                        "command": sys.executable,
+                        "args": [str(repo / "core" / "mcp" / "work_server.py")],
+                        "env": {"VAULT_PATH": str(vault)},
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (repo / "core" / "paths.json").write_text("{}\n", encoding="utf-8")
+    cache = repo / "core" / "__pycache__"
+    cache.mkdir()
+    (cache / "x.pyc").write_bytes(b"runtime cache")
+    evil_shadow = repo / "core" / "utils" / "evil_shadow.py"
+    evil_shadow.write_text("raise RuntimeError('untracked code executed')\n", encoding="utf-8")
+    evil_server = repo / "core" / "mcp" / "evil_server.py"
+    evil_server.write_text("raise RuntimeError('untracked code executed')\n", encoding="utf-8")
+    monkeypatch.setattr(smoke, "RUNNER_ROOT", repo)
+    original = smoke._run_smoke_journeys
+    snapshot_checked = False
+
+    def run_with_snapshot_check(**kwargs):
+        nonlocal snapshot_checked
+        runner_root = kwargs["runner_root"]
+        assert not (runner_root / evil_shadow.relative_to(repo)).exists()
+        assert not (runner_root / evil_server.relative_to(repo)).exists()
+        assert not (runner_root / "core" / "paths.json").exists()
+        assert not (runner_root / "core" / "__pycache__" / "x.pyc").exists()
+        snapshot_checked = True
+        return original(**kwargs)
+
+    monkeypatch.setattr(smoke, "_run_smoke_journeys", run_with_snapshot_check)
+
+    run = smoke.run_smoke(
+        vault_root=vault,
+        repo_root=repo,
+        journey_definitions=(
+            _definition("task_lifecycle", 8.0),
+            _definition("mcp_startup", 8.0),
+        ),
+    )
+
+    assert snapshot_checked is True
+    assert run.harness_failed is False
+    assert run.exit_code == 0
+    assert [journey["verdict"] for journey in run.report["journeys"]] == ["OK", "OK"]
 
 
 def test_runner_symlink_swap_cannot_touch_an_external_file(

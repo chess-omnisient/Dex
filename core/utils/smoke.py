@@ -592,23 +592,10 @@ def _block_python_network() -> None:
 
 def _tracked_runner_relatives(source_root: Path) -> tuple[Path, ...]:
     relatives = RUNNER_FALLBACK_RELATIVES
-    command = _git_command(source_root, "ls-files", "-z", "--cached", "--", "core")
-    if command is None:
+    tracked = _git_tree_paths(source_root, "HEAD")
+    if tracked is None:
         return relatives
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        env=_git_environment(),
-        timeout=3,
-        check=False,
-    )
-    if result.returncode != 0:
-        return relatives
-    try:
-        tracked = tuple(Path(raw.decode("utf-8")) for raw in result.stdout.split(b"\0") if raw)
-    except UnicodeDecodeError as exc:
-        raise JourneySafetySkip("tracked runner paths are not valid UTF-8") from exc
-    return tracked or relatives
+    return tuple(Path(relative) for relative in sorted(tracked)) or relatives
 
 
 def _open_runner_source(source_root: Path, relative: Path) -> tuple[int, os.stat_result]:
@@ -1496,19 +1483,6 @@ def _git_tree_paths(repo_root: Path, treeish: str) -> set[str] | None:
         return None
 
 
-def _runner_tree_paths(runner_root: Path) -> set[str] | None:
-    core_root = runner_root / "core"
-    if runner_root.is_symlink() or core_root.is_symlink() or not core_root.is_dir():
-        return None
-    paths = set()
-    for path in core_root.rglob("*"):
-        if path.is_symlink():
-            return None
-        if path.is_file():
-            paths.add(path.relative_to(runner_root).as_posix())
-    return paths
-
-
 def _release_execution_reason(
     repo_root: Path,
     release_root: Path | None,
@@ -1520,10 +1494,9 @@ def _release_execution_reason(
         return "the verified release snapshot is unavailable"
     reference_paths = _git_tree_paths(repo_root, reference)
     head_paths = _git_tree_paths(repo_root, "HEAD")
-    runner_paths = _runner_tree_paths(RUNNER_ROOT)
-    if reference_paths is None or head_paths is None or runner_paths is None:
+    if reference_paths is None or head_paths is None:
         return f"Dex-owned core could not be compared with {reference}"
-    if reference_paths != head_paths or runner_paths != head_paths:
+    if reference_paths != head_paths:
         return f"Dex-owned core differs from {reference}"
     for relative in sorted(reference_paths):
         snapshot = release_root / relative
