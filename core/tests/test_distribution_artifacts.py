@@ -43,6 +43,19 @@ def test_git_archive_keeps_skill_scripts_but_strips_top_level_scripts() -> None:
 
     assert ".claude/skills/anthropic-docx/scripts/document.py" in members
     assert not any(path == "scripts" or path.startswith("scripts/") for path in members)
+    assert not any(path == ".logs" or path.startswith(".logs/") for path in members)
+
+
+def test_repository_tracks_no_runtime_logs() -> None:
+    result = subprocess.run(
+        ["git", "ls-files", "--", ".logs"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.splitlines() == []
 
 
 def _build_release_in_clone(tmp_path: Path) -> tuple[Path, set[str]]:
@@ -99,6 +112,7 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     clone, members = _build_release_in_clone(tmp_path)
 
     stripped_prefixes = (
+        ".logs/",
         "core/tests/",
         "core/mcp/tests/",
         "core/migrations/tests/",

@@ -27,6 +27,7 @@ def _write_valid_vault(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (vault / "System" / "pillars.yaml").write_text("pillars: []\n", encoding="utf-8")
+    (vault / "System" / ".onboarding-complete").write_text("{}\n", encoding="utf-8")
     (vault / "System" / "integrations" / "config.yaml").write_text(
         "enabled:\n  slack: false\nhooks: {}\n",
         encoding="utf-8",
@@ -37,6 +38,37 @@ def _write_valid_vault(tmp_path: Path) -> Path:
     )
     (vault / ".mcp.json").write_text('{"mcpServers": {}}\n', encoding="utf-8")
     (vault / ".claude" / "settings.json").write_text('{"hooks": {}}\n', encoding="utf-8")
+    return vault
+
+
+def _write_fresh_release_vault(tmp_path: Path) -> Path:
+    """Materialize shipped surfaces without any onboarding-created state."""
+    vault = tmp_path / "fresh-release"
+    (vault / "System").mkdir(parents=True)
+    shutil.copy2(REPO_ROOT / "System" / ".mcp.json.example", vault / "System" / ".mcp.json.example")
+
+    skill = vault / ".claude" / "skills" / "shipped-skill" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text(
+        "---\nname: shipped-skill\ndescription: Fresh release smoke fixture.\n---\n",
+        encoding="utf-8",
+    )
+    hook = vault / ".claude" / "hooks" / "fresh-release.sh"
+    hook.parent.mkdir(parents=True)
+    hook.write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
+    hook.chmod(0o755)
+    (vault / ".claude" / "settings.json").write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {"hooks": [{"command": "bash .claude/hooks/fresh-release.sh"}]}
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     return vault
 
 
@@ -125,6 +157,36 @@ def test_report_schema_exit_zero_and_no_live_write(tmp_path: Path) -> None:
         assert isinstance(journey["detail"], str) and journey["detail"]
         assert isinstance(journey["duration_ms"], int) and journey["duration_ms"] >= 0
     assert _tree_hash(vault) == before
+
+
+def test_fresh_release_without_onboarding_or_python_packages_has_clean_verdicts(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    vault = _write_fresh_release_vault(tmp_path)
+    missing_site_packages = str(tmp_path / "missing-site-packages")
+    monkeypatch.setattr(
+        smoke.sysconfig,
+        "get_paths",
+        lambda: {"purelib": missing_site_packages, "platlib": missing_site_packages},
+    )
+
+    run = smoke.run_smoke(vault_root=vault, repo_root=REPO_ROOT)
+
+    journeys = {journey["id"]: journey for journey in run.report["journeys"]}
+    assert run.exit_code == 0
+    assert run.harness_failed is False
+    assert [journeys[journey_id]["verdict"] for journey_id in ("configs", "task_lifecycle", "mcp_startup")] == [
+        "OFF",
+        "OFF",
+        "OFF",
+    ]
+    for journey_id in ("configs", "task_lifecycle", "mcp_startup"):
+        assert "not set up yet — complete onboarding first" in journeys[journey_id]["detail"]
+    assert journeys["skills"]["verdict"] == "UNKNOWN"
+    assert "Python packages not installed" in journeys["skills"]["detail"]
+    assert journeys["hooks"]["verdict"] == "OK"
+    assert all("harness failed" not in journey["detail"] for journey in journeys.values())
 
 
 def test_ambient_tmpdir_inside_vault_is_never_used(monkeypatch, tmp_path: Path) -> None:

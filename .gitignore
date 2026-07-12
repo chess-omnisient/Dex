@@ -124,6 +124,8 @@ gmail-credentials.json
 # Session and Runtime Data
 # ============================================
 
+.logs/
+
 # Session learnings (user-specific)
 System/Session_Learnings/
 System/Session_Memory/

@@ -32,6 +32,10 @@ from core.utils import preflight
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
+MISSING_PACKAGES_DETAIL = (
+    "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
+    "then re-run /dex-doctor"
+)
 
 
 @dataclass(frozen=True)
@@ -181,6 +185,20 @@ def _sentence(value: object) -> str:
     if detail[-1] not in ".?!":
         detail += "."
     return detail
+
+
+def _actionable_probe_error(error: Exception) -> str:
+    detail = _one_line(error)
+    if _is_missing_package_error(error, detail):
+        return MISSING_PACKAGES_DETAIL
+    return detail
+
+
+def _is_missing_package_error(value: object, detail: str | None = None) -> bool:
+    rendered = detail or _one_line(value)
+    return isinstance(value, ModuleNotFoundError) or any(
+        marker in rendered for marker in ("ModuleNotFoundError", "No module named")
+    )
 
 
 def _load_yaml(path: Path) -> object:
@@ -354,12 +372,16 @@ def collect(
         try:
             result = globals()[definition.probe](context)
         except Exception as error:
-            error_text = _one_line(error)
+            error_text = _actionable_probe_error(error)
             failed.append({"id": definition.id, "error": error_text})
             result = ProbeResult(
                 "UNKNOWN",
-                f"The {definition.feature} probe could not run: {error_text}",
+                error_text
+                if error_text == MISSING_PACKAGES_DETAIL
+                else f"The {definition.feature} probe could not run: {error_text}",
             )
+        if result.verdict == "UNKNOWN" and _is_missing_package_error(result.detail):
+            result = ProbeResult("UNKNOWN", MISSING_PACKAGES_DETAIL, result.heal)
         if definition.id == "vault.structure" and t1_actions:
             action = "; ".join(t1_actions) + "."
             if result.verdict == "OK":

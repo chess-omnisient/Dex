@@ -35,6 +35,11 @@ SCHEMA_VERSION = 1
 GLOBAL_TIMEOUT_SECONDS = 30.0
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 VERDICT_PRIORITY = {"OFF": 0, "OK": 1, "UNKNOWN": 2, "BROKEN": 3}
+NOT_SET_UP_DETAIL = "not set up yet — complete onboarding first"
+MISSING_PACKAGES_DETAIL = (
+    "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
+    "then re-run /dex-doctor"
+)
 PYTHON_COMMAND = re.compile(r"^python(?:\d+(?:\.\d+)*)?$")
 SCRIPT_SUFFIXES = {".js", ".cjs", ".mjs", ".sh", ".py"}
 TASK_PLAN = ".dex-smoke-task-plan.json"
@@ -154,6 +159,10 @@ class JourneyPreparationError(RuntimeError):
     """The vault could not supply the files required by a journey."""
 
 
+class JourneyNotSetUp(RuntimeError):
+    """The journey depends on onboarding-created state that is not present yet."""
+
+
 class JourneySafetySkip(RuntimeError):
     """A source path was deliberately not read because it crossed a safety boundary."""
 
@@ -262,8 +271,24 @@ def _copy_yaml_projection(source: Path, destination: Path, source_root: Path) ->
     )
 
 
+def _require_onboarding(source: Path) -> None:
+    marker = source / "System" / ".onboarding-complete"
+    _ensure_safe_source(marker, source)
+    if not marker.is_file():
+        raise JourneyNotSetUp(NOT_SET_UP_DETAIL)
+
+
 def _copy_configs(source: Path, vault: Path, *, integrations: bool = True) -> None:
-    for relative in ("System/user-profile.yaml", "System/pillars.yaml"):
+    _require_onboarding(source)
+    config_relatives = ("System/user-profile.yaml", "System/pillars.yaml")
+    missing = [
+        relative
+        for relative in config_relatives
+        if not (source / relative).exists() and not (source / relative).is_symlink()
+    ]
+    if missing:
+        raise JourneyPreparationError(f"missing required configuration: {', '.join(missing)}")
+    for relative in config_relatives:
         _copy_yaml_projection(source / relative, vault / relative, source)
     if not integrations:
         return
@@ -292,15 +317,17 @@ def _prepare_task_vault(
     release_root: Path | None,
     release_ref: str | None,
 ) -> None:
+    _copy_configs(source, vault, integrations=False)
     tasks_dir = _core_path(source, "TASKS_DIR")
     tasks_file = _core_path(source, "TASKS_FILE")
     _ensure_safe_source(tasks_dir, source)
     if tasks_dir.is_dir():
         for path in tasks_dir.rglob("*"):
             _ensure_safe_source(path, source)
+    missing = [path.relative_to(source).as_posix() for path in (tasks_dir, tasks_file) if not path.exists()]
+    if missing:
+        raise JourneyPreparationError(f"missing task storage: {', '.join(missing)}")
     for path in (tasks_dir, tasks_file):
-        if not path.exists():
-            continue
         if not path.stat().st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH):
             raise JourneyPreparationError(f"{path.relative_to(source)} is not writable")
 
@@ -308,9 +335,7 @@ def _prepare_task_vault(
         if constant_name != "TASKS_DIR":
             _core_path(vault, constant_name).mkdir(parents=True, exist_ok=True)
     _core_path(vault, "SYSTEM_DIR").mkdir(parents=True, exist_ok=True)
-    if tasks_dir.is_dir():
-        shutil.copytree(tasks_dir, _core_path(vault, "TASKS_DIR"))
-    _copy_configs(source, vault, integrations=False)
+    shutil.copytree(tasks_dir, _core_path(vault, "TASKS_DIR"))
     reason = _release_execution_reason(repo_root, release_root, release_ref)
     (vault / TASK_PLAN).write_text(
         json.dumps({"executable": reason is None, "reason": reason or "verified release snapshot"}),
@@ -325,26 +350,22 @@ def _prepare_mcp_vault(
     release_root: Path | None,
     release_ref: str | None,
 ) -> None:
-    _copy_configs(source, vault, integrations=False)
+    _require_onboarding(source)
     config_candidates = (
         source / ".mcp.json",
         source / "System" / ".mcp.json",
-        source / "System" / ".mcp.json.example",
     )
     config = next(
         (candidate for candidate in config_candidates if candidate.exists() or candidate.is_symlink()),
         None,
     )
     if config is None:
-        (vault / MCP_PLAN).write_text(json.dumps({"state": "OFF", "entries": []}), encoding="utf-8")
-        return
+        raise JourneyPreparationError(".mcp.json is missing after onboarding completed")
     _ensure_safe_source(config, source)
     if not config.is_file():
         raise JourneyPreparationError(f"{config.relative_to(source)} is not a regular file")
     try:
         raw = config.read_text(encoding="utf-8")
-        if config.name == ".mcp.json.example":
-            raw = raw.replace("{{VAULT_PATH}}", str(repo_root))
         parsed = json.loads(raw)
     except (OSError, json.JSONDecodeError) as exc:
         plan = {"state": "BROKEN", "detail": f".mcp.json is invalid: {_one_line(exc)}", "entries": []}
@@ -2018,10 +2039,14 @@ def main(
                 release_root if release_root.is_dir() else None,
                 args.release_ref,
             )
+        except JourneyNotSetUp as exc:
+            result = {"verdict": "OFF", "detail": _one_line(exc)}
         except JourneyPreparationError as exc:
             result = {"verdict": "BROKEN", "detail": _one_line(exc)}
         except JourneySafetySkip as exc:
             result = {"verdict": "UNKNOWN", "detail": _one_line(exc)}
+        except ModuleNotFoundError:
+            result = {"verdict": "UNKNOWN", "detail": MISSING_PACKAGES_DETAIL}
         except (OSError, PermissionError) as exc:
             print(f"smoke preparation refused: {_one_line(exc)}", file=sys.stderr)
             return 2
@@ -2037,6 +2062,8 @@ def main(
             _block_python_network()
             release_root = _internal_release_root(args.run_marker, args.release_root)
             result = INTERNAL_JOURNEYS[args._journey](vault, release_root)
+        except ModuleNotFoundError:
+            result = {"verdict": "UNKNOWN", "detail": MISSING_PACKAGES_DETAIL}
         except (KeyError, OSError, PermissionError) as exc:
             print(f"internal smoke journey refused: {_one_line(exc)}", file=sys.stderr)
             return 2

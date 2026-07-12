@@ -256,6 +256,52 @@ def test_raising_probe_becomes_unknown_and_main_still_returns_valid_json(monkeyp
     assert _check(report, "doctor.self")["verdict"] == "BROKEN"
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        ModuleNotFoundError("No module named 'yaml'"),
+        RuntimeError("subprocess failed: ModuleNotFoundError: No module named 'EventKit'"),
+    ],
+)
+def test_missing_optional_packages_have_actionable_unknown_detail(monkeypatch, context, error):
+    _stub_probes(monkeypatch)
+
+    def missing_dependency(_context):
+        raise error
+
+    monkeypatch.setattr(doctor, "_probe_vault_configs", missing_dependency)
+
+    report = doctor.collect(context=context)
+
+    guidance = (
+        "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
+        "then re-run /dex-doctor"
+    )
+    assert _check(report, "vault.configs")["verdict"] == "UNKNOWN"
+    assert _check(report, "vault.configs")["detail"] == guidance + "."
+    assert report["instruments"]["failed"] == [{"id": "vault.configs", "error": guidance}]
+
+
+def test_probe_owned_unknown_missing_package_detail_is_actionable(monkeypatch, context):
+    _stub_probes(
+        monkeypatch,
+        overrides={
+            "calendar.access": doctor.ProbeResult(
+                "UNKNOWN",
+                "calendar helper failed: ModuleNotFoundError: No module named 'EventKit'",
+            )
+        },
+    )
+
+    report = doctor.collect(deep=True, context=context)
+
+    assert _check(report, "calendar.access")["detail"] == (
+        "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
+        "then re-run /dex-doctor."
+    )
+    assert report["instruments"]["failed"] == []
+
+
 def test_last_run_write_failure_marks_doctor_self_broken(monkeypatch, context):
     _stub_probes(monkeypatch)
 
@@ -449,8 +495,13 @@ def test_cli_still_emits_json_when_yaml_is_not_importable(tmp_path):
 
     assert result.returncode == 0
     report = json.loads(result.stdout)
-    assert _check(report, "vault.configs")["verdict"] == "UNKNOWN"
-    assert "yaml" in _check(report, "vault.configs")["detail"]
+    guidance = (
+        "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
+        "then re-run /dex-doctor."
+    )
+    for check_id in ("vault.configs", "customizations.skills", "customizations.mcp"):
+        assert _check(report, check_id)["verdict"] == "UNKNOWN"
+        assert _check(report, check_id)["detail"] == guidance
     assert _check(report, "python.env")["verdict"] == "BROKEN"
 
 
