@@ -44,16 +44,21 @@ with a temporary vault and home directory. Its release journeys are:
 
 - `configs` -> parse and minimally validate profile, pillars, and integration YAML
 - `task_lifecycle` -> create and update a task, preserving `03-Tasks/Tasks.md`
-- `mcp_startup` -> handshake only pristine Dex-owned local Python servers; validate all
-  other entries structurally without executing them
+- `mcp_startup` -> handshake pristine Dex-owned local Python servers plus exact user-blessed
+  custom local Python snapshots; validate all other entries structurally without executing
+  them
 - `skills` -> validate shipped and `-custom` skill frontmatter
 - `hooks` -> check presence, executable bits, and syntax without running hooks
 
 The runner has a 30-second global budget, does not contact the network, writes only to
-temporary copies, and never executes user-supplied commands. It redacts secret-like config
-values before child journeys; executable task and MCP code is loaded only from a read-only
-snapshot of the installed release. If that release cannot be verified, the affected
-journey is `UNKNOWN` instead of falling back to live code.
+temporary copies, and executes no user-supplied command unless the user explicitly records
+the exact custom local Python name, vault-relative file, and SHA-256 in
+`System/trusted-mcps.yaml`. It redacts secret-like config values before child journeys and
+ignores each trusted entry's configured `env`. Dex-owned executable task and MCP code is
+loaded only from a read-only snapshot of the installed release. A trusted user script is
+opened component-by-component without following links, hashed and copied from that same
+open descriptor, and only the private copy is executed. If any identity check or release
+verification fails, the affected journey is `UNKNOWN` instead of falling back to live code.
 
 ### Nightly smoke ledger and attribution
 
@@ -80,8 +85,8 @@ The quick doctor adds three always-visible checks:
 
 - `customizations.skills` validates every skill and identifies user-owned `-custom`
   failures separately from shipped failures.
-- `customizations.mcp` validates MCP structure, unresolved placeholders, and custom
-  Python syntax without launching custom commands.
+- `customizations.mcp` validates MCP structure, unresolved placeholders, custom Python
+  syntax, and the same registry name/path/hash state without launching custom commands.
 - `core.drift` compares shipped files with the installed release while excluding
   sanctioned customization surfaces. Drift is `UNKNOWN`, never automatically broken.
 

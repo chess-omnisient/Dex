@@ -310,7 +310,7 @@ git status | grep "both modified"
 
 **When conflicts occur:**
 
-1. **If file is user data** (00-07, System/user-profile.yaml, System/pillars.yaml):
+1. **If file is user data** (00-07, System/user-profile.yaml, System/pillars.yaml, System/trusted-mcps.yaml):
    - Keep user version
    - Run: `git checkout --ours <file>`
 
@@ -403,7 +403,7 @@ DEX_UPDATE_RESET_TARGET="backup-before-v1.3.0"
 DEX_USER_DATA_PATHS=(
   "00-Inbox/" "01-Quarter_Goals/" "02-Week_Priorities/" "03-Tasks/"
   "04-Projects/" "05-Areas/" "06-Resources/" "07-Archives/"
-  "System/user-profile.yaml" "System/pillars.yaml" "System/Session_Learnings/"
+  "System/user-profile.yaml" "System/pillars.yaml" "System/trusted-mcps.yaml" "System/Session_Learnings/"
 )
 DEX_USER_DATA_SOURCE=$(git rev-parse HEAD)
 DEX_DATA_STASH_BEFORE=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
@@ -413,6 +413,7 @@ DEX_USER_DATA_STASH_PATHS=(
   ":(top,glob)04-Projects/**" ":(top,glob)05-Areas/**"
   ":(top,glob)06-Resources/**" ":(top,glob)07-Archives/**"
   ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
+  ":(top)System/trusted-mcps.yaml"
   ":(top,glob)System/Session_Learnings/**"
 )
 git stash push --all \
@@ -828,7 +829,7 @@ DEX_UPDATE_RESET_TARGET="backup-before-v1.3.0"
 DEX_USER_DATA_PATHS=(
   "00-Inbox/" "01-Quarter_Goals/" "02-Week_Priorities/" "03-Tasks/"
   "04-Projects/" "05-Areas/" "06-Resources/" "07-Archives/"
-  "System/user-profile.yaml" "System/pillars.yaml" "System/Session_Learnings/"
+  "System/user-profile.yaml" "System/pillars.yaml" "System/trusted-mcps.yaml" "System/Session_Learnings/"
 )
 DEX_USER_DATA_SOURCE=$(git rev-parse HEAD)
 DEX_DATA_STASH_BEFORE=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
@@ -838,6 +839,7 @@ DEX_USER_DATA_STASH_PATHS=(
   ":(top,glob)04-Projects/**" ":(top,glob)05-Areas/**"
   ":(top,glob)06-Resources/**" ":(top,glob)07-Archives/**"
   ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
+  ":(top)System/trusted-mcps.yaml"
   ":(top,glob)System/Session_Learnings/**"
 )
 git stash push --all \

@@ -1066,11 +1066,33 @@ subprocesses.
 The smoke runner copies the minimum vault data into a temporary directory before product
 code is imported. It uses a temporary home, disables analytics, never reads credential or
 `.env` files, redacts secret-like config values before child journeys, never contacts the
-network, and never writes into the live vault. Task and MCP code runs from a read-only
-snapshot of the installed release. Only unmodified Dex-owned local Python MCP servers are
-started. Custom commands, remote or npm
-servers, symlinks, and modified shipped servers are reported structurally and are never
-executed.
+network, and never writes into the live vault. Task code and Dex-owned MCP code run from a
+read-only snapshot of the installed release. Unmodified Dex-owned local Python MCP servers
+are started automatically. Custom commands, remote or npm servers, symlinks, and modified
+shipped servers remain structural-only unless a custom local Python server has the exact
+user-owned trust record described below.
+
+### Trusting your own servers
+
+`/create-mcp` can optionally check a custom local Python MCP server once, then separately
+offer recurring startup checks. The recurring choice defaults to no. Before asking, Dex
+shows the MCP name, vault-relative `.py` path, and SHA-256 content hash. The consent text is
+literal: this runs `<file>` with your user permissions (nightly and in deep scans), and
+trusts whatever it imports.
+
+Only a `custom-*` entry using Dex's current Python interpreter with exactly one `.py`
+argument can be trusted. `-c`, `-m`, extra arguments, configured environment variables,
+remote/HTTP servers, npm/npx commands, and other binaries are never eligible. The entry's
+configured `env` is ignored during the startup check.
+
+Consent is stored in the user-owned, gitignored `System/trusted-mcps.yaml`; the shipped
+`System/trusted-mcps.example.yaml` is only a template. Dex binds all three identities: the
+registry name must equal the `.mcp.json` name, both normalized paths must match, and the
+opened file bytes must match the recorded hash. It opens every path component without
+following links, hashes and copies from that same open file, and executes only the private
+copy. A missing file, link anywhere in the path, changed hash, invalid registry, or command
+shape mismatch stays `UNKNOWN` and does not run. Re-run `/create-mcp` to bless changed
+content again.
 
 Customization failures name the exact user-owned file to fix. Dex only suggests an
 update or rollback for failures in unmodified Dex-owned code.
