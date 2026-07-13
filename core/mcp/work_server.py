@@ -5464,8 +5464,17 @@ async def _handle_call_tool_inner(
         # Insert after "## 🎯 Top 3 This Week" section
         top3_marker = "## 🎯 Top 3 This Week"
         if top3_marker in content:
-            parts = content.split(top3_marker)
-            new_content = parts[0] + top3_marker + "\n\n" + priority_entry + "\n" + parts[1]
+            before_top3, after_top3 = content.split(top3_marker, 1)
+            next_section = re.search(r'\n##\s', after_top3)
+            section_end = next_section.start() if next_section else len(after_top3)
+            section_content = after_top3[:section_end]
+            section_tail = after_top3[section_end:]
+            if section_content.strip():
+                separator = '' if section_content.endswith('\n') else '\n'
+                section_content += separator + priority_entry + '\n'
+            else:
+                section_content = '\n\n' + priority_entry + '\n\n'
+            new_content = before_top3 + top3_marker + section_content + section_tail
         else:
             content += "\n" + priority_entry + "\n"
             new_content = content

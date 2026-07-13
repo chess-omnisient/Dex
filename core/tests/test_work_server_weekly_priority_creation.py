@@ -109,13 +109,6 @@ def test_create_weekly_priority_writes_explicit_goal_link_without_mangling_headi
 
 
 @pytest.mark.parametrize("existing_count", [1, 2])
-@pytest.mark.xfail(
-    reason=(
-        "BUG: create_weekly_priority inserts a newly numbered priority before "
-        "existing priorities, leaving Top 3 out of numeric order"
-    ),
-    strict=False,
-)
 def test_create_weekly_priority_appends_after_existing_priorities_in_number_order(
     priority_file: Path,
     existing_count: int,
