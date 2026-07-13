@@ -84,3 +84,23 @@ jobs:
         run: bash scripts/build-release.sh
       - name: Push release branch
         run: git push origin release --force
+      - name: Build self-contained vault bundle
+        run: bash scripts/build-vault-bundle.sh
+      - name: Upload vault bundle to versioned GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          # Create the release (and its git tag, at this commit) only if absent.
+          # --notes-from-tag needs a pre-existing annotated tag, which the release
+          # process never makes; let gh create the tag and generate notes instead.
+          if ! gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release create "v$VERSION" \
+              --target "$GITHUB_SHA" \
+              --title "v$VERSION" \
+              --generate-notes
+          fi
+          gh release upload "v$VERSION" \
+            "dist/dex-vault-bundle-v$VERSION.tar.gz" \
+            "dist/dex-vault-bundle-v$VERSION.tar.gz.sha256" \
+            --clobber

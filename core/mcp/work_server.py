@@ -400,7 +400,9 @@ def _indent_width(line: str) -> int:
     match = re.match(r'^[ \t]*', line)
     return len(match.group(0).expandtabs(4)) if match else 0
 
-def _task_child_lines(lines: List[str], task_index: int) -> List[str]:
+def _task_child_lines(
+    lines: List[str], task_index: int, *, include_indices: bool = False
+) -> List[str] | List[tuple[int, str]]:
     """Return direct child bullets without borrowing a sibling task's metadata."""
     task_indent = _indent_width(lines[task_index])
     descendants = []
@@ -409,12 +411,19 @@ def _task_child_lines(lines: List[str], task_index: int) -> List[str]:
         indent = _indent_width(lines[index])
         if indent <= task_indent:
             break
-        descendants.append((indent, lines[index]))
+        descendants.append((index, indent, lines[index]))
         index += 1
     if not descendants:
         return []
-    direct_indent = min(indent for indent, _line in descendants)
-    return [line for indent, line in descendants if indent == direct_indent]
+    direct_indent = min(indent for _index, indent, _line in descendants)
+    child_lines = [
+        (index, line)
+        for index, indent, line in descendants
+        if indent == direct_indent
+    ]
+    if include_indices:
+        return child_lines
+    return [line for _index, line in child_lines]
 
 def _parse_task_metadata(child_lines: List[str], title: str) -> Dict[str, Any]:
     """Parse additive task metadata, silently ignoring malformed values."""
@@ -3785,6 +3794,57 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
+            name="confirm_goal_link",
+            description="Confirm or clear a tentative quarterly-goal link on a canonical task.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "pattern": r"^task-\d{8}-\d{3}$",
+                        "description": "Task ID without the leading caret (e.g., task-20260128-001)",
+                    },
+                    "action": {
+                        "type": "string",
+                        "enum": ["confirm", "clear"],
+                        "description": "Confirm the tentative goal link or clear it",
+                    },
+                },
+                "required": ["task_id", "action"],
+            },
+        ),
+        types.Tool(
+            name="sync_external_tasks",
+            description="Sync enabled external task services, or preview the changes without writing.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "services": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": False,
+                    },
+                },
+                "required": [],
+            },
+        ),
+        types.Tool(
+            name="record_external_task_mapping",
+            description="Record the external ID for a canonical Dex task and remove its inbound queue item.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "service": {"type": "string"},
+                    "external_id": {"type": "string"},
+                },
+                "required": ["task_id", "service", "external_id"],
+            },
+        ),
+        types.Tool(
             name="get_system_status",
             description="Get comprehensive system status: task counts, priority distribution, pillar balance, blocked items",
             inputSchema={"type": "object", "properties": {}}
@@ -4181,7 +4241,8 @@ async def handle_list_tools() -> list[types.Tool]:
 
 # Tools that write to vault files and should trigger search index refresh
 WRITE_TOOLS = {
-    "create_task", "update_task_status", "create_company", "refresh_company",
+    "create_task", "update_task_status", "confirm_goal_link", "create_company", "refresh_company",
+    "sync_external_tasks",
     "sync_task_refs", "create_quarterly_goal", "update_goal_progress",
     "create_weekly_priority", "complete_weekly_priority",
     "process_inbox_with_dedup", "migrate_quarterly_goals", "migrate_weekly_priorities",
@@ -4197,7 +4258,11 @@ async def handle_call_tool(
         result = await _handle_call_tool_inner(name, arguments)
 
         # Refresh QMD search index after any write operation (non-blocking)
-        if name in WRITE_TOOLS:
+        is_dry_run_sync = (
+            name == "sync_external_tasks"
+            and bool((arguments or {}).get("dry_run", False))
+        )
+        if name in WRITE_TOOLS and not is_dry_run_sync:
             refresh_search_index()
 
         return result
@@ -4207,6 +4272,8 @@ async def handle_call_tool(
                 "list_tasks": "Task listing failed",
                 "create_task": "Task creation failed",
                 "update_task_status": "Task status update failed",
+                "sync_external_tasks": "External task sync failed",
+                "record_external_task_mapping": "External task mapping failed",
                 "get_system_status": "System status check failed",
                 "check_priority_limits": "Priority limits check failed",
                 "process_inbox_with_dedup": "Inbox processing failed",
@@ -4647,6 +4714,120 @@ async def _handle_call_tool_inner(
             result["priority_warning"] = priority_warning
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
+    elif name == "confirm_goal_link":
+        task_id = arguments["task_id"]
+        action = arguments["action"]
+        tasks_file = get_tasks_file()
+
+        if not tasks_file.exists():
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "task not found",
+            }))]
+
+        lines = tasks_file.read_text().split("\n")
+        task_anchor = re.compile(rf"\^{re.escape(task_id)}(?![A-Za-z0-9_-])")
+        task_index = next(
+            (
+                index
+                for index, line in enumerate(lines)
+                if line.strip().startswith(("- [ ]", "- [x]")) and task_anchor.search(line)
+            ),
+            None,
+        )
+        if task_index is None:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "task not found",
+            }))]
+
+        indexed_child_lines = _task_child_lines(lines, task_index, include_indices=True)
+        child_lines = [line for _index, line in indexed_child_lines]
+        metadata = _parse_task_metadata(
+            child_lines,
+            _task_title_from_line(lines[task_index]),
+        )
+        goal_id = metadata["goal"]
+        if not goal_id:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "no goal link on this task",
+            }))]
+
+        if not metadata["goal_tentative"]:
+            error = (
+                "goal link is already confirmed"
+                if action == "confirm"
+                else "goal link is confirmed; edit explicitly if you want to remove it"
+            )
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": error,
+            }))]
+
+        goal_field = re.compile(
+            rf"\s*Goal\s*:\s*{re.escape(goal_id)}\s+\(\?\)\s*",
+            re.IGNORECASE,
+        )
+        metadata_line_index = None
+        metadata_parts = None
+        goal_part_index = None
+        for child_index, child_line in indexed_child_lines:
+            bullet_match = re.match(r"^([ \t]+-\s*)(.*)$", child_line)
+            if not bullet_match:
+                continue
+            parts = bullet_match.group(2).split("|")
+            for part_index, part in enumerate(parts):
+                if goal_field.fullmatch(part):
+                    metadata_line_index = child_index
+                    metadata_parts = parts
+                    goal_part_index = part_index
+                    break
+            if metadata_line_index is not None:
+                break
+
+        if metadata_line_index is None or metadata_parts is None or goal_part_index is None:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "no goal link on this task",
+            }))]
+
+        if action == "confirm":
+            metadata_parts[goal_part_index] = re.sub(
+                r"\s+\(\?\)(?=\s*$)",
+                "",
+                metadata_parts[goal_part_index],
+            )
+            prefix = re.match(r"^([ \t]+-\s*)", lines[metadata_line_index]).group(1)
+            lines[metadata_line_index] = prefix + "|".join(metadata_parts)
+            result = {
+                "success": True,
+                "task_id": task_id,
+                "action": action,
+                "goal_id": goal_id,
+                "goal_tentative": False,
+            }
+        else:
+            remaining_parts = [
+                part.strip()
+                for part_index, part in enumerate(metadata_parts)
+                if part_index != goal_part_index and part.strip()
+            ]
+            if remaining_parts:
+                prefix = re.match(r"^([ \t]+-\s*)", lines[metadata_line_index]).group(1)
+                lines[metadata_line_index] = prefix + " | ".join(remaining_parts)
+            else:
+                del lines[metadata_line_index]
+            result = {
+                "success": True,
+                "task_id": task_id,
+                "action": action,
+                "goal_id": goal_id,
+            }
+
+        tasks_file.write_text("\n".join(lines))
+        return [types.TextContent(type="text", text=json.dumps(result))]
+
     elif name == "update_task_status":
         task_id = arguments.get('task_id')
         task_title = arguments.get('task_title')
@@ -4748,6 +4929,32 @@ async def _handle_call_tool_inner(
                 "error": "Must provide either task_id or task_title"
             }, indent=2))]
     
+    elif name == "sync_external_tasks":
+        from core.integrations import task_sync
+
+        arguments = arguments or {}
+        result = task_sync.sync_external_tasks(
+            services=arguments.get("services"),
+            dry_run=arguments.get("dry_run", False),
+        )
+        return [types.TextContent(
+            type="text",
+            text=json.dumps(result, indent=2, cls=DateTimeEncoder),
+        )]
+
+    elif name == "record_external_task_mapping":
+        from core.integrations import task_sync
+
+        result = task_sync.record_external_task_mapping(
+            task_id=arguments["task_id"],
+            service=arguments["service"],
+            external_id=arguments["external_id"],
+        )
+        return [types.TextContent(
+            type="text",
+            text=json.dumps(result, indent=2, cls=DateTimeEncoder),
+        )]
+
     elif name == "get_system_status":
         all_tasks = get_all_tasks()
         active_tasks = [t for t in all_tasks if not t.get('completed')]

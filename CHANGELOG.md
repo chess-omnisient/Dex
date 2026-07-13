@@ -7,7 +7,58 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.48.0] - Dex now checks itself overnight — and tells you what changed when something breaks (2026-07-12)
+## [1.52.0] - Your own tools can now be health-checked for real — only when you say so (2026-07-13)
+
+Custom MCP servers used to stay permanently "unknown" because Dex would not execute user code during a check. You can now ask `/create-mcp` for a one-off startup proof and, as a separate default-no choice, trust one exact local Python file for nightly and deep checks.
+
+Custom MCP servers used to stay permanently "unknown" because Dex would not execute user
+code during a check. You can now ask `/create-mcp` for a one-off startup proof and, as a
+separate default-no choice, trust one exact local Python file for nightly and deep checks.
+
+* **Consent is specific and honest.** Dex shows the vault-relative file and SHA-256 first,
+  and says plainly that this runs the file with your user permissions and trusts whatever
+  it imports.
+* **Changed code never inherits old consent.** Name, path, and opened-file hash must all
+  match. Dex hashes and copies from the same no-follow file handle, then starts only that
+  private copy.
+* **Everything else stays structural-only.** Missing or linked files, changed content,
+  invalid registries, extra Python flags, remote servers, npm/npx commands, binaries, and
+  hand-edited ineligible entries are refused with an exact reason.
+* **Your trust choices remain yours.** `System/trusted-mcps.yaml` is gitignored and included
+  in update recovery's user-data preservation list, so an upstream update cannot add or
+  replace consent entries.
+
+---
+
+## [1.51.0] - Things 3 and Trello sync join the party (2026-07-13)
+
+Real two-way sync landed for Todoist in the last release. This one brings your Mac's Things 3 and your Trello boards onto the same engine — so whichever task app you actually live in, Dex keeps step with it.
+
+**What this fixes for you:**
+
+* **Things 3, fully local, now syncs.** Ask Dex to sync and your pending tasks appear in the right Things Area (mapped from your pillars), the urgent ones land in Today, completions flow both ways, and anything you drop into your Things Inbox comes back for review in your morning plan. No accounts, no network — it all happens on your Mac through Things' own scripting.
+* **Trello boards stay in step.** New Dex tasks become cards in the right list, finishing a task moves its card to Done, and cards you add or move on the board come back to you for review — matched to the exact lists you picked during setup, not guessed from their names.
+* **Tasks from either tool arrive through your review, never behind your back.** Whatever you created in Things or Trello queues up in your daily plan, where you decide what becomes a Dex task — with duplicate checks and pillar linking — instead of it silently appearing in your backlog.
+* **A task title with an apostrophe can't break things anymore.** The Things connection was rebuilt to hand your task text to macOS safely, so quotes, apostrophes, and punctuation in a task name just work instead of causing a failure.
+* **Your pillars, not someone else's.** Both connections now read the Areas and lists from your own setup rather than falling back to a hardcoded set of categories that only fit one person's vault.
+* **Honest setup guides, again.** The Things, Trello, and Todoist setup walkthroughs now describe the sync that genuinely exists — the "coming later" note is gone because it's here.
+
+## [1.50.0] - Real Todoist sync — the promise, finally built (2026-07-13)
+
+Earlier setups promised automatic two-way Todoist sync that never existed (we removed that promise in 1.36.0). This release builds the real thing, carefully.
+
+**What this fixes for you:**
+
+* **Ask Dex to sync, and it actually syncs.** New Dex tasks appear in Todoist (in the right project via your pillar mapping), tasks you complete in Dex get closed in Todoist, and tasks you complete in Todoist get marked done in Dex — with the completion recorded everywhere the task appears.
+* **Tasks created in Todoist arrive through your review, not behind your back.** Inbound tasks queue up for your daily plan, where they're created properly — with duplicate checking and people/goal linking — instead of being silently injected into your backlog.
+* **First sync can't flood anything.** Connecting starts clean from that moment; your existing backlog is never bulk-pushed to Todoist, and Todoist history is never bulk-imported.
+* **Preview before you trust it.** A dry-run mode reports exactly what a sync would do while changing nothing, anywhere.
+* **Built on Todoist's current platform.** The old prototype targeted API versions Todoist shut down in early 2026; this is built and tested against their unified v1 API, including rate-limit handling.
+* **One connector failing never blocks another.** Each service syncs independently; errors are reported per service, and a failed sync never advances its bookmark (so nothing is skipped next time).
+
+Things 3 and Trello sync arrive next on the same engine.
+
+## [1.49.0] - Dex now checks itself overnight — and tells you what changed when something breaks (2026-07-13)
 
 Dex's safe release checks used to run only when someone asked for a deep diagnosis or
 prepared a release. A problem that appeared between updates could therefore sit quietly
@@ -26,24 +77,16 @@ until the next manual check.
 * **The evidence stays inspectable.** The latest result and a capped history live as plain
   JSON files in your vault, with safe atomic writes so half-written reports never surface.
 
-### Your own tools can now be health-checked for real — only when you say so
+## [1.48.0] - Your morning plan now shows what your meetings turned into (2026-07-13)
 
-Custom MCP servers used to stay permanently "unknown" because Dex would not execute user
-code during a check. You can now ask `/create-mcp` for a one-off startup proof and, as a
-separate default-no choice, trust one exact local Python file for nightly and deep checks.
+Tasks extracted from meetings used to land in your backlog without a moment to review them, and tasks that guessed at a goal link had no way to be confirmed. The daily plan now closes both loops.
 
-* **Consent is specific and honest.** Dex shows the vault-relative file and SHA-256 first,
-  and says plainly that this runs the file with your user permissions and trusts whatever
-  it imports.
-* **Changed code never inherits old consent.** Name, path, and opened-file hash must all
-  match. Dex hashes and copies from the same no-follow file handle, then starts only that
-  private copy.
-* **Everything else stays structural-only.** Missing or linked files, changed content,
-  invalid registries, extra Python flags, remote servers, npm/npx commands, binaries, and
-  hand-edited ineligible entries are refused with an exact reason.
-* **Your trust choices remain yours.** `System/trusted-mcps.yaml` is gitignored and included
-  in update recovery's user-data preservation list, so an upstream update cannot add or
-  replace consent entries.
+**What this fixes for you:**
+
+* **One glance at what your meetings produced.** The daily plan lists tasks created from recent meetings, each with the meeting it came from and its due date — so nothing your meetings generated slips past you.
+* **Likely goal links get a yes or no.** When Dex links a task to a quarterly goal with a "(?)" (meaning "probably, but confirm"), the daily plan walks you through them in one pass — keep the link or clear it, one word each. A new under-the-hood tool makes the answer stick properly, so you never have to edit task files by hand.
+* **Unextracted meetings get a nudge.** If meetings are sitting with action items nobody turned into tasks, the plan says so and points at `/process-meetings`.
+* **Quiet when there's nothing to review.** No "0 tasks from meetings" noise on quiet days.
 
 ## [1.47.0] - Release checks stop failing themselves on a technicality (2026-07-12)
 

@@ -341,6 +341,69 @@ Also gather:
 - **Self-Learning Alerts**: Changelog updates, pending learnings
 - **System health**: Only when the overnight smoke report has `summary.broken > 0`, note that a self-check found a problem and point to `/dex-doctor` for diagnosis
 
+### 5.11 Meeting-Task Review (NEW)
+
+Give the user one place to review what their meetings turned into. Work from the
+`list_tasks` output already gathered (open tasks include `metadata_source` — the
+meeting note each task came from — and `goal_tentative`).
+
+1. **Recent meeting tasks.** Collect open tasks whose `metadata_source` is set and
+   whose task ID date (`^task-YYYYMMDD-…`) is within the last 3 days. If any,
+   present them compactly under the plan's context:
+
+   > **From your meetings** (3 tasks)
+   > - Send Acme the revised pricing — from *Acme Quarterly Review* (due Jul 15)
+   > - …
+
+2. **Tentative goal links.** Collect open tasks where `goal_tentative` is true.
+   If any, review them in one pass:
+
+   > **2 tasks have a likely goal link marked (?)** — want to confirm them?
+   > 1. "Draft churn playbook" → *Q3-2026-goal-2: Reduce churn to 4%* — keep this link?
+
+   For each answer, call Work MCP `confirm_goal_link(task_id, "confirm")` to keep
+   the link or `confirm_goal_link(task_id, "clear")` to remove it. Never edit the
+   task file by hand for this.
+
+3. **Unprocessed meetings.** If `00-Inbox/Meetings/` has notes with unchecked
+   `### For Me` items and no `tasks-extracted` marker, add one line:
+   "N meetings have unextracted action items — run `/process-meetings` to turn
+   them into tasks."
+
+Skip this entire step silently when nothing qualifies — no "0 tasks from meetings"
+noise.
+
+### 5.12 Inbound External Tasks Review (NEW)
+
+Give the user one place to review tasks that arrived from a connected task app
+(Todoist / Things / Trello) since the last sync. Check
+`System/integrations/inbound-tasks.json`. If it exists and is non-empty:
+
+1. Read each item: `{service, external_id, title, raw}`. The `raw` object contains the
+   service payload and may include notes/description, priority, and an inferred `pillar`.
+2. For each, offer a one-line summary and ask whether to bring it into Dex:
+   ```
+   📥 From [service]: "[title]"
+   Import as a Dex task? (yes / skip / [pillar] [priority])
+   ```
+3. On confirmation (or pillar/priority provided), call `create_task` with:
+   - `title`: from the item
+   - `on_duplicate: "fail"` (skip if already exists)
+   - `pillar`: user-specified, otherwise `raw.pillar` (the sync step fills this in
+     from an automatic pillar guess when inference succeeds). If it is absent, ask the
+     user to choose a valid pillar before calling `create_task`
+   - `priority`: user-specified, otherwise a valid P0-P3 value from `raw` when present
+   - `context`: notes/description/context from `raw` when present
+   - Do not pass the integration name as `source`; `source` is reserved for a
+     vault-relative source page, while the external mapping records provenance
+4. On "skip": leave the item in the queue so it can be reviewed later
+5. Immediately after each successful create, call `record_external_task_mapping` with
+   the returned `task.task_id`, the item's `service`, and its `external_id`. This records
+   the link and removes that item from the inbound queue.
+
+**Silent when empty:** if `inbound-tasks.json` doesn't exist or is empty/`[]`, skip this
+step entirely. Never say "no inbound tasks" — just proceed.
+
 ---
 
 ## Step 6: Synthesis
