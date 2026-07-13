@@ -142,14 +142,7 @@ def test_create_weekly_priority_appends_after_existing_priorities_in_number_orde
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG: create_weekly_priority accepts a fourth Top-3 item and writes a "
-        "second priority numbered 3"
-    ),
-    strict=False,
-)
-def test_create_weekly_priority_rejects_fourth_item_without_changing_file(
+def test_create_weekly_priority_numbers_a_fourth_item_and_warns(
     priority_file: Path,
 ):
     before = (
@@ -165,6 +158,19 @@ def test_create_weekly_priority_rejects_fourth_item_without_changing_file(
 
     result = _call_create_priority()
 
-    assert result["success"] is False
-    assert "top 3" in result["error"].lower()
-    assert priority_file.read_text(encoding="utf-8") == before
+    assert result["success"] is True
+    assert result["note"] == (
+        "You now have 4 priorities this week — 'Top 3' is meant to keep focus "
+        "tight; consider clearing one."
+    )
+    assert priority_file.read_text(encoding="utf-8") == (
+        "# Week Priorities\n\n"
+        f"{TOP_3}\n\n"
+        "1. First priority — **Customer Growth** ^week-2026-W29-p1\n"
+        "2. Second priority — **Customer Growth** ^week-2026-W29-p2\n"
+        "3. Third priority — **Customer Growth** ^week-2026-W29-p3\n"
+        "4. Publish customer renewal playbook — **Customer Growth** "
+        "^week-2026-W29-p4\n\n"
+        "## 📊 Review\n\n"
+        "Tail sentinel.\n"
+    )

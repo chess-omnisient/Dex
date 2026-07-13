@@ -5440,9 +5440,10 @@ async def _handle_call_tool_inner(
         priority_id = generate_priority_id(week_date, existing_priorities)
         
         # Build priority entry
-        priority_num = len([p for p in existing_priorities if p.get('priority_num', 0) <= 3]) + 1
-        if priority_num > 3:
-            priority_num = 3  # Cap at 3 for Top 3
+        priority_num = max(
+            (priority.get('priority_num', 0) for priority in existing_priorities),
+            default=0,
+        ) + 1
         
         pillar_name = PILLARS[pillar]['name']
         priority_line = f"{priority_num}. {title} — **{pillar_name}** ^{priority_id}"
@@ -5491,6 +5492,11 @@ async def _handle_call_tool_inner(
             "goal_inference": goal_inference,
             "message": f"Created weekly priority: {title}"
         }
+        if len(existing_priorities) + 1 > 3:
+            result["note"] = (
+                f"You now have {len(existing_priorities) + 1} priorities this week — "
+                "'Top 3' is meant to keep focus tight; consider clearing one."
+            )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "get_week_priorities":
