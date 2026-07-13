@@ -27,7 +27,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from core import paths
-from core.utils import preflight
+from core.utils import preflight, release_channel
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -1419,11 +1419,13 @@ def _git_result(context: DoctorContext, *arguments: str) -> subprocess.Completed
     )
 
 
-def _upstream_release_ref(context: DoctorContext) -> str | None:
-    for candidate in ("refs/remotes/upstream/release", "refs/remotes/origin/release"):
-        result = _git_result(context, "rev-parse", "--verify", "--quiet", f"{candidate}^{{commit}}")
+def _upstream_release_ref(context: DoctorContext, channel: str | None = None) -> str | None:
+    resolved_channel = channel or release_channel.read_channel(context.vault_root)
+    for candidate in release_channel.release_ref_candidates(resolved_channel):
+        remote_ref = f"refs/remotes/{candidate}"
+        result = _git_result(context, "rev-parse", "--verify", "--quiet", f"{remote_ref}^{{commit}}")
         if result.returncode == 0:
-            return candidate
+            return remote_ref
     return None
 
 
@@ -1604,8 +1606,16 @@ def _worktree_matches_release_blob(
 
 
 def _probe_core_drift(context: DoctorContext) -> ProbeResult:
-    release_ref = _upstream_release_ref(context)
+    channel = release_channel.read_channel(context.vault_root)
+    release_ref = _upstream_release_ref(context, channel)
     if release_ref is None:
+        if channel == "beta":
+            return ProbeResult(
+                "UNKNOWN",
+                "beta channel selected but no beta release found — staying on stable is safe",
+            )
+        if channel == "invalid":
+            return ProbeResult("UNKNOWN", "couldn't verify your update channel")
         return ProbeResult("UNKNOWN", "no upstream remote — can't compare")
 
     merge_base = _git_result(context, "merge-base", "HEAD", release_ref)

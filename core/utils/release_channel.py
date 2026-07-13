@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-import yaml
-
 VALID_CHANNELS = frozenset({"stable", "beta"})
 
 
@@ -21,6 +19,8 @@ def read_channel(vault_root: str | Path) -> str:
         return "invalid"
 
     try:
+        import yaml
+
         profile = yaml.safe_load(content)
     except Exception:
         return "invalid"
