@@ -531,7 +531,10 @@ Ask exactly once:
 
 Only after an explicit yes, issue a fresh token bound to this one entry and pass it to
 the check. The checker consumes and deletes the token before validating or launching
-anything, so it cannot be reused:
+anything, so it cannot be reused. The token prevents the automatic/recurring health checks
+from ever launching a one-off custom server and makes each explicit approval single-use.
+It is not protection against another program running as you, which could run your code
+directly regardless:
 
 ```bash
 DEX_MCP_ONCE_TOKEN=$(./.venv/bin/python core/utils/smoke.py \

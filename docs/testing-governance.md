@@ -64,6 +64,10 @@ content-addressed filename, and executed from the verified bytes. If any identit
 release verification fails, the affected journey is `UNKNOWN` instead of falling back to
 live code.
 
+The one-off token prevents the automatic/recurring health checks from ever launching a
+one-off custom server and makes each explicit approval single-use. It is not protection
+against another program running as you, which could run your code directly regardless.
+
 ### Nightly smoke ledger and attribution
 
 The macOS Launch Agent installed by `.scripts/install-smoke-automation.sh` runs the five

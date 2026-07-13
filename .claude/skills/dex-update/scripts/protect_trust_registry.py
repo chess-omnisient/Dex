@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -16,23 +17,47 @@ MANIFEST_NAME = "manifest.json"
 BACKUP_NAME = "trusted-mcps.yaml"
 
 
+def _git_executable() -> Path | None:
+    discovered = shutil.which("git")
+    candidates = [Path("/usr/bin/git"), Path("/bin/git")]
+    if discovered is not None:
+        candidates.append(Path(discovered))
+    seen: set[str] = set()
+    for candidate in candidates:
+        rendered = os.fspath(candidate)
+        if rendered in seen:
+            continue
+        seen.add(rendered)
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
 def _git(repo: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            "/usr/bin/git",
-            "-c",
-            "core.fsmonitor=false",
-            "-c",
-            "core.hooksPath=/dev/null",
-            "-C",
-            str(repo),
-            *arguments,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=5,
-        check=False,
-    )
+    executable = _git_executable()
+    if executable is None:
+        raise RuntimeError("could not run git to verify registry ownership; halt /dex-update")
+    try:
+        return subprocess.run(
+            [
+                str(executable),
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-C",
+                str(repo),
+                *arguments,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(
+            f"could not run git to verify registry ownership; halt /dex-update: {exc}"
+        ) from exc
 
 
 def capture_registry(repo: Path, state: Path) -> None:
@@ -60,9 +85,14 @@ def restore_registry(repo: Path, state: Path) -> bool:
     """Remove an upstream-tracked registry and restore only pre-merge user bytes."""
     manifest = json.loads((state / MANIFEST_NAME).read_text(encoding="utf-8"))
     tracked = _git(repo, "ls-files", "--error-unmatch", "--", REGISTRY_RELATIVE.as_posix())
-    if tracked.returncode != 0:
+    if tracked.returncode == 1:
         print("trusted MCP registry remained user-owned")
         return False
+    if tracked.returncode != 0:
+        detail = tracked.stderr.strip() or f"git ls-files exited {tracked.returncode}"
+        raise RuntimeError(
+            f"could not verify registry ownership; halt /dex-update: {detail}"
+        )
 
     removed = _git(repo, "update-index", "--force-remove", "--", REGISTRY_RELATIVE.as_posix())
     if removed.returncode != 0:

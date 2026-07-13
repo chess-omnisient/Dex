@@ -9,6 +9,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import stat
 import subprocess
 import sys
@@ -223,17 +224,28 @@ def _parse_registry(content: bytes) -> dict[str, TrustedMcpEntry]:
     return entries
 
 
-def _registry_is_git_tracked(vault_root: Path) -> bool:
-    executable = next(
-        (
-            candidate
-            for candidate in (Path("/usr/bin/git"), Path("/bin/git"))
-            if not candidate.is_symlink() and candidate.is_file() and os.access(candidate, os.X_OK)
-        ),
-        None,
-    )
+def _git_executable() -> Path | None:
+    discovered = shutil.which("git")
+    candidates = [Path("/usr/bin/git"), Path("/bin/git")]
+    if discovered is not None:
+        candidates.append(Path(discovered))
+    seen: set[str] = set()
+    for candidate in candidates:
+        rendered = os.fspath(candidate)
+        if rendered in seen:
+            continue
+        seen.add(rendered)
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def _registry_is_git_tracked(vault_root: Path) -> bool | None:
+    """Return tracked, confirmed untracked, or indeterminate for a Git vault."""
+    has_git_metadata = (vault_root / ".git").exists() or (vault_root / ".git").is_symlink()
+    executable = _git_executable()
     if executable is None:
-        return False
+        return None if has_git_metadata else False
     environment = {
         "GIT_CONFIG_GLOBAL": "/dev/null",
         "GIT_CONFIG_NOSYSTEM": "1",
@@ -263,7 +275,7 @@ def _registry_is_git_tracked(vault_root: Path) -> bool:
             check=False,
         )
         if top_level.returncode != 0:
-            return False
+            return None if has_git_metadata else False
         repository = Path(top_level.stdout.strip()).resolve()
         relative = (vault_root / REGISTRY_RELATIVE).resolve().relative_to(repository).as_posix()
         tracked = subprocess.run(
@@ -274,11 +286,15 @@ def _registry_is_git_tracked(vault_root: Path) -> bool:
             check=False,
         )
     except (OSError, subprocess.SubprocessError, ValueError):
+        return None if has_git_metadata else False
+    if tracked.returncode == 0:
+        return True
+    if tracked.returncode == 1:
         return False
-    return tracked.returncode == 0
+    return None
 
 
-def _require_private_directory(path: Path, *, label: str) -> None:
+def _require_private_directory(path: Path, *, label: str) -> int:
     no_follow = getattr(os, "O_NOFOLLOW", None)
     directory_flag = getattr(os, "O_DIRECTORY", None)
     if no_follow is None or directory_flag is None:
@@ -292,13 +308,51 @@ def _require_private_directory(path: Path, *, label: str) -> None:
         opened_stat = os.fstat(descriptor)
     except OSError as exc:
         raise TrustRegistryError(f"{label} could not be opened safely: {exc}") from exc
+    try:
+        if opened_stat.st_uid != os.getuid():
+            raise TrustRegistryError(f"{label} is not owned by the current user")
+        if opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            raise TrustRegistryError(f"{label} is group- or other-writable")
+        return descriptor
+    except TrustRegistryError:
+        os.close(descriptor)
+        raise
+
+
+def _verified_content_addressed_snapshot(
+    directory_fd: int,
+    name: str,
+    expected_hash: str,
+) -> bool:
+    """Mirror F2's no-follow identity and hash checks for an existing snapshot."""
+    descriptor: int | None = None
+    try:
+        leaf_stat = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if stat.S_ISLNK(leaf_stat.st_mode) or not stat.S_ISREG(leaf_stat.st_mode):
+            return False
+        descriptor = os.open(
+            name,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=directory_fd,
+        )
+        opened_stat = os.fstat(descriptor)
+        if (
+            (opened_stat.st_dev, opened_stat.st_ino) != (leaf_stat.st_dev, leaf_stat.st_ino)
+            or opened_stat.st_uid != os.getuid()
+            or opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+        ):
+            return False
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                return digest.hexdigest() == expected_hash
+            digest.update(chunk)
+    except OSError:
+        return False
     finally:
         if descriptor is not None:
             os.close(descriptor)
-    if opened_stat.st_uid != os.getuid():
-        raise TrustRegistryError(f"{label} is not owned by the current user")
-    if opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
-        raise TrustRegistryError(f"{label} is group- or other-writable")
 
 
 def load_trusted_mcp_registry(vault_root: Path) -> TrustedMcpRegistry:
@@ -308,10 +362,13 @@ def load_trusted_mcp_registry(vault_root: Path) -> TrustedMcpRegistry:
         return TrustedMcpRegistry(entries={}, present=False)
     descriptor: int | None = None
     try:
-        if _registry_is_git_tracked(vault_root):
+        tracked = _registry_is_git_tracked(vault_root)
+        if tracked is True:
             raise TrustRegistryError(
                 "registry is git-tracked; upstream files cannot grant consent"
             )
+        if tracked is None:
+            raise TrustRegistryError("could not verify the registry is user-owned")
         descriptor, opened_stat = _open_component_file(
             vault_root,
             REGISTRY_RELATIVE,
@@ -427,9 +484,13 @@ def _snapshot_local_python_file(
 ) -> TrustedMcpSnapshot:
     """Hash and copy a no-follow-opened script without returning to its live path."""
     descriptor: int | None = None
+    snapshot_directory_fd: int | None = None
     destination_fd: int | None = None
     destination: Path | None = None
-    temporary_destination: Path | None = None
+    temporary_name: str | None = None
+    destination_name: str | None = None
+    created_destination = False
+    actual_hash: str | None = None
     try:
         descriptor, _opened_stat = _open_component_file(
             vault_root,
@@ -440,13 +501,20 @@ def _snapshot_local_python_file(
             after_open(descriptor)
 
         snapshot_root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        _require_private_directory(snapshot_root, label="snapshot directory")
+        snapshot_directory_fd = _require_private_directory(
+            snapshot_root,
+            label="snapshot directory",
+        )
         safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", name)
-        temporary_destination = snapshot_root / f".{safe_name}-{secrets.token_hex(16)}.tmp"
-        destination = temporary_destination
+        temporary_name = f".{safe_name}-{secrets.token_hex(16)}.tmp"
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
         flags |= getattr(os, "O_NOFOLLOW", 0)
-        destination_fd = os.open(temporary_destination, flags, 0o400)
+        destination_fd = os.open(
+            temporary_name,
+            flags,
+            0o400,
+            dir_fd=snapshot_directory_fd,
+        )
 
         digest = hashlib.sha256()
         while True:
@@ -460,7 +528,6 @@ def _snapshot_local_python_file(
                 view = view[written:]
         actual_hash = digest.hexdigest()
         if expected_hash is not None and actual_hash != expected_hash:
-            temporary_destination.unlink(missing_ok=True)
             return TrustedMcpSnapshot(
                 False,
                 "changed since you blessed it (content differs) — re-bless via /create-mcp "
@@ -470,30 +537,72 @@ def _snapshot_local_python_file(
 
         os.fsync(destination_fd)
         os.fchmod(destination_fd, 0o400)
-        os.close(destination_fd)
-        destination_fd = None
-        destination = snapshot_root / f"{safe_name}-{actual_hash}.py"
-        os.link(temporary_destination, destination, follow_symlinks=False)
-        temporary_destination.unlink()
-        temporary_destination = None
+        temporary_stat = os.stat(
+            temporary_name,
+            dir_fd=snapshot_directory_fd,
+            follow_symlinks=False,
+        )
+        opened_temporary_stat = os.fstat(destination_fd)
+        if (temporary_stat.st_dev, temporary_stat.st_ino) != (
+            opened_temporary_stat.st_dev,
+            opened_temporary_stat.st_ino,
+        ):
+            raise TrustRegistryError("snapshot temporary file changed before finalization")
+
+        destination_name = f"{safe_name}-{actual_hash}.py"
+        destination = snapshot_root / destination_name
+        try:
+            os.link(
+                temporary_name,
+                destination_name,
+                src_dir_fd=snapshot_directory_fd,
+                dst_dir_fd=snapshot_directory_fd,
+                follow_symlinks=False,
+            )
+            created_destination = True
+        except FileExistsError:
+            if not _verified_content_addressed_snapshot(
+                snapshot_directory_fd,
+                destination_name,
+                actual_hash,
+            ):
+                return TrustedMcpSnapshot(
+                    False,
+                    "existing content-addressed snapshot could not be verified",
+                    sha256=actual_hash,
+                )
+
+        if not _verified_content_addressed_snapshot(
+            snapshot_directory_fd,
+            destination_name,
+            actual_hash,
+        ):
+            raise TrustRegistryError("finalized content-addressed snapshot could not be verified")
+        os.unlink(temporary_name, dir_fd=snapshot_directory_fd)
+        temporary_name = None
     except TrustRegistryError as exc:
-        if destination is not None:
-            destination.unlink(missing_ok=True)
-        if temporary_destination is not None:
-            temporary_destination.unlink(missing_ok=True)
         return TrustedMcpSnapshot(False, str(exc))
     except OSError as exc:
-        if destination is not None:
-            destination.unlink(missing_ok=True)
-        if temporary_destination is not None:
-            temporary_destination.unlink(missing_ok=True)
         return TrustedMcpSnapshot(False, f"trusted script snapshot failed: {exc}")
     finally:
         if destination_fd is not None:
             os.close(destination_fd)
+        if snapshot_directory_fd is not None:
+            if temporary_name is not None:
+                try:
+                    os.unlink(temporary_name, dir_fd=snapshot_directory_fd)
+                except FileNotFoundError:
+                    pass
+            if created_destination and destination_name is not None and temporary_name is not None:
+                try:
+                    os.unlink(destination_name, dir_fd=snapshot_directory_fd)
+                except FileNotFoundError:
+                    pass
+            os.close(snapshot_directory_fd)
         if descriptor is not None:
             os.close(descriptor)
 
+    assert destination is not None and actual_hash is not None
     return TrustedMcpSnapshot(
         True,
         "trusted local Python snapshot is ready",

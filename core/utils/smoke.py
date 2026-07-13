@@ -1221,8 +1221,52 @@ def _is_system_temporary_path(path: Path) -> bool:
     return False
 
 
+def _open_system_temporary_parent(parent: Path) -> int | None:
+    """Open a temp parent component-by-component, refusing symlink traversal."""
+    no_follow = getattr(os, "O_NOFOLLOW", None)
+    directory_flag = getattr(os, "O_DIRECTORY", None)
+    if no_follow is None or directory_flag is None:
+        return None
+    absolute = Path(os.path.abspath(parent))
+    matches: list[tuple[Path, Path]] = []
+    for candidate in (Path("/private/tmp"), Path("/tmp"), Path("/var/tmp"), Path(tempfile.gettempdir())):
+        try:
+            root = candidate.resolve(strict=True)
+            relative = absolute.relative_to(root)
+        except (FileNotFoundError, ValueError):
+            continue
+        matches.append((root, relative))
+    if not matches:
+        return None
+    root, relative = max(matches, key=lambda match: len(match[0].parts))
+    flags = os.O_RDONLY | no_follow | directory_flag | getattr(os, "O_CLOEXEC", 0)
+    descriptor: int | None = None
+    opened = False
+    try:
+        descriptor = os.open(root, flags)
+        for part in relative.parts:
+            component_stat = os.stat(part, dir_fd=descriptor, follow_symlinks=False)
+            if stat.S_ISLNK(component_stat.st_mode) or not stat.S_ISDIR(component_stat.st_mode):
+                return None
+            child_fd = os.open(part, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child_fd
+        opened = True
+        return descriptor
+    except OSError:
+        return None
+    finally:
+        if descriptor is not None and not opened:
+            os.close(descriptor)
+
+
 def issue_mcp_once_consent_token(name: str, *, directory: Path | None = None) -> Path:
-    """Issue a short-lived token bound to one explicitly approved one-off check."""
+    """Issue a short-lived, single-use marker for one explicitly requested check.
+
+    This keeps automatic and recurring checks from launching one-off custom code. It is
+    not protection from another program running as this user; that program could run the
+    same custom code directly without any token.
+    """
     if not name.startswith("custom-") or not name.strip():
         raise ValueError("one-off consent tokens require a non-empty custom-* name")
     parent = directory or Path(tempfile.gettempdir())
@@ -1263,19 +1307,36 @@ def _consume_mcp_once_consent_token(name: str, token_path: Path | None) -> bool:
     no_follow = getattr(os, "O_NOFOLLOW", None)
     if no_follow is None:
         return False
+    parent_fd = _open_system_temporary_parent(token.parent)
+    if parent_fd is None:
+        return False
     descriptor: int | None = None
+    consumed_name = f".{token.name}.consumed-{secrets.token_hex(16)}"
+    claimed = False
     payload = b""
-    safe_to_consume = False
     try:
-        descriptor = os.open(token, os.O_RDONLY | no_follow | getattr(os, "O_CLOEXEC", 0))
+        # Claim the marker before opening or validating its contents. This makes explicit
+        # approval single-use but does not authenticate the user against same-uid code.
+        os.rename(
+            token.name,
+            consumed_name,
+            src_dir_fd=parent_fd,
+            dst_dir_fd=parent_fd,
+        )
+        claimed = True
+        descriptor = os.open(
+            consumed_name,
+            os.O_RDONLY | no_follow | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=parent_fd,
+        )
         opened_stat = os.fstat(descriptor)
-        safe_to_consume = (
+        safe_to_read = (
             stat.S_ISREG(opened_stat.st_mode)
             and opened_stat.st_uid == os.getuid()
             and not opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
             and opened_stat.st_size <= 4096
         )
-        if not safe_to_consume:
+        if not safe_to_read:
             return False
         chunks: list[bytes] = []
         while True:
@@ -1284,7 +1345,7 @@ def _consume_mcp_once_consent_token(name: str, token_path: Path | None) -> bool:
                 break
             chunks.append(chunk)
         payload = b"".join(chunks)
-        current_stat = token.lstat()
+        current_stat = os.stat(consumed_name, dir_fd=parent_fd, follow_symlinks=False)
         if (current_stat.st_dev, current_stat.st_ino) != (opened_stat.st_dev, opened_stat.st_ino):
             return False
     except (OSError, ValueError):
@@ -1292,8 +1353,12 @@ def _consume_mcp_once_consent_token(name: str, token_path: Path | None) -> bool:
     finally:
         if descriptor is not None:
             os.close(descriptor)
-        if safe_to_consume:
-            token.unlink(missing_ok=True)
+        if claimed:
+            try:
+                os.unlink(consumed_name, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass
+        os.close(parent_fd)
     try:
         decoded = json.loads(payload)
         issued_at = float(decoded["issued_at"])

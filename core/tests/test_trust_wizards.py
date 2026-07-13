@@ -27,6 +27,17 @@ def test_create_mcp_offers_one_off_snapshot_check_and_default_no_blessing() -> N
     assert "remote, HTTP, npm, npx, and binary entries cannot be blessed" in text
 
 
+def test_one_off_consent_claims_are_honest_about_same_user_programs() -> None:
+    skill = (ROOT / ".claude/skills/create-mcp/SKILL.md").read_text(encoding="utf-8")
+    governance = (ROOT / "docs/testing-governance.md").read_text(encoding="utf-8")
+
+    for text in (skill, governance):
+        normalized = " ".join(text.split())
+        assert "prevents the automatic/recurring health checks" in normalized
+        assert "each explicit approval single-use" in normalized
+        assert "not protection against another program running as you" in normalized
+
+
 def test_dex_update_unconditionally_rejects_an_upstream_trust_registry() -> None:
     text = (ROOT / ".claude/skills/dex-update/SKILL.md").read_text(encoding="utf-8")
 

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -85,6 +88,22 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
     )
+
+
+def _load_update_guard() -> ModuleType:
+    guard = (
+        Path(__file__).resolve().parents[2]
+        / ".claude"
+        / "skills"
+        / "dex-update"
+        / "scripts"
+        / "protect_trust_registry.py"
+    )
+    spec = importlib.util.spec_from_file_location("protect_trust_registry", guard)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_s1_consent_text_never_calls_execution_a_sandbox() -> None:
@@ -179,6 +198,74 @@ def test_f1_snapshot_reads_source_descriptor_in_one_pass(
     assert source_reads == [content, b""]
     assert decision.snapshot_path is not None
     assert decision.snapshot_path.read_bytes() == content
+
+
+def test_g3_snapshot_finalize_stays_anchored_to_checked_directory_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _valid_vault(tmp_path)
+    content = b"print('dir-fd anchored')\n"
+    script = vault / "custom-mcp" / "server.py"
+    script.write_bytes(content)
+    _write_registry(vault, "custom-dir-fd", "custom-mcp/server.py", content)
+    snapshot_root = tmp_path / "snapshots"
+    snapshot_root.mkdir(mode=0o700)
+    held_directory = tmp_path / "held-snapshots"
+    original_require = trust_registry._require_private_directory
+
+    def swap_after_directory_open(path: Path, *, label: str) -> int:
+        descriptor = original_require(path, label=label)
+        os.rename(path, held_directory)
+        path.mkdir(mode=0o700)
+        return descriptor
+
+    monkeypatch.setattr(
+        trust_registry,
+        "_require_private_directory",
+        swap_after_directory_open,
+    )
+
+    decision = snapshot_trusted_mcp(
+        vault,
+        "custom-dir-fd",
+        _entry(script),
+        load_trusted_mcp_registry(vault),
+        snapshot_root,
+    )
+
+    expected_name = f"custom-dir-fd-{hashlib.sha256(content).hexdigest()}.py"
+    assert decision.trusted is True
+    assert (held_directory / expected_name).read_bytes() == content
+    assert not (snapshot_root / expected_name).exists()
+
+
+def test_g3_eexist_does_not_delete_an_unverifiable_existing_snapshot(
+    tmp_path: Path,
+) -> None:
+    vault = _valid_vault(tmp_path)
+    content = b"print('expected')\n"
+    script = vault / "custom-mcp" / "server.py"
+    script.write_bytes(content)
+    _write_registry(vault, "custom-existing", "custom-mcp/server.py", content)
+    snapshot_root = tmp_path / "snapshots"
+    snapshot_root.mkdir(mode=0o700)
+    destination = snapshot_root / f"custom-existing-{hashlib.sha256(content).hexdigest()}.py"
+    existing = b"print('pre-existing wrong bytes')\n"
+    destination.write_bytes(existing)
+    destination.chmod(0o400)
+
+    decision = snapshot_trusted_mcp(
+        vault,
+        "custom-existing",
+        _entry(script),
+        load_trusted_mcp_registry(vault),
+        snapshot_root,
+    )
+
+    assert decision.trusted is False
+    assert "existing content-addressed snapshot could not be verified" in decision.detail
+    assert destination.read_bytes() == existing
 
 
 def test_f2_snapshot_replaced_before_launch_is_refused(tmp_path: Path) -> None:
@@ -410,6 +497,91 @@ def test_f3_git_tracked_registry_is_refused(tmp_path: Path) -> None:
     assert registry.invalid_reason == "registry is git-tracked; upstream files cannot grant consent"
 
 
+def test_g1_git_repo_registry_is_invalid_when_git_cannot_be_discovered(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _valid_vault(tmp_path)
+    script = vault / "custom-mcp" / "server.py"
+    content = b"pass\n"
+    script.write_bytes(content)
+    _write_registry(vault, "custom-server", "custom-mcp/server.py", content)
+    (vault / ".git").mkdir()
+    original_is_file = Path.is_file
+
+    def hide_fhs_git(path: Path) -> bool:
+        if path in {Path("/usr/bin/git"), Path("/bin/git")}:
+            return False
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", hide_fhs_git)
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+
+    registry = load_trusted_mcp_registry(vault)
+
+    assert registry.entries == {}
+    assert registry.invalid_reason == "could not verify the registry is user-owned"
+
+
+def test_g1_git_repo_with_confirmed_untracked_registry_is_honored(tmp_path: Path) -> None:
+    vault = _valid_vault(tmp_path)
+    script = vault / "custom-mcp" / "server.py"
+    content = b"pass\n"
+    script.write_bytes(content)
+    _write_registry(vault, "custom-server", "custom-mcp/server.py", content)
+    _git(vault, "init", "-b", "main")
+
+    registry = load_trusted_mcp_registry(vault)
+
+    assert registry.invalid_reason is None
+    assert registry.entries["custom-server"].file == "custom-mcp/server.py"
+
+
+def test_g1_update_guard_halts_when_git_cannot_be_discovered(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    guard = _load_update_guard()
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    state = tmp_path / "trust-state"
+    state.mkdir()
+    (state / "manifest.json").write_text('{"present":false,"mode":null}\n')
+    original_is_file = Path.is_file
+
+    def hide_fhs_git(path: Path) -> bool:
+        if path in {Path("/usr/bin/git"), Path("/bin/git")}:
+            return False
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", hide_fhs_git)
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+
+    exit_code = guard.main(["restore", "--repo", str(repo), "--state", str(state)])
+
+    assert exit_code != 0
+    assert "halt /dex-update" in capsys.readouterr().err
+
+
+def test_g1_update_guard_allows_confirmed_untracked_registry(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    guard = _load_update_guard()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    state = tmp_path / "trust-state"
+    state.mkdir()
+    (state / "manifest.json").write_text('{"present":false,"mode":null}\n')
+
+    exit_code = guard.main(["restore", "--repo", str(repo), "--state", str(state)])
+
+    assert exit_code == 0
+    assert "remained user-owned" in capsys.readouterr().out
+
+
 def test_f3_update_guard_removes_registry_introduced_by_merge(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -603,6 +775,44 @@ def test_f4_one_off_token_is_single_use_and_runs_in_temp_vault(tmp_path: Path) -
     assert contexts[0]["cwd"] != str(vault)
     assert contexts[0]["vault"] != str(vault)
     assert contexts[0]["cwd"] == contexts[0]["vault"]
+
+
+def test_g2_one_off_token_is_renamed_before_its_payload_is_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = smoke.issue_mcp_once_consent_token("custom-once", directory=tmp_path)
+    token.write_text("not-json")
+    original_rename = smoke.os.rename
+    original_open = smoke.os.open
+    events: list[str] = []
+
+    def recording_rename(*args: object, **kwargs: object) -> None:
+        events.append("rename")
+        original_rename(*args, **kwargs)
+
+    def recording_open(*args: object, **kwargs: object) -> int:
+        if smoke.MCP_ONCE_TOKEN_PREFIX in str(args[0]):
+            events.append("open")
+        return original_open(*args, **kwargs)
+
+    monkeypatch.setattr(smoke.os, "rename", recording_rename)
+    monkeypatch.setattr(smoke.os, "open", recording_open)
+
+    assert smoke._consume_mcp_once_consent_token("custom-once", token) is False
+    assert events.index("rename") < events.index("open")
+    assert not token.exists()
+    assert smoke._consume_mcp_once_consent_token("custom-once", token) is False
+
+
+def test_g2_one_off_token_under_symlinked_temp_parent_is_refused(tmp_path: Path) -> None:
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    linked_parent = tmp_path / "linked-parent"
+    linked_parent.symlink_to(real_parent, target_is_directory=True)
+    token = smoke.issue_mcp_once_consent_token("custom-once", directory=linked_parent)
+
+    assert smoke._consume_mcp_once_consent_token("custom-once", token) is False
 
 
 def test_blessed_local_python_executes_snapshot_with_configured_env_scrubbed(
