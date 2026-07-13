@@ -99,6 +99,19 @@ content-addressed filename, and executed from the verified bytes. If any identit
 release verification fails, the affected journey is `UNKNOWN` instead of falling back to
 live code.
 
+### Release-channel trust foundation
+
+`core/utils/release_channel.py` is the single source of truth for mapping the per-machine
+`updates.channel` profile value to trusted release refs. A missing channel keeps the
+existing stable behavior (`upstream/release`, then `origin/release`). Internally, beta maps
+only to `upstream/release-beta` or `origin/release-beta`; invalid or unreadable channel
+configuration maps to no ref at all. Doctor and smoke therefore report `UNKNOWN` and refuse
+trusted execution when the selected channel cannot be verified, rather than comparing or
+materializing code from another channel.
+
+This is foundation-only. Beta is not user-selectable yet, no beta release branch is
+published, and update, rollback, and channel-switching workflows remain unchanged.
+
 The one-off token prevents the automatic/recurring health checks from ever launching a
 one-off custom server and makes each explicit approval single-use. It is not protection
 against another program running as you, which could run your code directly regardless.
