@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.55.0] - Contributing to Dex is now safer (2026-07-13)
+
+Contributing to Dex is now safer — CI catches personal data before it's shared, and tells contributors in plain English what their change touches.
+
+**What this fixes for you:**
+
+* **Personal details are stopped before merge.** Pull-request CI checks only newly added lines and names the exact file and line when it finds a real email, filled-in tracked profile or integration identity, personal vault content, or configured CLAUDE profile.
+* **Every contribution gets a product map.** A sticky report translates changed paths into recognizable Dex areas, the user journeys they feed, and the quality gates that apply. Fork contributors still get the identical report in the job summary when GitHub withholds comment permission.
+* **Messy real-world content gets exercised.** Disposable vault fixtures now include unicode and spaced filenames, half-written notes, duplicate task headings, and recoverable malformed YAML, backed by fast property tests and larger nightly fuzz cases.
+* **A loaded machine no longer makes one smoke test look broken.** The release-snapshot MCP assertion gets a generous test budget and one timeout-only retry while Dex's production 1.5-second server-start guarantee stays unchanged.
+
+---
+
+---
+
 ## [1.54.0] - See exactly what Dex checked before a release reached you — a public, honest per-release health page (2026-07-13)
 
 Dex's release checks were rigorous but invisible once a release reached you. Each successful release build now publishes a small public page showing the evidence for that exact version, without turning checks that did not run into reassuring green ticks.

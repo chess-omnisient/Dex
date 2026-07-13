@@ -32,6 +32,11 @@ Anything that makes Dex better for someone else:
 
 4. **Your changes appear on GitHub** for review. Dave will take a look, give feedback if needed, and merge it in.
 
+   CI also posts a plain-English report explaining which parts of Dex your files
+   affect, the user journeys connected to them, and the checks that will judge the
+   change. On forked pull requests where GitHub will not allow a bot comment, the
+   same report remains available in the `pr-report` job summary.
+
 That's it. Claude handles the git mechanics. You just describe what you changed and why.
 
 ### What makes a good contribution
@@ -43,7 +48,7 @@ That's it. Claude handles the git mechanics. You just describe what you changed 
 
 ### What to avoid
 
-- **Personal data.** Double-check that your real names, companies, emails, and meeting content aren't in the files you're sharing. Ask Claude: "Can you check these files for any personal information before I share them?"
+- **Personal data.** CI enforces this on every pull request by checking newly added lines for real emails, filled-in profile or integration identity, vault content, and other personal configuration. If the PII / personal-config gate fails, remove the named data, restore the tracked placeholder template, or replace examples with an approved fake value from `scripts/pii-allowlist.txt`; the failure prints the exact file and line. You can still ask Claude: "Can you check these files for any personal information before I share them?"
 - **Breaking existing features.** If you're not sure whether your change might affect something else, mention that in your description. Dave would rather know upfront than discover it later.
 
 ---
@@ -52,10 +57,11 @@ That's it. Claude handles the git mechanics. You just describe what you changed 
 
 When you submit changes:
 
-1. **Dave will review within a few days** — usually faster
-2. **He might ask questions** — not because something's wrong, just to understand your thinking
-3. **He might suggest tweaks** — small adjustments to fit Dex conventions
-4. **He'll merge it** — and credit you in the changelog
+1. **CI checks the change and explains its impact** — personal-data findings name the exact file and line; the PR report translates changed paths into product areas and journeys
+2. **Dave will review within a few days** — usually faster
+3. **He might ask questions** — not because something's wrong, just to understand your thinking
+4. **He might suggest tweaks** — small adjustments to fit Dex conventions
+5. **He'll merge it** — and credit you in the changelog
 
 If your contribution adds a meaningful feature, you'll be mentioned by name in the release notes. Every contribution matters.
 

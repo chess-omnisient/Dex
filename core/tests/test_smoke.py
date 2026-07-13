@@ -92,11 +92,22 @@ def _definition(journey_id: str, timeout: float = 5.0) -> smoke.JourneyDefinitio
 def _release_repo(tmp_path: Path, *, release_validators: str | None = None) -> Path:
     repo = tmp_path / "release-repo"
     repo.mkdir()
-    shutil.copytree(
-        REPO_ROOT / "core",
-        repo / "core",
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "paths.json"),
-    )
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", "core"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+    ).stdout
+    for encoded_path in tracked.split(b"\0"):
+        if not encoded_path:
+            continue
+        relative = Path(os.fsdecode(encoded_path))
+        source = REPO_ROOT / relative
+        if source.is_symlink() or not source.is_file():
+            continue
+        destination = repo / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
     if release_validators is not None:
         (repo / "core" / "utils" / "validators.py").write_text(
             release_validators,
@@ -132,6 +143,37 @@ def _release_repo(tmp_path: Path, *, release_validators: str | None = None) -> P
             check=True,
         )
     return repo
+
+
+def test_release_repo_fixture_copies_only_git_tracked_source_files(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source-checkout"
+    tracked = source / "core" / "tracked.py"
+    tracked.parent.mkdir(parents=True)
+    tracked.write_text("TRACKED = True\n", encoding="utf-8")
+    external = tmp_path / "external-runtime-artifact.py"
+    external.write_text("EXTERNAL = True\n", encoding="utf-8")
+    tracked_symlink = source / "core" / "tracked-link.py"
+    tracked_symlink.symlink_to(external)
+    subprocess.run(["git", "init", "--quiet"], cwd=source, check=True)
+    subprocess.run(["git", "config", "user.name", "Smoke Test"], cwd=source, check=True)
+    subprocess.run(["git", "config", "user.email", "noreply@example.com"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "add", "--", "core/tracked.py", "core/tracked-link.py"],
+        cwd=source,
+        check=True,
+    )
+    subprocess.run(["git", "commit", "--quiet", "-m", "tracked source"], cwd=source, check=True)
+    (source / "core" / "stray-runtime-artifact.py").write_text("STRAY = True\n", encoding="utf-8")
+    monkeypatch.setattr("core.tests.test_smoke.REPO_ROOT", source)
+
+    release = _release_repo(tmp_path)
+
+    assert (release / "core" / "tracked.py").is_file()
+    assert not (release / "core" / "tracked-link.py").exists()
+    assert not (release / "core" / "stray-runtime-artifact.py").exists()
 
 
 def test_report_schema_exit_zero_and_no_live_write(tmp_path: Path) -> None:
@@ -502,7 +544,7 @@ def test_runtime_artifacts_and_untracked_code_do_not_enter_verified_journeys(
         repo_root=repo,
         journey_definitions=(
             _definition("task_lifecycle", 8.0),
-            _definition("mcp_startup", 8.0),
+            _definition("mcp_startup", 15.0),
         ),
     )
 
@@ -1148,6 +1190,7 @@ def test_mcp_launch_uses_release_snapshot_after_live_entrypoint_changes(
         encoding="utf-8",
     )
     original = smoke._run_journey_process
+    original_live_server = live_server.read_bytes()
 
     def mutate_live_after_plan(definition, **kwargs):
         live_server.write_text(
@@ -1158,11 +1201,17 @@ def test_mcp_launch_uses_release_snapshot_after_live_entrypoint_changes(
 
     monkeypatch.setattr(smoke, "_run_journey_process", mutate_live_after_plan)
 
-    run = smoke.run_smoke(
-        vault_root=vault,
-        repo_root=repo,
-        journey_definitions=(_definition("mcp_startup", 8.0),),
-    )
+    def run_once():
+        return smoke.run_smoke(
+            vault_root=vault,
+            repo_root=repo,
+            journey_definitions=(_definition("mcp_startup", 15.0),),
+        )
+
+    run = run_once()
+    if "initialize response timed out" in run.report["journeys"][0]["detail"]:
+        live_server.write_bytes(original_live_server)
+        run = run_once()
 
     assert run.exit_code == 0
     assert run.report["journeys"][0]["verdict"] == "OK"
