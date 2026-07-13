@@ -8,6 +8,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUILD_SCRIPT = REPO_ROOT / "scripts" / "build-health-json.py"
+RENDER_SCRIPT = REPO_ROOT / "scripts" / "render-health-page.py"
 
 
 def _load_script(path: Path, module_name: str):
@@ -94,3 +95,50 @@ def test_build_health_json_marks_missing_inputs_unknown(tmp_path):
         for gate in data["gates"]
         if gate["status"] != "not-applicable"
     )
+
+
+def test_render_health_page_contains_release_truth_and_provenance():
+    render_health = _load_script(RENDER_SCRIPT, "render_health_page")
+    data = {
+        "schema_version": 1,
+        "label": "Last successful release build",
+        "release": {
+            "version": "1.53.0",
+            "source_sha": "a" * 40,
+            "release_sha": "b" * 40,
+            "generated_at": "2026-07-13T10:20:30Z",
+            "workflow_run_url": "https://github.com/example/dex/actions/runs/123",
+        },
+        "automated_checks": {"passed": 412, "skipped": 3, "failed": 0, "total": 415},
+        "coverage": {"total_percent": 82.5},
+        "changelog_headline": "See exactly what Dex checked before a release reached you",
+        "gates": [
+            {
+                "name": "Test suites + coverage",
+                "status": "passed",
+                "detail": "completed on the successful main release build",
+            },
+            {
+                "name": "Diff-aware test gate",
+                "status": "not-applicable",
+                "detail": "not run on release build (PR-only)",
+            },
+        ],
+    }
+
+    html = render_health.render_health_html(data)
+
+    assert "Dex v1.53.0 passed 412 automated checks before this release reached you." in html
+    assert "See exactly what Dex checked before a release reached you" in html
+    assert "Test suites + coverage" in html
+    assert "Passed" in html
+    assert "Not applicable — not run (PR-only)" in html
+    assert "not run on release build (PR-only)" in html
+    assert "Last successful release build" in html
+    assert "Source commit" in html and "a" * 40 in html
+    assert "Generated release commit" in html and "b" * 40 in html
+    assert "Verified at (UTC)" in html and "2026-07-13T10:20:30Z" in html
+    assert "Workflow run" in html and data["release"]["workflow_run_url"] in html
+    assert "<style>" in html
+    assert "<link" not in html
+    assert "<script" not in html
