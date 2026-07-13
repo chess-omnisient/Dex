@@ -4864,6 +4864,25 @@ async def _handle_call_tool_inner(
                     "success": False,
                     "error": f"No task found matching '{task_title}'"
                 }, indent=2))]
+
+            exact_matching = [
+                task for task in matching
+                if task['title'].lower() == task_title.lower()
+            ]
+            if exact_matching:
+                matching = exact_matching
+            elif len(matching) > 1:
+                return [types.TextContent(type="text", text=json.dumps({
+                    "success": False,
+                    "error": f"Multiple tasks found matching '{task_title}'"
+                }, indent=2))]
+
+            if completed:
+                open_matching = [
+                    task for task in matching if not task.get('completed', False)
+                ]
+                if open_matching:
+                    matching = open_matching
             
             task = matching[0]
             
@@ -4889,7 +4908,8 @@ async def _handle_call_tool_inner(
             # Legacy support: task without ID, update only in source file
             else:
                 filepath = Path(task['source_file'])
-                content = filepath.read_text()
+                with filepath.open('r', encoding='utf-8', newline='') as file:
+                    content = file.read()
                 lines = content.split('\n')
                 
                 line_idx = task['line_number'] - 1
@@ -4897,12 +4917,13 @@ async def _handle_call_tool_inner(
                 
                 # Update checkbox based on status
                 if new_status == 'd':
-                    new_line = old_line.replace('- [ ]', '- [x]')
+                    new_line = re.sub(r'^(\s*)- \[ \]', r'\1- [x]', old_line, count=1)
                 else:
-                    new_line = old_line.replace('- [x]', '- [ ]')
+                    new_line = re.sub(r'^(\s*)- \[x\]', r'\1- [ ]', old_line, count=1)
                 
                 lines[line_idx] = new_line
-                filepath.write_text('\n'.join(lines))
+                with filepath.open('w', encoding='utf-8', newline='') as file:
+                    file.write('\n'.join(lines))
                 
                 # Propagate status change to referenced pages
                 synced_pages = propagate_task_status_to_refs(task['title'], completed)
@@ -5419,9 +5440,10 @@ async def _handle_call_tool_inner(
         priority_id = generate_priority_id(week_date, existing_priorities)
         
         # Build priority entry
-        priority_num = len([p for p in existing_priorities if p.get('priority_num', 0) <= 3]) + 1
-        if priority_num > 3:
-            priority_num = 3  # Cap at 3 for Top 3
+        priority_num = max(
+            (priority.get('priority_num', 0) for priority in existing_priorities),
+            default=0,
+        ) + 1
         
         pillar_name = PILLARS[pillar]['name']
         priority_line = f"{priority_num}. {title} — **{pillar_name}** ^{priority_id}"
@@ -5443,8 +5465,17 @@ async def _handle_call_tool_inner(
         # Insert after "## 🎯 Top 3 This Week" section
         top3_marker = "## 🎯 Top 3 This Week"
         if top3_marker in content:
-            parts = content.split(top3_marker)
-            new_content = parts[0] + top3_marker + "\n\n" + priority_entry + "\n" + parts[1]
+            before_top3, after_top3 = content.split(top3_marker, 1)
+            next_section = re.search(r'\n##\s', after_top3)
+            section_end = next_section.start() if next_section else len(after_top3)
+            section_content = after_top3[:section_end]
+            section_tail = after_top3[section_end:]
+            if section_content.strip():
+                separator = '' if section_content.endswith('\n') else '\n'
+                section_content += separator + priority_entry + '\n'
+            else:
+                section_content = '\n\n' + priority_entry + '\n\n'
+            new_content = before_top3 + top3_marker + section_content + section_tail
         else:
             content += "\n" + priority_entry + "\n"
             new_content = content
@@ -5461,6 +5492,11 @@ async def _handle_call_tool_inner(
             "goal_inference": goal_inference,
             "message": f"Created weekly priority: {title}"
         }
+        if len(existing_priorities) + 1 > 3:
+            result["note"] = (
+                f"You now have {len(existing_priorities) + 1} priorities this week — "
+                "'Top 3' is meant to keep focus tight; consider clearing one."
+            )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "get_week_priorities":
