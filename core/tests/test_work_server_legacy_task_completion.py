@@ -105,13 +105,6 @@ def test_legacy_completion_prefers_exact_title_over_earlier_substring_match(
     ).encode()
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG: when an already-completed ID-less duplicate precedes an open one, "
-        "legacy completion reports success without completing the open task"
-    ),
-    strict=False,
-)
 def test_legacy_completion_skips_completed_duplicate_and_completes_open_copy(
     tasks_file: Path,
 ):

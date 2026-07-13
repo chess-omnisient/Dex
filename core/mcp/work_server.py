@@ -4876,6 +4876,13 @@ async def _handle_call_tool_inner(
                     "success": False,
                     "error": f"Multiple tasks found matching '{task_title}'"
                 }, indent=2))]
+
+            if completed:
+                open_matching = [
+                    task for task in matching if not task.get('completed', False)
+                ]
+                if open_matching:
+                    matching = open_matching
             
             task = matching[0]
             
