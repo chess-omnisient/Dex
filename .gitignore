@@ -35,6 +35,7 @@ System/integrations/inbound-tasks.json
 # User configuration
 System/user-profile.yaml
 System/pillars.yaml
+System/trusted-mcps.yaml
 System/.last-update-check
 System/.update-available
 System/.smoke-last-run.json

@@ -7,6 +7,29 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.52.0] - Your own tools can now be health-checked for real — only when you say so (2026-07-13)
+
+Custom MCP servers used to stay permanently "unknown" because Dex would not execute user code during a check. You can now ask `/create-mcp` for a one-off startup proof and, as a separate default-no choice, trust one exact local Python file for nightly and deep checks.
+
+Custom MCP servers used to stay permanently "unknown" because Dex would not execute user
+code during a check. You can now ask `/create-mcp` for a one-off startup proof and, as a
+separate default-no choice, trust one exact local Python file for nightly and deep checks.
+
+* **Consent is specific and honest.** Dex shows the vault-relative file and SHA-256 first,
+  and says plainly that this runs the file with your user permissions and trusts whatever
+  it imports.
+* **Changed code never inherits old consent.** Name, path, and opened-file hash must all
+  match. Dex hashes and copies from the same no-follow file handle, then starts only that
+  private copy.
+* **Everything else stays structural-only.** Missing or linked files, changed content,
+  invalid registries, extra Python flags, remote servers, npm/npx commands, binaries, and
+  hand-edited ineligible entries are refused with an exact reason.
+* **Your trust choices remain yours.** `System/trusted-mcps.yaml` is gitignored and included
+  in update recovery's user-data preservation list, so an upstream update cannot add or
+  replace consent entries.
+
+---
+
 ## [1.51.0] - Things 3 and Trello sync join the party (2026-07-13)
 
 Real two-way sync landed for Todoist in the last release. This one brings your Mac's Things 3 and your Trello boards onto the same engine — so whichever task app you actually live in, Dex keeps step with it.

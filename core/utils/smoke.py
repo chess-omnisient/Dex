@@ -50,12 +50,17 @@ SENSITIVE_CONFIG_KEY = re.compile(
     re.IGNORECASE,
 )
 SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
+SNAPSHOT_CHANGED_DETAIL = "snapshot changed before launch"
+MCP_ONCE_CONSENT_DETAIL = "valid fresh single-use consent token is required"
+MCP_ONCE_TOKEN_PREFIX = "dex-mcp-once-consent-"
+MCP_ONCE_TOKEN_MAX_AGE_SECONDS = 120.0
 TRUSTED_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
 RUNNER_FALLBACK_RELATIVES = (
     Path("core/__init__.py"),
     Path("core/paths.py"),
     Path("core/utils/__init__.py"),
     Path("core/utils/smoke.py"),
+    Path("core/utils/trust_registry.py"),
     Path("core/utils/validators.py"),
 )
 PARA_PATH_NAMES = (
@@ -379,6 +384,8 @@ def _prepare_mcp_vault(
             }
         else:
             runtime_reason = _release_execution_reason(repo_root, release_root, release_ref)
+            trust_registry = None
+            trust_registry_path = source / "System" / "trusted-mcps.yaml"
             validator = None
             expected_validator = _validator_path()
             if expected_validator is not None and expected_validator.is_file():
@@ -414,7 +421,62 @@ def _prepare_mcp_vault(
                         }
                     )
                     continue
-                if custom or remote or not isinstance(entry, Mapping):
+                if custom:
+                    if not (
+                        trust_registry_path.exists() or trust_registry_path.is_symlink()
+                    ):
+                        entries.append(
+                            {"name": name, "verdict": "UNKNOWN", "detail": "not executed for safety"}
+                        )
+                        continue
+                    if trust_registry is None:
+                        from core.utils.trust_registry import (
+                            load_trusted_mcp_registry,
+                            snapshot_trusted_mcp,
+                        )
+
+                        trust_registry = load_trusted_mcp_registry(source)
+                    if trust_registry.invalid_reason is not None:
+                        entries.append(
+                            {
+                                "name": name,
+                                "verdict": "UNKNOWN",
+                                "detail": "trusted MCP registry is invalid "
+                                f"({trust_registry.invalid_reason})",
+                            }
+                        )
+                        continue
+                    if raw_name not in trust_registry.entries:
+                        entries.append(
+                            {"name": name, "verdict": "UNKNOWN", "detail": "not executed for safety"}
+                        )
+                        continue
+                    decision = snapshot_trusted_mcp(
+                        source,
+                        raw_name,
+                        entry,
+                        trust_registry,
+                        vault / ".dex-trusted-mcp-snapshots",
+                    )
+                    if not decision.trusted or decision.snapshot_path is None:
+                        entries.append(
+                            {
+                                "name": name,
+                                "verdict": "UNKNOWN",
+                                "detail": decision.detail,
+                            }
+                        )
+                        continue
+                    entries.append(
+                        {
+                            "name": name,
+                            "verdict": "EXECUTE",
+                            "kind": "trusted-custom",
+                            "script": decision.snapshot_path.relative_to(vault).as_posix(),
+                        }
+                    )
+                    continue
+                if remote or not isinstance(entry, Mapping):
                     entries.append(
                         {"name": name, "verdict": "UNKNOWN", "detail": "not executed for safety"}
                     )
@@ -550,12 +612,68 @@ def _install_network_guard(parent: Path) -> Path:
     )
     (guard / "server_bootstrap.py").write_text(
         "from pathlib import Path\n"
+        "import hashlib\n"
+        "import os\n"
+        "import re\n"
         "import runpy\n"
+        "import stat\n"
         "import sys\n"
         "runpy.run_path(str(Path(__file__).with_name('sitecustomize.py')))\n"
-        "script = sys.argv[1]\n"
-        "sys.argv = sys.argv[1:]\n"
-        "runpy.run_path(script, run_name='__main__')\n",
+        "if len(sys.argv) < 3 or sys.argv[1] != '--verified-snapshot':\n"
+        "    script = sys.argv[1]\n"
+        "    sys.argv = sys.argv[1:]\n"
+        "    runpy.run_path(script, run_name='__main__')\n"
+        "    raise SystemExit(0)\n"
+        "def refuse_snapshot():\n"
+        "    print('snapshot changed before launch', file=sys.stderr)\n"
+        "    raise SystemExit(1)\n"
+        "try:\n"
+        "    script = Path(sys.argv[2])\n"
+        "except IndexError:\n"
+        "    refuse_snapshot()\n"
+        "match = re.fullmatch(r'.+-([0-9a-f]{64})[.]py', script.name)\n"
+        "no_follow = getattr(os, 'O_NOFOLLOW', None)\n"
+        "directory_flag = getattr(os, 'O_DIRECTORY', None)\n"
+        "if match is None or no_follow is None or directory_flag is None:\n"
+        "    refuse_snapshot()\n"
+        "close_on_exec = getattr(os, 'O_CLOEXEC', 0)\n"
+        "directory_fd = None\n"
+        "script_fd = None\n"
+        "try:\n"
+        "    directory_fd = os.open(script.parent, os.O_RDONLY | no_follow | directory_flag | close_on_exec)\n"
+        "    parent_stat = os.fstat(directory_fd)\n"
+        "    if parent_stat.st_uid != os.getuid() or parent_stat.st_mode & 0o022:\n"
+        "        refuse_snapshot()\n"
+        "    leaf_stat = os.stat(script.name, dir_fd=directory_fd, follow_symlinks=False)\n"
+        "    if stat.S_ISLNK(leaf_stat.st_mode) or not stat.S_ISREG(leaf_stat.st_mode):\n"
+        "        refuse_snapshot()\n"
+        "    script_fd = os.open(script.name, os.O_RDONLY | no_follow | close_on_exec, dir_fd=directory_fd)\n"
+        "    opened_stat = os.fstat(script_fd)\n"
+        "    if ((opened_stat.st_dev, opened_stat.st_ino) != (leaf_stat.st_dev, leaf_stat.st_ino)\n"
+        "            or opened_stat.st_uid != os.getuid() or opened_stat.st_mode & 0o022):\n"
+        "        refuse_snapshot()\n"
+        "    chunks = []\n"
+        "    digest = hashlib.sha256()\n"
+        "    while True:\n"
+        "        chunk = os.read(script_fd, 1024 * 1024)\n"
+        "        if not chunk:\n"
+        "            break\n"
+        "        chunks.append(chunk)\n"
+        "        digest.update(chunk)\n"
+        "    source = b''.join(chunks)\n"
+        "except OSError:\n"
+        "    refuse_snapshot()\n"
+        "finally:\n"
+        "    if script_fd is not None:\n"
+        "        os.close(script_fd)\n"
+        "    if directory_fd is not None:\n"
+        "        os.close(directory_fd)\n"
+        "if digest.hexdigest() != match.group(1):\n"
+        "    refuse_snapshot()\n"
+        "sys.argv = sys.argv[2:]\n"
+        "namespace = {'__name__': '__main__', '__file__': str(script), '__cached__': None,\n"
+        "             '__doc__': None, '__loader__': None, '__package__': None, '__spec__': None}\n"
+        "exec(compile(source, str(script), 'exec'), namespace)\n",
         encoding="utf-8",
     )
     return guard
@@ -1091,6 +1209,172 @@ def _safe_temporary_parent(source: Path) -> Path:
     raise OSError("no writable system temp directory exists outside the live vault")
 
 
+def _is_system_temporary_path(path: Path) -> bool:
+    absolute = Path(os.path.abspath(path))
+    for candidate in (Path("/private/tmp"), Path("/tmp"), Path("/var/tmp"), Path(tempfile.gettempdir())):
+        try:
+            root = candidate.resolve(strict=True)
+            absolute.relative_to(root)
+        except (FileNotFoundError, ValueError):
+            continue
+        return True
+    return False
+
+
+def _open_system_temporary_parent(parent: Path) -> int | None:
+    """Open a temp parent component-by-component, refusing symlink traversal."""
+    no_follow = getattr(os, "O_NOFOLLOW", None)
+    directory_flag = getattr(os, "O_DIRECTORY", None)
+    if no_follow is None or directory_flag is None:
+        return None
+    absolute = Path(os.path.abspath(parent))
+    matches: list[tuple[Path, Path]] = []
+    for candidate in (Path("/private/tmp"), Path("/tmp"), Path("/var/tmp"), Path(tempfile.gettempdir())):
+        try:
+            root = candidate.resolve(strict=True)
+            relative = absolute.relative_to(root)
+        except (FileNotFoundError, ValueError):
+            continue
+        matches.append((root, relative))
+    if not matches:
+        return None
+    root, relative = max(matches, key=lambda match: len(match[0].parts))
+    flags = os.O_RDONLY | no_follow | directory_flag | getattr(os, "O_CLOEXEC", 0)
+    descriptor: int | None = None
+    opened = False
+    try:
+        descriptor = os.open(root, flags)
+        for part in relative.parts:
+            component_stat = os.stat(part, dir_fd=descriptor, follow_symlinks=False)
+            if stat.S_ISLNK(component_stat.st_mode) or not stat.S_ISDIR(component_stat.st_mode):
+                return None
+            child_fd = os.open(part, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child_fd
+        opened = True
+        return descriptor
+    except OSError:
+        return None
+    finally:
+        if descriptor is not None and not opened:
+            os.close(descriptor)
+
+
+def issue_mcp_once_consent_token(name: str, *, directory: Path | None = None) -> Path:
+    """Issue a short-lived, single-use marker for one explicitly requested check.
+
+    This keeps automatic and recurring checks from launching one-off custom code. It is
+    not protection from another program running as this user; that program could run the
+    same custom code directly without any token.
+    """
+    if not name.startswith("custom-") or not name.strip():
+        raise ValueError("one-off consent tokens require a non-empty custom-* name")
+    parent = directory or Path(tempfile.gettempdir())
+    if not parent.is_dir() or not _is_system_temporary_path(parent):
+        raise ValueError("one-off consent tokens must be created in system temp")
+    descriptor, raw_path = tempfile.mkstemp(prefix=MCP_ONCE_TOKEN_PREFIX, dir=parent)
+    token_path = Path(raw_path)
+    payload = json.dumps(
+        {
+            "schema_version": 1,
+            "name": name,
+            "nonce": secrets.token_urlsafe(32),
+            "issued_at": time.time(),
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    try:
+        os.fchmod(descriptor, 0o600)
+        view = memoryview(payload)
+        while view:
+            written = os.write(descriptor, view)
+            view = view[written:]
+        os.fsync(descriptor)
+    except OSError:
+        token_path.unlink(missing_ok=True)
+        raise
+    finally:
+        os.close(descriptor)
+    return token_path
+
+
+def _consume_mcp_once_consent_token(name: str, token_path: Path | None) -> bool:
+    if token_path is None:
+        return False
+    token = Path(os.path.abspath(token_path))
+    if not token.name.startswith(MCP_ONCE_TOKEN_PREFIX) or not _is_system_temporary_path(token):
+        return False
+    no_follow = getattr(os, "O_NOFOLLOW", None)
+    if no_follow is None:
+        return False
+    parent_fd = _open_system_temporary_parent(token.parent)
+    if parent_fd is None:
+        return False
+    descriptor: int | None = None
+    consumed_name = f".{token.name}.consumed-{secrets.token_hex(16)}"
+    claimed = False
+    payload = b""
+    try:
+        # Claim the marker before opening or validating its contents. This makes explicit
+        # approval single-use but does not authenticate the user against same-uid code.
+        os.rename(
+            token.name,
+            consumed_name,
+            src_dir_fd=parent_fd,
+            dst_dir_fd=parent_fd,
+        )
+        claimed = True
+        descriptor = os.open(
+            consumed_name,
+            os.O_RDONLY | no_follow | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=parent_fd,
+        )
+        opened_stat = os.fstat(descriptor)
+        safe_to_read = (
+            stat.S_ISREG(opened_stat.st_mode)
+            and opened_stat.st_uid == os.getuid()
+            and not opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+            and opened_stat.st_size <= 4096
+        )
+        if not safe_to_read:
+            return False
+        chunks: list[bytes] = []
+        while True:
+            chunk = os.read(descriptor, 4096)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        payload = b"".join(chunks)
+        current_stat = os.stat(consumed_name, dir_fd=parent_fd, follow_symlinks=False)
+        if (current_stat.st_dev, current_stat.st_ino) != (opened_stat.st_dev, opened_stat.st_ino):
+            return False
+    except (OSError, ValueError):
+        return False
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if claimed:
+            try:
+                os.unlink(consumed_name, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass
+        os.close(parent_fd)
+    try:
+        decoded = json.loads(payload)
+        issued_at = float(decoded["issued_at"])
+        nonce = decoded["nonce"]
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+    age = time.time() - issued_at
+    return (
+        decoded.get("schema_version") == 1
+        and decoded.get("name") == name
+        and isinstance(nonce, str)
+        and len(nonce) >= 32
+        and 0 <= age <= MCP_ONCE_TOKEN_MAX_AGE_SECONDS
+    )
+
+
 def _run_smoke_journeys(
     *,
     source: Path,
@@ -1265,6 +1549,83 @@ def run_smoke(
         "summary": _summary(results),
     }
     return SmokeRun(report, harness_failed)
+
+
+def check_custom_mcp_once(
+    vault_root: Path,
+    name: str,
+    *,
+    consent_token: Path | None = None,
+) -> dict[str, str]:
+    """Run one explicitly requested custom local Python startup check from a snapshot."""
+    from core.utils.mcp_handshake import mcp_stdio_handshake
+    from core.utils.trust_registry import TrustRegistryError, snapshot_local_python_mcp
+    from core.utils.validators import validate_mcp_config
+
+    if not _consume_mcp_once_consent_token(name, consent_token):
+        return {"verdict": "UNKNOWN", "detail": MCP_ONCE_CONSENT_DETAIL}
+    if not name.startswith("custom-"):
+        return {"verdict": "UNKNOWN", "detail": "only custom-* local Python entries can be checked"}
+    config_path = vault_root / ".mcp.json"
+    try:
+        _ensure_safe_source(config_path, vault_root)
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (JourneySafetySkip, OSError, json.JSONDecodeError) as exc:
+        return {"verdict": "UNKNOWN", "detail": f".mcp.json could not be read safely: {_one_line(exc)}"}
+    errors = validate_mcp_config(config)
+    if errors:
+        return {"verdict": "UNKNOWN", "detail": "; ".join(_one_line(error) for error in errors)}
+    entry = config["mcpServers"].get(name)
+    if entry is None:
+        return {"verdict": "UNKNOWN", "detail": f".mcp.json has no entry named {name}"}
+
+    try:
+        parent = _safe_temporary_parent(vault_root)
+        with tempfile.TemporaryDirectory(prefix="dex-mcp-check-once-", dir=parent) as temporary:
+            temporary_root = Path(temporary)
+            isolated_vault = temporary_root / "vault"
+            isolated_vault.mkdir(mode=0o700)
+            _write_analytics_opt_out(isolated_vault)
+            snapshot = snapshot_local_python_mcp(
+                vault_root,
+                name,
+                entry,
+                isolated_vault / ".dex-trusted-mcp-snapshots",
+            )
+            if not snapshot.trusted or snapshot.snapshot_path is None:
+                return {"verdict": "UNKNOWN", "detail": snapshot.detail}
+            home = temporary_root / "home"
+            home.mkdir()
+            env = _clean_environment(
+                isolated_vault,
+                home,
+                RUNNER_ROOT,
+                temporary_root,
+                secrets.token_urlsafe(32),
+            )
+            bootstrap = Path(env["DEX_SMOKE_SERVER_BOOTSTRAP"])
+            result = mcp_stdio_handshake(
+                [
+                    sys.executable,
+                    "-S",
+                    str(bootstrap),
+                    "--verified-snapshot",
+                    str(snapshot.snapshot_path),
+                ],
+                cwd=isolated_vault,
+                env=env,
+                timeout=1.5,
+            )
+    except (OSError, TrustRegistryError) as exc:
+        return {"verdict": "UNKNOWN", "detail": _one_line(exc)}
+    if result.ok:
+        return {"verdict": "OK", "detail": f"{name} started from its private snapshot"}
+    if SNAPSHOT_CHANGED_DETAIL in result.stderr:
+        return {"verdict": "UNKNOWN", "detail": SNAPSHOT_CHANGED_DETAIL}
+    return {
+        "verdict": "BROKEN",
+        "detail": f"{name} did not start: {_one_line(result.error or result.stderr)}",
+    }
 
 
 def _load_yaml(path: Path) -> object:
@@ -1669,15 +2030,28 @@ def _journey_mcp_startup(vault: Path, _release_root: Path) -> dict[str, str]:
             details.append(f"{label}: UNKNOWN — invalid internal startup plan")
             continue
         parts = Path(relative_script).parts
-        script = RUNNER_ROOT / relative_script
-        if (
-            len(parts) != 3
-            or parts[:2] != ("core", "mcp")
-            or not parts[2].endswith("_server.py")
-            or RUNNER_ROOT.is_symlink()
-            or script.is_symlink()
-            or not script.is_file()
-        ):
+        trusted_custom = entry.get("kind") == "trusted-custom"
+        if trusted_custom:
+            script = vault / relative_script
+            valid_script = (
+                len(parts) == 2
+                and parts[0] == ".dex-trusted-mcp-snapshots"
+                and parts[1].endswith(".py")
+                and not (vault / parts[0]).is_symlink()
+                and not script.is_symlink()
+                and script.is_file()
+            )
+        else:
+            script = RUNNER_ROOT / relative_script
+            valid_script = (
+                len(parts) == 3
+                and parts[:2] == ("core", "mcp")
+                and parts[2].endswith("_server.py")
+                and not RUNNER_ROOT.is_symlink()
+                and not script.is_symlink()
+                and script.is_file()
+            )
+        if not valid_script:
             statuses.append("UNKNOWN")
             details.append(f"{label}: UNKNOWN — runner server is unavailable")
             continue
@@ -1702,8 +2076,13 @@ def _journey_mcp_startup(vault: Path, _release_root: Path) -> dict[str, str]:
             statuses.append("UNKNOWN")
             details.append(f"{label}: UNKNOWN — safe Python bootstrap is unavailable")
             continue
+        command = [sys.executable, "-S", str(bootstrap)]
+        if trusted_custom:
+            command.extend(("--verified-snapshot", str(script)))
+        else:
+            command.append(str(script))
         result = handshake(
-            [sys.executable, "-S", str(bootstrap), str(script)],
+            command,
             cwd=RUNNER_ROOT,
             env=os.environ,
             timeout=min(1.5, handshake_budget),
@@ -1711,6 +2090,9 @@ def _journey_mcp_startup(vault: Path, _release_root: Path) -> dict[str, str]:
         if result.ok:
             statuses.append("OK")
             details.append(f"{label}: OK")
+        elif SNAPSHOT_CHANGED_DETAIL in result.stderr:
+            statuses.append("UNKNOWN")
+            details.append(f"{label}: UNKNOWN — {SNAPSHOT_CHANGED_DETAIL}")
         else:
             statuses.append("BROKEN")
             details.append(f"{label}: BROKEN — {_one_line(result.error or result.stderr)}")
@@ -2037,6 +2419,17 @@ def main(
     parser = argparse.ArgumentParser(description="Run Dex's safe, isolated smoke journeys.")
     parser.add_argument("--json", action="store_true", help="emit the versioned JSON report")
     parser.add_argument("--ledger", action="store_true", help="record the latest run and history")
+    parser.add_argument(
+        "--check-mcp-once",
+        metavar="CUSTOM_NAME",
+        help="run one explicitly approved custom local Python startup check",
+    )
+    parser.add_argument(
+        "--issue-mcp-once-consent",
+        metavar="CUSTOM_NAME",
+        help="issue a fresh single-use token after explicit user approval",
+    )
+    parser.add_argument("--consent-token", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--_journey", choices=tuple(INTERNAL_JOURNEYS), help=argparse.SUPPRESS)
     parser.add_argument("--_prepare", choices=tuple(INTERNAL_JOURNEYS), help=argparse.SUPPRESS)
     parser.add_argument("--source-root", type=Path, help=argparse.SUPPRESS)
@@ -2046,6 +2439,30 @@ def main(
     parser.add_argument("--release-ref", help=argparse.SUPPRESS)
     parser.add_argument("--run-marker", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+
+    if args.issue_mcp_once_consent:
+        if args.check_mcp_once or args.consent_token is not None:
+            parser.error("--issue-mcp-once-consent cannot be combined with a check")
+        try:
+            token = issue_mcp_once_consent_token(args.issue_mcp_once_consent)
+        except (OSError, ValueError) as exc:
+            print(f"UNKNOWN: could not issue one-off consent token: {_one_line(exc)}")
+            return 1
+        print(token)
+        return 0
+
+    if args.consent_token is not None and not args.check_mcp_once:
+        parser.error("--consent-token requires --check-mcp-once")
+
+    if args.check_mcp_once:
+        source = (vault_root or Path(os.environ.get("VAULT_PATH", Path.cwd()))).resolve()
+        result = check_custom_mcp_once(
+            source,
+            args.check_mcp_once,
+            consent_token=args.consent_token,
+        )
+        print(f"{result['verdict']}: {result['detail']}")
+        return 0 if result["verdict"] == "OK" else 1
 
     if args._prepare:
         if args.source_root is None or args.vault_root is None:

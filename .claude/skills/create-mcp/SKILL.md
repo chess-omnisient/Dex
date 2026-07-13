@@ -516,6 +516,75 @@ Server: `core/mcp/[service_name]_server.py`
 
 ### Goal: Ensure everything is properly connected
 
+Only a `custom-*` entry whose command is the current `sys.executable` and whose args
+contain exactly one local `.py` file can use either startup check below.
+remote, HTTP, npm, npx, and binary entries cannot be blessed; explain that they remain
+structural-only.
+
+### Step 5.1: Offer a one-off startup proof
+
+Ask exactly once:
+
+> **Want me to prove it starts?** This runs it once from a private copy, with your user
+> permissions, and trusts whatever it imports. The entry's configured `env` is ignored.
+> (yes / no)
+
+Only after an explicit yes, issue a fresh token bound to this one entry and pass it to
+the check. The checker consumes and deletes the token before validating or launching
+anything, so it cannot be reused. The token prevents the automatic/recurring health checks
+from ever launching a one-off custom server and makes each explicit approval single-use.
+It is not protection against another program running as you, which could run your code
+directly regardless:
+
+```bash
+DEX_MCP_ONCE_TOKEN=$(./.venv/bin/python core/utils/smoke.py \
+  --issue-mcp-once-consent custom-[server-name]) || exit 1
+./.venv/bin/python core/utils/smoke.py \
+  --check-mcp-once custom-[server-name] \
+  --consent-token "$DEX_MCP_ONCE_TOKEN"
+```
+
+Show the command result honestly. A refusal or failed handshake is not permission to try
+another command shape or issue another token. On no or an ambiguous answer, do not issue
+a token and continue without running anything. The one-off check always uses a temporary
+vault for both `cwd` and `VAULT_PATH`; it never launches the custom code against the live
+vault as its working directory.
+
+### Step 5.2: Offer recurring startup checks
+
+First inspect the eligible entry without executing it:
+
+```bash
+./.venv/bin/python -m core.utils.trust_registry --inspect-mcp custom-[server-name]
+```
+
+Show the returned MCP name, vault-relative path, and sha256. Then ask:
+
+> **Trust this exact file for recurring startup checks?** This runs
+> `<vault-relative path>` with your user permissions (nightly and in deep scans), and
+> trusts whatever it imports. Dex will run only a private copy of the exact content whose
+> sha256 is `<sha256>`. If the file changes, Dex refuses to run it until you bless it again.
+>
+> **Default: No.** (yes / no)
+
+On no or an ambiguous answer, do not create or modify `System/trusted-mcps.yaml`.
+
+On an explicit yes, create the user-owned registry from its shipped template if absent,
+then bind the consent to the sha256 that was shown:
+
+```bash
+if [ ! -e System/trusted-mcps.yaml ]; then
+  cp -- System/trusted-mcps.example.yaml System/trusted-mcps.yaml
+fi
+./.venv/bin/python -m core.utils.trust_registry \
+  --bless-mcp custom-[server-name] --expected-sha256 <sha256>
+```
+
+If either command refuses, report its reason and leave the entry unblessed. Never hand-add
+a remote, HTTP, npm, npx, binary, flagged Python (`-c` or `-m`), absolute, or `..` path.
+
+### Step 5.3: Finish the verification checklist
+
 **Run verification checklist:**
 
 ```
@@ -560,7 +629,7 @@ Let me verify everything is in place:
 4. Test it! Try asking:
    - "[example natural language query]"
 
-**Want me to help you test the integration?**
+The one-off and recurring checks above are always optional.
 ```
 
 ---
