@@ -31,6 +31,8 @@ if str(RUNNER_ROOT) in sys.path:
     sys.path.remove(str(RUNNER_ROOT))
 sys.path.insert(0, str(RUNNER_ROOT))
 
+from core.utils import release_channel
+
 SCHEMA_VERSION = 1
 HISTORY_LIMIT = 120
 DEFAULT_MCP_HANDSHAKE_TIMEOUT_SECONDS = 8.0
@@ -859,9 +861,10 @@ def _materialize_release_core(
     timeout_seconds: float,
 ) -> tuple[str | None, str]:
     """Extract regular ``core`` files from the installed release Git tree."""
-    reference = _git_release_ref(repo_root)
+    channel = release_channel.read_channel(repo_root)
+    reference = _git_release_ref(repo_root, channel)
     if reference is None:
-        return None, "no upstream/release or origin/release ref is available"
+        return None, _missing_release_ref_reason(channel)
     command = _git_command(repo_root, "archive", "--format=tar", reference, "--", "core")
     if command is None:
         return None, "trusted system git is unavailable"
@@ -1814,8 +1817,9 @@ def _journey_task_lifecycle(vault: Path, _release_root: Path) -> dict[str, str]:
     return {"verdict": "OK", "detail": "create_task and update_task_status preserved Tasks.md integrity"}
 
 
-def _git_release_ref(repo_root: Path) -> str | None:
-    for ref in ("upstream/release", "origin/release"):
+def _git_release_ref(repo_root: Path, channel: str | None = None) -> str | None:
+    resolved_channel = channel or release_channel.read_channel(repo_root)
+    for ref in release_channel.release_ref_candidates(resolved_channel):
         verify_command = _git_command(repo_root, "rev-parse", "--verify", f"{ref}^{{commit}}")
         if verify_command is None:
             return None
@@ -1843,6 +1847,15 @@ def _git_release_ref(repo_root: Path) -> str | None:
     return None
 
 
+def _missing_release_ref_reason(channel: str, *, server: bool = False) -> str:
+    if channel == "beta":
+        return "beta channel selected but no beta release found — staying on stable is safe"
+    if channel == "invalid":
+        return "couldn't verify your update channel"
+    suffix = " to verify the server" if server else ""
+    return f"no upstream/release or origin/release ref is available{suffix}"
+
+
 def _git_tree_paths(repo_root: Path, treeish: str) -> set[str] | None:
     command = _git_command(repo_root, "ls-tree", "-r", "-z", "--name-only", treeish, "--", "core")
     if command is None:
@@ -1868,7 +1881,7 @@ def _release_execution_reason(
     reference: str | None,
 ) -> str | None:
     if reference is None or release_root is None:
-        return "no upstream/release or origin/release ref is available"
+        return _missing_release_ref_reason(release_channel.read_channel(repo_root))
     if release_root.is_symlink() or not (release_root / "core").is_dir():
         return "the verified release snapshot is unavailable"
     reference_paths = _git_tree_paths(repo_root, reference)
@@ -1934,9 +1947,10 @@ def _script_is_unmodified(
     if current.is_symlink() or not current.is_file():
         return False, "server target is missing or symlinked"
 
-    reference = reference or _git_release_ref(repo_root)
+    channel = release_channel.read_channel(repo_root)
+    reference = reference or _git_release_ref(repo_root, channel)
     if reference is None:
-        return False, "no upstream/release or origin/release ref is available to verify the server"
+        return False, _missing_release_ref_reason(channel, server=True)
     repo_relative = current.relative_to(repository).as_posix()
     command = _git_command(repo_root, "cat-file", "blob", f"{reference}:{repo_relative}")
     if command is None:

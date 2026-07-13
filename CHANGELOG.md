@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.60.0] - Groundwork for opt-in beta updates, with no user-visible change yet (2026-07-13)
+
+Dex now has the internal release-channel plumbing needed for a future opt-in beta. The health check understands which release line an installation belongs to, so future beta users will not get false "couldn't verify" warnings from being compared with stable code.
+
+**What this changes for you today:**
+
+* **Stable updates work exactly as before.** Existing installations still use the stable release path, including profiles that do not yet contain the new internal setting.
+* **Unverifiable channels fail safely.** Health checks report that they could not verify a missing beta release or invalid channel instead of treating it as broken or silently trusting stable code.
+* **Beta is not selectable yet.** This release adds only the safety foundation; update, rollback, and channel-switching controls will arrive separately.
+
+---
+
 ## [1.59.0] - Dex stops calling a working feature "broken" just because your machine was slow to start it (2026-07-13)
 
 Dex's health check gave built-in services just 1.5 seconds to wake up. On a slower or busy machine, a service could still be starting normally when Dex labelled it broken. Those services now get a fair eight-second window, with enough room in the overall check for the slower start to finish without changing the usual quick path.
