@@ -10,6 +10,8 @@ import sys
 import tarfile
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 RELEASE_BUILD_INPUTS = (
@@ -72,18 +74,24 @@ def _clone_repo(tmp_path: Path, name: str) -> Path:
     return clone
 
 
-def _build_release_in_clone(tmp_path: Path) -> tuple[Path, set[str]]:
+def _build_release_in_clone(
+    tmp_path: Path,
+    *,
+    source: str = "main",
+    target: str = "release",
+    name: str = "release-build",
+) -> tuple[Path, set[str]]:
     """Build from the current checkout without ever switching its branches."""
-    clone = _clone_repo(tmp_path, "release-build")
+    clone = _clone_repo(tmp_path, name)
     subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True, capture_output=True)
 
     # Let this test prove uncommitted changes while developing; once committed,
     # these copies are identical to the clone's files.
     for relative_path in RELEASE_BUILD_INPUTS:
-        source = REPO_ROOT / relative_path
+        file_source = REPO_ROOT / relative_path
         destination = clone / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+        shutil.copy2(file_source, destination)
 
     spaced_fixture = clone / "core/tests/fixtures/vault/has space.md"
     spaced_fixture.write_text("release stripping regression\n", encoding="utf-8")
@@ -98,8 +106,13 @@ def _build_release_in_clone(tmp_path: Path) -> tuple[Path, set[str]]:
         check=True,
     )
 
+    command = ["bash", "scripts/build-release.sh"]
+    if (source, target) != ("main", "release"):
+        subprocess.run(["git", "branch", source, "main"], cwd=clone, check=True)
+        command.extend(["--source", source, "--target", target])
+
     subprocess.run(
-        ["bash", "scripts/build-release.sh"],
+        command,
         cwd=clone,
         check=True,
         capture_output=True,
@@ -107,13 +120,23 @@ def _build_release_in_clone(tmp_path: Path) -> tuple[Path, set[str]]:
         timeout=60,
     )
     result = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", "release"],
+        ["git", "ls-tree", "-r", "--name-only", target],
         cwd=clone,
         check=True,
         capture_output=True,
         text=True,
     )
     return clone, set(result.stdout.splitlines())
+
+
+def _release_manifest(clone: Path, branch: str) -> list[str]:
+    return subprocess.run(
+        ["git", "show", f"{branch}:System/.installed-files.manifest"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
 
 
 def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) -> None:
@@ -141,13 +164,7 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert ".claude/skills/anthropic-docx/scripts/document.py" in members
     assert "System/.installed-files.manifest" in members
 
-    manifest = subprocess.run(
-        ["git", "show", "release:System/.installed-files.manifest"],
-        cwd=clone,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.splitlines()
+    manifest = _release_manifest(clone, "release")
     assert manifest == sorted(manifest)
     assert set(manifest) == members
     assert "core/tests/test_distribution_artifacts.py" not in manifest
@@ -203,6 +220,157 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     )
     assert "test:hooks" not in package_json.get("scripts", {})
     assert "test:scripts" not in package_json.get("scripts", {})
+
+
+def test_beta_release_branch_uses_same_stripping_and_manifest(tmp_path: Path) -> None:
+    clone, beta_members = _build_release_in_clone(
+        tmp_path,
+        source="beta",
+        target="release-beta",
+        name="beta-release-build",
+    )
+
+    assert "System/.installed-files.manifest" in beta_members
+    assert not any(path.startswith("core/tests/") for path in beta_members)
+    assert not any(path.startswith("scripts/") for path in beta_members)
+    assert set(_release_manifest(clone, "release-beta")) == beta_members
+    beta_version = json.loads((clone / "package.json").read_text(encoding="utf-8"))["version"]
+    beta_short_sha = subprocess.run(
+        ["git", "rev-parse", "--short", "release-beta"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    beta_tag = f"dist/release-beta/v{beta_version}-{beta_short_sha}"
+    assert subprocess.run(
+        ["git", "rev-parse", f"{beta_tag}^{{}}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == subprocess.run(
+        ["git", "rev-parse", "release-beta"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def test_release_build_rejects_invalid_source_and_target_branches(tmp_path: Path) -> None:
+    clone = _clone_repo(tmp_path, "release-build-guards")
+    subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True)
+
+    same_branch = subprocess.run(
+        ["bash", "scripts/build-release.sh", "--source", "main", "--target", "main"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+    )
+    missing_source = subprocess.run(
+        ["bash", "scripts/build-release.sh", "--source", "not-a-branch"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+    )
+
+    assert same_branch.returncode == 1
+    assert "source and target branches must differ" in same_branch.stderr
+    assert missing_source.returncode == 1
+    assert "branch 'not-a-branch' not found" in missing_source.stderr
+
+
+def test_release_build_creates_immutable_versioned_tags(tmp_path: Path) -> None:
+    clone, _ = _build_release_in_clone(tmp_path, name="immutable-release-tags")
+    version = json.loads((clone / "package.json").read_text(encoding="utf-8"))["version"]
+    first_release_sha = subprocess.run(
+        ["git", "rev-parse", "release"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    first_short_sha = subprocess.run(
+        ["git", "rev-parse", "--short", "release"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    first_tag = f"dist/release/v{version}-{first_short_sha}"
+
+    assert subprocess.run(
+        ["git", "cat-file", "-t", first_tag],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == "tag"
+    assert subprocess.run(
+        ["git", "rev-parse", f"{first_tag}^{{}}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == first_release_sha
+    assert _release_manifest(clone, first_tag)
+
+    package_path = clone / "package.json"
+    package = json.loads(package_path.read_text(encoding="utf-8"))
+    package["version"] = "99.0.0"
+    package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+    subprocess.run(["git", "add", "package.json"], cwd=clone, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "test: bump release version"],
+        cwd=clone,
+        check=True,
+    )
+    subprocess.run(
+        ["bash", "scripts/build-release.sh"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    second_short_sha = subprocess.run(
+        ["git", "rev-parse", "--short", "release"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    second_tag = f"dist/release/v99.0.0-{second_short_sha}"
+    assert second_tag != first_tag
+    assert subprocess.run(
+        ["git", "rev-parse", f"{first_tag}^{{}}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == first_release_sha
+    assert subprocess.run(
+        ["git", "rev-parse", f"{second_tag}^{{}}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() != first_release_sha
+
+
+def test_beta_release_ci_builds_branch_and_tag_without_github_release() -> None:
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    beta_job = workflow["jobs"]["build-release-beta"]
+    beta_commands = "\n".join(step.get("run", "") for step in beta_job["steps"])
+
+    assert beta_job["if"] == "github.ref == 'refs/heads/beta' && github.event_name == 'push'"
+    assert beta_job["permissions"] == {"contents": "write"}
+    assert "bash scripts/build-release.sh --source beta --target release-beta" in beta_commands
+    assert "git push origin release-beta --force" in beta_commands
+    assert "git push origin \"${{ steps.release_build.outputs.release_tag }}\"" in beta_commands
+    assert "gh release" not in beta_commands
 
 
 def test_distribution_check_rejects_enabled_integration_templates(tmp_path: Path) -> None:
