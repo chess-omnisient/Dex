@@ -189,6 +189,37 @@ say the retained snapshot was pruned. If `rewind_verdict: UNKNOWN`, say the rece
 current bytes, committed journal, or snapshot could not be verified. In both cases, do
 not offer rewind.
 
+### Step 3b: Render the customization assessment
+
+Deep reports include a top-level `customization_assessment` object. Render its four groups
+in the exact order returned: `update-replaceable-location`,
+`update-untouched-location`, `needs-interpretation`, and `blocked`.
+
+This section follows the same authority/surface split as adoption. Reproduce every
+customization id, count, kind, group, verdict, path, release state, edge count, edge kind,
+confidence, completeness value, and exclusion verbatim. Do not merge records, hide zero
+counts, or promote an inferred edge to proved. Only each group's `surface` line may be
+rephrased, in plain English: "lives in a location Dex updates can replace" or "lives in a
+location updates leave alone."
+
+If completeness is `UNKNOWN`, render only the verdict and each `incomplete_reasons` code.
+Do not state or infer any customization count, and do not render a record list.
+When `blocked_count` is greater than zero, the first summary sentence must state that blocked count.
+
+Example register:
+
+> I found 3 customizations. One lives in a location Dex updates can replace, one lives in a
+> location updates leave alone, and one is blocked by a missing folder reference.
+>
+> `cust-a1b2c3d4e5f6` · `custom-script` · `.scripts/custom-plan.py` ·
+> `update-untouched-location` · `canonical-customization`
+>
+> Nothing has changed — this is an inventory only.
+
+Always close this section with the exact line:
+
+`Nothing has changed — this is an inventory only.`
+
 ### Step 4: Heal, tiered
 
 - **Tier 1 (already applied by the collector):** report plainly — "Fixed automatically:

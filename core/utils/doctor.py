@@ -100,6 +100,7 @@ class ProbeResult:
     heal: Heal | None = None
     feature_status: str | None = None
     user_message: str | None = None
+    structured_detail: dict[str, object] | None = None
 
     def __post_init__(self) -> None:
         if self.verdict not in VERDICTS:
@@ -112,6 +113,11 @@ class ProbeResult:
             "unknown",
         }:
             raise ValueError(f"Invalid feature status: {self.feature_status}")
+        if self.structured_detail is not None and not isinstance(
+            self.structured_detail,
+            dict,
+        ):
+            raise TypeError("ProbeResult structured_detail must be a dict or null")
 
 
 @dataclass(frozen=True)
@@ -637,6 +643,11 @@ QUICK_CHECKS = (
 )
 
 DEEP_CHECKS = (
+    CheckDefinition(
+        "customizations.assessment",
+        "customization_assessment",
+        "_probe_customization_assessment",
+    ),
     CheckDefinition("granola.query_path", "Granola meeting sync", "_probe_granola_query_path"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
     CheckDefinition("qmd.live", "Semantic search", "_probe_qmd_live"),
@@ -1007,6 +1018,13 @@ def collect(
         "summary": _summary(checks),
         "adoption": adoption.to_dict(),
     }
+    if deep:
+        assessment_result = results.get("customizations.assessment")
+        if (
+            assessment_result is not None
+            and assessment_result.structured_detail is not None
+        ):
+            report["customization_assessment"] = assessment_result.structured_detail
 
     try:
         _write_last_run(report, context)
@@ -1506,6 +1524,69 @@ def _probe_adoption_plan(context: DoctorContext) -> ProbeResult:
         )
     except Exception as error:
         return ProbeResult("UNKNOWN", f"The adoption plan could not be built: {_one_line(error)}")
+
+
+CUSTOMIZATION_RECORD_PERSISTENCE_CAP = 25
+
+
+def _customization_persistence_detail(
+    authority: dict[str, object],
+) -> dict[str, object]:
+    """Bound the record list that Doctor writes into its last-run receipt."""
+    detail = dict(authority)
+    records = authority.get("records")
+    if not isinstance(records, list):
+        detail["records_truncated"] = False
+        return detail
+    total = len(records)
+    detail["records"] = records[:CUSTOMIZATION_RECORD_PERSISTENCE_CAP]
+    detail["records_total"] = total
+    detail["records_truncated"] = total > CUSTOMIZATION_RECORD_PERSISTENCE_CAP
+    return detail
+
+
+def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
+    """Build the read-only customization assessment entirely in memory."""
+    from core.customization_migration.report import assessment_report
+    from core.customization_migration.service import assess
+
+    assessment = assess(context.vault_root)
+    authority = _customization_persistence_detail(
+        assessment_report(assessment)
+    )
+    catalog_path = _release_catalog_path(context)
+    if os.path.lexists(catalog_path):
+        try:
+            load_catalog(catalog_path, release_root=context.vault_root)
+        except (CatalogError, UnicodeError) as error:
+            return ProbeResult(
+                "BROKEN",
+                f"The installed release catalog is invalid: {_one_line(error)}",
+                structured_detail=authority,
+            )
+    if assessment.baseline_identity_state != "VERIFIED":
+        return ProbeResult(
+            "UNKNOWN",
+            "I couldn't verify which Dex version is installed, so I can't tell you "
+            "what you've changed.",
+            structured_detail=authority,
+        )
+    if assessment.completeness == "UNKNOWN":
+        return ProbeResult(
+            "UNKNOWN",
+            "I couldn't prove a complete customization inventory "
+            f"({', '.join(assessment.incomplete_reasons)}).",
+            structured_detail=authority,
+        )
+    count = assessment.identity.customization_count
+    noun = "customization" if count == 1 else "customizations"
+    blocked_count = authority["blocked_count"]
+    blocked_suffix = f", {blocked_count} blocked" if blocked_count else ""
+    return ProbeResult(
+        "OK",
+        f"Customization assessment completed: {count} {noun}{blocked_suffix}",
+        structured_detail=authority,
+    )
 
 
 def _mcp_config_path(context: DoctorContext) -> Path:
