@@ -10,14 +10,24 @@
       "entries": [
         "connection-manager"
       ],
-      "fileCount": 18,
-      "totalBytes": 199675,
-      "treeHash": "18d81979836822bb09f64cc56a49aab407195db4defef40119f2ec146e762a5d",
+      "fileCount": 20,
+      "totalBytes": 216249,
+      "treeHash": "e3b0d9c958e4776be81a7167928034700443c3c95e09ca72f5ed3d52501fdd28",
       "files": [
         {
           "path": "auth-context.cjs",
-          "bytes": 6854,
-          "sha256": "23cf5358e043c22c5fce9777a06f4aaa7d1ef4c3156f9f13ca23443669e53185"
+          "bytes": 7937,
+          "sha256": "6ac769de82c12600998e2f5df51ca37a27249c5517509ef33c94b832f8ded764"
+        },
+        {
+          "path": "broker-client.cjs",
+          "bytes": 3888,
+          "sha256": "fc5e0d82ea12a048745d52541c5c02a99319bf5d1b2700735913d754b9a644a1"
+        },
+        {
+          "path": "broker.cjs",
+          "bytes": 11054,
+          "sha256": "ef91c1e9d9a6d12a00e1dde1dabefac75fb22f80c043e1acc635ac77ef2e8fd5"
         },
         {
           "path": "catalog.cjs",
@@ -36,8 +46,8 @@
         },
         {
           "path": "dex-call.cjs",
-          "bytes": 7631,
-          "sha256": "95fb3f328fc5465a73345be96dec7e39d8654fb4cf0df8deb7186ce28e51018e"
+          "bytes": 8671,
+          "sha256": "aa6ed4007fd21b6d304fd915361b4c0e87a49fb1458de1783042d08cc94a6642"
         },
         {
           "path": "fs-safe.cjs",
@@ -46,8 +56,8 @@
         },
         {
           "path": "get-token.cjs",
-          "bytes": 3939,
-          "sha256": "1451395df939cd0202b30cb4f3b4526c87a8e3ba56f765f594b89ba978be2b68"
+          "bytes": 2438,
+          "sha256": "e03b67d3007c3afd225ecdf2506e0eee9c8f1fa3d044d98ae03d80d2e84642f4"
         },
         {
           "path": "health.cjs",
@@ -96,8 +106,8 @@
         },
         {
           "path": "README.md",
-          "bytes": 8809,
-          "sha256": "a016fb03bcf4586f49ce744d8608a6357639f0bbfcde94ca965377e77d5a2cd5"
+          "bytes": 9819,
+          "sha256": "255bbc4a7a318a4d8fd04283a7405569bbf4833a579372766bbea51a150e27f0"
         },
         {
           "path": "token-store.cjs",
