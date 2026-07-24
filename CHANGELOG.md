@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.75.0] — 🔍 Dex Doctor now knows exactly what you've customised (2026-07-24)
+
+If you've made Dex your own — edited a built-in skill, added your own scripts or instructions, wired up your own connections — updating has always carried a quiet worry: *what will this touch?* Until now, Dex could promise not to overwrite your files, but it couldn't tell you what you'd actually changed. Now it can.
+
+**What this does for you:**
+
+* **A full inventory of your customisations, on demand.** Run `/dex-doctor` and its deep check now works out — file by file, against the exact version you installed — what's standard Dex, what you changed, what you added, and what depends on what (a skill you edited that calls a script you wrote, which reads from a folder you renamed).
+* **It changes nothing.** This is a read-only report. Doctor never edits, moves, or "fixes" your customisations — it shows you the map so you can update with your eyes open.
+* **It refuses to guess.** If Dex can't verify exactly which version you're on, it says "I can't tell you what you've changed" instead of showing a falsely reassuring zero. I'd rather Dex admit uncertainty than hand you a wrong all-clear right before an update.
+* **Your secrets stay out of it.** Credential files and keys are excluded before they're ever read — nothing sensitive appears in the report, and I attacked this with independent adversarial reviews (which caught and closed a real leak path before release) to make sure.
+
+This is step one of the guided upgrade for customised setups I posted about — the piece that rebuilds your tailoring on new versions is coming behind its own safety gates.
+
 ## [1.74.0] — 🔌 Groundwork: connecting your other tools, tested against the real world (2026-07-24)
 
 Dex is getting a built-in way to connect the other tools you use — starting with Google Calendar and Linear — so it can work with what's in them instead of asking you to copy-paste. That doorway isn't open yet, but this release lands the machinery behind it, after a security review and live end-to-end testing with real Google and Linear accounts.
