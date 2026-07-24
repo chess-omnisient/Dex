@@ -7,7 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.75.2] — 🔐 A second look at how your app sign-ins are stored (2026-07-24)
+## [1.75.2] — 🏠 Your notes get their own home — and the move is now proven on a real vault (2026-07-26)
+
+This release completes something I've been building toward for a while: separating Dex itself (the part updates replace) from your notes (the part updates must never touch). The machinery shipped quietly over recent versions; v1.75.1 wired it into `/dex-update`. Before offering it to anyone, I rehearsed the whole move on full copies of a real, seven-month-old, 50 GB working vault — converting it, killing the process halfway on purpose, and proving the undo restored every file byte-for-byte. That rehearsal caught four real problems, and this release fixes all of them.
+
+**What this fixes for you:**
+
+* **Dropbox users are no longer wrongly turned away.** Dropbox keeps a hidden settings folder in your home folder on every Mac it's installed on. Dex mistook that for "your vault lives inside Dropbox" and refused the move with advice that didn't apply. Dex now only reacts when your vault genuinely sits inside a synced folder.
+* **Big vaults make it all the way through.** A vault with many thousands of files crashed near the finish line (safely — nothing was changed, and resume worked). The limit that caused it is now far above anything a real vault produces.
+* **Accented file names no longer stop the move.** If you have pages like "Häfele.md", your Mac and its own version history spell the accent differently under the hood. Dex treated that as a mismatch and halted as a precaution. It now recognises both spellings as the same file.
+* **When Dex says no, it now says what to do.** If your vault contains shortcut-style linked files (which can't be carried into the new history), the refusal now explains the two-minute fix and confirms nothing was changed.
+
+**How the move works, for anyone offered it:** during a normal update, Dex shows you a preview of exactly what will happen and waits for an explicit yes — "update Dex" alone never authorises it. Your notes stay where they are; a one-command undo copy is kept and Dex will remind you it exists. If anything is interrupted, Dex finishes the job or puts everything back exactly as it was — never half-done.
+
+### 🔐 Also in this release: a second look at how your app sign-ins are stored
 
 Before the connections doorway opens, I wanted the way Dex stores your sign-ins checked properly rather than taken on trust. So it got reviewed twice, independently — once by me and once by a separate AI model that wasn't shown my findings, each trying to find ways in. The good news up front: the actual sealing of your credentials held up under both reviews. What the reviews found were softer edges around it, and this release tidies all of them. Nothing here was ever exploited, and the feature isn't open to anyone yet — this is the tidying you do *before* opening the door.
 
