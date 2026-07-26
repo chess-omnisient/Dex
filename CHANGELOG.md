@@ -7,24 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.75.2] — 🏠 Your notes get their own home — and the move is now proven on a real vault (2026-07-26)
+## [1.75.2] — 🏠 Your notes get their own home, and Dex learns to guide customised setups through it (2026-07-26)
 
-This release completes something I've been building toward for a while: separating Dex itself (the part updates replace) from your notes (the part updates must never touch). The machinery shipped quietly over recent versions; v1.75.1 wired it into `/dex-update`. Before offering it to anyone, I rehearsed the whole move on full copies of a real, seven-month-old, 50 GB working vault — converting it, killing the process halfway on purpose, and proving the undo restored every file byte-for-byte. That rehearsal caught four real problems, and this release fixes all of them.
+This is the release I asked heavily-customised users to wait for. Two big things land together: the move that separates Dex itself (the part updates replace) from your notes (the part updates must never touch) is now proven and guided — and if you've customised Dex, `/dex-update` now walks you through updating without losing track of anything you've built.
 
-**What this fixes for you:**
+**The move, proven on a real vault:**
 
-* **Dropbox users are no longer wrongly turned away.** Dropbox keeps a hidden settings folder in your home folder on every Mac it's installed on. Dex mistook that for "your vault lives inside Dropbox" and refused the move with advice that didn't apply. Dex now only reacts when your vault genuinely sits inside a synced folder.
-* **Big vaults make it all the way through.** A vault with many thousands of files crashed near the finish line (safely — nothing was changed, and resume worked). The limit that caused it is now far above anything a real vault produces.
-* **Accented file names no longer stop the move.** If you have pages like "Häfele.md", your Mac and its own version history spell the accent differently under the hood. Dex treated that as a mismatch and halted as a precaution. It now recognises both spellings as the same file.
-* **When Dex says no, it now says what to do.** If your vault contains shortcut-style linked files (which can't be carried into the new history), the refusal now explains the two-minute fix and confirms nothing was changed.
+* **Rehearsed end-to-end before being offered to anyone.** I converted full copies of a real, seven-month-old, 50 GB working vault — killed the process halfway on purpose — and proved the undo restored every file byte-for-byte. The rehearsal caught four real problems, all fixed here: Dropbox users were wrongly refused, very large vaults (~12k+ files) could crash the move, accented filenames could falsely fail a safety check, and the symlink refusal now tells you what to do about it.
 
-**How the move works, for anyone offered it:** during a normal update, Dex shows you a preview of exactly what will happen and waits for an explicit yes — "update Dex" alone never authorises it. Your notes stay where they are; a one-command undo copy is kept and Dex will remind you it exists. If anything is interrupted, Dex finishes the job or puts everything back exactly as it was — never half-done.
+**The guided journey for customised setups:**
 
-### 🔐 Also in this release: a second look at how your app sign-ins are stored
+* **`/dex-update` now offers a guided path if you've customised Dex.** It shows you the full inventory of what you've changed, explains what the update will touch, and walks you through step by step. Plain setups keep the same quick update as before.
+* **Your customisations get a protected snapshot first.** Before anything changes, Dex offers to create a **Capsule** — a protected local record of the evidence of every customisation. It lives inside your vault, is never uploaded, survives the update, and is only created after a fresh, explicit yes — with a receipt.
+* **Dex Doctor watches over it.** The deep checkup verifies your Capsule is intact, says so honestly when it can't, and any future session knows how to resume an interrupted journey properly.
+* **What this deliberately doesn't do yet:** Dex does not rebuild your customisations automatically on the new version. That ships only after it passes rehearsals on genuinely heavily-customised real setups — your Capsule is the foundation it will build on.
 
-Before the connections doorway opens, I wanted the way Dex stores your sign-ins checked properly rather than taken on trust. So it got reviewed twice, independently — once by me and once by a separate AI model that wasn't shown my findings, each trying to find ways in. The good news up front: the actual sealing of your credentials held up under both reviews. What the reviews found were softer edges around it, and this release tidies all of them. Nothing here was ever exploited, and the feature isn't open to anyone yet — this is the tidying you do *before* opening the door.
-
-**What this gets ready for you:**
+**A second look at how your app sign-ins are stored** (the connections feature is still closed to users; this is groundwork):
 
 * **Dex now tells you where the key to your credentials is kept.** Normally it lives in your Mac's Keychain, sealed away from your notes. On the rare setup where that isn't available, it sits in your vault folder instead — which means a copy of that folder is a copy of your sign-ins. Dex used to look identical either way. Now it just says which, so you can see it rather than assume.
 * **"Disconnect" no longer overpromises.** It removes the credential from your machine — but the app itself can still have permission in your account until you remove it there. Dex now says so, and points you at the right place, instead of leaving you to assume you were fully unhooked.
@@ -33,7 +31,7 @@ Before the connections doorway opens, I wanted the way Dex stores your sign-ins 
 * **A stray browser tab can't interrupt you mid-connect.** While you were connecting an app, another page open in your browser could quietly cancel it and leave you wondering what went wrong. That window is closed.
 * **Sturdier under odd setups.** If your credentials folder or key arrived from a backup with loose permissions, Dex now tightens them before use rather than trusting them, and refuses outright if something looks tampered with. And account names that could have collided into the same file — quietly breaking one of two connections — are now rejected up front.
 
-Still no change to day-to-day use: this is the last piece of groundwork before connecting your tools becomes something you can actually do.
+Still no change to day-to-day use for connections — and the `/connect` doorway stays deliberately closed until it passes an independent security review. Also in this release: the DexDiff sharing tool publishes to the right backend.
 
 ## [1.75.1] — 🔍 Dex Doctor now knows exactly what you've customised (2026-07-24)
 
