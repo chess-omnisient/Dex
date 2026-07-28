@@ -486,10 +486,17 @@ def _finalize_release_metadata(
         raise
 
 
-def apply_verified_release(vault_root: Path, release: VerifiedReleaseRef) -> dict[str, Any]:
-    """Apply a verified immutable release through the shared transaction core."""
+def validated_release_apply_context(
+    vault_root: Path,
+    release: VerifiedReleaseRef,
+) -> str:
+    """Return the installed commit after proving a release can replace it.
+
+    This read-only guard is shared by the lifecycle preview and execute routes.
+    It deliberately contains no mutation so an approval preview can bind both
+    the installed state and the exact immutable target before execution.
+    """
     root = Path(vault_root).resolve()
-    Transaction.resume(root)
     brain_git, topology, marker = _topology(root)
     if brain_git != release.brain_git:
         raise UpdateError("verified release belongs to a different split brain store")
@@ -498,6 +505,14 @@ def apply_verified_release(vault_root: Path, release: VerifiedReleaseRef) -> dic
         raise UpdateError("installed release identity disagrees across the split topology markers")
     if previous_commit == release.commit:
         raise UpdateError("that immutable release is already installed")
+    return previous_commit
+
+
+def apply_verified_release(vault_root: Path, release: VerifiedReleaseRef) -> dict[str, Any]:
+    """Apply a verified immutable release through the shared transaction core."""
+    root = Path(vault_root).resolve()
+    Transaction.resume(root)
+    previous_commit = validated_release_apply_context(root, release)
     plan = build_update_plan(root, release)
     transaction = Transaction.begin(root, list(plan.entries), allow_empty=True)
     transaction_result = transaction.run(
@@ -523,7 +538,19 @@ def apply_verified_release(vault_root: Path, release: VerifiedReleaseRef) -> dic
     }
 
 
-def deliver_and_apply_latest_release(
+def _release_identity(release: VerifiedReleaseRef) -> dict[str, str]:
+    """Return the closed identity a lifecycle preview must bind to."""
+    return {
+        "tag": release.tag,
+        "tag_object": release.tag_object,
+        "commit": release.commit,
+        "tree": release.tree,
+        "version": release.version,
+        "channel": release.channel,
+    }
+
+
+def deliver_latest_release(
     vault_root: Path,
     *,
     state_root: Path | None = None,
@@ -532,12 +559,13 @@ def deliver_and_apply_latest_release(
     git_runner: Any | None = None,
     wall_clock_seconds: float = 10.0,
 ) -> dict[str, Any]:
-    """Fetch an evidence-pinned release into the brain store, then apply it safely.
+    """Fetch and re-verify one evidence-pinned release without changing vault content.
 
-    The download is deliberately separate from the vault mutation: first prove an
-    immutable release in a disposable evidence cache, then fetch that exact tag
-    and release-channel ref into the split brain Git store, and finally prove the
-    fetched bytes again before the existing transaction-backed apply path runs.
+    This is the read side of delivery. It proves an immutable release in a
+    disposable evidence cache, fetches only that exact tag and channel ref into
+    Dex's private brain store, then re-proves the fetched bytes. It deliberately
+    does not build a transaction or mutate a vault file; the lifecycle service
+    must turn this returned identity into the exact user-visible preview.
     """
     from core.utils.update_verifier import (
         CANONICAL_REMOTE_URL,
@@ -596,10 +624,26 @@ def deliver_and_apply_latest_release(
         commit=commit,
         tree=tree,
     )
+    return {"status": "delivered", "release": _release_identity(release)}
+
+
+def deliver_and_apply_latest_release(
+    vault_root: Path,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Compatibility shim for the withdrawn unsafe one-step delivery API.
+
+    Version 1.3 exposed this name before its approval-boundary flaw was found.
+    Preserve its call shape, but never apply an unseen release: callers receive
+    a safe refusal and must use the lifecycle deliver-preview-execute route.
+    """
+    del vault_root, kwargs
     return {
-        "status": "updated",
-        "delivery": evidence,
-        "update": apply_verified_release(root, release),
+        "status": "not-delivered",
+        "evidence": {
+            "status": "deprecated",
+            "reason": "use-lifecycle-deliver-preview-execute",
+        },
     }
 
 
@@ -616,18 +660,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.deliver_latest:
             if any(value is not None for value in (args.tag, args.tag_object, args.commit, args.tree)):
                 parser.error("--deliver-latest cannot be combined with an explicit release identity")
-            result = deliver_and_apply_latest_release(args.vault)
+            result = deliver_latest_release(args.vault)
         else:
             if any(value is None for value in (args.tag, args.tag_object, args.commit, args.tree)):
                 parser.error("--tag, --tag-object, --commit, and --tree are required without --deliver-latest")
-            release = verify_release_ref(
-                args.vault,
-                tag=args.tag,
-                tag_object=args.tag_object,
-                commit=args.commit,
-                tree=args.tree,
+            parser.error(
+                "direct release application is retired; core.lifecycle.service "
+                "must build and execute the approved preview"
             )
-            result = apply_verified_release(args.vault, release)
     except (OSError, RuntimeError) as error:
         print(json.dumps({"ok": False, "error": str(error)}, sort_keys=True))
         return 1

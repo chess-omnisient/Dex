@@ -61,14 +61,17 @@ the assistant drives, the user approves.
 ## Current guided route — no Git workaround
 
 Once a vault has the delivered update route, `/dex-update` does not ask a person
-to fetch or merge anything. After it has shown the exact update and received a
-fresh yes, it asks `deliver_and_apply_latest_release` through
-`core.lifecycle.service`. Dex proves the newest published release in a disposable
-cache, fetches only that pinned release into its private brain store, proves the
-fetched bytes again, then enters the existing transaction-backed apply path. The
-transaction and ownership contract still decide every vault-content write and
-keep the receipt and rewind evidence. If delivery cannot be proved, it stops
-before that apply step; do not substitute a manual Git command.
+to fetch or merge anything. First, `deliver_latest_release` through
+`core.lifecycle.service` proves the newest published release in a disposable
+cache, fetches only that pinned release into Dex's private brain store, and
+proves the fetched bytes again. It does not change vault content.
+
+Dex then asks `build_and_preview_delivered_release` through the same service
+with that exact release identity, shows every write, and waits for a fresh yes.
+Only `execute_approved_delivered_release` with the unchanged preview and token
+can write. The transaction and ownership contract decide every vault-content
+write and keep the receipt and rewind evidence. If delivery, preview, or
+execution cannot be proved, it stops; do not substitute a manual Git command.
 
 ## Special case: v1.62.0 refuses before the merge
 

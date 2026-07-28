@@ -63,7 +63,9 @@ const UPDATE_SERVICE_OPERATIONS = new Set([
   'build_and_preview_topology_migration',
   'execute_approved_topology_migration',
   'read_lifecycle_state',
-  'deliver_and_apply_latest_release',
+  'deliver_latest_release',
+  'build_and_preview_delivered_release',
+  'execute_approved_delivered_release',
   // Capsule journey (Lane H): read-only customization-migration operations and the
   // authority fields the skill must reproduce verbatim. The CLI create/abandon writes
   // are human-confirmed and capsule-scoped; they never touch vault user files.
@@ -229,14 +231,16 @@ test('update mutation follows the immutable preview, approval, execute service r
   assertOnlyServiceOperations(UPDATE_SKILL, UPDATE_SERVICE_OPERATIONS, 'dex-update');
   assert.match(
     UPDATE_SKILL,
-    /Every lifecycle operation goes through `core\.lifecycle\.service` version 1\.3\.0\./,
+    /Every lifecycle operation goes through `core\.lifecycle\.service` version 1\.4\.0\./,
   );
   assert.match(UPDATE_SKILL, /Execution requires an explicit yes to that exact preview\./);
   // execute is gated on an UNCHANGED preview + token for BOTH the adoption route and the
   // conflict-resolution route (the #205 keep-both/take-theirs branch) — assert both.
   assert.match(UPDATE_SKILL, /Pass unchanged adoption previews and tokens to `execute_approved_adoption`/);
   assert.match(UPDATE_SKILL, /unchanged resolution previews and tokens to `execute_approved_conflict_resolution`/);
-  assert.match(UPDATE_SKILL, /ask `deliver_and_apply_latest_release` through `core\.lifecycle\.service`/);
+  assert.match(UPDATE_SKILL, /ask `deliver_latest_release`\s+through `core\.lifecycle\.service`/);
+  assert.match(UPDATE_SKILL, /ask\s+`build_and_preview_delivered_release` through `core\.lifecycle\.service`/);
+  assert.match(UPDATE_SKILL, /`execute_approved_delivered_release` with the same preview and approval token/);
   assert.match(UPDATE_SKILL, /The lifecycle service owns every mutation\./);
 
   assertInOrder(UPDATE_SKILL, [

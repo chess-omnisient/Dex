@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from core.lifecycle import service
+from core.transaction.engine import PlanRejected
 from core.update import apply_update
 from core.utils.update_verifier import legacy_profile_bytes
 
@@ -246,9 +248,10 @@ def test_apply_update_replaces_brain_prunes_unchanged_and_preserves_user_owned_p
     )
 
 
-def test_delivery_fetches_a_pinned_release_before_the_transactional_apply(
+def test_delivery_previews_and_applies_only_the_exact_pinned_release(
     split_release_fixture: dict[str, object],
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     vault = split_release_fixture["vault"]
     release = split_release_fixture["release"]
@@ -271,7 +274,7 @@ def test_delivery_fetches_a_pinned_release_before_the_transactional_apply(
         != 0
     )
 
-    result = apply_update.deliver_and_apply_latest_release(
+    delivered = apply_update.deliver_latest_release(
         vault,
         state_root=tmp_path / "evidence-state",
         remote_url=str(release),
@@ -279,12 +282,70 @@ def test_delivery_fetches_a_pinned_release_before_the_transactional_apply(
         wall_clock_seconds=60.0,
     )
 
-    assert result["status"] == "updated"
-    assert result["delivery"]["tag"] == target_tag
-    assert result["update"]["committed"] is True
+    assert delivered["status"] == "delivered"
+    assert delivered["release"]["tag"] == target_tag
     assert _git(brain, "rev-parse", f"refs/tags/{target_tag}")
+    assert _git(brain, "rev-parse", "refs/dex/installed") == old_commit
+    assert (vault / "README.md").read_bytes() == b"old brain\n"
+
+    previewed = service.build_and_preview_delivered_release(vault, delivered["release"])
+    assert previewed["preview"]["release"] == delivered["release"]
+    assert {entry["path"] for entry in previewed["preview"]["writes"]} >= {"README.md", "core/obsolete.py"}
+
+    def direct_apply_must_not_run(*_args, **_kwargs):
+        raise AssertionError("delivery execution bypassed core.lifecycle.service")
+
+    monkeypatch.setattr(apply_update, "apply_verified_release", direct_apply_must_not_run)
+    executed = service.execute_approved_delivered_release(
+        vault,
+        previewed["preview"],
+        previewed["approval_token"],
+    )
+
+    assert executed["release"] == delivered["release"]
+    assert executed["receipt"]["transaction_id"]
     assert _git(brain, "rev-parse", "refs/dex/installed") == target_commit
     assert (vault / "README.md").read_bytes() == b"new brain\n"
+
+
+def test_delivered_release_refuses_any_preview_drift_before_writing(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+) -> None:
+    vault = split_release_fixture["vault"]
+    release = split_release_fixture["release"]
+    brain = split_release_fixture["brain"]
+    old_tag, _old_tag_object, old_commit, _old_tree = split_release_fixture["old"]
+    del old_tag
+
+    _write(release, "System/.release-evidence-profile.json", legacy_profile_bytes("1.65.0"))
+    target_tag, _target_tag_object, target_commit, _target_tree = _commit_release(release, "1.65.0")
+    _git(release, "branch", "-f", "release", target_commit)
+    _write(vault, "package.json", b'{"name":"dex-test","version":"1.63.0"}\n')
+    _write(vault, "System/.release-evidence-profile.json", legacy_profile_bytes("1.63.0"))
+    _git(brain, "update-ref", "refs/remotes/upstream/release", old_commit)
+
+    delivered = apply_update.deliver_latest_release(
+        vault,
+        state_root=tmp_path / "evidence-state",
+        remote_url=str(release),
+        allow_test_transport=True,
+        wall_clock_seconds=60.0,
+    )
+    assert delivered["status"] == "delivered"
+    assert delivered["release"]["tag"] == target_tag
+    previewed = service.build_and_preview_delivered_release(vault, delivered["release"])
+    _write(vault, "README.md", b"user changed this after preview\n")
+
+    with pytest.raises(PlanRejected, match="approval does not match"):
+        service.execute_approved_delivered_release(
+            vault,
+            previewed["preview"],
+            previewed["approval_token"],
+        )
+
+    assert (vault / "README.md").read_bytes() == b"user changed this after preview\n"
+    assert _git(brain, "rev-parse", "refs/dex/installed") == old_commit
 
 
 def test_apply_update_keeps_personal_instructions_when_release_template_changes(

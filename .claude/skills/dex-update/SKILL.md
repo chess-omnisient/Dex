@@ -9,7 +9,7 @@ Use this skill when someone wants the latest Dex capabilities or asks what an up
 
 ## The one route
 
-Every lifecycle operation goes through `core.lifecycle.service` version 1.3.0. Treat its response as authoritative. Do not fall back to direct file operations, Git mutation, an update script, or a hand-built repair when the service refuses.
+Every lifecycle operation goes through `core.lifecycle.service` version 1.4.0. Treat its response as authoritative. Do not fall back to direct file operations, Git mutation, an update script, or a hand-built repair when the service refuses.
 
 Use the service operations in this order:
 
@@ -23,14 +23,20 @@ Use the service operations in this order:
 8. Pass unchanged adoption previews and tokens to `execute_approved_adoption`, and unchanged resolution previews and tokens to `execute_approved_conflict_resolution`.
 9. Ask `read_lifecycle_state` for the verified post-update state and retention warning, then render every receipt.
 
-For a split vault whose approved update needs new release bytes, never ask the
-user to run Git. After the user has explicitly approved the displayed update,
-ask `deliver_and_apply_latest_release` through `core.lifecycle.service`. That
-service proves the newest immutable release in an isolated cache, fetches only
-that pinned tag and its release-channel ref into Dex's private brain store,
-re-proves the fetched bytes, and only then enters the existing transaction-backed
-apply path. Render its returned delivery evidence and transaction result. If it
-returns `not-delivered` or an error, stop; no vault-content change was made.
+For a split vault whose update needs new release bytes, never ask the user to
+run Git. Before presenting a delivery update, ask `deliver_latest_release`
+through `core.lifecycle.service`. It proves the newest immutable release in an
+isolated cache, fetches only that pinned tag and its release-channel ref into
+Dex's private brain store, then proves the fetched bytes again. This delivery
+step does not change vault content.
+
+Only when delivery returns its exact release identity, ask
+`build_and_preview_delivered_release` through `core.lifecycle.service` with
+that identity. Show every returned write and ask: “Apply this exact update?”
+Only a fresh explicit yes to that unchanged preview permits
+`execute_approved_delivered_release` with the same preview and approval token.
+Render its lifecycle receipt. If delivery, preview, or execution refuses, stop;
+no vault-content change was made.
 
 If the service reports UNKNOWN, conflict, changed evidence, an unsafe path, or a rejected transaction, stop. Explain the refusal in ordinary language and leave the vault untouched. A refusal is a safety result, not an invitation to work around the engine.
 
