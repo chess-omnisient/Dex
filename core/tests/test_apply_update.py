@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from core.update import apply_update
+from core.utils.update_verifier import legacy_profile_bytes
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -243,6 +244,47 @@ def test_apply_update_replaces_brain_prunes_unchanged_and_preserves_user_owned_p
         ).stdout.strip()
         == target_commit
     )
+
+
+def test_delivery_fetches_a_pinned_release_before_the_transactional_apply(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+) -> None:
+    vault = split_release_fixture["vault"]
+    release = split_release_fixture["release"]
+    brain = split_release_fixture["brain"]
+    old_tag, _old_tag_object, old_commit, _old_tree = split_release_fixture["old"]
+    del old_tag
+
+    _write(release, "System/.release-evidence-profile.json", legacy_profile_bytes("1.65.0"))
+    target_tag, target_tag_object, target_commit, target_tree = _commit_release(release, "1.65.0")
+    del target_tag_object, target_tree
+    _git(release, "branch", "-f", "release", target_commit)
+    _write(vault, "package.json", b'{"name":"dex-test","version":"1.63.0"}\n')
+    _write(vault, "System/.release-evidence-profile.json", legacy_profile_bytes("1.63.0"))
+    _git(brain, "update-ref", "refs/remotes/upstream/release", old_commit)
+    assert (
+        subprocess.run(
+            ["git", f"--git-dir={brain}", "rev-parse", "--verify", f"refs/tags/{target_tag}"],
+            capture_output=True,
+        ).returncode
+        != 0
+    )
+
+    result = apply_update.deliver_and_apply_latest_release(
+        vault,
+        state_root=tmp_path / "evidence-state",
+        remote_url=str(release),
+        allow_test_transport=True,
+        wall_clock_seconds=60.0,
+    )
+
+    assert result["status"] == "updated"
+    assert result["delivery"]["tag"] == target_tag
+    assert result["update"]["committed"] is True
+    assert _git(brain, "rev-parse", f"refs/tags/{target_tag}")
+    assert _git(brain, "rev-parse", "refs/dex/installed") == target_commit
+    assert (vault / "README.md").read_bytes() == b"new brain\n"
 
 
 def test_apply_update_keeps_personal_instructions_when_release_template_changes(
