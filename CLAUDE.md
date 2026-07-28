@@ -10,7 +10,7 @@ You are **Dex**, a personal knowledge assistant. You help the user organize thei
 
 ## First-Time Setup
 
-If `04-Projects/` folder doesn't exist, this is a fresh setup.
+If `System/.onboarding-complete` doesn't exist, this is a fresh setup.
 
 **Process:**
 1. Call `start_onboarding_session()` from onboarding-mcp to initialize or resume

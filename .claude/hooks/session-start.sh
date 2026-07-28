@@ -54,9 +54,18 @@ if [[ -f "$ONBOARDING_MARKER" ]]; then
     fi
 fi
 
-# Skip background checks during onboarding - nothing to check yet!
+# First-time setup must use the completion marker, not a seeded folder: fresh
+# vaults already contain the standard folder structure. Make the canonical MCP
+# onboarding flow explicit at session start so even a first message of "hi"
+# cannot bypass it. A completed vault stays silent and continues normally.
 if [[ ! -f "$ONBOARDING_MARKER" ]]; then
-    echo "⏩ Onboarding in progress - background checks disabled"
+    echo "🚨 FIRST-TIME SETUP REQUIRED — THIS VAULT HAS NEVER BEEN SET UP"
+    if [[ -f "$CLAUDE_DIR/System/.onboarding-session.json" ]]; then
+        echo "Onboarding was started earlier but never finished. Whatever the user's first message says — even just 'hi' — resume setup NOW: call start_onboarding_session() from onboarding-mcp (it restores their progress) and continue the flow in .claude/flows/onboarding.md."
+    else
+        echo "Whatever the user's first message says — even just 'hi' — begin onboarding NOW: call start_onboarding_session() from onboarding-mcp and follow the flow in .claude/flows/onboarding.md. Do not ask what they are working on; setup comes first."
+    fi
+    echo "(Background checks stay disabled until setup completes.)"
     echo ""
 fi
 
