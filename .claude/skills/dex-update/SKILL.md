@@ -23,14 +23,15 @@ Use the service operations in this order:
 8. Pass unchanged adoption previews and tokens to `execute_approved_adoption`, and unchanged resolution previews and tokens to `execute_approved_conflict_resolution`.
 9. Ask `read_lifecycle_state` for the verified post-update state and retention warning, then render every receipt.
 
-For a split vault whose approved update needs new release bytes, never ask the
-user to run Git. After the user has explicitly approved the displayed update,
-run `python3 -m core.update.apply_update --vault VAULT_ROOT --deliver-latest`.
-That command proves the newest immutable release in an isolated cache, fetches
-only that pinned tag and its release-channel ref into Dex's private brain store,
-re-proves the fetched bytes, and only then enters the existing transaction-backed
-apply path. Render its returned delivery evidence and transaction result. If it
-returns `not-delivered` or an error, stop; no vault-content change was made.
+For a split vault whose update needs new release bytes, never ask the user to
+run Git. Before building the adoption preview, use Dex's delivery component to
+prove the newest immutable release in an isolated cache, fetch only that pinned
+tag and its release-channel ref into Dex's private brain store, and prove the
+fetched bytes again. Give that verified release source to the lifecycle service
+when it builds the preview. After the user has explicitly approved the displayed
+preview, make the change only through the existing `execute_approved_adoption`
+step above. Render the delivery evidence and lifecycle receipt. If delivery or
+the lifecycle service refuses, stop; no vault-content change was made.
 
 If the service reports UNKNOWN, conflict, changed evidence, an unsafe path, or a rejected transaction, stop. Explain the refusal in ordinary language and leave the vault untouched. A refusal is a safety result, not an invitation to work around the engine.
 
