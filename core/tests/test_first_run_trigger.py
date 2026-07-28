@@ -1,7 +1,7 @@
 """First-run entrypoints must use the marker written by canonical onboarding."""
 
-from pathlib import Path
 
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPLETION_MARKER = "System/.onboarding-complete"
