@@ -1,174 +1,58 @@
 ---
 name: reset
 description: "Restructure an existing Dex vault for a new role or changed preferences, without losing data. Use when the user says 'I changed jobs', 'restructure my Dex', 'my role is different now'. Not for first-time setup; use `setup`. Not for just toggling one feature; use `manage-capabilities`."
-disable-model-invocation: true
 ---
 
-## Purpose
+# Reset Dex for a new role
 
-Re-run the onboarding flow to restructure your Dex system. Useful when:
-- Your role changes (promotion, new job, pivot)
-- You want to reorganize after using Dex for a while
-- You're experimenting with different structures
-- Your company size tier changes (startup → scaling, etc.)
+If `04-Projects/` does not exist, this vault was never set up. Use `setup` instead.
 
-## Behavior
+To turn a single room on or off, use `manage-capabilities` — it is a much smaller
+change than a full reset and never touches the rest of the profile.
 
-When the user types `/reset`, execute the following:
+Otherwise:
 
-### Step 1: Acknowledge and Explain
+1. Tell the user what a reset does and does not do, and get an explicit yes before
+   calling anything:
 
-Say: "Let's reset your Dex setup. I'll walk you through the same questions as initial setup, then reorganize your structure. **Your existing content will be preserved** - I'll move files to match the new structure, not delete them."
+   > "I'll walk you through the same questions as first-time setup and rewrite your
+   > profile — role, company, pillars, communication style, working week and rooms.
+   > Nothing you've written is deleted or moved: your notes, people, meetings and
+   > projects all stay exactly where they are. Want to go ahead?"
 
-### Step 2: Current State Check
+   Stop here if they decline.
 
-Before asking questions, check and display:
-- Current role (from CLAUDE.md User Profile section)
-- Current company size
-- Current pillars
-- Existing folder structure
+2. Call `start_onboarding_session(force_new=True)` from `onboarding-mcp`. The
+   `force_new` flag is what makes this a reset rather than resuming a half-finished
+   setup.
+3. Read `.claude/flows/onboarding.md` and follow it as the single source of the
+   conversation, exactly as `setup` does.
+4. Before finalizing, call `finalize_onboarding(dry_run=True)` and show the user
+   what it reports it would create. Then call `finalize_onboarding()`.
 
-Say: "Here's your current setup: [summary]. Want to change it?"
+## What a reset actually changes
 
-### Step 3: Role Selection (if changing)
+Say this honestly — do not promise more:
 
-If user wants to change role, present the numbered role list:
+- **Rewritten:** `System/user-profile.yaml`, `System/pillars.yaml`, and the room
+  set, through the onboarding MCP and `core/capabilities.py`.
+- **Added if missing:** any folders and starter files the new role needs.
+  Finalizing only creates what is not already there.
+- **Left alone:** every existing folder and file. A reset does not rename, merge
+  or move your content. If the new role means you want `Pipeline/` renamed to
+  `Portfolio/`, that is a manual choice the user makes afterwards — offer to help,
+  do not do it silently as part of the reset.
 
-```
-**Core Functions**
-1. Product Manager
-2. Sales / Account Executive
-3. Marketing
-4. Engineering
-5. Design
+## Rules
 
-**Customer-Facing**
-6. Customer Success
-7. Solutions Engineering
+This file deliberately contains no question script, no role list and no company-size
+list, so reset cannot fork away from setup. The roles, the area→role picker and every
+other question live in `.claude/flows/onboarding.md`; change them only there.
 
-**Operations**
-8. Product Operations
-9. RevOps / BizOps
-10. Data / Analytics
-
-**Support Functions**
-11. Finance
-12. People (HR)
-13. Legal
-14. IT Support
-
-**Leadership**
-15. Founder
-
-**C-Suite**
-16. CEO
-17. CFO
-18. COO
-19. CMO
-20. CRO
-21. CTO
-22. CPO
-23. CIO
-24. CISO
-25. CHRO / Chief People Officer
-26. CLO / General Counsel
-27. CCO (Chief Customer Officer)
-
-**Independent / Advisory**
-28. Fractional CPO
-29. Consultant
-30. Coach
-
-Type a number, or describe your role:
-```
-
-### Step 4: Company Size (if changing)
-
-```
-1. 1-100 people (startup/small)
-2. 100-1,000 people (scaling)
-3. 1,000-10,000 people (enterprise)
-4. 10,000+ people (large enterprise)
-```
-
-### Step 5: Priorities (if changing)
-
-Ask: "What are your 2-3 main priorities right now?"
-
-### Step 6: Migration Plan
-
-Before making changes, show the user:
-1. What folders will be created
-2. What folders will be renamed/merged
-3. Where existing content will move
-4. What templates will be added
-
-Ask: "Does this look right? Type 'yes' to proceed or suggest changes."
-
-### Step 7: Execute Changes
-
-1. **Create new folder structure** using standard PARA structure
-2. **Move existing content** to appropriate new locations:
-   - Match by folder name where possible
-   - Put ambiguous content in `00-Inbox/` for user to sort
-   - Never delete user content
-3. **Update CLAUDE.md** User Profile section with:
-   - New role
-   - New company size
-   - New pillars
-4. **Update `System/user-profile.yaml`** with new role and preferences
-
-### Step 8: Summary
-
-After completion, show:
-- What changed
-- Where to find moved content
-- Any items in Inbox that need manual sorting
-- Suggested next actions
-
-## Content Preservation Rules
-
-**NEVER delete user content during reset.** Follow these rules:
-
-1. **Exact matches** - If old folder name matches new structure, keep content in place
-2. **Similar matches** - If folders are similar (e.g., `Pipeline/` → `Opportunities/`), move content
-3. **No match** - Move to `00-Inbox/To_Sort/` with a note about original location
-4. **Person pages** - Always preserve `People/` folder structure
-5. **Meeting notes** - Always preserve `00-Inbox/Meetings/` content
-
-## Example Migrations
-
-### PM at Startup → PM at Enterprise
-- Add `Governance/` folder
-- Expand `Relationships/` with more stakeholder categories
-- Add enterprise-specific templates
-- Keep all existing content in place
-
-### Sales → Customer Success
-- Rename `Pipeline/` → `Portfolio/`
-- Add `Health/`, `Renewals/` folders
-- Move account folders to new structure
-- Add CS-specific templates
-
-### Engineer → Engineering Manager
-- Add `Team/` folder for 1:1s, hiring
-- Keep `04-Projects/` and `Systems/`
-- Add management templates
-- Adjust focus from IC to leadership
-
-## Error Handling
-
-If something goes wrong:
-1. Stop immediately
-2. Show what was changed and what wasn't
-3. Offer to rollback (if possible)
-4. Suggest manual recovery steps
-
-## Notes
-
-- Reset is non-destructive by design
-- User can run `/reset` as many times as needed
-- Each reset creates a log entry in `System/reset_log.md`
+Never create folders, move files, or edit `CLAUDE.md` or `System/user-profile.yaml`
+by hand in this skill. `core/provision.cjs`, `core.lifecycle.service` and
+`core/capabilities.py` own all vault mutation, and the onboarding MCP owns all
+profile writes and their validation.
 
 ---
 
