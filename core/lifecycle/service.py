@@ -47,7 +47,7 @@ from core.lifecycle.retention import compute_retention_report
 from core.path_safety import unsafe_existing_parent
 from core.transaction.engine import PlanEntry, PlanRejected, Transaction
 
-api_version = "1.2.0"
+api_version = "1.3.0"
 
 _CATALOG_RELATIVE = "System/.release-catalog.json"
 _PURPOSE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
@@ -557,6 +557,13 @@ def read_lifecycle_state(vault_root: str | Path) -> dict[str, object]:
     )
 
 
+def deliver_and_apply_latest_release(vault_root: str | Path) -> dict[str, object]:
+    """Deliver an evidence-pinned release through the transactional updater."""
+    from core.update.apply_update import deliver_and_apply_latest_release as deliver
+
+    return _envelope(**deliver(Path(vault_root)))
+
+
 def build_and_preview_conflict_resolution(
     vault_root: str | Path,
     release_root: str | Path,
@@ -816,6 +823,7 @@ __all__ = [
     "execute_approved_adoption",
     "rewind_adoption_by_receipt",
     "read_lifecycle_state",
+    "deliver_and_apply_latest_release",
     "build_and_preview_conflict_resolution",
     "execute_approved_conflict_resolution",
     "build_archive_removal_preview",

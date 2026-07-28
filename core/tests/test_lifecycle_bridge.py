@@ -124,6 +124,10 @@ def test_reactivation_is_idempotent_but_invalid_existing_record_is_refused(
     assert activation_path.read_bytes() == before_bytes
     assert activation_path.stat().st_mtime_ns == before_mtime
 
+    previous_api = {**first, "api_version": "1.2.0"}
+    activation_path.write_bytes(_canonical(previous_api))
+    assert activate_vault(vault) == previous_api
+
     activation_path.write_text('{"activation_version":999}\n', encoding="utf-8")
     with pytest.raises(BridgeActivationError, match="existing activation"):
         activate_vault(vault)
@@ -302,8 +306,8 @@ def test_shipped_bridge_release_matches_transaction_resume_window() -> None:
     assert bridge.transaction_journal.incompatible_action == "rollback-only"
 
 
-def test_lifecycle_1_1_callers_resolve_unchanged_operations() -> None:
-    """The 1.2 surface is additive: every 1.1 operation keeps its exact call shape."""
+def test_lifecycle_1_2_callers_resolve_unchanged_operations() -> None:
+    """The 1.3 surface is additive: every 1.2 operation keeps its exact call shape."""
     expected_signatures = {
         "build_inventory_and_plan": "(vault_root: 'str | Path') -> 'dict[str, object]'",
         "build_and_preview_adoption": (
@@ -346,7 +350,7 @@ def test_lifecycle_1_1_callers_resolve_unchanged_operations() -> None:
         ),
     }
 
-    assert service.api_version == "1.2.0"
+    assert service.api_version == "1.3.0"
     assert {
         name: str(inspect.signature(getattr(service, name)))
         for name in expected_signatures

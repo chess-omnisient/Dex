@@ -14,6 +14,7 @@ from core.lifecycle.bridge import ACTIVATION_RELATIVE
 from core.lifecycle.engine import rewind_acknowledgement_token
 from core.tests.test_adoption_transaction import _setup
 from core.tests.test_lifecycle_bridge import _write_bridge_release
+from core.update import apply_update
 
 SCHEMA_PATH = (
     Path(__file__).resolve().parents[1]
@@ -238,7 +239,7 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
 def test_api_version_is_present_and_frozen_in_schema() -> None:
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
-    assert service.api_version == "1.2.0"
+    assert service.api_version == "1.3.0"
     assert schema["properties"]["api_version"] == {"const": service.api_version}
 
 
@@ -250,6 +251,7 @@ def test_public_surface_requires_a_version_bump_and_bridge_to_change() -> None:
         "execute_approved_adoption",
         "rewind_adoption_by_receipt",
         "read_lifecycle_state",
+        "deliver_and_apply_latest_release",
         "build_and_preview_conflict_resolution",
         "execute_approved_conflict_resolution",
         "build_archive_removal_preview",
@@ -279,6 +281,33 @@ def test_public_surface_requires_a_version_bump_and_bridge_to_change() -> None:
     assert "bridge" in service.__doc__.lower()
 
 
+def test_release_delivery_is_exposed_only_through_the_lifecycle_service(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vault = tmp_path / "vault"
+    expected = {"status": "not-delivered", "evidence": {"status": "UNKNOWN"}}
+    called_with: list[Path] = []
+
+    def fake_delivery(vault_root: Path) -> dict[str, object]:
+        called_with.append(vault_root)
+        return expected
+
+    monkeypatch.setattr(apply_update, "deliver_and_apply_latest_release", fake_delivery)
+
+    response = service.deliver_and_apply_latest_release(vault)
+
+    assert called_with == [vault]
+    assert response == {"api_version": service.api_version, **expected}
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    _assert_conforms(
+        schema,
+        "deliver_and_apply_latest_release",
+        {"vault_root": str(vault)},
+        response,
+    )
+
+
 def test_archive_removal_is_previewed_approved_and_receipted(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
     archive = vault / ".dex/pre-split-archive.git"
@@ -289,7 +318,7 @@ def test_archive_removal_is_previewed_approved_and_receipted(tmp_path: Path) -> 
 
     preview = service.build_archive_removal_preview(vault)
 
-    assert preview["api_version"] == "1.2.0"
+    assert preview["api_version"] == "1.3.0"
     assert preview["preview"]["archive_relative"] == ".dex/pre-split-archive.git"
     assert preview["preview"]["size_bytes"] == len(b"ref: refs/heads/main\narchive bytes")
     assert preview["preview"]["retention"] == "one full release cycle after conversion"
