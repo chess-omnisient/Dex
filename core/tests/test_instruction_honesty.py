@@ -364,6 +364,26 @@ def test_onboarding_documents_the_explicit_no_company_domain_path() -> None:
     assert "This step CANNOT be skipped" not in domain_step
 
 
+def test_reset_uses_the_canonical_onboarding_route_without_moving_user_content() -> None:
+    """A role change must not revive the retired hand-written reset procedure."""
+    reset = _read(".claude/skills/reset/SKILL.md")
+
+    assert "Stop here if they decline." in reset
+    assert "start_onboarding_session(force_new=True)" in reset
+    assert ".claude/flows/onboarding.md" in reset
+    assert "finalize_onboarding(dry_run=True)" in reset
+    assert "Then call `finalize_onboarding()`." in reset
+    assert "A reset does not rename, merge\n  or move your content." in reset
+    assert "Never create folders, move files, or edit `CLAUDE.md` or `System/user-profile.yaml`\nby hand" in reset
+
+    for retired_promise in (
+        "Create new folder structure",
+        "Move existing content",
+        "System/reset_log.md",
+    ):
+        assert retired_promise not in reset
+
+
 def test_onboarding_confirms_working_days_and_allows_correction() -> None:
     flow = _read(".claude/flows/onboarding.md")
     working_week_step = flow.split("## Step 7:", 1)[1].split("## Step 8:", 1)[0]
