@@ -486,10 +486,17 @@ def _finalize_release_metadata(
         raise
 
 
-def apply_verified_release(vault_root: Path, release: VerifiedReleaseRef) -> dict[str, Any]:
-    """Apply a verified immutable release through the shared transaction core."""
+def validated_release_apply_context(
+    vault_root: Path,
+    release: VerifiedReleaseRef,
+) -> str:
+    """Return the installed commit after proving a release can replace it.
+
+    This read-only guard is shared by the lifecycle preview and execute routes.
+    It deliberately contains no mutation so an approval preview can bind both
+    the installed state and the exact immutable target before execution.
+    """
     root = Path(vault_root).resolve()
-    Transaction.resume(root)
     brain_git, topology, marker = _topology(root)
     if brain_git != release.brain_git:
         raise UpdateError("verified release belongs to a different split brain store")
@@ -498,6 +505,14 @@ def apply_verified_release(vault_root: Path, release: VerifiedReleaseRef) -> dic
         raise UpdateError("installed release identity disagrees across the split topology markers")
     if previous_commit == release.commit:
         raise UpdateError("that immutable release is already installed")
+    return previous_commit
+
+
+def apply_verified_release(vault_root: Path, release: VerifiedReleaseRef) -> dict[str, Any]:
+    """Apply a verified immutable release through the shared transaction core."""
+    root = Path(vault_root).resolve()
+    Transaction.resume(root)
+    previous_commit = validated_release_apply_context(root, release)
     plan = build_update_plan(root, release)
     transaction = Transaction.begin(root, list(plan.entries), allow_empty=True)
     transaction_result = transaction.run(
@@ -523,23 +538,136 @@ def apply_verified_release(vault_root: Path, release: VerifiedReleaseRef) -> dic
     }
 
 
+def _release_identity(release: VerifiedReleaseRef) -> dict[str, str]:
+    """Return the closed identity a lifecycle preview must bind to."""
+    return {
+        "tag": release.tag,
+        "tag_object": release.tag_object,
+        "commit": release.commit,
+        "tree": release.tree,
+        "version": release.version,
+        "channel": release.channel,
+    }
+
+
+def deliver_latest_release(
+    vault_root: Path,
+    *,
+    state_root: Path | None = None,
+    remote_url: str | None = None,
+    allow_test_transport: bool = False,
+    git_runner: Any | None = None,
+    wall_clock_seconds: float = 10.0,
+) -> dict[str, Any]:
+    """Fetch and re-verify one evidence-pinned release without changing vault content.
+
+    This is the read side of delivery. It proves an immutable release in a
+    disposable evidence cache, fetches only that exact tag and channel ref into
+    Dex's private brain store, then re-proves the fetched bytes. It deliberately
+    does not build a transaction or mutate a vault file; the lifecycle service
+    must turn this returned identity into the exact user-visible preview.
+    """
+    from core.utils.update_verifier import (
+        CANONICAL_REMOTE_URL,
+        STATUS_IDENTITY,
+        GitRunner,
+        prove_latest_release,
+    )
+
+    root = Path(vault_root).resolve()
+    channel = release_channel.read_channel(root)
+    effective_remote = remote_url or CANONICAL_REMOTE_URL
+    evidence = prove_latest_release(
+        root,
+        channel,
+        state_root=state_root,
+        remote_url=effective_remote,
+        allow_test_transport=allow_test_transport,
+        git_runner=git_runner,
+        wall_clock_seconds=wall_clock_seconds,
+    )
+    if evidence.get("status") != STATUS_IDENTITY:
+        return {"status": "not-delivered", "evidence": evidence}
+
+    tag = evidence["tag"]
+    tag_object = evidence["tag_object"]
+    commit = evidence["commit"]
+    tree = evidence["tree"]
+    if not all(isinstance(value, str) for value in (tag, tag_object, commit, tree)):
+        return {"status": "not-delivered", "evidence": {"status": "UNKNOWN", "reason": "identity-malformed"}}
+
+    brain_git, _topology_value, _brain_marker = _topology(root)
+    _verify_official_origin(root, brain_git)
+    branch = release_channel.release_branch(channel)
+    if branch is None:
+        return {"status": "not-delivered", "evidence": {"status": "UNKNOWN", "reason": "channel-invalid"}}
+    transport = git_runner or GitRunner(
+        allowed_protocol="file" if allow_test_transport else "https"
+    )
+    transport.run(
+        brain_git,
+        "fetch",
+        "--quiet",
+        "--no-tags",
+        "--no-write-fetch-head",
+        "--no-recurse-submodules",
+        effective_remote,
+        f"refs/tags/{tag}:refs/tags/{tag}",
+        f"+refs/heads/{branch}:refs/remotes/upstream/{branch}",
+        network=True,
+        max_output_bytes=1024,
+    )
+    release = verify_release_ref(
+        root,
+        tag=tag,
+        tag_object=tag_object,
+        commit=commit,
+        tree=tree,
+    )
+    return {"status": "delivered", "release": _release_identity(release)}
+
+
+def deliver_and_apply_latest_release(
+    vault_root: Path,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Compatibility shim for the withdrawn unsafe one-step delivery API.
+
+    Version 1.3 exposed this name before its approval-boundary flaw was found.
+    Preserve its call shape, but never apply an unseen release: callers receive
+    a safe refusal and must use the lifecycle deliver-preview-execute route.
+    """
+    del vault_root, kwargs
+    return {
+        "status": "not-delivered",
+        "evidence": {
+            "status": "deprecated",
+            "reason": "use-lifecycle-deliver-preview-execute",
+        },
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--vault", type=Path, default=Path.cwd())
-    parser.add_argument("--tag", required=True)
-    parser.add_argument("--tag-object", required=True)
-    parser.add_argument("--commit", required=True)
-    parser.add_argument("--tree", required=True)
+    parser.add_argument("--deliver-latest", action="store_true")
+    parser.add_argument("--tag")
+    parser.add_argument("--tag-object")
+    parser.add_argument("--commit")
+    parser.add_argument("--tree")
     args = parser.parse_args(argv)
     try:
-        release = verify_release_ref(
-            args.vault,
-            tag=args.tag,
-            tag_object=args.tag_object,
-            commit=args.commit,
-            tree=args.tree,
-        )
-        result = apply_verified_release(args.vault, release)
+        if args.deliver_latest:
+            if any(value is not None for value in (args.tag, args.tag_object, args.commit, args.tree)):
+                parser.error("--deliver-latest cannot be combined with an explicit release identity")
+            result = deliver_latest_release(args.vault)
+        else:
+            if any(value is None for value in (args.tag, args.tag_object, args.commit, args.tree)):
+                parser.error("--tag, --tag-object, --commit, and --tree are required without --deliver-latest")
+            parser.error(
+                "direct release application is retired; core.lifecycle.service "
+                "must build and execute the approved preview"
+            )
     except (OSError, RuntimeError) as error:
         print(json.dumps({"ok": False, "error": str(error)}, sort_keys=True))
         return 1

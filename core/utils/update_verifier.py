@@ -36,6 +36,9 @@ STATUS_NONE = "no-newer-release-observed-unverified"
 STATUS_OFFLINE = "offline"
 STATUS_UNKNOWN = "UNKNOWN"
 STATUS_SKIPPED = "skipped"
+STATUS_IDENTITY = "release-identity-proved"
+STATUS_UP_TO_DATE = "up-to-date"
+_VALID_CHANNELS = frozenset({"stable", "beta"})
 
 _SEMVER_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _TAG_RE = re.compile(
@@ -721,7 +724,10 @@ class UpdateVerifier:
             raise EvidenceError("isolated release cache contains alternate object storage")
         GitRunner._bounded_directory_usage(self.cache_path)
 
-    def _remote_release_tags(self) -> RemoteReleaseTagEnumeration:
+    def _remote_release_tags(
+        self,
+        exact_version: SemVer | None = None,
+    ) -> RemoteReleaseTagEnumeration:
         raw = self.git.run_plain(
             "-c",
             "credential.helper=",
@@ -768,10 +774,13 @@ class UpdateVerifier:
                 tag_object=object_id.decode("ascii"),
             )
             version = SemVer.parse(match.group("version"))
-            if highest_version is None or version > highest_version:
+            if exact_version is not None:
+                if version == exact_version:
+                    selected.append(evidence)
+            elif highest_version is None or version > highest_version:
                 highest_version = version
                 selected = [evidence]
-            elif version == highest_version:
+            elif exact_version is None and version == highest_version:
                 selected.append(evidence)
         if len(selected) > MAX_RELEASE_TAGS:
             raise EvidenceError("higher release candidate count exceeded its bound")
@@ -993,6 +1002,82 @@ class UpdateVerifier:
             self._verify_catalog(profile, entries)
         return CandidateEvidence(expected_version, tag, fetched_tag_object, commit, tree, profile.profile)
 
+    @staticmethod
+    def _identity_result(candidate: CandidateEvidence) -> dict[str, object]:
+        return {
+            "status": STATUS_IDENTITY,
+            "version": candidate.version,
+            "tag": candidate.tag,
+            "tag_object": candidate.tag_object,
+            "commit": candidate.commit,
+            "tree": candidate.tree,
+        }
+
+    def _prove_release(
+        self,
+        channel: str,
+        *,
+        exact_version: str | None,
+    ) -> dict[str, object]:
+        """Prove a release identity without changing notice or cache state."""
+        self._budget = ExecutionBudget.start(self.wall_clock_seconds)
+        self.git.use_budget(self._budget)
+        try:
+            if channel not in _VALID_CHANNELS:
+                return {"status": STATUS_UNKNOWN, "reason": "channel-invalid"}
+            if channel != "stable":
+                return {"status": STATUS_UNKNOWN, "reason": "channel-unsupported"}
+            requested: SemVer | None = None
+            if exact_version is not None:
+                try:
+                    requested = SemVer.parse(exact_version)
+                except EvidenceError:
+                    return {"status": STATUS_UNKNOWN, "reason": "version-invalid"}
+            current_version = self._current_version() if exact_version is None else None
+            remote_tags = self._remote_release_tags(requested).selected
+            if not remote_tags:
+                return {
+                    "status": STATUS_UNKNOWN,
+                    "reason": "release-not-found" if exact_version is not None else "no-published-release",
+                }
+            if len(remote_tags) != 1:
+                return {"status": STATUS_UNKNOWN, "reason": "release-ambiguous"}
+            remote_tag = remote_tags[0]
+            match = _TAG_RE.fullmatch(remote_tag.tag)
+            if match is None:
+                return {"status": STATUS_UNKNOWN, "reason": "release-not-found"}
+            with self._quarantined_cache(use_state_root=False):
+                self._fetch((remote_tag,))
+                candidate = self._verify_candidate(
+                    remote_tag.tag,
+                    remote_tag.tag_object,
+                    match.group("version"),
+                    match.group("short"),
+                )
+            if current_version is not None and SemVer.parse(candidate.version) <= SemVer.parse(current_version):
+                return {
+                    "status": STATUS_UP_TO_DATE,
+                    "current_version": current_version,
+                    "latest_version": candidate.version,
+                }
+            return self._identity_result(candidate)
+        except OfflineError:
+            return {"status": STATUS_OFFLINE, "reason": "network-unavailable"}
+        except (CancelledError, EvidenceError, OSError, UnicodeError, subprocess.SubprocessError) as error:
+            reason = {
+                CancelledError: "cancelled",
+                TagObjectMovedError: "tag-object-moved",
+                TagObjectMismatchError: "tag-object-mismatch",
+                EvidenceError: "evidence-invalid",
+                OSError: "io-error",
+                UnicodeError: "encoding-invalid",
+                subprocess.SubprocessError: "subprocess-failed",
+            }.get(type(error), "evidence-invalid")
+            return {"status": STATUS_UNKNOWN, "reason": reason}
+        finally:
+            self._budget = None
+            self.git.budget = None
+
     def _legacy_notice_matches(self, candidate: CandidateEvidence, state: dict[str, object]) -> bool:
         if state.get("legacy_notice_migrated") is True:
             return False
@@ -1017,9 +1102,13 @@ class UpdateVerifier:
         )
 
     @contextmanager
-    def _quarantined_cache(self):
-        self.state_root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        quarantine = Path(tempfile.mkdtemp(prefix="objects-quarantine.", dir=self.state_root)) / "objects.git"
+    def _quarantined_cache(self, *, use_state_root: bool = True):
+        if use_state_root:
+            self.state_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            parent = Path(tempfile.mkdtemp(prefix="objects-quarantine.", dir=self.state_root))
+        else:
+            parent = Path(tempfile.mkdtemp(prefix="dex-release-evidence."))
+        quarantine = parent / "objects.git"
         original_cache = self._evidence_cache
         self._evidence_cache = quarantine
         if self._budget is not None:
@@ -1031,7 +1120,7 @@ class UpdateVerifier:
             self._evidence_cache = original_cache
             if self._budget is not None:
                 self._budget.monitored_path = None
-            shutil.rmtree(quarantine.parent, ignore_errors=True)
+            shutil.rmtree(parent, ignore_errors=True)
 
     def _promote_quarantine(self) -> None:
         quarantine = self.cache_path
@@ -1295,6 +1384,84 @@ class UpdateVerifier:
         finally:
             self._budget = None
             self.git.budget = None
+
+
+def _run_release_identity_query(
+    vault: str | Path,
+    channel: str,
+    *,
+    version: str | None,
+    state_root: Path | None,
+    remote_url: str,
+    allow_test_transport: bool,
+    git_runner: GitRunner | None,
+    fetch_override: Callable[[GitRunner, Path, str], None] | None,
+    wall_clock_seconds: float,
+) -> dict[str, object]:
+    try:
+        verifier = UpdateVerifier(
+            Path(vault),
+            state_root=state_root,
+            remote_url=remote_url,
+            allow_test_transport=allow_test_transport,
+            git_runner=git_runner,
+            fetch_override=fetch_override,
+            wall_clock_seconds=wall_clock_seconds,
+        )
+    except (EvidenceError, OSError, UnicodeError, subprocess.SubprocessError):
+        return {"status": STATUS_UNKNOWN, "reason": "query-setup-invalid"}
+    return verifier._prove_release(channel, exact_version=version)
+
+
+def prove_latest_release(
+    vault: str | Path,
+    channel: str,
+    *,
+    state_root: Path | None = None,
+    remote_url: str = CANONICAL_REMOTE_URL,
+    allow_test_transport: bool = False,
+    git_runner: GitRunner | None = None,
+    fetch_override: Callable[[GitRunner, Path, str], None] | None = None,
+    wall_clock_seconds: float = SESSION_WALL_CLOCK_SECONDS,
+) -> dict[str, object]:
+    """Prove the newest published release without changing notice state."""
+    return _run_release_identity_query(
+        vault,
+        channel,
+        version=None,
+        state_root=state_root,
+        remote_url=remote_url,
+        allow_test_transport=allow_test_transport,
+        git_runner=git_runner,
+        fetch_override=fetch_override,
+        wall_clock_seconds=wall_clock_seconds,
+    )
+
+
+def prove_release_identity(
+    vault: str | Path,
+    channel: str,
+    version: str,
+    *,
+    state_root: Path | None = None,
+    remote_url: str = CANONICAL_REMOTE_URL,
+    allow_test_transport: bool = False,
+    git_runner: GitRunner | None = None,
+    fetch_override: Callable[[GitRunner, Path, str], None] | None = None,
+    wall_clock_seconds: float = SESSION_WALL_CLOCK_SECONDS,
+) -> dict[str, object]:
+    """Prove one exact published release without changing notice state."""
+    return _run_release_identity_query(
+        vault,
+        channel,
+        version=version,
+        state_root=state_root,
+        remote_url=remote_url,
+        allow_test_transport=allow_test_transport,
+        git_runner=git_runner,
+        fetch_override=fetch_override,
+        wall_clock_seconds=wall_clock_seconds,
+    )
 
 
 def _session_start_output(result: dict[str, object]) -> None:

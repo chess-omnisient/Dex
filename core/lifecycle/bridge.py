@@ -23,6 +23,7 @@ ACTIVATION_VERSION = 1
 BRIDGE_RELEASE_RELATIVE = Path("core/lifecycle/catalog/bridge-release.json")
 ACTIVATION_RELATIVE = Path("System/.dex/lifecycle/activation.json")
 CATALOG_RELATIVE = Path("System/.release-catalog.json")
+COMPATIBLE_ACTIVATION_API_VERSIONS = frozenset({"1.2.0", "1.3.0"})
 
 
 class BridgeError(RuntimeError):
@@ -169,7 +170,10 @@ def _validate_activation(raw: bytes, bridge: BridgeRelease) -> dict[str, object]
 
         if type(value["activation_version"]) is not int or value["activation_version"] != 1:
             raise BridgeActivationError("existing activation has an unsupported version")
-        if value["api_version"] != api_version:
+        if value["api_version"] not in {
+            api_version,
+            *COMPATIBLE_ACTIVATION_API_VERSIONS,
+        }:
             raise BridgeActivationError("existing activation belongs to another lifecycle API")
         if value["bridge_release_version"] != bridge.release_version:
             raise BridgeActivationError("existing activation belongs to another bridge release")

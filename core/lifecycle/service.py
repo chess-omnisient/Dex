@@ -18,7 +18,7 @@ import json
 import os
 import re
 import shutil
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from core import portable_contract
@@ -47,7 +47,7 @@ from core.lifecycle.retention import compute_retention_report
 from core.path_safety import unsafe_existing_parent
 from core.transaction.engine import PlanEntry, PlanRejected, Transaction
 
-api_version = "1.2.0"
+api_version = "1.4.0"
 
 _CATALOG_RELATIVE = "System/.release-catalog.json"
 _PURPOSE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
@@ -100,8 +100,8 @@ def _transaction_preview_document(
     writes: list[dict[str, object]] = []
     seen: set[str] = set()
     for entry in plan:
-        if not isinstance(entry, PlanEntry) or entry.content is None:
-            raise ValueError("private lifecycle transactions currently accept writes only")
+        if not isinstance(entry, PlanEntry):
+            raise ValueError("private lifecycle transactions require PlanEntry values")
         if entry.relative in seen:
             raise ValueError(f"transaction preview repeats path {entry.relative}")
         seen.add(entry.relative)
@@ -133,8 +133,9 @@ def _transaction_preview_document(
         writes.append(
             {
                 "path": entry.relative,
+                "action": entry.operation,
                 "sha256": entry.sha256(),
-                "byte_size": len(entry.content),
+                "byte_size": len(entry.content) if entry.content is not None else 0,
                 "mode": entry.mode,
                 "current": current,
             }
@@ -196,6 +197,7 @@ def _execute_approved_transaction(
     purpose: str,
     approved_token: str,
     operation: str = "update",
+    before_commit: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     """Execute an exact private preview through the one Transaction engine."""
     root = Path(vault_root)
@@ -219,7 +221,9 @@ def _execute_approved_transaction(
     )
     tx_root_relative = Path("System/.dex/tx")
     tx_paths_before = _tree_paths(root, tx_root_relative)
-    result = Transaction.begin(root, list(plan), operation=operation).run()
+    result = Transaction.begin(root, list(plan), operation=operation).run(
+        before_commit=before_commit
+    )
     tx_paths_after = _tree_paths(root, tx_root_relative)
     declared_paths = (
         set(targets)
@@ -557,6 +561,156 @@ def read_lifecycle_state(vault_root: str | Path) -> dict[str, object]:
     )
 
 
+def _bound_release_plan(root: Path, entries: Sequence[PlanEntry]) -> list[PlanEntry]:
+    """Bind every delivered-release write to the bytes the user previewed."""
+    bound: list[PlanEntry] = []
+    for entry in entries:
+        target = root / entry.relative
+        if target.exists() or target.is_symlink():
+            if target.is_symlink() or not target.is_file():
+                raise PlanRejected(f"{entry.relative}: existing target is not a regular file")
+            raw = target.read_bytes()
+            bound.append(
+                PlanEntry(
+                    entry.relative,
+                    entry.content,
+                    entry.mode,
+                    expected_current_sha256=hashlib.sha256(raw).hexdigest(),
+                )
+            )
+            continue
+        if entry.content is None:
+            raise PlanRejected(f"{entry.relative}: delivered-release deletion target disappeared")
+        bound.append(
+            PlanEntry(
+                entry.relative,
+                entry.content,
+                entry.mode,
+                expected_absent=True,
+            )
+        )
+    return bound
+
+
+def _closed_release_identity(value: Mapping[str, object]) -> dict[str, str]:
+    required = {"tag", "tag_object", "commit", "tree", "version", "channel"}
+    if set(value) != required or not all(isinstance(value[key], str) for key in required):
+        raise PlanRejected("delivered release identity is malformed")
+    return {key: str(value[key]) for key in sorted(required)}
+
+
+def _delivered_release_preview(
+    vault_root: str | Path,
+    release_identity: Mapping[str, object],
+) -> tuple[dict[str, object], list[PlanEntry], object, str]:
+    """Rebuild the exact delivery preview from immutable fetched bytes."""
+    from core.update import apply_update
+
+    root = Path(vault_root).resolve()
+    identity = _closed_release_identity(release_identity)
+    release = apply_update.verify_release_ref(
+        root,
+        tag=identity["tag"],
+        tag_object=identity["tag_object"],
+        commit=identity["commit"],
+        tree=identity["tree"],
+    )
+    if apply_update._release_identity(release) != identity:
+        raise PlanRejected("delivered release identity changed during verification")
+    previous_commit = apply_update.validated_release_apply_context(root, release)
+    plan = _bound_release_plan(root, apply_update.build_update_plan(root, release).entries)
+    transaction = _transaction_preview_document(
+        root,
+        plan,
+        purpose="delivered-release",
+    )
+    preview: dict[str, object] = {
+        "release": identity,
+        "previous_commit": previous_commit,
+        "writes": transaction["writes"],
+    }
+    return preview, plan, release, previous_commit
+
+
+def deliver_latest_release(vault_root: str | Path) -> dict[str, object]:
+    """Fetch and re-prove a release, without a vault-content transaction."""
+    from core.update.apply_update import deliver_latest_release as deliver
+
+    return _envelope(**deliver(Path(vault_root)))
+
+
+def build_and_preview_delivered_release(
+    vault_root: str | Path,
+    release: Mapping[str, object],
+) -> dict[str, object]:
+    """Render the exact immutable delivered release before asking for approval."""
+    preview, _plan, _verified, _previous = _delivered_release_preview(vault_root, release)
+    return _envelope(
+        preview=preview,
+        approval_token=hashlib.sha256(_canonical(preview)).hexdigest(),
+    )
+
+
+def execute_approved_delivered_release(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    """Apply only the unchanged delivered-release preview through Transaction."""
+    from core.update import apply_update
+
+    if not isinstance(preview, Mapping) or set(preview) != {
+        "release",
+        "previous_commit",
+        "writes",
+    }:
+        raise PlanRejected("delivered-release preview is malformed")
+    if not isinstance(preview["release"], Mapping):
+        raise PlanRejected("delivered-release preview is missing its release identity")
+    try:
+        expected_preview, plan, release, previous_commit = _delivered_release_preview(
+            vault_root,
+            preview["release"],
+        )
+        supplied_bytes = _canonical(dict(preview))
+    except (TypeError, ValueError) as error:
+        raise PlanRejected("delivered-release preview is not canonical JSON") from error
+    expected_bytes = _canonical(expected_preview)
+    expected_token = hashlib.sha256(expected_bytes).hexdigest()
+    if not hmac.compare_digest(supplied_bytes, expected_bytes) or not isinstance(
+        approved_token, str
+    ) or not hmac.compare_digest(approved_token, expected_token):
+        raise PlanRejected("delivered-release approval does not match the current exact preview")
+
+    transaction_token = _preview_transaction(
+        vault_root,
+        plan,
+        purpose="delivered-release",
+    )["approval_token"]
+    executed = _execute_approved_transaction(
+        vault_root,
+        plan,
+        purpose="delivered-release",
+        approved_token=str(transaction_token),
+        before_commit=lambda: apply_update._finalize_release_metadata(
+            Path(vault_root).resolve(), release, previous_commit
+        ),
+    )
+    return _envelope(receipt=executed["receipt"], release=expected_preview["release"])
+
+
+def deliver_and_apply_latest_release(vault_root: str | Path) -> dict[str, object]:
+    """Safe v1.3 bridge: never apply a release that was not previewed."""
+    del vault_root
+    return _envelope(
+        status="not-delivered",
+        evidence={
+            "status": "deprecated",
+            "reason": "use-deliver-preview-execute",
+        },
+    )
+
+
 def build_and_preview_conflict_resolution(
     vault_root: str | Path,
     release_root: str | Path,
@@ -816,6 +970,10 @@ __all__ = [
     "execute_approved_adoption",
     "rewind_adoption_by_receipt",
     "read_lifecycle_state",
+    "deliver_latest_release",
+    "build_and_preview_delivered_release",
+    "execute_approved_delivered_release",
+    "deliver_and_apply_latest_release",
     "build_and_preview_conflict_resolution",
     "execute_approved_conflict_resolution",
     "build_archive_removal_preview",

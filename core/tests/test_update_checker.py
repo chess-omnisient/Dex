@@ -21,11 +21,13 @@ from core.utils.update_verifier import (
     CATALOG_PATH,
     MANIFEST_PATH,
     PROFILE_PATH,
+    STATUS_IDENTITY,
     STATUS_NONE,
     STATUS_OFFLINE,
     STATUS_RELEASE,
     STATUS_SKIPPED,
     STATUS_UNKNOWN,
+    STATUS_UP_TO_DATE,
     CancelledError,
     CompatibilityArtifact,
     GitRunner,
@@ -1075,3 +1077,79 @@ def test_session_start_settings_are_fetch_only_and_do_not_claim_sync() -> None:
     assert "git pull" not in all_commands
     assert "pulled latest" not in all_commands
     assert "synced with github" not in all_commands
+
+
+def test_latest_release_identity_proof_is_exact_and_does_not_persist_notice_state(
+    tmp_path: Path,
+) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+    tag, commit = _release(remote, "1.63.0")
+    state = tmp_path / "state"
+
+    result = update_verifier_module.prove_latest_release(
+        vault,
+        "stable",
+        state_root=state,
+        remote_url=str(remote),
+        allow_test_transport=True,
+        wall_clock_seconds=60.0,
+    )
+
+    assert result == {
+        "status": STATUS_IDENTITY,
+        "version": "1.63.0",
+        "tag": tag,
+        "tag_object": _tag_object(remote, tag),
+        "commit": commit,
+        "tree": _git(remote, "rev-parse", f"{commit}^{{tree}}"),
+    }
+    assert not state.exists()
+
+
+def test_release_identity_proof_refuses_unknown_or_ambiguous_versions(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+    commit = _git(remote, "rev-parse", "HEAD")
+    _git(remote, "tag", "-a", f"dist/release/v1.62.0-{commit[:8]}", "-m", "duplicate")
+    kwargs = {
+        "state_root": tmp_path / "state",
+        "remote_url": str(remote),
+        "allow_test_transport": True,
+        "wall_clock_seconds": 60.0,
+    }
+
+    assert update_verifier_module.prove_release_identity(vault, "stable", "1.62.0", **kwargs) == {
+        "status": STATUS_UNKNOWN,
+        "reason": "release-ambiguous",
+    }
+    assert update_verifier_module.prove_release_identity(vault, "stable", "9.9.9", **kwargs) == {
+        "status": STATUS_UNKNOWN,
+        "reason": "release-not-found",
+    }
+
+
+def test_latest_release_identity_proof_reports_up_to_date(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault", "1.63.0")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.63.0")
+
+    result = update_verifier_module.prove_latest_release(
+        vault,
+        "stable",
+        state_root=tmp_path / "state",
+        remote_url=str(remote),
+        allow_test_transport=True,
+        wall_clock_seconds=60.0,
+    )
+
+    assert result == {
+        "status": STATUS_UP_TO_DATE,
+        "current_version": "1.63.0",
+        "latest_version": "1.63.0",
+    }

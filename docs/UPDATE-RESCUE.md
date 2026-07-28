@@ -58,6 +58,21 @@ the new version's guided route (topology check, adoption plan, receipts) now wor
 and completes the update properly. Then run `/dex-doctor`. Both are conversational;
 the assistant drives, the user approves.
 
+## Current guided route — no Git workaround
+
+Once a vault has the delivered update route, `/dex-update` does not ask a person
+to fetch or merge anything. First, `deliver_latest_release` through
+`core.lifecycle.service` proves the newest published release in a disposable
+cache, fetches only that pinned release into Dex's private brain store, and
+proves the fetched bytes again. It does not change vault content.
+
+Dex then asks `build_and_preview_delivered_release` through the same service
+with that exact release identity, shows every write, and waits for a fresh yes.
+Only `execute_approved_delivered_release` with the unchanged preview and token
+can write. The transaction and ownership contract decide every vault-content
+write and keep the receipt and rewind evidence. If delivery, preview, or
+execution cannot be proved, it stops; do not substitute a manual Git command.
+
 ## Special case: v1.62.0 refuses before the merge
 
 Six of the seven published copies of v1.62.0 shipped a self-contradictory metadata

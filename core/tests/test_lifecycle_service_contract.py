@@ -14,6 +14,7 @@ from core.lifecycle.bridge import ACTIVATION_RELATIVE
 from core.lifecycle.engine import rewind_acknowledgement_token
 from core.tests.test_adoption_transaction import _setup
 from core.tests.test_lifecycle_bridge import _write_bridge_release
+from core.update import apply_update
 
 SCHEMA_PATH = (
     Path(__file__).resolve().parents[1]
@@ -238,7 +239,7 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
 def test_api_version_is_present_and_frozen_in_schema() -> None:
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
-    assert service.api_version == "1.2.0"
+    assert service.api_version == "1.4.0"
     assert schema["properties"]["api_version"] == {"const": service.api_version}
 
 
@@ -250,6 +251,10 @@ def test_public_surface_requires_a_version_bump_and_bridge_to_change() -> None:
         "execute_approved_adoption",
         "rewind_adoption_by_receipt",
         "read_lifecycle_state",
+        "deliver_latest_release",
+        "build_and_preview_delivered_release",
+        "execute_approved_delivered_release",
+        "deliver_and_apply_latest_release",
         "build_and_preview_conflict_resolution",
         "execute_approved_conflict_resolution",
         "build_archive_removal_preview",
@@ -279,6 +284,107 @@ def test_public_surface_requires_a_version_bump_and_bridge_to_change() -> None:
     assert "bridge" in service.__doc__.lower()
 
 
+def test_release_delivery_is_non_mutating_and_exposed_only_through_the_lifecycle_service(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vault = tmp_path / "vault"
+    expected = {
+        "status": "delivered",
+        "release": {
+            "tag": "dist/release/v1.65.0-0123456789abcdef0123456789abcdef01234567",
+            "tag_object": "0123456789abcdef0123456789abcdef01234567",
+            "commit": "0123456789abcdef0123456789abcdef01234567",
+            "tree": "0123456789abcdef0123456789abcdef01234567",
+            "version": "1.65.0",
+            "channel": "stable",
+        },
+    }
+    called_with: list[Path] = []
+
+    def fake_delivery(vault_root: Path) -> dict[str, object]:
+        called_with.append(vault_root)
+        return expected
+
+    monkeypatch.setattr(apply_update, "deliver_latest_release", fake_delivery)
+
+    response = service.deliver_latest_release(vault)
+
+    assert called_with == [vault]
+    assert response == {"api_version": service.api_version, **expected}
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    _assert_conforms(
+        schema,
+        "deliver_latest_release",
+        {"vault_root": str(vault)},
+        response,
+    )
+
+
+def test_legacy_release_delivery_operation_is_a_non_mutating_bridge(tmp_path: Path) -> None:
+    response = service.deliver_and_apply_latest_release(tmp_path / "vault")
+
+    assert response == {
+        "api_version": service.api_version,
+        "status": "not-delivered",
+        "evidence": {
+            "status": "deprecated",
+            "reason": "use-deliver-preview-execute",
+        },
+    }
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    _assert_conforms(
+        schema,
+        "deliver_and_apply_latest_release",
+        {"vault_root": str(tmp_path / "vault")},
+        response,
+    )
+
+
+def test_delivered_release_preview_and_execute_contracts_bind_one_identity() -> None:
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    identity = {
+        "tag": "dist/release/v1.65.0-0123456789abcdef0123456789abcdef01234567",
+        "tag_object": "0123456789abcdef0123456789abcdef01234567",
+        "commit": "0123456789abcdef0123456789abcdef01234567",
+        "tree": "0123456789abcdef0123456789abcdef01234567",
+        "version": "1.65.0",
+        "channel": "stable",
+    }
+    preview = {
+        "release": identity,
+        "previous_commit": "89abcdef0123456789abcdef0123456789abcdef",
+        "writes": [
+            {
+                "path": "README.md",
+                "action": "write",
+                "sha256": "a" * 64,
+                "byte_size": 10,
+                "mode": 420,
+                "current": {"exists": True},
+            }
+        ],
+    }
+    token = "b" * 64
+    preview_response = {
+        "api_version": service.api_version,
+        "preview": preview,
+        "approval_token": token,
+    }
+    _assert_conforms(
+        schema,
+        "build_and_preview_delivered_release",
+        {"vault_root": "/tmp/vault", "release": identity},
+        preview_response,
+    )
+    _assert_conforms(
+        schema,
+        "execute_approved_delivered_release",
+        {"vault_root": "/tmp/vault", "preview": preview, "approved_token": token},
+        {"api_version": service.api_version, "receipt": {}, "release": identity},
+    )
+
+
 def test_archive_removal_is_previewed_approved_and_receipted(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
     archive = vault / ".dex/pre-split-archive.git"
@@ -289,7 +395,7 @@ def test_archive_removal_is_previewed_approved_and_receipted(tmp_path: Path) -> 
 
     preview = service.build_archive_removal_preview(vault)
 
-    assert preview["api_version"] == "1.2.0"
+    assert preview["api_version"] == "1.4.0"
     assert preview["preview"]["archive_relative"] == ".dex/pre-split-archive.git"
     assert preview["preview"]["size_bytes"] == len(b"ref: refs/heads/main\narchive bytes")
     assert preview["preview"]["retention"] == "one full release cycle after conversion"
