@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.80.5] — 🔒 Your personal profile never ships in Dex (2026-07-29)
+
+Dex's download package used to include a default profile file. It was not your
+live profile, but it made the boundary between Dex's product files and your
+personal information less clear than it should be. This release removes that
+file from the package entirely.
+
+**What this means for you:**
+
+* **Your actual profile is never part of a Dex release.** Updating Dex leaves
+  the profile you have already made for yourself alone.
+* **New installs start from a safe template.** Dex creates your personal
+  profile locally during setup, rather than carrying one in the download.
+* **The protected update path stays the same.** Your notes, tasks, custom
+  skills, and connections remain yours throughout an update.
+
 ## [1.80.4] — 🔒 Your profile stays exactly as you left it (2026-07-29)
 
 During the one-time internal change that separates Dex from your own notes, Dex used to add a small internal marker to your profile. Your choices stayed safe, but it was still a change to a file that belongs to you. This release stops that entirely.

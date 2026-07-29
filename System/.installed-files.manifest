@@ -719,7 +719,6 @@ System/pillars.yaml
 System/trusted-mcps.example.yaml
 System/usage_log.md
 System/user-profile-template.yaml
-System/user-profile.yaml
 core/__init__.py
 core/capabilities.py
 core/customization_migration/__init__.py
