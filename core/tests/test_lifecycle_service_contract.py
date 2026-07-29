@@ -150,6 +150,45 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
         mcp_execute_response,
     )
 
+    onboarding_vault = tmp_path / "onboarding-vault"
+    (onboarding_vault / "System").mkdir(parents=True)
+    (onboarding_vault / "System" / "user-profile.yaml").write_text(
+        "name: Example User\n",
+        encoding="utf-8",
+    )
+    onboarding_request = {
+        "vault_root": str(onboarding_vault),
+        "working_context": {"role_focus": "Lead product work", "key_people": []},
+        "calendar_source": {"provider": "apple", "work_calendar": "Work"},
+    }
+    onboarding_response = service.build_and_preview_onboarding_context(
+        onboarding_vault,
+        onboarding_request["working_context"],
+        onboarding_request["calendar_source"],
+    )
+    _assert_conforms(
+        schema,
+        "build_and_preview_onboarding_context",
+        onboarding_request,
+        onboarding_response,
+    )
+    onboarding_execute_request = {
+        "vault_root": str(onboarding_vault),
+        "preview": onboarding_response["preview"],
+        "approved_token": onboarding_response["approval_token"],
+    }
+    onboarding_execute_response = service.execute_approved_onboarding_context(
+        onboarding_vault,
+        onboarding_response["preview"],
+        onboarding_response["approval_token"],
+    )
+    _assert_conforms(
+        schema,
+        "execute_approved_onboarding_context",
+        onboarding_execute_request,
+        onboarding_execute_response,
+    )
+
     preview_request = {
         "vault_root": str(vault),
         "release_root": str(release_root),
@@ -272,7 +311,7 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
 def test_api_version_is_present_and_frozen_in_schema() -> None:
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
-    assert service.api_version == "1.4.0"
+    assert service.api_version == "1.5.0"
     assert schema["properties"]["api_version"] == {"const": service.api_version}
 
 
@@ -289,6 +328,8 @@ def test_public_surface_requires_a_version_bump_and_bridge_to_change() -> None:
         "execute_approved_delivered_release",
         "build_and_preview_mcp_registration",
         "execute_approved_mcp_registration",
+        "build_and_preview_onboarding_context",
+        "execute_approved_onboarding_context",
         "deliver_and_apply_latest_release",
         "build_and_preview_conflict_resolution",
         "execute_approved_conflict_resolution",
@@ -430,7 +471,7 @@ def test_archive_removal_is_previewed_approved_and_receipted(tmp_path: Path) -> 
 
     preview = service.build_archive_removal_preview(vault)
 
-    assert preview["api_version"] == "1.4.0"
+    assert preview["api_version"] == "1.5.0"
     assert preview["preview"]["archive_relative"] == ".dex/pre-split-archive.git"
     assert preview["preview"]["size_bytes"] == len(b"ref: refs/heads/main\narchive bytes")
     assert preview["preview"]["retention"] == "one full release cycle after conversion"

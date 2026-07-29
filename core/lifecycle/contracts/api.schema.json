@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "required": ["api_version", "x-operations"],
   "properties": {
-    "api_version": {"const": "1.4.0"},
+    "api_version": {"const": "1.5.0"},
     "x-operations": {"type": "object"}
   },
   "x-operations": {
@@ -54,6 +54,14 @@
     "execute_approved_mcp_registration": {
       "request": {"$ref": "#/$defs/mcpRegistrationExecuteRequest"},
       "response": {"$ref": "#/$defs/mcpRegistrationExecuteResponse"}
+    },
+    "build_and_preview_onboarding_context": {
+      "request": {"$ref": "#/$defs/onboardingContextPreviewRequest"},
+      "response": {"$ref": "#/$defs/onboardingContextPreviewResponse"}
+    },
+    "execute_approved_onboarding_context": {
+      "request": {"$ref": "#/$defs/onboardingContextExecuteRequest"},
+      "response": {"$ref": "#/$defs/onboardingContextExecuteResponse"}
     },
     "build_and_preview_conflict_resolution": {
       "request": {"$ref": "#/$defs/resolutionsRequest"},
@@ -123,7 +131,7 @@
     "apiEnvelope": {
       "type": "object",
       "required": ["api_version"],
-      "properties": {"api_version": {"const": "1.4.0"}}
+      "properties": {"api_version": {"const": "1.5.0"}}
     },
     "vaultRequest": {
       "type": "object",
@@ -138,7 +146,7 @@
           "additionalProperties": false,
           "required": ["api_version", "status", "evidence"],
           "properties": {
-            "api_version": {"const": "1.4.0"},
+            "api_version": {"const": "1.5.0"},
             "status": {"const": "not-delivered"},
             "evidence": {"type": "object"}
           }
@@ -148,7 +156,7 @@
           "additionalProperties": false,
           "required": ["api_version", "status", "release"],
           "properties": {
-            "api_version": {"const": "1.4.0"},
+            "api_version": {"const": "1.5.0"},
             "status": {"const": "delivered"},
             "release": {"$ref": "#/$defs/releaseIdentity"}
           }
@@ -208,7 +216,7 @@
           "additionalProperties": false,
           "required": ["api_version", "preview", "approval_token"],
           "properties": {
-            "api_version": {"const": "1.4.0"},
+            "api_version": {"const": "1.5.0"},
             "preview": {"$ref": "#/$defs/deliveredReleasePreview"},
             "approval_token": {"$ref": "#/$defs/sha256"}
           }
@@ -233,7 +241,7 @@
           "additionalProperties": false,
           "required": ["api_version", "receipt", "release"],
           "properties": {
-            "api_version": {"const": "1.4.0"},
+            "api_version": {"const": "1.5.0"},
             "receipt": {"type": "object"},
             "release": {"$ref": "#/$defs/releaseIdentity"}
           }
@@ -265,7 +273,7 @@
           "additionalProperties": false,
           "required": ["api_version", "needed", "preview", "approval_token"],
           "properties": {
-            "api_version": {"const": "1.4.0"},
+            "api_version": {"const": "1.5.0"},
             "needed": {"const": true},
             "preview": {"$ref": "#/$defs/mcpRegistrationPreview"},
             "approval_token": {"$ref": "#/$defs/sha256"}
@@ -276,7 +284,7 @@
           "additionalProperties": false,
           "required": ["api_version", "needed", "preview", "approval_token"],
           "properties": {
-            "api_version": {"const": "1.4.0"},
+            "api_version": {"const": "1.5.0"},
             "needed": {"const": false},
             "preview": {"type": "null"},
             "approval_token": {"type": "null"}
@@ -299,7 +307,56 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
+        "receipt": {"type": "object"}
+      }
+    },
+    "onboardingContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["working_context", "calendar_source", "writes"],
+      "properties": {
+        "working_context": {"type": "object"},
+        "calendar_source": {"type": "object"},
+        "writes": {"type": "array", "minItems": 1, "items": {"type": "object"}}
+      }
+    },
+    "onboardingContextPreviewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "working_context", "calendar_source"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "working_context": {"type": "object"},
+        "calendar_source": {"type": "object"}
+      }
+    },
+    "onboardingContextPreviewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "preview", "approval_token"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "preview": {"$ref": "#/$defs/onboardingContext"},
+        "approval_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "onboardingContextExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/onboardingContext"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "onboardingContextExecuteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
         "receipt": {"type": "object"}
       }
     },
@@ -348,7 +405,7 @@
           "additionalProperties": false,
           "required": ["api_version", "inventory", "plan"],
           "properties": {
-            "api_version": {"const": "1.4.0"},
+            "api_version": {"const": "1.5.0"},
             "inventory": {"$ref": "#/$defs/inventory"},
             "plan": {"$ref": "#/$defs/plan"}
           }
@@ -395,7 +452,7 @@
       "additionalProperties": false,
       "required": ["api_version", "preview", "approval_token"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "preview": {"$ref": "#/$defs/preview"},
         "approval_token": {"$ref": "#/$defs/sha256"}
       }
@@ -480,7 +537,7 @@
       "additionalProperties": false,
       "required": ["api_version", "preview", "approval_token"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "preview": {"$ref": "#/$defs/conflictResolutionPreview"},
         "approval_token": {"$ref": "#/$defs/sha256"}
       }
@@ -527,7 +584,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt", "rewind_acknowledgement_token"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"$ref": "#/$defs/adoptionReceipt"},
         "rewind_acknowledgement_token": {"$ref": "#/$defs/sha256"}
       }
@@ -573,7 +630,7 @@
       "additionalProperties": false,
       "required": ["api_version", "rewind_receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "rewind_receipt": {"$ref": "#/$defs/rewindReceipt"}
       }
     },
@@ -618,7 +675,7 @@
       "additionalProperties": false,
       "required": ["api_version", "preview", "approval_token"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "preview": {"$ref": "#/$defs/archivePreview"},
         "approval_token": {"$ref": "#/$defs/sha256"}
       }
@@ -653,7 +710,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"$ref": "#/$defs/archiveReceipt"}
       }
     },
@@ -662,7 +719,7 @@
       "additionalProperties": false,
       "required": ["api_version", "ledger_state", "retention"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "ledger_state": {"$ref": "#/$defs/ledgerState"},
         "retention": {"$ref": "#/$defs/retention"}
       }
@@ -711,7 +768,7 @@
       "additionalProperties": false,
       "required": ["api_version", "topology", "preview", "approval_token"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "topology": {"type": "string", "minLength": 1},
         "preview": {"$ref": "#/$defs/topologyPreview"},
         "approval_token": {
@@ -793,7 +850,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt", "receipt_path"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"$ref": "#/$defs/topologyReceipt"},
         "receipt_path": {"$ref": "#/$defs/path"}
       }
@@ -841,7 +898,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"$ref": "#/$defs/rebuildCapsuleReceipt"}
       }
     },
@@ -872,7 +929,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"$ref": "#/$defs/rebuildStagingReceipt"}
       }
     },
@@ -919,7 +976,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"$ref": "#/$defs/rebuildVerificationReceipt"}
       }
     },
@@ -975,7 +1032,7 @@
         "rewind_acknowledgement_token"
       ],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"$ref": "#/$defs/rebuildActivationReceipt"},
         "rewind_acknowledgement_token": {
           "anyOf": [
@@ -1072,7 +1129,7 @@
       "additionalProperties": false,
       "required": ["api_version", "rewind_receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "rewind_receipt": {"$ref": "#/$defs/rebuildRewindReceipt"}
       }
     },
@@ -1090,7 +1147,7 @@
       "additionalProperties": false,
       "required": ["api_version", "capsule_id", "abandoned"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "capsule_id": {"$ref": "#/$defs/capsuleId"},
         "abandoned": {"const": true}
       }
@@ -1100,7 +1157,7 @@
       "additionalProperties": false,
       "required": ["api_version", "outcomes"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "outcomes": {
           "type": "array",
           "items": {"type": "object"}

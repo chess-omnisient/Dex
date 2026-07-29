@@ -47,6 +47,7 @@ _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core import capabilities as capability_rooms
+from core.lifecycle import service as lifecycle_service
 from core.paths import (
     MARKER_FILE,
     MCP_CONFIG_EXAMPLE,
@@ -55,6 +56,7 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
+from core.transaction.engine import PlanRejected
 from core.utils.nudge_calendar import build_nudge_calendar, is_dex_nudge_event
 
 # User-configured working week (defaults to Monday-Friday)
@@ -1602,6 +1604,42 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
+            name="preview_confirmed_onboarding_context",
+            description=(
+                "Preview the reviewed working context and Apple Calendar source after "
+                "onboarding is complete. This does not write anything."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "working_context": {
+                        "type": "object",
+                        "description": "The user's reviewed working summary, not source document text.",
+                    },
+                    "calendar_source": {
+                        "type": "object",
+                        "description": "Apple Calendar selection or provider=none; Google is not supported here.",
+                    },
+                },
+                "required": ["working_context", "calendar_source"],
+            },
+        ),
+        types.Tool(
+            name="apply_confirmed_onboarding_context",
+            description=(
+                "Apply only an unchanged onboarding-context preview after explicit approval. "
+                "Returns the lifecycle transaction receipt."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "preview": {"type": "object"},
+                    "approval_token": {"type": "string"},
+                },
+                "required": ["preview", "approval_token"],
+            },
+        ),
+        types.Tool(
             name="get_onboarding_status",
             description="Get current onboarding progress and completion status",
             inputSchema={
@@ -1716,7 +1754,63 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
     arguments = arguments or {}
     
     try:
-        if name == "start_onboarding_session":
+        if name == "preview_confirmed_onboarding_context":
+            if not MARKER_FILE.exists():
+                result = create_error_response(
+                    "Finish onboarding before saving working context or a calendar source",
+                    suggestion="Call finalize_onboarding first",
+                )
+            else:
+                working_context = arguments.get("working_context")
+                calendar_source = arguments.get("calendar_source")
+                if not isinstance(working_context, dict) or not isinstance(calendar_source, dict):
+                    result = create_error_response(
+                        "working_context and calendar_source must both be objects",
+                    )
+                else:
+                    try:
+                        previewed = lifecycle_service.build_and_preview_onboarding_context(
+                            BASE_DIR,
+                            working_context,
+                            calendar_source,
+                        )
+                    except PlanRejected as error:
+                        result = create_error_response(str(error))
+                    else:
+                        result = create_success_response(
+                            previewed,
+                            "Review this exact context and calendar source, then approve it to save.",
+                        )
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "apply_confirmed_onboarding_context":
+            if not MARKER_FILE.exists():
+                result = create_error_response(
+                    "Finish onboarding before saving working context or a calendar source",
+                    suggestion="Call finalize_onboarding first",
+                )
+            else:
+                preview = arguments.get("preview")
+                approval_token = arguments.get("approval_token")
+                if not isinstance(preview, dict) or not isinstance(approval_token, str):
+                    result = create_error_response("preview and approval_token are required")
+                else:
+                    try:
+                        executed = lifecycle_service.execute_approved_onboarding_context(
+                            BASE_DIR,
+                            preview,
+                            approval_token,
+                        )
+                    except PlanRejected as error:
+                        result = create_error_response(str(error))
+                    else:
+                        result = create_success_response(
+                            executed,
+                            "Working context and calendar source saved with a lifecycle receipt.",
+                        )
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "start_onboarding_session":
             force_new = arguments.get('force_new', False)
             
             session = load_session()
