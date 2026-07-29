@@ -15,6 +15,7 @@ from typing import Any, Mapping, Sequence
 RELEASE_TAG = re.compile(
     r"^dist/release/v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-(?P<short>[0-9a-f]{7,64})$"
 )
+LEGACY_RELEASE_TAG = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
 PUBLIC_REMOTE = "https://github.com/davekilleen/Dex.git"
 USER_FIXTURES = {
     "00-Inbox/keep.md": b"# User note\nThis must survive updates.\n",
@@ -113,16 +114,23 @@ def _version_key(version: str) -> tuple[int, int, int]:
 
 
 def discover_distribution_releases(repo: Path) -> tuple[DistributionRelease, ...]:
-    """Return every distinct immutable tree behind the public distribution tags."""
+    """Return every distinct tree behind public distribution and legacy release tags."""
 
     seen_trees: set[str] = set()
     discovered: list[DistributionRelease] = []
-    for tag in _git_lines(repo, "tag", "--list", "dist/release/v*"):
-        match = RELEASE_TAG.fullmatch(tag)
-        if match is None:
+    candidates: list[tuple[int, str, re.Match[str]]] = []
+    for tag in _git_lines(repo, "tag", "--list"):
+        distribution_match = RELEASE_TAG.fullmatch(tag)
+        if distribution_match is not None:
+            candidates.append((0, tag, distribution_match))
             continue
+        legacy_match = LEGACY_RELEASE_TAG.fullmatch(tag)
+        if legacy_match is not None:
+            candidates.append((1, tag, legacy_match))
+
+    for priority, tag, match in sorted(candidates, key=lambda item: (item[0], item[1])):
         commit = _git(repo, "rev-parse", f"{tag}^{{commit}}")
-        if not commit.startswith(match.group("short")):
+        if priority == 0 and not commit.startswith(match.group("short")):
             raise FleetError(f"{tag}: tag suffix does not match its commit")
         tree = _git(repo, "rev-parse", f"{tag}^{{tree}}")
         if tree in seen_trees:
@@ -292,14 +300,18 @@ def acceptance_report_from_json(source: str) -> AcceptanceReport:
 
 def _case_manifest(case: FleetCase) -> dict[str, object]:
     return {
-        "starting": {
-            "tag": case.release.tag,
-            "version": case.release.version,
-            "commit": case.release.commit,
-            "tree": case.release.tree,
-        },
+        "starting": _release_manifest(case.release),
         "vault": str(case.vault),
         "user_hashes": case.user_hashes,
+    }
+
+
+def _release_manifest(release: DistributionRelease) -> dict[str, str]:
+    return {
+        "tag": release.tag,
+        "version": release.version,
+        "commit": release.commit,
+        "tree": release.tree,
     }
 
 
@@ -308,16 +320,34 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
+    manifest = subcommands.add_parser("manifest", help="list historic releases without cloning them")
+    manifest.add_argument("--repo", type=Path, required=True)
     build = subcommands.add_parser("build", help="build clean historic-release fixtures")
     build.add_argument("--repo", type=Path, required=True)
     build.add_argument("--output", type=Path, required=True)
+    build.add_argument("--starting-tag", help="build only this immutable historic release tag")
     check = subcommands.add_parser("check-report", help="fail closed on incomplete fleet evidence")
     check.add_argument("--repo", type=Path, required=True)
     check.add_argument("report", type=Path)
     args = parser.parse_args(argv)
 
+    if args.command == "manifest":
+        releases = discover_distribution_releases(args.repo)
+        print(
+            json.dumps(
+                {"case_count": len(releases), "cases": [_release_manifest(release) for release in releases]},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+
     if args.command == "build":
         releases = discover_distribution_releases(args.repo)
+        if args.starting_tag:
+            releases = tuple(release for release in releases if release.tag == args.starting_tag)
+            if not releases:
+                raise FleetError(f"historic distribution tag was not found: {args.starting_tag}")
         cases = [build_fixture(args.repo, release, args.output) for release in releases]
         print(
             json.dumps(

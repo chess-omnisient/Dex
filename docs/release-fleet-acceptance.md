@@ -7,9 +7,11 @@ published Dex can reach it.
 
 ## What must pass
 
-Every distinct tree behind the published `dist/release/v*` tags is a starting
-case. If two tags point at different trees—even when they share the same
-version number—they are separate cases. Byte-identical trees are one case.
+Every distinct tree behind a published release tag is a starting case. This
+means the `dist/release/v*` packages as well as the older public `v*` release
+tags that predate that format. If two tags point at different trees—even when
+they share the same version number—they are separate cases. Byte-identical
+trees are one case.
 
 Each case must complete two real update hops:
 
@@ -29,21 +31,32 @@ after. A changed hash, an unknown result, a missing transcript, a missing
 receipt, or an unhealthy Doctor result is a failure—not something to explain
 away.
 
-## Build the historic fixtures
+## Discover and build the historic fixtures
 
-Use a fresh temporary directory. The builder never copies a founder's vault
-and refuses to overwrite an existing case.
+Discover the whole historic set first. This creates no copies, so it is safe to
+run as part of ordinary release preparation.
+
+```bash
+python3 scripts/release_fleet.py manifest --repo . > historic-release-manifest.json
+```
+
+The manifest records each immutable starting tag, commit, and tree. The
+starting source must be a public release tag; never use `main`, a working tree,
+or an untagged release candidate as a historical starting point.
+
+Build and exercise one fixture at a time, retaining only its small report and
+transcript after it passes. The builder never copies a founder's vault and
+refuses to overwrite an existing case.
 
 ```bash
 fleet_root=$(mktemp -d /private/tmp/dex-release-fleet.XXXXXX)
 python3 scripts/release_fleet.py build --repo . --output "$fleet_root" \
-  > "$fleet_root/manifest.json"
+  --starting-tag dist/release/v1.61.0-EXACTTAG
 ```
 
-`manifest.json` records each immutable starting tag, commit, tree, fixture
-path, and the exact hashes of the synthetic user content that must survive.
-The starting source must be public distribution tags; never use `main`, a
-working tree, or an untagged release candidate as a historical starting point.
+Its output records the fixture path and the exact hashes of the synthetic user
+content that must survive. Processing one case at a time keeps the release
+gate bounded rather than storing 120 full repositories on disk.
 
 ## Validate the finished evidence
 

@@ -48,6 +48,15 @@ def _tag_release(
     return tag
 
 
+def _tag_legacy_release(repo: Path, version: str, content: str) -> str:
+    (repo / "README.md").write_text(content + "\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "--quiet", "-m", f"legacy release {version}")
+    tag = f"v{version}"
+    _git(repo, "tag", "-a", tag, "-m", tag)
+    return tag
+
+
 def test_discovers_each_distinct_distribution_tree_once(tmp_path: Path) -> None:
     repo = _repository(tmp_path)
     first = _tag_release(repo, "1.61.0", "one")
@@ -65,6 +74,16 @@ def test_rejects_distribution_tag_that_does_not_name_its_commit(tmp_path: Path) 
 
     with pytest.raises(release_fleet.FleetError, match="does not match"):
         release_fleet.discover_distribution_releases(repo)
+
+
+def test_discovers_legacy_published_release_trees_too(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    legacy = _tag_legacy_release(repo, "1.20.1", "legacy")
+    distribution = _tag_release(repo, "1.61.0", "distribution")
+
+    releases = release_fleet.discover_distribution_releases(repo)
+
+    assert [release.tag for release in releases] == [legacy, distribution]
 
 
 def test_build_fixture_uses_requested_release_and_preserves_user_hashes(tmp_path: Path) -> None:
@@ -181,6 +200,47 @@ def test_build_command_outputs_every_distinct_historic_release(
     assert [case["starting"]["tag"] for case in manifest["cases"]] == [
         release.tag for release in release_fleet.discover_distribution_releases(repo)
     ]
+
+
+def test_manifest_command_lists_every_release_without_building_fixtures(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _repository(tmp_path)
+    _tag_release(repo, "1.61.0", "one")
+    _tag_release(repo, "1.62.0", "two")
+    output = tmp_path / "fleet"
+
+    exit_code = release_fleet.main(["manifest", "--repo", str(repo)])
+
+    manifest = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert manifest["case_count"] == 2
+    assert not output.exists()
+
+
+def test_build_command_can_construct_one_historic_release_at_a_time(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _repository(tmp_path)
+    first = _tag_release(repo, "1.61.0", "one")
+    _tag_release(repo, "1.62.0", "two")
+
+    exit_code = release_fleet.main(
+        [
+            "build",
+            "--repo",
+            str(repo),
+            "--output",
+            str(tmp_path / "fleet"),
+            "--starting-tag",
+            first,
+        ]
+    )
+
+    manifest = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert manifest["case_count"] == 1
+    assert manifest["cases"][0]["starting"]["tag"] == first
 
 
 def test_check_report_command_requires_all_discovered_starting_releases(
