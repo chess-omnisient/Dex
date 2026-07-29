@@ -44,9 +44,11 @@ run as part of ordinary release preparation.
 python3 scripts/release_fleet.py manifest --repo . > historic-release-manifest.json
 ```
 
-The manifest records each immutable starting tag, commit, and tree. The
-starting source must be a public release tag; never use `main`, a working tree,
-or an untagged release candidate as a historical starting point.
+The manifest records the generated count and every immutable starting tag,
+commit, and tree. It is the source for the required fleet case count—never a
+hand-maintained number. The starting source must be a public release tag; never
+use `main`, a working tree, or an untagged release candidate as a historical
+starting point.
 
 Build and exercise one fixture at a time, retaining only its small report and
 transcript after it passes. The builder never copies a founder's vault and
@@ -62,18 +64,54 @@ Its output records the fixture path and the exact hashes of the synthetic user
 content that must survive. Processing one case at a time keeps the release
 gate bounded rather than storing 120 full repositories on disk.
 
+## Establish the executable-journey prerequisite
+
+The `journey` command currently **does not execute an update**. It reads and
+hashes the exact `/dex-update` skill and rescue material from the historic and
+foundation immutable tags, writes a failed-at-the-boundary transcript, and
+stops. This is intentional: those release surfaces are Markdown instructions,
+not a machine-callable API. Treating them as an API would manufacture a
+successful-looking update path that no released user can actually invoke.
+
+```bash
+python3 scripts/release_fleet.py journey --repo . --output "$fleet_root" \
+  --starting-tag dist/release/v1.74.0-EXACTSTART \
+  --foundation-tag dist/release/v1.80.0-EXACTFOUNDATION \
+  --follow-up-tag dist/release/v1.80.5-EXACTFOLLOWUP
+```
+
+The required future published protocol must be immutable and machine-verifiable.
+It must expose the historic documented route or its refusal, bridge publication
+provenance, foundation preview, explicit approval, receipts, installed release
+identity, Doctor evidence, and released platform smoke. Until a release ships
+that protocol, no synthetic fixture is installed and no bridge, lifecycle
+method, Git merge, or handwritten route wrapper is allowed to run.
+
+The resulting `<case>.evidence/` directory is beside—not inside—a future
+fixture. Its content-addressed manifest records the exact release identities,
+ordered commands, and artifact hashes. A failed prerequisite attempt is useful
+diagnostic evidence, never fleet acceptance evidence.
+
 ## Validate the finished evidence
 
 After both release tags are public and every case has its journey transcript
 and report entry, validate the report against the full tag set:
 
 ```bash
-python3 scripts/release_fleet.py check-report --repo . REPORT.json
+python3 scripts/release_fleet.py check-report --repo . \
+  --starting-manifest historic-release-manifest.json REPORT.json
 ```
 
-The command passes only when the report covers every discovered starting tree
-and every case has reached both hops, kept its user hashes unchanged, has a
-healthy Doctor result after each hop, and names a user-visible transcript.
+The command first verifies the generated starting manifest against the current
+immutable release trees, then requires that many cases on every declared
+platform. It cannot pass while either released `/dex-update` surface says
+`machine_executable: false`, regardless of how internally consistent a report,
+manifest, transcript, or artifact set appears. Once an executable protocol is
+published, it will also require ordered commands and SHA-256-bound runner
+artifacts: the transcript, release-surface snapshots, receipts, Doctor reports,
+and smoke/platform evidence. Paths, symlinks, malformed JSON, mismatched
+identities, incomplete platform coverage, and unknown/broken Doctor results all
+fail the report.
 
 ## Claim language
 
