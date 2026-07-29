@@ -73,6 +73,22 @@ def plain_helper() -> None:
     }
 
 
+def test_public_lifecycle_operation_extraction_uses_the_explicit_public_surface() -> None:
+    checker = _load_checker()
+    source = '''
+__all__ = [
+    "build_and_preview_mcp_registration",
+    "execute_approved_mcp_registration",
+    "not an operation",
+]
+'''
+
+    assert checker.extract_public_lifecycle_operations(source) == {
+        "build_and_preview_mcp_registration",
+        "execute_approved_mcp_registration",
+    }
+
+
 def test_unknown_call_reference_is_detected() -> None:
     findings = _find_unknown("First line.\nCall `missing_tool()` now.\n")
 
