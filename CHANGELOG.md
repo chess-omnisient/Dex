@@ -7,6 +7,16 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.80.4] — 🔒 Your profile stays exactly as you left it (2026-07-29)
+
+During the one-time internal change that separates Dex from your own notes, Dex used to add a small internal marker to your profile. Your choices stayed safe, but it was still a change to a file that belongs to you. This release stops that entirely.
+
+**What this means for you:**
+
+* **Your profile remains byte-for-byte yours.** Dex no longer adds internal setup information to it while completing an update.
+* **Dex keeps its own records in its protected internal area.** The update still knows what it needs to know, without borrowing space in your profile.
+* **Nothing else about the update becomes less safe.** Your notes, tasks, custom skills, and existing connections continue through the same protected update path.
+
 ## [1.80.3] — 🔄 The complete update release (2026-07-29)
 
 This is the fully checked package for the update improvement above. It makes the
