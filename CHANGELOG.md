@@ -7,6 +7,17 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.80.2] — 🔄 Updating Dex now finishes the connection step (2026-07-29)
+
+An older Dex could safely bring itself up to date, but one small part of its local setup could still be left behind. That meant the update looked complete while Dex's own checkup reported one missing Dex connection afterwards. This release closes that gap.
+
+**What this changes for you:**
+
+* **Dex checks the last missing step after an update.** If an older setup needs one Dex-owned local connection, Dex explains it plainly and shows you the exact change before doing anything.
+* **Your own connections stay yours.** Dex only adds its one missing connection. It never replaces, removes, or edits any connection or setting you already have.
+* **You stay in control.** This is a separate step with a fresh yes. If your settings change while Dex is waiting for your answer, it stops rather than guessing.
+* **A completed update is genuinely healthy.** The old-version update journey now reaches a clean Doctor result instead of leaving that avoidable warning behind.
+
 ## [1.80.0] — 🔄 Updating Dex no longer needs Git (2026-07-29)
 
 Updating Dex should be a normal, guided thing to do — not a technical recovery project. This release gives Dex the missing delivery step: from this version onward, `/dex-update` can fetch a verified new release itself, show you exactly what it found, and use the same protected update route that already keeps your notes safe.
