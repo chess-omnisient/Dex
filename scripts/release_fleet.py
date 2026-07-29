@@ -12,15 +12,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from core.paths import INBOX_DIR, TASKS_FILE, USER_PROFILE_FILE, VAULT_ROOT
+
 RELEASE_TAG = re.compile(
     r"^dist/release/v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-(?P<short>[0-9a-f]{7,64})$"
 )
 LEGACY_RELEASE_TAG = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
 PUBLIC_REMOTE = "https://github.com/davekilleen/Dex.git"
 USER_FIXTURES = {
-    "00-Inbox/keep.md": b"# User note\nThis must survive updates.\n",
-    "03-Tasks/Tasks.md": b"# My task\n- Keep this task exactly.\n",
-    "System/user-profile.yaml": b"updates:\n  channel: stable\n",
+    str(INBOX_DIR.relative_to(VAULT_ROOT) / "keep.md"): b"# User note\nThis must survive updates.\n",
+    str(TASKS_FILE.relative_to(VAULT_ROOT)): b"# My task\n- Keep this task exactly.\n",
+    str(USER_PROFILE_FILE.relative_to(VAULT_ROOT)): b"updates:\n  channel: stable\n",
     ".claude/skills/my-weekly-review/SKILL.md": (
         b"---\nname: my-weekly-review\ndescription: User-authored weekly review.\n"
         b"---\n# User skill\n"
