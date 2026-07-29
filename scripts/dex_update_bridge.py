@@ -27,6 +27,7 @@ OFFICIAL_REMOTE = "https://github.com/davekilleen/Dex.git"
 _HEX = re.compile(r"^[0-9a-f]{40}$")
 _RELEASE_TAG = re.compile(r"^dist/release/v[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{7,40}$")
 _APPROVAL_WORD = "APPLY"
+_SUBPROCESS_ENVIRONMENT = ("PATH", "TMPDIR", "TMP", "TEMP", "SYSTEMROOT", "WINDIR")
 
 
 class BridgeError(RuntimeError):
@@ -85,13 +86,54 @@ class LifecycleService(Protocol):
     def execute_approved_delivered_release(self, vault_root: str | Path, preview: Mapping[str, Any], approved_token: str) -> Mapping[str, Any]: ...
 
 
+def _bridge_environment() -> dict[str, str]:
+    """Return the small, non-interactive environment used by the bridge.
+
+    The bridge fetches one public, pinned release; it must never inherit a
+    caller's Git repository selection, configuration, credential helpers, or
+    Python import path.  Keep only the platform variables needed to locate
+    executables and temporary files, then explicitly disable all Git config
+    sources that could alter retrieval.
+    """
+    environment = {
+        name: value
+        for name in _SUBPROCESS_ENVIRONMENT
+        if (value := os.environ.get(name))
+    }
+    environment.update(
+        {
+            "GCM_INTERACTIVE": "Never",
+            "GIT_ALLOW_PROTOCOL": "https",
+            "GIT_ASKPASS": "false",
+            "GIT_ATTR_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+    )
+    return environment
+
+
 def _run_git(directory: Path, *arguments: str) -> str:
     """Run a non-interactive Git operation with hooks and non-HTTPS blocked."""
     completed = subprocess.run(
-        ["git", "-c", "core.hooksPath=/dev/null", "-c", "fetch.fsckObjects=true", "-c", "transfer.fsckObjects=true", "-C", str(directory), *arguments],
+        [
+            "git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "credential.helper=",
+            "-c",
+            "fetch.fsckObjects=true",
+            "-c",
+            "transfer.fsckObjects=true",
+            "-C",
+            str(directory),
+            *arguments,
+        ],
         check=False,
         capture_output=True,
-        env={**os.environ, "GIT_ALLOW_PROTOCOL": "https", "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"},
+        env=_bridge_environment(),
         timeout=90,
     )
     if completed.returncode:
@@ -195,7 +237,8 @@ def _reexec_in_installed_runtime(vault_root: Path, argv: list[str]) -> None:
     interpreter = _installed_python(vault_root)
     if interpreter is None or interpreter.resolve() == Path(sys.executable).resolve():
         return
-    environment = {**os.environ, "DEX_UPDATE_BRIDGE_RUNTIME": "1"}
+    environment = _bridge_environment()
+    environment["DEX_UPDATE_BRIDGE_RUNTIME"] = "1"
     os.execve(
         str(interpreter),
         [str(interpreter), str(Path(__file__).resolve()), *argv],
@@ -259,6 +302,53 @@ def _fetch_foundation_into_brain(vault_root: Path, pin: ReleasePin) -> None:
     )
 
 
+def _regular_json(path: Path, description: str) -> dict[str, Any]:
+    try:
+        if path.is_symlink() or not path.is_file():
+            raise BridgeError(f"{description} is not a regular file")
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise BridgeError(f"{description} is unreadable") from error
+    if not isinstance(value, dict):
+        raise BridgeError(f"{description} is not an object")
+    return value
+
+
+def _validate_completed_foundation(vault_root: Path, pin: ReleasePin) -> None:
+    """Prove every durable split marker agrees with the installed pin."""
+    brain = vault_root / ".dex" / "brain.git"
+    paths = {
+        ".git": vault_root / ".git",
+        ".dex": vault_root / ".dex",
+        ".dex/brain.git": brain,
+        "System/.dex": vault_root / "System" / ".dex",
+    }
+    for relative, path in paths.items():
+        if path.is_symlink() or not path.is_dir():
+            raise BridgeError(f"completed bridge has an unsafe {relative} directory")
+
+    topology = _regular_json(vault_root / "System" / ".dex" / "topology.json", "split topology marker")
+    vault_marker = _regular_json(vault_root / ".git" / "dex-vault-v2", "vault Git marker")
+    brain_marker = _regular_json(brain / "dex-brain-v2", "brain Git marker")
+    environment = topology.get("environment")
+    wired_vault = environment.get("DEX_VAULT") if isinstance(environment, dict) else None
+    try:
+        wiring_matches = isinstance(wired_vault, str) and Path(wired_vault).resolve() == vault_root
+    except (OSError, RuntimeError):
+        wiring_matches = False
+    if (
+        topology.get("topology") != "brain-vault-split"
+        or topology.get("vaultGitDir") != ".git"
+        or topology.get("brainGitDir") != ".dex/brain.git"
+        or not wiring_matches
+        or topology.get("installedRelease") != pin.commit
+        or vault_marker.get("role") != "vault"
+        or brain_marker.get("role") != "brain"
+        or brain_marker.get("installed") != pin.commit
+    ):
+        raise BridgeError("completed bridge markers do not agree with the pinned foundation")
+
+
 def _foundation_is_installed(vault_root: Path, pin: ReleasePin) -> bool:
     """Check the local installed ref without fetching or consulting a channel.
 
@@ -278,7 +368,18 @@ def _foundation_is_installed(vault_root: Path, pin: ReleasePin) -> bool:
         installed = _run_git(brain, "rev-parse", "--verify", "refs/dex/installed^{commit}")
     except BridgeError:
         return False
-    return installed == pin.commit
+    if installed != pin.commit:
+        return False
+    _validate_completed_foundation(vault_root, pin)
+    return True
+
+
+def _completed_bridge_result(pin: ReleasePin) -> dict[str, object]:
+    return {
+        "foundation": pin.identity(),
+        "topology_receipt": {"skipped": "foundation-already-installed"},
+        "delivery_receipt": {"skipped": "foundation-already-installed"},
+    }
 
 
 def run_bridge(vault_root: Path, service: LifecycleService, *, pin: ReleasePin = FOUNDATION, fetch_foundation: Callable[[Path, ReleasePin], None] = _fetch_foundation_into_brain, input_fn: Callable[[str], str] = input, output_fn: Callable[[str], None] = print) -> Mapping[str, Any]:
@@ -289,11 +390,7 @@ def run_bridge(vault_root: Path, service: LifecycleService, *, pin: ReleasePin =
     # completed bridge must work offline and must not be disturbed merely
     # because the stable channel has subsequently advanced.
     if _foundation_is_installed(root, pin):
-        return {
-            "foundation": pin.identity(),
-            "topology_receipt": {"skipped": "foundation-already-installed"},
-            "delivery_receipt": {"skipped": "foundation-already-installed"},
-        }
+        return _completed_bridge_result(pin)
 
     topology = service.build_and_preview_topology_migration(root)
     preview = topology.get("preview")
@@ -339,12 +436,18 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Git is required for the one-time Dex update bridge")
     try:
         vault = _validate_vault(args.vault)
-        _reexec_in_installed_runtime(vault, sys.argv[1:] if argv is None else argv)
-        temporary, source = acquire_foundation_source()
-        try:
-            result = run_bridge(vault, _load_lifecycle_service(source))
-        finally:
-            temporary.cleanup()
+        # A completed bridge has all durable state locally.  Check before
+        # selecting the old virtualenv or downloading source so resuming it is
+        # genuinely offline and independent of a later stable-channel change.
+        if _foundation_is_installed(vault, FOUNDATION):
+            result = _completed_bridge_result(FOUNDATION)
+        else:
+            _reexec_in_installed_runtime(vault, sys.argv[1:] if argv is None else argv)
+            temporary, source = acquire_foundation_source()
+            try:
+                result = run_bridge(vault, _load_lifecycle_service(source))
+            finally:
+                temporary.cleanup()
     except (BridgeError, OSError, RuntimeError) as error:
         print(f"Dex update bridge stopped safely: {error}", file=sys.stderr)
         return 1

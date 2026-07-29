@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -50,6 +52,26 @@ def _vault(tmp_path: Path) -> Path:
     (vault / ".git").mkdir(parents=True)
     (vault / ".dex" / "brain.git").mkdir(parents=True)
     (vault / "System").mkdir()
+    return vault
+
+
+def _completed_vault(tmp_path: Path) -> Path:
+    vault = _vault(tmp_path)
+    (vault / "System" / ".dex").mkdir()
+    (vault / "System" / ".dex" / "topology.json").write_text(
+        '{"topology":"brain-vault-split","vaultGitDir":".git",'
+        '"brainGitDir":".dex/brain.git","installedRelease":"'
+        + bridge.FOUNDATION.commit
+        + '","environment":{"DEX_VAULT":"'
+        + str(vault)
+        + '"}}\n',
+        encoding="utf-8",
+    )
+    (vault / ".git" / "dex-vault-v2").write_text('{"role":"vault"}\n', encoding="utf-8")
+    (vault / ".dex" / "brain.git" / "dex-brain-v2").write_text(
+        '{"role":"brain","installed":"' + bridge.FOUNDATION.commit + '"}\n',
+        encoding="utf-8",
+    )
     return vault
 
 
@@ -221,3 +243,69 @@ def test_bridge_resumes_offline_without_fetching_or_revalidating_an_advanced_cha
     assert result["topology_receipt"] == {"skipped": "foundation-already-installed"}
     assert result["delivery_receipt"] == {"skipped": "foundation-already-installed"}
     assert service.calls == []
+
+
+def test_completed_foundation_requires_all_durable_split_markers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = _completed_vault(tmp_path)
+    monkeypatch.setattr(bridge, "_run_git", lambda *_arguments: bridge.FOUNDATION.commit)
+
+    assert bridge._foundation_is_installed(vault, bridge.FOUNDATION) is True
+
+    topology = vault / "System" / ".dex" / "topology.json"
+    topology.write_text('{"topology":"brain-vault-split"}\n', encoding="utf-8")
+    with pytest.raises(bridge.BridgeError, match="markers do not agree"):
+        bridge._foundation_is_installed(vault, bridge.FOUNDATION)
+
+
+def test_main_resumes_completed_foundation_before_runtime_or_source_download(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    vault = _completed_vault(tmp_path)
+    monkeypatch.setattr(bridge, "_run_git", lambda *_arguments: bridge.FOUNDATION.commit)
+    monkeypatch.setattr(
+        bridge,
+        "_reexec_in_installed_runtime",
+        lambda *_arguments: pytest.fail("completed bridge must not re-exec"),
+    )
+    monkeypatch.setattr(
+        bridge,
+        "acquire_foundation_source",
+        lambda: pytest.fail("completed bridge must not download source"),
+    )
+
+    assert bridge.main(["--vault", str(vault)]) == 0
+    output = capsys.readouterr().out
+    assert '"foundation-already-installed"' in output
+
+
+def test_git_subprocess_environment_excludes_caller_git_and_credential_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(arguments, **kwargs):
+        captured["arguments"] = arguments
+        captured["environment"] = kwargs["env"]
+        return subprocess.CompletedProcess(arguments, 0, stdout=b"ok\n", stderr=b"")
+
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/private/attacker-config")
+    monkeypatch.setenv("GIT_DIR", "/private/attacker-repository")
+    monkeypatch.setenv("GIT_SSH_COMMAND", "attacker-command")
+    monkeypatch.setenv("HOME", "/private/credential-home")
+    monkeypatch.setenv("PYTHONPATH", "/private/attacker-python")
+    monkeypatch.setattr(bridge.subprocess, "run", fake_run)
+
+    assert bridge._run_git(tmp_path, "rev-parse", "HEAD") == "ok"
+
+    environment = captured["environment"]
+    assert isinstance(environment, dict)
+    assert environment["GIT_CONFIG_GLOBAL"] == os.devnull
+    assert environment["GIT_CONFIG_NOSYSTEM"] == "1"
+    assert environment["GIT_TERMINAL_PROMPT"] == "0"
+    assert "HOME" not in environment
+    assert "PYTHONPATH" not in environment
+    assert "GIT_DIR" not in environment
+    assert "GIT_SSH_COMMAND" not in environment
+    assert "credential.helper=" in captured["arguments"]

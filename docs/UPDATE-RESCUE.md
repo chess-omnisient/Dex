@@ -91,9 +91,11 @@ and path evidence before it can be offered as supported recovery.
 
 Do not run this unpublished source as a rescue command. When a later immutable
 foundation includes the repair and the full fixture evidence is green, publish a
-separately versioned bridge file with its SHA-256, then use the file matched to
-that foundation. An older bridge must refuse rather than silently substituting a
-newer release.
+separately versioned bridge file with its SHA-256 and the exact annotated
+distribution tag, tag object, commit, and tree it pins. That bridge source and
+artifact must name that same future foundation identity; rebasing this file onto
+`main` is not a substitute for a released tag. An older bridge must refuse
+rather than silently substituting a newer release.
 
 # This is the eventual published-artifact invocation, not an instruction to
 # run this repository source before that release exists.
