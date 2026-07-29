@@ -22,6 +22,9 @@ from core.paths import INBOX_DIR, TASKS_FILE, USER_PROFILE_FILE, VAULT_ROOT
 RELEASE_TAG = re.compile(
     r"^dist/release/v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-(?P<short>[0-9a-f]{7,64})$"
 )
+ARCHIVE_RELEASE_TAG = re.compile(
+    r"^dist/archive/v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-(?P<short>[0-9a-f]{7,64})$"
+)
 LEGACY_RELEASE_TAG = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
 PUBLIC_REMOTE = "https://github.com/davekilleen/Dex.git"
 USER_FIXTURES = {
@@ -121,9 +124,10 @@ def _version_key(version: str) -> tuple[int, int, int]:
 
 
 def discover_distribution_releases(repo: Path) -> tuple[DistributionRelease, ...]:
-    """Return every distinct tree behind public distribution and legacy release tags."""
+    """Return every distinct tree behind immutable and legacy public release tags."""
 
     seen_trees: set[str] = set()
+    immutable_identities: dict[tuple[str, str], str] = {}
     discovered: list[DistributionRelease] = []
     candidates: list[tuple[int, str, re.Match[str]]] = []
     for tag in _git_lines(repo, "tag", "--list"):
@@ -131,14 +135,26 @@ def discover_distribution_releases(repo: Path) -> tuple[DistributionRelease, ...
         if distribution_match is not None:
             candidates.append((0, tag, distribution_match))
             continue
+        archive_match = ARCHIVE_RELEASE_TAG.fullmatch(tag)
+        if archive_match is not None:
+            candidates.append((1, tag, archive_match))
+            continue
         legacy_match = LEGACY_RELEASE_TAG.fullmatch(tag)
         if legacy_match is not None:
-            candidates.append((1, tag, legacy_match))
+            candidates.append((2, tag, legacy_match))
 
     for priority, tag, match in sorted(candidates, key=lambda item: (item[0], item[1])):
         commit = _git(repo, "rev-parse", f"{tag}^{{commit}}")
-        if priority == 0 and not commit.startswith(match.group("short")):
+        if priority < 2 and not commit.startswith(match.group("short")):
             raise FleetError(f"{tag}: tag suffix does not match its commit")
+        if priority < 2:
+            identity = (match.group("version"), match.group("short"))
+            existing_commit = immutable_identities.setdefault(identity, commit)
+            if existing_commit != commit:
+                raise FleetError(
+                    f"{tag}: ambiguous immutable distribution identity "
+                    f"v{identity[0]}-{identity[1]}"
+                )
         tree = _git(repo, "rev-parse", f"{tag}^{{tree}}")
         if tree in seen_trees:
             continue
