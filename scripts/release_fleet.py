@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import hashlib
 import json
+import platform
 import re
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -81,9 +84,93 @@ RUNNER_ARTIFACT_KEYS = frozenset(
         "follow_up_smoke",
     }
 )
+DISCOVERY_SCHEMA_VERSION = 1
+DISCOVERY_OUTPUT_NAME = "historic-discovery-map.json"
+DISCOVERY_WORK_NAME = ".historic-discovery-fixtures"
+DISCOVERY_MAX_WORKERS = 4
+DISCOVERY_DEFAULT_INSTALL_TIMEOUT_SECONDS = 180
+DISCOVERY_DEFAULT_DOCTOR_TIMEOUT_SECONDS = 90
+# Discovery fixtures deliberately do not inherit the caller's PATH.  Keep the
+# capability needed by old installers explicit, reviewable, and narrow.
+TRUSTED_NODE_CANDIDATES = (Path("/opt/homebrew/bin/node"),)
+TRUSTED_NODE_ROOTS = (Path("/opt/homebrew"),)
+MINIMUM_SUPPORTED_NODE_MAJOR = 20
+TRUSTED_PYTHON_CANDIDATES = (Path("/opt/homebrew/bin/python3"),)
+TRUSTED_PYTHON_ROOTS = (Path("/opt/homebrew"),)
+MINIMUM_SUPPORTED_PYTHON = (3, 10)
 
 class FleetError(RuntimeError):
     """The historic release fleet could not be built safely."""
+
+
+@dataclass(frozen=True)
+class NodeRuntime:
+    """An explicitly selected Node/npm capability for disposable fixtures."""
+
+    requested_node: Path
+    resolved_node: Path
+    node_version: str
+    node_sha256: str
+    requested_npm: Path
+    resolved_npm: Path
+    npm_version: str
+    npm_sha256: str
+
+    @property
+    def bin_dir(self) -> Path:
+        return self.resolved_node.parent
+
+    def identity(self) -> dict[str, str]:
+        return {
+            "requested_node": str(self.requested_node),
+            "resolved_node": str(self.resolved_node),
+            "node_version": self.node_version,
+            "node_sha256": self.node_sha256,
+            "requested_npm": str(self.requested_npm),
+            "resolved_npm": str(self.resolved_npm),
+            "npm_version": self.npm_version,
+            "npm_sha256": self.npm_sha256,
+        }
+
+
+@dataclass(frozen=True)
+class PythonRuntime:
+    """An explicitly selected Python capability for disposable fixtures."""
+
+    requested_python: Path
+    resolved_python: Path
+    python_version: str
+    python_sha256: str
+
+    @property
+    def bin_dir(self) -> Path:
+        return self.resolved_python.parent
+
+    def identity(self) -> dict[str, str]:
+        return {
+            "requested_python": str(self.requested_python),
+            "resolved_python": str(self.resolved_python),
+            "python_version": self.python_version,
+            "python_sha256": self.python_sha256,
+        }
+
+
+@dataclass(frozen=True)
+class FixturePython:
+    """The installed fixture venv interpreter bound to its trusted base Python."""
+
+    requested_python: Path
+    resolved_python: Path
+    python_version: str
+    python_sha256: str
+
+    def identity(self) -> dict[str, str]:
+        return {
+            "requested_python": str(self.requested_python),
+            "resolved_python": str(self.resolved_python),
+            "python_version": self.python_version,
+            "python_sha256": self.python_sha256,
+        }
 
 
 @dataclass(frozen=True)
@@ -271,14 +358,138 @@ def _has_transaction_receipt(value: object) -> bool:
     )
 
 
-def _case_environment(vault: Path, runtime_root: Path) -> dict[str, str]:
+def _trusted_runtime_path(path: Path, *, label: str, roots: Sequence[Path]) -> Path:
+    """Resolve an allowlisted runtime file without accepting an ambient executable."""
+
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as error:
+        raise FleetError(f"trusted {label} runtime is unavailable: {path}") from error
+    if not resolved.is_file():
+        raise FleetError(f"trusted {label} runtime is not a regular file: {path}")
+    for root in roots:
+        try:
+            resolved.relative_to(root.resolve(strict=True))
+            return resolved
+        except (OSError, ValueError):
+            continue
+    raise FleetError(f"trusted {label} runtime resolves outside the approved Node roots: {path}")
+
+
+def _runtime_command_output(command: Sequence[str], *, path: str) -> str:
+    """Run a fixed runtime binary with a minimal non-inherited environment."""
+
+    result = subprocess.run(
+        list(command),
+        capture_output=True,
+        text=True,
+        env={"PATH": path, "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"},
+        check=False,
+    )
+    if result.returncode:
+        detail = (result.stderr or result.stdout).strip()
+        raise FleetError(f"trusted runtime command failed: {' '.join(command)}: {detail}")
+    return result.stdout.strip()
+
+
+def resolve_trusted_node_runtime() -> NodeRuntime:
+    """Select one fixed, supported Node installation; never consult ambient PATH."""
+
+    errors: list[str] = []
+    for requested_node in TRUSTED_NODE_CANDIDATES:
+        try:
+            resolved_node = _trusted_runtime_path(
+                requested_node, label="Node", roots=TRUSTED_NODE_ROOTS
+            )
+            requested_npm = requested_node.parent / "npm"
+            resolved_npm = _trusted_runtime_path(requested_npm, label="npm", roots=TRUSTED_NODE_ROOTS)
+            runtime_path = f"{resolved_node.parent}:/usr/bin:/bin:/usr/sbin:/sbin"
+            node_version = _runtime_command_output([str(resolved_node), "--version"], path=runtime_path)
+            match = re.fullmatch(r"v(?P<major>[0-9]+)\.[0-9]+\.[0-9]+", node_version)
+            if match is None or int(match.group("major")) < MINIMUM_SUPPORTED_NODE_MAJOR:
+                raise FleetError(
+                    f"trusted Node runtime must be v{MINIMUM_SUPPORTED_NODE_MAJOR} or newer: {node_version!r}"
+                )
+            npm_version = _runtime_command_output([str(resolved_npm), "--version"], path=runtime_path)
+            if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", npm_version) is None:
+                raise FleetError(f"trusted npm runtime has an invalid version: {npm_version!r}")
+            return NodeRuntime(
+                requested_node=requested_node,
+                resolved_node=resolved_node,
+                node_version=node_version,
+                node_sha256=hashlib.sha256(resolved_node.read_bytes()).hexdigest(),
+                requested_npm=requested_npm,
+                resolved_npm=resolved_npm,
+                npm_version=npm_version,
+                npm_sha256=hashlib.sha256(resolved_npm.read_bytes()).hexdigest(),
+            )
+        except FleetError as error:
+            errors.append(str(error))
+    raise FleetError("no trusted supported Node runtime is available: " + "; ".join(errors))
+
+
+def resolve_trusted_python_runtime() -> PythonRuntime:
+    """Select one fixed, supported Python installation; never consult ambient PATH."""
+
+    errors: list[str] = []
+    for requested_python in TRUSTED_PYTHON_CANDIDATES:
+        try:
+            resolved_python = _trusted_runtime_path(
+                requested_python, label="Python", roots=TRUSTED_PYTHON_ROOTS
+            )
+            runtime_path = f"{resolved_python.parent}:/usr/bin:/bin:/usr/sbin:/sbin"
+            version = _runtime_command_output([str(resolved_python), "--version"], path=runtime_path)
+            match = re.fullmatch(r"Python (?P<major>[0-9]+)\.(?P<minor>[0-9]+)\.[0-9]+", version)
+            if match is None or (int(match.group("major")), int(match.group("minor"))) < MINIMUM_SUPPORTED_PYTHON:
+                raise FleetError(
+                    "trusted Python runtime must be "
+                    f"{MINIMUM_SUPPORTED_PYTHON[0]}.{MINIMUM_SUPPORTED_PYTHON[1]} or newer: {version!r}"
+                )
+            return PythonRuntime(
+                requested_python=requested_python,
+                resolved_python=resolved_python,
+                python_version=version,
+                python_sha256=hashlib.sha256(resolved_python.read_bytes()).hexdigest(),
+            )
+        except FleetError as error:
+            errors.append(str(error))
+    raise FleetError("no trusted supported Python runtime is available: " + "; ".join(errors))
+
+
+def resolve_fixture_python(vault: Path, *, trusted_python: PythonRuntime) -> FixturePython:
+    """Bind Doctor to the fixture's own venv interpreter, never a PATH lookup."""
+
+    requested_python = vault / ".venv" / "bin" / "python"
+    try:
+        resolved_python = requested_python.resolve(strict=True)
+    except OSError as error:
+        raise FleetError(f"fixture venv Python is unavailable: {requested_python}") from error
+    if not requested_python.is_file() or not resolved_python.is_file():
+        raise FleetError(f"fixture venv Python is not a regular file: {requested_python}")
+    digest = hashlib.sha256(resolved_python.read_bytes()).hexdigest()
+    if digest != trusted_python.python_sha256:
+        raise FleetError("fixture venv Python does not bind the trusted Python runtime")
+    runtime_path = f"{requested_python.parent}:/usr/bin:/bin:/usr/sbin:/sbin"
+    version = _runtime_command_output([str(requested_python), "--version"], path=runtime_path)
+    if version != trusted_python.python_version:
+        raise FleetError("fixture venv Python version does not match the trusted Python runtime")
+    return FixturePython(requested_python, resolved_python, version, digest)
+
+
+def _case_environment(
+    vault: Path,
+    runtime_root: Path,
+    *,
+    node_runtime: NodeRuntime | None = None,
+    python_runtime: PythonRuntime | None = None,
+) -> dict[str, str]:
     """Return the complete, deliberately small environment for one fixture."""
 
     home = runtime_root / "home"
     temporary = runtime_root / "tmp"
     home.mkdir(parents=True, exist_ok=False)
     temporary.mkdir(parents=True, exist_ok=False)
-    return {
+    environment = {
         "HOME": str(home),
         "TMPDIR": str(temporary),
         "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
@@ -290,6 +501,11 @@ def _case_environment(vault: Path, runtime_root: Path) -> dict[str, str]:
         "GIT_TERMINAL_PROMPT": "0",
         "VAULT_PATH": str(vault),
     }
+    if node_runtime is not None:
+        environment["PATH"] = f"{node_runtime.bin_dir}:{environment['PATH']}"
+    if python_runtime is not None:
+        environment["PATH"] = f"{python_runtime.bin_dir}:{environment['PATH']}"
+    return environment
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -462,7 +678,12 @@ def build_fixture(repo: Path, release: DistributionRelease, output: Path) -> Fle
     return FleetCase(release=release, vault=vault, user_hashes=_seed_user_content(vault))
 
 
-def _run_historic_installer(vault: Path, environment: Mapping[str, str] | None = None) -> None:
+def _run_historic_installer(
+    vault: Path,
+    environment: Mapping[str, str] | None = None,
+    *,
+    timeout_seconds: int = 15 * 60,
+) -> None:
     """Make the cloned release a realistic installed Dex before adding user data."""
     installer = vault / "install.sh"
     if installer.is_symlink() or not installer.is_file():
@@ -473,10 +694,13 @@ def _run_historic_installer(vault: Path, environment: Mapping[str, str] | None =
         env=dict(environment) if environment is not None else None,
         capture_output=True,
         text=True,
-        timeout=15 * 60,
+        timeout=timeout_seconds,
     )
     if result.returncode:
-        detail = (result.stderr or result.stdout).strip()
+        # npm commonly writes benign notices to stderr while the actionable
+        # installer failure is on stdout. Keep both for local classification,
+        # but never retain volatile fixture output in the discovery artifact.
+        detail = "\n".join(output for output in (result.stdout, result.stderr) if output).strip()
         raise FleetError(f"historic installer failed for {vault.name}: {detail}")
 
 
@@ -491,6 +715,394 @@ def build_installed_fixture(
     vault = _create_fixture_vault(repo, release, output, environment=environment)
     _run_historic_installer(vault, environment)
     return FleetCase(release=release, vault=vault, user_hashes=_seed_user_content(vault, environment))
+
+
+def _optional_tag_file(repo: Path, tag: str, relative: str) -> bytes | None:
+    try:
+        return _tag_file(repo, tag, relative)
+    except FleetError:
+        return None
+
+
+def classify_historic_update_surface(repo: Path, release: DistributionRelease) -> dict[str, object]:
+    """Describe published route material without attempting to execute its prose."""
+
+    skill = _optional_tag_file(repo, release.tag, UPDATE_SKILL_RELATIVE)
+    rescue = _optional_tag_file(repo, release.tag, UPDATE_RESCUE_RELATIVE)
+    lifecycle = _optional_tag_file(repo, release.tag, "core/lifecycle/service.py")
+    activation_bridge = _optional_tag_file(
+        repo, release.tag, "core/lifecycle/catalog/bridge-release.json"
+    )
+    protocol = _optional_tag_file(repo, release.tag, "System/.update-journey-v1.json")
+    if protocol is not None:
+        route = "machine-protocol-declared"
+        bridge_requirement = "declared-by-protocol"
+    elif skill is None:
+        route = "missing-dex-update-skill"
+        bridge_requirement = "unsupported-without-published-route"
+    elif lifecycle is not None:
+        route = "lifecycle-guided-prose"
+        bridge_requirement = "versioned-delivery-bridge-required"
+    elif rescue is not None:
+        route = "documented-rescue-prose"
+        bridge_requirement = "manual-rescue-only"
+    else:
+        route = "legacy-dex-update-prose"
+        bridge_requirement = "versioned-bridge-required"
+    return {
+        "route_classification": route,
+        "bridge_requirement": bridge_requirement,
+        "machine_executable": False,
+        "dex_update_skill": {
+            "path": UPDATE_SKILL_RELATIVE,
+            "status": "present" if skill is not None else "missing",
+            "sha256": hashlib.sha256(skill).hexdigest() if skill is not None else None,
+        },
+        "rescue": {
+            "path": UPDATE_RESCUE_RELATIVE,
+            "status": "present" if rescue is not None else "missing",
+            "sha256": hashlib.sha256(rescue).hexdigest() if rescue is not None else None,
+        },
+        "lifecycle_era": {
+            "service": lifecycle is not None,
+            "activation_bridge": activation_bridge is not None,
+        },
+        "machine_protocol": {
+            "path": "System/.update-journey-v1.json",
+            "status": "present" if protocol is not None else "missing",
+            "sha256": hashlib.sha256(protocol).hexdigest() if protocol is not None else None,
+        },
+    }
+
+
+def _output_fingerprint(value: str | None) -> dict[str, object]:
+    raw = (value or "").encode("utf-8", "replace")
+    return {"sha256": hashlib.sha256(raw).hexdigest(), "byte_count": len(raw)}
+
+
+def _doctor_preflight(
+    vault: Path,
+    environment: Mapping[str, str],
+    *,
+    fixture_python: FixturePython,
+    timeout_seconds: int,
+) -> dict[str, object]:
+    """Run the fixture's own Doctor only; its report is diagnostic, never acceptance."""
+
+    command = [str(fixture_python.requested_python), "-m", "core.utils.doctor"]
+    interpreter = {"interpreter": fixture_python.identity()}
+    try:
+        result = subprocess.run(
+            command,
+            cwd=vault,
+            env=dict(environment),
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        return {
+            "status": "failed",
+            "code": "doctor-timeout",
+            "command": command,
+            **interpreter,
+            "stdout": _output_fingerprint(error.stdout if isinstance(error.stdout, str) else None),
+            "stderr": _output_fingerprint(error.stderr if isinstance(error.stderr, str) else None),
+        }
+    fingerprints = {
+        "stdout": _output_fingerprint(result.stdout),
+        "stderr": _output_fingerprint(result.stderr),
+    }
+    if result.returncode:
+        return {
+            "status": "failed",
+            "code": "doctor-exit-nonzero",
+            "command": command,
+            **interpreter,
+            **fingerprints,
+        }
+    try:
+        report = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {
+            "status": "failed",
+            "code": "doctor-invalid-json",
+            "command": command,
+            **interpreter,
+            **fingerprints,
+        }
+    checks = report.get("checks") if isinstance(report, Mapping) else None
+    if not isinstance(checks, list) or not checks:
+        return {
+            "status": "failed",
+            "code": "doctor-missing-checks",
+            "command": command,
+            **interpreter,
+            **fingerprints,
+        }
+    verdicts = [item.get("verdict") for item in checks if isinstance(item, Mapping)]
+    if len(verdicts) != len(checks) or any(verdict not in {"OK", "OFF"} for verdict in verdicts):
+        return {
+            "status": "failed",
+            "code": _doctor_unhealthy_code(checks),
+            "command": command,
+            **interpreter,
+            **fingerprints,
+        }
+    return {"status": "ok", "code": "doctor-healthy", "command": command, **interpreter, **fingerprints}
+
+
+def _remove_disposable_fixture(path: Path, work_root: Path) -> None:
+    """Delete only a known per-case path inside the explicitly disposable work root."""
+
+    try:
+        path.resolve().relative_to(work_root.resolve())
+    except ValueError as error:
+        raise FleetError("disposable fixture escaped the survey work root") from error
+    if path.is_symlink() or path.is_file():
+        path.unlink(missing_ok=True)
+    elif path.is_dir():
+        shutil.rmtree(path)
+
+
+def _survey_issue(stage: str, code: str) -> dict[str, str]:
+    return {"stage": stage, "code": code}
+
+
+def _installer_failure_code(error: FleetError) -> str:
+    """Normalize expected fixture setup failures without retaining installer output."""
+
+    detail = str(error).lower()
+    if "installed catalog release does not match the designated bridge release" in detail:
+        return "installer-lifecycle-bridge-release-mismatch"
+    if "no module named 'yaml'" in detail:
+        return "installer-python-yaml-missing"
+    if "dex vault provision failed" in detail:
+        return "installer-vault-provision-failed"
+    if "python" in detail and (
+        "too old" in detail or "requires python 3.10" in detail or "requires python >= 3.10" in detail
+    ):
+        return "installer-python-unsupported"
+    if "npm: command not found" in detail or "npm: not found" in detail:
+        return "installer-npm-unavailable"
+    if (
+        "node: command not found" in detail
+        or "node: not found" in detail
+        or "node.js is not installed" in detail
+    ):
+        return "installer-node-unavailable"
+    if "python3: command not found" in detail or "python3: not found" in detail:
+        return "installer-python-unavailable"
+    if "git: command not found" in detail or "git: not found" in detail:
+        return "installer-git-unavailable"
+    if "permission denied" in detail:
+        return "installer-permission-denied"
+    if "no such file or directory" in detail:
+        return "installer-missing-dependency"
+    return "installer-exit-" + hashlib.sha256(detail.encode("utf-8", "replace")).hexdigest()[:12]
+
+
+def _doctor_unhealthy_code(checks: Sequence[object]) -> str:
+    """Normalize Doctor verdicts without retaining volatile report details."""
+
+    details = [
+        str(item.get("detail", "")).lower()
+        for item in checks
+        if isinstance(item, Mapping) and item.get("verdict") not in {"OK", "OFF"}
+    ]
+    combined = "\n".join(details)
+    if "mcp' package missing" in combined or "mcp package missing" in combined:
+        return "doctor-mcp-dependency-missing"
+    if "python packages not installed" in combined:
+        return "doctor-python-dependencies-missing"
+    if "modified shipped files" in combined:
+        return "doctor-shipped-file-drift"
+    signature = [
+        (str(item.get("id", "")), str(item.get("verdict", "")))
+        for item in checks
+        if isinstance(item, Mapping) and item.get("verdict") not in {"OK", "OFF"}
+    ]
+    return "doctor-unhealthy-" + hashlib.sha256(
+        json.dumps(signature, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    ).hexdigest()[:12]
+
+
+def _survey_case(
+    repo: Path,
+    release: DistributionRelease,
+    work_root: Path,
+    *,
+    node_runtime: NodeRuntime,
+    python_runtime: PythonRuntime,
+    install_timeout_seconds: int,
+    doctor_timeout_seconds: int,
+) -> dict[str, object]:
+    """Install and preflight one disposable historic tree without invoking an update route."""
+
+    case_name = safe_case_name(release)
+    vault = work_root / case_name
+    runtime_root = work_root / f"{case_name}.runtime"
+    issues: list[dict[str, str]] = []
+    identity = {**_release_manifest(release), "tag_object": _git(repo, "rev-parse", "--verify", release.tag)}
+    result: dict[str, object] = {
+        "identity": identity,
+        "platform": {
+            "sys_platform": sys.platform,
+            "machine": platform.machine(),
+            "python_version": platform.python_version(),
+        },
+        "shipped_update_surface": classify_historic_update_surface(repo, release),
+        "fixture_install": {"status": "not-run", "code": "not-run"},
+        "doctor_preflight": {"status": "not-run", "code": "not-run"},
+        "fixture_retained": False,
+        "issues": issues,
+    }
+    try:
+        environment = _case_environment(
+            vault,
+            runtime_root,
+            node_runtime=node_runtime,
+            python_runtime=python_runtime,
+        )
+        _create_fixture_vault(repo, release, work_root, environment=environment)
+        try:
+            _run_historic_installer(
+                vault, environment, timeout_seconds=install_timeout_seconds
+            )
+        except subprocess.TimeoutExpired as error:
+            result["fixture_install"] = {
+                "status": "failed",
+                "code": "installer-timeout",
+                "stdout": _output_fingerprint(error.stdout if isinstance(error.stdout, str) else None),
+                "stderr": _output_fingerprint(error.stderr if isinstance(error.stderr, str) else None),
+            }
+            issues.append(_survey_issue("fixture-install", "installer-timeout"))
+            return result
+        except FleetError as error:
+            code = (
+                "installer-missing"
+                if "no safe install.sh" in str(error)
+                else _installer_failure_code(error)
+            )
+            result["fixture_install"] = {"status": "failed", "code": code}
+            issues.append(_survey_issue("fixture-install", code))
+            return result
+        result["fixture_install"] = {"status": "ok", "code": "installer-complete"}
+        try:
+            fixture_python = resolve_fixture_python(vault, trusted_python=python_runtime)
+        except FleetError as error:
+            code = (
+                "doctor-fixture-python-untrusted"
+                if "does not bind" in str(error) or "does not match" in str(error)
+                else "doctor-fixture-python-unavailable"
+            )
+            doctor = {
+                "status": "failed",
+                "code": code,
+                "requested_interpreter": str(vault / ".venv" / "bin" / "python"),
+            }
+        else:
+            doctor = _doctor_preflight(
+                vault,
+                environment,
+                fixture_python=fixture_python,
+                timeout_seconds=doctor_timeout_seconds,
+            )
+        result["doctor_preflight"] = doctor
+        if doctor["status"] != "ok":
+            issues.append(_survey_issue("doctor-preflight", str(doctor["code"])))
+        return result
+    except FleetError:
+        result["fixture_install"] = {"status": "failed", "code": "fixture-create-failed"}
+        issues.append(_survey_issue("fixture-install", "fixture-create-failed"))
+        return result
+    except OSError:
+        result["fixture_install"] = {"status": "failed", "code": "fixture-os-error"}
+        issues.append(_survey_issue("fixture-install", "fixture-os-error"))
+        return result
+    finally:
+        _remove_disposable_fixture(vault, work_root)
+        _remove_disposable_fixture(runtime_root, work_root)
+
+
+def run_discovery_sweep(
+    repo: Path,
+    *,
+    releases: Sequence[DistributionRelease],
+    output: Path,
+    workers: int,
+    install_timeout_seconds: int,
+    doctor_timeout_seconds: int,
+) -> dict[str, object]:
+    """Survey historic fixtures and return diagnostic coverage, never acceptance evidence."""
+
+    if workers < 1 or workers > DISCOVERY_MAX_WORKERS:
+        raise FleetError(f"survey workers must be between 1 and {DISCOVERY_MAX_WORKERS}")
+    if install_timeout_seconds < 1 or doctor_timeout_seconds < 1:
+        raise FleetError("survey timeouts must be positive")
+    if output.is_symlink() or (output.exists() and not output.is_dir()):
+        raise FleetError("survey output must be a safe directory")
+    if output.exists() and any(output.iterdir()):
+        raise FleetError("survey output directory must be empty")
+    node_runtime = resolve_trusted_node_runtime()
+    python_runtime = resolve_trusted_python_runtime()
+    output.mkdir(parents=True, exist_ok=True)
+    work_root = output / DISCOVERY_WORK_NAME
+    work_root.mkdir(mode=0o700)
+    cases: list[dict[str, object]] = []
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            submitted = [
+                executor.submit(
+                    _survey_case,
+                    repo,
+                    release,
+                    work_root,
+                    node_runtime=node_runtime,
+                    python_runtime=python_runtime,
+                    install_timeout_seconds=install_timeout_seconds,
+                    doctor_timeout_seconds=doctor_timeout_seconds,
+                )
+                for release in releases
+            ]
+            for submitted_case in submitted:
+                cases.append(submitted_case.result())
+    finally:
+        _remove_disposable_fixture(work_root, output)
+    grouped: dict[str, list[str]] = {}
+    for case in cases:
+        identity = case["identity"]
+        assert isinstance(identity, Mapping)
+        tag = identity["tag"]
+        assert isinstance(tag, str)
+        issues = case["issues"]
+        assert isinstance(issues, list)
+        for issue in issues:
+            assert isinstance(issue, Mapping)
+            key = f"{issue['stage']}:{issue['code']}"
+            grouped.setdefault(key, []).append(tag)
+    return {
+        "schema_version": DISCOVERY_SCHEMA_VERSION,
+        "outcome": "NON_ACCEPTANCE_DISCOVERY",
+        "acceptance": False,
+        "executed_count": len(cases),
+        "expected_count": len(releases),
+        "platform": {
+            "sys_platform": sys.platform,
+            "machine": platform.machine(),
+            "python_version": platform.python_version(),
+        },
+        "fixture_runtime": {
+            "node": node_runtime.identity(),
+            "python": python_runtime.identity(),
+        },
+        "root_causes": [
+            {"key": key, "count": len(tags), "tags": sorted(tags)}
+            for key, tags in sorted(grouped.items())
+        ],
+        "cases": cases,
+    }
 
 
 def run_journey(
@@ -1006,6 +1618,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="generated output from the manifest command for this exact immutable release set",
     )
     check.add_argument("report", type=Path)
+    survey = subcommands.add_parser(
+        "survey",
+        help="non-acceptance discovery across disposable historic fixtures; never runs an update",
+    )
+    survey.add_argument("--repo", type=Path, required=True)
+    survey.add_argument("--starting-manifest", type=Path, required=True)
+    survey.add_argument("--output", type=Path, required=True)
+    survey.add_argument("--jobs", type=int, default=2)
+    survey.add_argument(
+        "--installer-timeout-seconds", type=int, default=DISCOVERY_DEFAULT_INSTALL_TIMEOUT_SECONDS
+    )
+    survey.add_argument(
+        "--doctor-timeout-seconds", type=int, default=DISCOVERY_DEFAULT_DOCTOR_TIMEOUT_SECONDS
+    )
     journey = subcommands.add_parser(
         "journey",
         help="record immutable update surfaces and fail closed until an executable journey protocol ships",
@@ -1053,6 +1679,36 @@ def main(argv: Sequence[str] | None = None) -> int:
             follow_up_tag=args.follow_up_tag,
         )
         raise FleetError("journey returned without an immutable executable protocol")
+
+    if args.command == "survey":
+        releases = releases_from_starting_manifest(
+            args.starting_manifest.read_text(encoding="utf-8"),
+            current_releases=discover_distribution_releases(args.repo),
+        )
+        discovery = run_discovery_sweep(
+            args.repo,
+            releases=releases,
+            output=args.output,
+            workers=args.jobs,
+            install_timeout_seconds=args.installer_timeout_seconds,
+            doctor_timeout_seconds=args.doctor_timeout_seconds,
+        )
+        artifact = args.output / DISCOVERY_OUTPUT_NAME
+        _write_json(artifact, discovery)
+        print(
+            json.dumps(
+                {
+                    "outcome": "NON_ACCEPTANCE_DISCOVERY",
+                    "acceptance": False,
+                    "executed_count": discovery["executed_count"],
+                    "expected_count": discovery["expected_count"],
+                    "artifact": str(artifact),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
 
     report = acceptance_report_from_json(args.report.read_text(encoding="utf-8"))
     foundation = resolve_immutable_release(args.repo, report.foundation_tag)

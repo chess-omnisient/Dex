@@ -50,6 +50,32 @@ hand-maintained number. The starting source must be a public release tag; never
 use `main`, a working tree, or an untagged release candidate as a historical
 starting point.
 
+## Non-acceptance discovery sweep
+
+Before an executable update protocol exists, survey the real historic set with
+disposable fixtures. This runs each shipped installer and a Doctor preflight,
+hashes the shipped `/dex-update` and rescue material, then deletes the fixture.
+It never runs an update, a rescue command, a manual Git substitute, or an
+acceptance check.
+
+The fixture process has an isolated home, Git configuration, and minimal PATH.
+Its only Node and Python capabilities are pre-approved local runtimes (currently
+the exact `/opt/homebrew/bin/node` and `/opt/homebrew/bin/python3` installations);
+the discovery map records their resolved paths, versions, and hashes. The survey
+fails closed if either runtime is absent or unsupported—it never falls back to
+the caller's PATH.
+
+```bash
+survey_root=$(mktemp -d /private/tmp/dex-historic-survey.XXXXXX)
+python3 scripts/release_fleet.py survey --repo . \
+  --starting-manifest historic-release-manifest.json \
+  --output "$survey_root" --jobs 2
+```
+
+`$survey_root/historic-discovery-map.json` is explicitly labeled
+`NON_ACCEPTANCE_DISCOVERY`. It groups fixture-install and Doctor preflight
+failures by root cause and retains no cloned fixture after each case.
+
 Build and exercise one fixture at a time, retaining only its small report and
 transcript after it passes. The builder never copies a founder's vault and
 refuses to overwrite an existing case.
