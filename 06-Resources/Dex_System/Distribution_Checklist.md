@@ -48,8 +48,10 @@ What used to be manual verification is now automated gates on every push:
 | Distribution safety | `scripts/verify-distribution.sh` |
 
 `.env`, `.mcp.json`, `System/user-profile.yaml`, `System/pillars.yaml`, and all
-user data folders are gitignored; the ownership contract additionally guarantees
-updates never write `vault`-class paths.
+user data folders are gitignored. The ownership contract additionally guarantees
+updates do not write `vault`-class paths, with one narrow exception: a separately
+previewed and explicitly approved add-only repair may register Dex's own missing
+Customization Migration connection in `.mcp.json`. It never replaces user entries.
 
 **99% of features work with no API keys.** Optional keys (Anthropic/OpenAI/Gemini)
 only enable background automation; `/setup` offers this and creates `.env` from
