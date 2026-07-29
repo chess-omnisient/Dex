@@ -106,12 +106,28 @@ python3 scripts/release_fleet.py journey --repo . --output "$fleet_root" \
   --follow-up-tag dist/release/v1.80.5-EXACTFOLLOWUP
 ```
 
-The required future published protocol must be immutable and machine-verifiable.
-It must expose the historic documented route or its refusal, bridge publication
-provenance, foundation preview, explicit approval, receipts, installed release
-identity, Doctor evidence, and released platform smoke. Until a release ships
-that protocol, no synthetic fixture is installed and no bridge, lifecycle
-method, Git merge, or handwritten route wrapper is allowed to run.
+The repository now has the canonical protocol source at
+`System/.update-journey-v1.json`, with a strict parser in
+`core/update/journey_protocol.py`. It is a closed operation vocabulary, not a
+shell-command format. Version 1 permits only:
+
+- the reviewed pinned-foundation bridge, with its exact source SHA-256 and two
+  explicit `APPLY` approvals;
+- `deliver_latest_release`, `build_and_preview_delivered_release`, then
+  `execute_approved_delivered_release`, with one fresh `APPLY` approval; and
+- the fixed evidence order needed for refusal, bridge provenance, preview,
+  receipt, installed identity, Doctor, and released-platform smoke proof.
+
+The root also binds the fleet runner bytes and bridge bytes in the immutable
+release catalog's publisher `source_commit`. A release that merely carries a
+plausible JSON file, points at unavailable source, changes an adapter or
+operation, or has a mismatched hash is not machine-executable.
+
+This protocol is currently LOCAL. Until an immutable public release contains
+it, no synthetic fixture is installed and no bridge, lifecycle method, Git
+merge, or handwritten route wrapper is allowed to run. Publishing the
+contract is a prerequisite, not fleet acceptance: the real foundation and
+follow-up releases must still exist and every historic case must still run.
 
 The resulting `<case>.evidence/` directory is beside—not inside—a future
 fixture. Its content-addressed manifest records the exact release identities,
@@ -130,10 +146,11 @@ python3 scripts/release_fleet.py check-report --repo . \
 
 The command first verifies the generated starting manifest against the current
 immutable release trees, then requires that many cases on every declared
-platform. It cannot pass while either released `/dex-update` surface says
+platform. It cannot pass while the required released route says
 `machine_executable: false`, regardless of how internally consistent a report,
-manifest, transcript, or artifact set appears. Once an executable protocol is
-published, it will also require ordered commands and SHA-256-bound runner
+manifest, transcript, or artifact set appears. A valid published protocol must
+also bind its runner and bridge bytes to the release catalog's immutable source
+commit. Finished evidence still requires ordered commands and SHA-256-bound
 artifacts: the transcript, release-surface snapshots, receipts, Doctor reports,
 and smoke/platform evidence. Paths, symlinks, malformed JSON, mismatched
 identities, incomplete platform coverage, and unknown/broken Doctor results all

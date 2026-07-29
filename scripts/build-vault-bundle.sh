@@ -25,9 +25,19 @@ STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dex-vault-bundle.XXXXXX")"
 ALL_FILES="$(mktemp "${TMPDIR:-/tmp}/dex-vault-all.XXXXXX")"
 EXCLUDED_FILES="$(mktemp "${TMPDIR:-/tmp}/dex-vault-excluded.XXXXXX")"
 INCLUDED_FILES="$(mktemp "${TMPDIR:-/tmp}/dex-vault-included.XXXXXX")"
-trap 'rm -rf "$STAGING_DIR" "$ALL_FILES" "$EXCLUDED_FILES" "$INCLUDED_FILES"' EXIT
+JOURNEY_PROTOCOL_CHECK="$(mktemp "${TMPDIR:-/tmp}/dex-update-journey.XXXXXX")"
+trap 'rm -rf "$STAGING_DIR" "$ALL_FILES" "$EXCLUDED_FILES" "$INCLUDED_FILES" "$JOURNEY_PROTOCOL_CHECK"' EXIT
 
 cd "$REPO_ROOT"
+
+# The bundle must carry the protocol for these exact source artifacts.
+python3 "$REPO_ROOT/scripts/generate-update-journey-protocol.py" \
+  --output "$JOURNEY_PROTOCOL_CHECK"
+if ! cmp -s "$JOURNEY_PROTOCOL_CHECK" "$REPO_ROOT/System/.update-journey-v1.json"; then
+  echo "Error: System/.update-journey-v1.json is stale for this source tree." >&2
+  echo "Run python3 scripts/generate-update-journey-protocol.py and commit the result." >&2
+  exit 1
+fi
 
 # Match build-release.sh's .distignore removals without copying ignored local
 # files such as .env. Include untracked, non-ignored files so the script is

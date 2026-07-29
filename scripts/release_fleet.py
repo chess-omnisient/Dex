@@ -24,7 +24,14 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.paths import INBOX_DIR, TASKS_FILE, USER_PROFILE_FILE, VAULT_ROOT
+from core.update.journey_protocol import (
+    PROTOCOL_RELATIVE,
+    JourneyProtocolError,
+    UpdateJourneyProtocol,
+    load_update_journey_protocol,
+)
 
+UPDATE_JOURNEY_RELATIVE = PROTOCOL_RELATIVE
 RELEASE_TAG = re.compile(
     r"^dist/release/v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-(?P<short>[0-9a-f]{7,64})$"
 )
@@ -330,10 +337,16 @@ def resolve_immutable_release(repo: Path, tag: str) -> ImmutableRelease:
 
 
 def _tag_file(repo: Path, tag: str, relative: str) -> bytes:
-    try:
-        return _git(repo, "show", f"{tag}:{relative}").encode("utf-8")
-    except FleetError as error:
-        raise FleetError(f"{tag} has no required {relative} publication record") from error
+    result = subprocess.run(
+        ["git", "-C", str(repo), "show", f"{tag}:{relative}"],
+        capture_output=True,
+    )
+    if result.returncode:
+        detail = result.stderr.decode("utf-8", "replace").strip()
+        raise FleetError(
+            detail or f"{tag} has no required {relative} publication record"
+        )
+    return result.stdout
 
 
 def _strict_object(source: bytes, context: str, keys: frozenset[str]) -> dict[str, object]:
@@ -344,6 +357,56 @@ def _strict_object(source: bytes, context: str, keys: frozenset[str]) -> dict[st
     if not isinstance(value, Mapping) or set(value) != keys:
         raise FleetError(f"{context} has an invalid shape")
     return dict(value)
+
+
+def _released_protocol_source_commit(repo: Path, tag: str) -> str:
+    """Read the immutable source commit named by one distribution catalog."""
+
+    catalog = _strict_object(
+        _tag_file(repo, tag, "System/.release-catalog.json"),
+        f"{tag} release catalog",
+        frozenset({"catalog_version", "release", "items", "integrity"}),
+    )
+    release = catalog["release"]
+    if not isinstance(release, Mapping):
+        raise FleetError(f"{tag}: release catalog has no release identity")
+    source_commit = release.get("source_commit")
+    if not isinstance(source_commit, str) or _HEX.fullmatch(source_commit) is None:
+        raise FleetError(f"{tag}: release catalog has no valid source commit")
+    try:
+        resolved = _git(repo, "rev-parse", "--verify", f"{source_commit}^{{commit}}")
+    except FleetError as error:
+        raise FleetError(
+            f"{tag}: release-owned journey source commit is unavailable"
+        ) from error
+    if resolved != source_commit:
+        raise FleetError(f"{tag}: release-owned journey source commit is ambiguous")
+    return source_commit
+
+
+def _verify_released_protocol_artifacts(
+    repo: Path,
+    release: DistributionRelease | ImmutableRelease,
+    protocol: UpdateJourneyProtocol,
+) -> str:
+    """Bind protocol adapters to the exact publisher source commit bytes."""
+
+    source_commit = _released_protocol_source_commit(repo, release.tag)
+    for label, artifact in (
+        ("fleet runner", protocol.runner),
+        ("foundation bridge", protocol.bridge.artifact),
+    ):
+        try:
+            source = _tag_file(repo, source_commit, artifact.source_path)
+        except FleetError as error:
+            raise FleetError(
+                f"{release.tag}: released journey {label} source is unavailable"
+            ) from error
+        if hashlib.sha256(source).hexdigest() != artifact.sha256:
+            raise FleetError(
+                f"{release.tag}: released journey {label} does not match its protocol hash"
+            )
+    return source_commit
 
 
 def shipped_update_surface(repo: Path, release: DistributionRelease | ImmutableRelease) -> dict[str, object]:
@@ -372,6 +435,30 @@ def shipped_update_surface(repo: Path, release: DistributionRelease | ImmutableR
         "build_and_preview_delivered_release": "build_and_preview_delivered_release" in text,
         "execute_approved_delivered_release": "execute_approved_delivered_release" in text,
     }
+    protocol_bytes = _optional_tag_file(repo, release.tag, UPDATE_JOURNEY_RELATIVE)
+    protocol_surface: dict[str, object] = {
+        "path": UPDATE_JOURNEY_RELATIVE,
+        "status": "missing",
+        "sha256": None,
+        "schema_version": None,
+        "controller": None,
+    }
+    if protocol_bytes is not None:
+        try:
+            protocol = load_update_journey_protocol(protocol_bytes)
+        except JourneyProtocolError as error:
+            raise FleetError(
+                f"{release.tag}: released journey protocol is invalid: {error}"
+            ) from error
+        source_commit = _verify_released_protocol_artifacts(repo, release, protocol)
+        protocol_surface = {
+            "path": UPDATE_JOURNEY_RELATIVE,
+            "status": "present",
+            "sha256": hashlib.sha256(protocol_bytes).hexdigest(),
+            "schema_version": protocol.schema_version,
+            "controller": protocol.controller,
+            "source_commit": source_commit,
+        }
     identity = release.identity() if isinstance(release, ImmutableRelease) else {
         "tag": release.tag,
         "tag_object": _git(repo, "rev-parse", "--verify", release.tag),
@@ -388,7 +475,8 @@ def shipped_update_surface(repo: Path, release: DistributionRelease | ImmutableR
         "rescue_sha256": hashlib.sha256(rescue).hexdigest() if rescue is not None else None,
         "preview_approval_receipt": required,
         "delivery_operations": delivery,
-        "machine_executable": False,
+        "journey_protocol": protocol_surface,
+        "machine_executable": protocol_bytes is not None,
     }
 
 
@@ -990,10 +1078,19 @@ def classify_historic_update_surface(repo: Path, release: DistributionRelease) -
     activation_bridge = _optional_tag_file(
         repo, release.tag, "core/lifecycle/catalog/bridge-release.json"
     )
-    protocol = _optional_tag_file(repo, release.tag, "System/.update-journey-v1.json")
+    protocol = _optional_tag_file(repo, release.tag, UPDATE_JOURNEY_RELATIVE)
+    machine_executable = False
     if protocol is not None:
+        try:
+            parsed_protocol = load_update_journey_protocol(protocol)
+        except JourneyProtocolError as error:
+            raise FleetError(
+                f"{release.tag}: released journey protocol is invalid: {error}"
+            ) from error
+        _verify_released_protocol_artifacts(repo, release, parsed_protocol)
         route = "machine-protocol-declared"
         bridge_requirement = "declared-by-protocol"
+        machine_executable = True
     elif skill is None:
         route = "missing-dex-update-skill"
         bridge_requirement = "unsupported-without-published-route"
@@ -1009,7 +1106,7 @@ def classify_historic_update_surface(repo: Path, release: DistributionRelease) -
     return {
         "route_classification": route,
         "bridge_requirement": bridge_requirement,
-        "machine_executable": False,
+        "machine_executable": machine_executable,
         "dex_update_skill": {
             "path": UPDATE_SKILL_RELATIVE,
             "status": "present" if skill is not None else "missing",
@@ -1025,7 +1122,7 @@ def classify_historic_update_surface(repo: Path, release: DistributionRelease) -
             "activation_bridge": activation_bridge is not None,
         },
         "machine_protocol": {
-            "path": "System/.update-journey-v1.json",
+            "path": UPDATE_JOURNEY_RELATIVE,
             "status": "present" if protocol is not None else "missing",
             "sha256": hashlib.sha256(protocol).hexdigest() if protocol is not None else None,
         },
@@ -1556,13 +1653,18 @@ def assert_evidence_bound(
             raise FleetError(f"{case.starting_tag}: starting release is no longer discoverable")
         expected_historic_surface = shipped_update_surface(repo, starting_release)
         expected_foundation_surface = shipped_update_surface(repo, foundation)
-        if (
-            expected_historic_surface["machine_executable"] is not True
-            or expected_foundation_surface["machine_executable"] is not True
-        ):
+        protocol_surface = shipped_update_surface(repo, follow_up)
+        if protocol_surface["machine_executable"] is not True:
             raise FleetError(
                 f"{case.starting_tag}: immutable executable journey protocol is not published; "
                 "fleet acceptance cannot pass"
+            )
+        protocol = load_update_journey_protocol(
+            _tag_file(repo, follow_up.tag, UPDATE_JOURNEY_RELATIVE)
+        )
+        if protocol.foundation != foundation.identity():
+            raise FleetError(
+                f"{case.starting_tag}: released journey protocol names a different foundation"
             )
         manifest_path = _evidence_file(
             evidence_root, case.evidence_manifest_path, f"{case.starting_tag} evidence manifest"

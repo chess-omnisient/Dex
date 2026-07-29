@@ -703,6 +703,7 @@ System/.last-learning-check
 System/.local-only-preservation-transition.json
 System/.mcp.json.example
 System/.release-evidence-profile.json
+System/.update-journey-v1.json
 System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md
 System/Dex_Backlog.md
 System/README.md
@@ -1017,6 +1018,7 @@ core/tests/test_customization_verification.py
 core/tests/test_daily_plan_relationships_surface.py
 core/tests/test_dex_improvements_server.py
 core/tests/test_dex_state.py
+core/tests/test_dex_update_bridge.py
 core/tests/test_dexdiff_adopt_profile_script.py
 core/tests/test_dexdiff_profile_adopt.py
 core/tests/test_dexdiff_publish_diff_script.py
@@ -1067,6 +1069,7 @@ core/tests/test_messy_vault_parsers.py
 core/tests/test_no_deprecated_models.py
 core/tests/test_nudge_calendar.py
 core/tests/test_onboarding_calendar.py
+core/tests/test_onboarding_context_lifecycle.py
 core/tests/test_path_contract.py
 core/tests/test_paths.py
 core/tests/test_people_index_v2.py
@@ -1110,6 +1113,7 @@ core/tests/test_trust_wizards.py
 core/tests/test_trusted_mcp_safety.py
 core/tests/test_update_checker.py
 core/tests/test_update_checker_real_installs.py
+core/tests/test_update_journey_protocol.py
 core/tests/test_update_rollback_journey.py
 core/tests/test_work_server_entity_links.py
 core/tests/test_work_server_legacy_task_completion.py
@@ -1126,6 +1130,7 @@ core/transaction/lock.py
 core/transaction/snapshot.py
 core/update/__init__.py
 core/update/apply_update.py
+core/update/journey_protocol.py
 core/utils/__init__.py
 core/utils/company_domains.py
 core/utils/credential_migration_exceptions.json
@@ -1261,6 +1266,7 @@ scripts/connections-consumer-smoke.mjs
 scripts/connections-contract-validation.mjs
 scripts/detect-flaky-tests.sh
 scripts/dex_state.py
+scripts/dex_update_bridge.py
 scripts/founder-content-allowlist.txt
 scripts/generate-architecture-inventory.py
 scripts/generate-connections-contract.mjs
@@ -1269,6 +1275,7 @@ scripts/generate-path-contracts.py
 scripts/generate-portable-contract.py
 scripts/generate-release-catalog.py
 scripts/generate-test-durations.py
+scripts/generate-update-journey-protocol.py
 scripts/instructed-tools-allowlist.txt
 scripts/make-aged-vault-fixture.sh
 scripts/merge-junit.py
