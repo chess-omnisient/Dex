@@ -6,6 +6,7 @@ from __future__ import annotations
 def mcp_registration_snippet() -> dict[str, object]:
     return {
         "customization-migration-mcp": {
+            "type": "stdio",
             "command": "{{VAULT_PATH}}/.venv/bin/python",
             "args": [
                 "{{VAULT_PATH}}/core/mcp/customization_migration_server.py"

@@ -22,6 +22,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from core import portable_contract
+from core.customization_migration.registration import mcp_registration_snippet
 from core.lifecycle.catalog import load_catalog, load_catalog_payload_sources
 from core.lifecycle.conflict import (
     ConflictResolutionPreview,
@@ -54,7 +55,6 @@ _PURPOSE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _ARCHIVE_RELATIVE = ".dex/pre-split-archive.git"
 _ARCHIVE_RECEIPTS_RELATIVE = "System/.dex/archive-removals"
 _MCP_CONFIG_RELATIVE = ".mcp.json"
-_MCP_TEMPLATE_RELATIVE = "System/.mcp.json.example"
 _MCP_REGISTRATION_NAME = "customization-migration-mcp"
 _REBUILD_TRANSACTION_PATH = re.compile(
     r"^System/\.dex/customization-migrations/cap-[0-9a-f]{16}/(?:"
@@ -708,25 +708,20 @@ def _mcp_registration_preview(
     """Build the one explicitly approved, add-only MCP registration write."""
     root = Path(vault_root).resolve()
     target = root / _MCP_CONFIG_RELATIVE
-    template = root / _MCP_TEMPLATE_RELATIVE
     if target.is_symlink() or (target.exists() and not target.is_file()):
         raise PlanRejected(".mcp.json must be a regular file")
-    if template.is_symlink() or not template.is_file():
-        raise PlanRejected("System/.mcp.json.example must be a regular file")
     try:
         existing = json.loads(target.read_text(encoding="utf-8")) if target.exists() else {}
-        generated = json.loads(template.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
         raise PlanRejected("MCP configuration must contain valid JSON") from error
-    if not isinstance(existing, dict) or not isinstance(generated, dict):
+    if not isinstance(existing, dict):
         raise PlanRejected("MCP configuration must contain a JSON object")
     servers = existing.get("mcpServers")
-    generated_servers = generated.get("mcpServers")
     if servers is None:
         servers = {}
-    if not isinstance(servers, dict) or not isinstance(generated_servers, dict):
+    if not isinstance(servers, dict):
         raise PlanRejected("MCP configuration must contain an mcpServers object")
-    registration = generated_servers.get(_MCP_REGISTRATION_NAME)
+    registration = mcp_registration_snippet().get(_MCP_REGISTRATION_NAME)
     if not isinstance(registration, dict):
         raise PlanRejected("the shipped MCP registration is missing or malformed")
     if _MCP_REGISTRATION_NAME in servers:
