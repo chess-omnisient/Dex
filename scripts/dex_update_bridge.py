@@ -1,0 +1,329 @@
+#!/usr/bin/env python3
+"""One-time, pinned bootstrap for Dex lifecycle-era installations.
+
+This is deliberately separate from an installed old Dex's update instructions.
+Those releases can safely update the code they already contain, but cannot fetch
+new Dex code. The bridge proves one predeclared foundation release and delegates
+the topology conversion and release writes to its lifecycle service.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from types import ModuleType
+from typing import Any, Callable, Mapping, Protocol
+
+OFFICIAL_REMOTE = "https://github.com/davekilleen/Dex.git"
+_HEX = re.compile(r"^[0-9a-f]{40}$")
+_RELEASE_TAG = re.compile(r"^dist/release/v[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{7,40}$")
+_APPROVAL_WORD = "APPLY"
+
+
+class BridgeError(RuntimeError):
+    """The bridge could not prove it is safe to continue."""
+
+
+@dataclass(frozen=True)
+class ReleasePin:
+    """The closed immutable identity of the one bridge foundation release."""
+
+    tag: str
+    tag_object: str
+    commit: str
+    tree: str
+    version: str
+
+    def __post_init__(self) -> None:
+        if _RELEASE_TAG.fullmatch(self.tag) is None:
+            raise BridgeError("foundation tag is not an immutable distribution tag")
+        if any(_HEX.fullmatch(value) is None for value in (self.tag_object, self.commit, self.tree)):
+            raise BridgeError("foundation release identity is malformed")
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", self.version):
+            raise BridgeError("foundation release version is malformed")
+        if not self.tag.startswith(f"dist/release/v{self.version}-"):
+            raise BridgeError("foundation tag and version disagree")
+
+    def identity(self) -> dict[str, str]:
+        return {
+            "tag": self.tag,
+            "tag_object": self.tag_object,
+            "commit": self.commit,
+            "tree": self.tree,
+            "version": self.version,
+            # ``release`` is the Git ref name; lifecycle identities name the
+            # user-facing channel as ``stable``.
+            "channel": "stable",
+        }
+
+
+# The first public release with the corrected self-delivery approval boundary
+# and profile-safe package. This pin is intentionally in the bridge source:
+# discovering a mutable "latest" release would not be a safe bootstrap.
+FOUNDATION = ReleasePin(
+    tag="dist/release/v1.80.5-9211053",
+    tag_object="ff94463b191bb2c503ffec42ce288e961ca79659",
+    commit="9211053235d7c1837a6e327bff1596b593323fc6",
+    tree="d394658e2bf1125b96eb5afdace24f3a5ba3107e",
+    version="1.80.5",
+)
+
+
+class LifecycleService(Protocol):
+    def build_and_preview_topology_migration(self, vault_root: str | Path) -> Mapping[str, Any]: ...
+    def execute_approved_topology_migration(self, vault_root: str | Path, preview: Mapping[str, Any], approved_token: str) -> Mapping[str, Any]: ...
+    def build_and_preview_delivered_release(self, vault_root: str | Path, release: Mapping[str, Any]) -> Mapping[str, Any]: ...
+    def execute_approved_delivered_release(self, vault_root: str | Path, preview: Mapping[str, Any], approved_token: str) -> Mapping[str, Any]: ...
+
+
+def _run_git(directory: Path, *arguments: str) -> str:
+    """Run a non-interactive Git operation with hooks and non-HTTPS blocked."""
+    completed = subprocess.run(
+        ["git", "-c", "core.hooksPath=/dev/null", "-c", "fetch.fsckObjects=true", "-c", "transfer.fsckObjects=true", "-C", str(directory), *arguments],
+        check=False,
+        capture_output=True,
+        env={**os.environ, "GIT_ALLOW_PROTOCOL": "https", "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"},
+        timeout=90,
+    )
+    if completed.returncode:
+        detail = completed.stderr.decode("utf-8", "replace").strip()
+        raise BridgeError(detail or "Git could not retrieve the pinned Dex release")
+    try:
+        return completed.stdout.decode("utf-8").strip()
+    except UnicodeDecodeError as error:
+        raise BridgeError("Git returned non-text release metadata") from error
+
+
+def _assert_equal(actual: str, expected: str, description: str) -> None:
+    if actual != expected:
+        raise BridgeError(f"pinned foundation {description} did not match")
+
+
+def _verify_pin(repository: Path, pin: ReleasePin) -> None:
+    _assert_equal(_run_git(repository, "rev-parse", "--verify", f"refs/tags/{pin.tag}"), pin.tag_object, "annotated tag")
+    _assert_equal(_run_git(repository, "rev-parse", "--verify", f"{pin.tag}^{{commit}}"), pin.commit, "commit")
+    _assert_equal(_run_git(repository, "rev-parse", "--verify", f"{pin.tag}^{{tree}}"), pin.tree, "tree")
+
+
+def acquire_foundation_source(pin: ReleasePin = FOUNDATION) -> tuple[tempfile.TemporaryDirectory[str], Path]:
+    """Fetch only the pinned foundation tag into a disposable source checkout."""
+    temporary = tempfile.TemporaryDirectory(prefix="dex-update-bridge-")
+    root = Path(temporary.name)
+    bare = root / "evidence.git"
+    source = root / "foundation"
+    try:
+        _run_git(root, "init", "--bare", "--quiet", str(bare))
+        _run_git(bare, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-recurse-submodules", OFFICIAL_REMOTE, f"refs/tags/{pin.tag}:refs/tags/{pin.tag}")
+        _verify_pin(bare, pin)
+        # A linked worktree keeps the verified objects in the disposable bare
+        # evidence store. It avoids opening the local ``file`` transport, which
+        # this bridge deliberately blocks for every network-facing Git call.
+        _run_git(bare, "worktree", "add", "--quiet", "--detach", str(source), pin.tag)
+        _verify_pin(source, pin)
+    except Exception:
+        temporary.cleanup()
+        raise
+    return temporary, source
+
+
+def _validate_vault(vault_root: Path) -> Path:
+    supplied = Path(vault_root).expanduser()
+    if ".." in supplied.parts:
+        raise BridgeError("Dex vault path must not contain parent-directory traversal")
+    # ``resolve()`` follows links, so it is only safe after every component of
+    # the path supplied by the caller has been checked.  Otherwise a symlinked
+    # root would appear to be an ordinary target directory by the time the
+    # lifecycle service sees it.
+    lexical = Path(os.path.abspath(supplied))
+    path_component = Path(lexical.anchor)
+    for component in lexical.parts[1:]:
+        path_component /= component
+        if path_component.is_symlink():
+            raise BridgeError("Dex vault path contains a symlink")
+    root = lexical.resolve()
+    if not root.is_dir():
+        raise BridgeError("Dex vault is not a safe directory")
+    if (root / ".git").is_symlink() or not (root / ".git").exists():
+        raise BridgeError("Dex vault does not have a safe Git history")
+    if (root / "System").is_symlink() or not (root / "System").is_dir():
+        raise BridgeError("Dex vault does not have a safe System directory")
+    return root
+
+
+def _installed_python(vault_root: Path) -> Path | None:
+    """Return Dex's already-created POSIX virtualenv interpreter, if present.
+
+    The foundation lifecycle service needs the same runtime dependencies that
+    the historical Dex installer already put in ``.venv``.  The bridge never
+    downloads Python packages at update time.  This is deliberately a POSIX
+    seam; Windows gets its own reviewed bridge rather than guessed paths.
+    """
+    candidate = vault_root / ".venv" / "bin" / "python"
+    config = vault_root / ".venv" / "pyvenv.cfg"
+    # POSIX venvs normally expose Python as a symlink to the system interpreter;
+    # executing that entrypoint is what makes its dependency site-packages
+    # available, so reject only a missing/non-executable resolved target.
+    if not candidate.exists() or not candidate.resolve().is_file() or not os.access(candidate, os.X_OK):
+        return None
+    if config.is_symlink() or not config.is_file():
+        return None
+    return candidate
+
+
+def _reexec_in_installed_runtime(vault_root: Path, argv: list[str]) -> None:
+    """Restart once in the install's existing dependency runtime, if needed."""
+    if os.environ.get("DEX_UPDATE_BRIDGE_RUNTIME") == "1":
+        return
+    interpreter = _installed_python(vault_root)
+    if interpreter is None or interpreter.resolve() == Path(sys.executable).resolve():
+        return
+    environment = {**os.environ, "DEX_UPDATE_BRIDGE_RUNTIME": "1"}
+    os.execve(
+        str(interpreter),
+        [str(interpreter), str(Path(__file__).resolve()), *argv],
+        environment,
+    )
+
+
+def _load_lifecycle_service(source: Path) -> LifecycleService:
+    """Import only the verified foundation release's lifecycle service."""
+    if not (source / "core" / "lifecycle" / "service.py").is_file():
+        raise BridgeError("pinned foundation release has no lifecycle service")
+    for name in tuple(sys.modules):
+        if name == "core" or name.startswith("core."):
+            del sys.modules[name]
+    sys.path.insert(0, str(source))
+    try:
+        module: ModuleType = importlib.import_module("core.lifecycle.service")
+    except Exception as error:  # noqa: BLE001
+        raise BridgeError(f"pinned foundation lifecycle service could not start: {error}") from error
+    required = (
+        "build_and_preview_topology_migration",
+        "execute_approved_topology_migration",
+        "build_and_preview_delivered_release",
+        "execute_approved_delivered_release",
+    )
+    if any(not callable(getattr(module, name, None)) for name in required):
+        raise BridgeError("pinned foundation lifecycle service is incomplete")
+    return module  # type: ignore[return-value]
+
+
+def _approved_preview(prompt: str, preview: Mapping[str, Any], approval_token: object, *, input_fn: Callable[[str], str], output_fn: Callable[[str], None]) -> tuple[Mapping[str, Any], str]:
+    if not isinstance(approval_token, str) or not approval_token:
+        raise BridgeError("lifecycle preview did not return an approval token")
+    output_fn(json.dumps(preview, indent=2, sort_keys=True))
+    if input_fn(f"{prompt} Type {_APPROVAL_WORD} to continue: ") != _APPROVAL_WORD:
+        raise BridgeError("no change was made because the displayed preview was not approved")
+    return preview, approval_token
+
+
+def _fetch_foundation_into_brain(vault_root: Path, pin: ReleasePin) -> None:
+    """Fetch one pinned release into the private brain; no vault file is written."""
+    brain = vault_root / ".dex" / "brain.git"
+    if brain.is_symlink() or not brain.is_dir():
+        raise BridgeError("topology conversion did not create a safe Dex brain store")
+    _run_git(
+        brain,
+        "fetch",
+        "--quiet",
+        "--no-tags",
+        "--no-write-fetch-head",
+        "--no-recurse-submodules",
+        OFFICIAL_REMOTE,
+        f"refs/tags/{pin.tag}:refs/tags/{pin.tag}",
+        "+refs/heads/release:refs/remotes/upstream/release",
+    )
+    _verify_pin(brain, pin)
+    _assert_equal(
+        _run_git(brain, "rev-parse", "--verify", "refs/remotes/upstream/release^{commit}"),
+        pin.commit,
+        "stable release-channel target",
+    )
+
+
+def _foundation_is_installed(vault_root: Path, pin: ReleasePin) -> bool:
+    brain = vault_root / ".dex" / "brain.git"
+    if brain.is_symlink() or not brain.is_dir():
+        raise BridgeError("topology conversion did not create a safe Dex brain store")
+    try:
+        installed = _run_git(brain, "rev-parse", "--verify", "refs/dex/installed^{commit}")
+    except BridgeError:
+        return False
+    return installed == pin.commit
+
+
+def run_bridge(vault_root: Path, service: LifecycleService, *, pin: ReleasePin = FOUNDATION, fetch_foundation: Callable[[Path, ReleasePin], None] = _fetch_foundation_into_brain, input_fn: Callable[[str], str] = input, output_fn: Callable[[str], None] = print) -> Mapping[str, Any]:
+    """Run two fresh approval boundaries using the verified foundation service."""
+    root = _validate_vault(vault_root)
+    topology = service.build_and_preview_topology_migration(root)
+    preview = topology.get("preview")
+    # Foundation v1.80.5 calls a completed conversion ``post-split`` and still
+    # returns a read-only status document. Older service shapes used
+    # ``brain-vault-split`` with no preview. Neither has an approval token, so
+    # neither is an operation the bridge may repeat.
+    if (
+        topology.get("topology") in {"brain-vault-split", "post-split"}
+        and topology.get("approval_token") is None
+    ):
+        topology_receipt: Mapping[str, Any] = {"skipped": "already-brain-vault-split"}
+    else:
+        if not isinstance(preview, Mapping):
+            raise BridgeError("foundation could not produce a topology preview")
+        preview, token = _approved_preview("Dex will first separate its code from your notes.", preview, topology.get("approval_token"), input_fn=input_fn, output_fn=output_fn)
+        topology_receipt = service.execute_approved_topology_migration(root, preview, token)
+
+    # This fetch touches only Dex's private code store. The following preview is
+    # still the sole authority for every vault-content write.
+    fetch_foundation(root, pin)
+    if _foundation_is_installed(root, pin):
+        delivery_receipt: Mapping[str, Any] = {"skipped": "foundation-already-installed"}
+    else:
+        delivery = service.build_and_preview_delivered_release(root, pin.identity())
+        release_preview = delivery.get("preview")
+        if not isinstance(release_preview, Mapping):
+            raise BridgeError("foundation could not produce a delivered-release preview")
+        release_preview, release_token = _approved_preview(f"Dex will now install verified foundation v{pin.version}.", release_preview, delivery.get("approval_token"), input_fn=input_fn, output_fn=output_fn)
+        delivery_receipt = service.execute_approved_delivered_release(root, release_preview, release_token)
+
+    return {
+        "foundation": pin.identity(),
+        "topology_receipt": dict(topology_receipt),
+        "delivery_receipt": dict(delivery_receipt),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--vault", type=Path, default=Path.cwd(), help="old Dex vault (defaults to current directory)")
+    args = parser.parse_args(argv)
+    if sys.platform.startswith("win"):
+        parser.error("this P0 bridge supports macOS and Linux only")
+    if shutil.which("git") is None:
+        parser.error("Git is required for the one-time Dex update bridge")
+    try:
+        vault = _validate_vault(args.vault)
+        _reexec_in_installed_runtime(vault, sys.argv[1:] if argv is None else argv)
+        temporary, source = acquire_foundation_source()
+        try:
+            result = run_bridge(vault, _load_lifecycle_service(source))
+        finally:
+            temporary.cleanup()
+    except (BridgeError, OSError, RuntimeError) as error:
+        print(f"Dex update bridge stopped safely: {error}", file=sys.stderr)
+        return 1
+    print("Dex is now on the self-delivering updater. Future updates use dex-update.")
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

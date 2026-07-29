@@ -73,6 +73,35 @@ can write. The transaction and ownership contract decide every vault-content
 write and keep the receipt and rewind evidence. If delivery, preview, or
 execution cannot be proved, it stops; do not substitute a manual Git command.
 
+## Lifecycle-era bridge — v1.74 through v1.79
+
+Those releases can safely update the Dex files they already have, but they do
+not contain the later delivery mechanism that fetches a new Dex release. They
+need one **one-time bridge** before their normal `dex-update` experience can
+begin. The bridge is intentionally not a raw Git merge: it fetches only the
+pre-pinned foundation release, proves its annotated tag, commit, and tree, then
+uses that foundation's existing topology and receipt-backed transaction service.
+
+On macOS or Linux, from the old Dex folder, download the separately published,
+versioned bridge file and verify the SHA-256 printed beside that exact file
+before running it. Use the bridge file matched to the currently published
+stable foundation; an older bridge refuses rather than silently substituting a
+newer release.
+
+```bash
+python3 dex_update_bridge.py --vault "$PWD"
+```
+
+It shows two independent previews and requires `APPLY` for each: first the
+one-time separation of Dex code from the user's notes, then the exact files for
+the verified foundation release. It never pushes, never uses a branch, and
+stops before a user-file change if either proof or approval is missing. Once it
+finishes, all later updates are the ordinary `dex-update` route.
+
+Windows is not part of this P0 bridge. Do not substitute an unverified PowerShell
+or Git command; use the supported rescue path until a Windows bridge is
+published.
+
 ## Special case: v1.62.0 refuses before the merge
 
 Six of the seven published copies of v1.62.0 shipped a self-contradictory metadata
