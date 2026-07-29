@@ -73,6 +73,47 @@ can write. The transaction and ownership contract decide every vault-content
 write and keep the receipt and rewind evidence. If delivery, preview, or
 execution cannot be proved, it stops; do not substitute a manual Git command.
 
+## Lifecycle-era bridge — v1.74 through v1.79
+
+Those releases can safely update the Dex files they already have, but they do
+not contain the later delivery mechanism that fetches a new Dex release. They
+need one **one-time bridge** before their normal `dex-update` experience can
+begin. The bridge is intentionally not a raw Git merge: it fetches only the
+pre-pinned foundation release, proves its annotated tag, commit, and tree, then
+uses that foundation's existing topology and receipt-backed transaction service.
+
+This source is not yet a published historical-support promise. Its pinned
+foundation is exactly v1.80.5; it cannot include repairs introduced in later
+source commits. In particular, do not treat a later MCP-registration repair as
+evidence that a v1.74–v1.79 bridge journey is complete. Each historical route
+needs an installed-fixture rehearsal, preserved-user-file hashes, Doctor output,
+and path evidence before it can be offered as supported recovery.
+
+Do not run this unpublished source as a rescue command. When a later immutable
+foundation includes the repair and the full fixture evidence is green, publish a
+separately versioned bridge file with its SHA-256 and the exact annotated
+distribution tag, tag object, commit, and tree it pins. That bridge source and
+artifact must name that same future foundation identity; rebasing this file onto
+`main` is not a substitute for a released tag. An older bridge must refuse
+rather than silently substituting a newer release.
+
+# This is the eventual published-artifact invocation, not an instruction to
+# run this repository source before that release exists.
+```bash
+python3 dex_update_bridge.py --vault "$PWD"
+```
+
+It shows two independent previews and requires `APPLY` for each: first the
+one-time separation of Dex code from the user's notes, then the exact files for
+the verified foundation release. It never pushes, never uses a branch, and
+stops before a user-file change if either proof or approval is missing. Only a
+published bridge whose historical fixture proof is green may say that later
+updates are the ordinary `/dex-update` route.
+
+Windows is not part of this P0 bridge. Do not substitute an unverified PowerShell
+or Git command; use the supported rescue path until a Windows bridge is
+published.
+
 ## Special case: v1.62.0 refuses before the merge
 
 Six of the seven published copies of v1.62.0 shipped a self-contradictory metadata
