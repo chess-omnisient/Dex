@@ -14,7 +14,6 @@ import importlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -27,7 +26,8 @@ OFFICIAL_REMOTE = "https://github.com/davekilleen/Dex.git"
 _HEX = re.compile(r"^[0-9a-f]{40}$")
 _RELEASE_TAG = re.compile(r"^dist/release/v[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{7,40}$")
 _APPROVAL_WORD = "APPLY"
-_SUBPROCESS_ENVIRONMENT = ("PATH", "TMPDIR", "TMP", "TEMP", "SYSTEMROOT", "WINDIR")
+_CLEAN_RUNTIME_MARKER = "DEX_UPDATE_BRIDGE_CLEAN_RUNTIME"
+_TRUSTED_EXECUTABLE_DIRECTORIES = (Path("/usr/bin"), Path("/bin"), Path("/usr/local/bin"), Path("/opt/homebrew/bin"))
 
 
 class BridgeError(RuntimeError):
@@ -86,39 +86,59 @@ class LifecycleService(Protocol):
     def execute_approved_delivered_release(self, vault_root: str | Path, preview: Mapping[str, Any], approved_token: str) -> Mapping[str, Any]: ...
 
 
+def _trusted_executable(name: str) -> Path | None:
+    """Find a system-installed executable without consulting caller PATH."""
+    for directory in _TRUSTED_EXECUTABLE_DIRECTORIES:
+        candidate = directory / name
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            continue
+        if resolved.is_file() and os.access(resolved, os.X_OK):
+            return resolved
+    return None
+
+
+def _trusted_git_binary() -> Path:
+    git = _trusted_executable("git")
+    if git is None:
+        raise BridgeError("trusted system Git is required for the one-time Dex update bridge")
+    return git
+
+
 def _bridge_environment() -> dict[str, str]:
     """Return the small, non-interactive environment used by the bridge.
 
     The bridge fetches one public, pinned release; it must never inherit a
-    caller's Git repository selection, configuration, credential helpers, or
-    Python import path.  Keep only the platform variables needed to locate
-    executables and temporary files, then explicitly disable all Git config
-    sources that could alter retrieval.
+    caller's Git repository selection, configuration, credential helpers,
+    Python import path, or executable lookup.  The foundation's Node migrator
+    inherits this exact environment, so its Git children receive the same
+    boundary.
     """
-    environment = {
-        name: value
-        for name in _SUBPROCESS_ENVIRONMENT
-        if (value := os.environ.get(name))
+    executable_directories = [str(_trusted_git_binary().parent)]
+    node = _trusted_executable("node")
+    if node is not None:
+        executable_directories.append(str(node.parent))
+    executable_directories.extend(str(directory) for directory in _TRUSTED_EXECUTABLE_DIRECTORIES)
+    return {
+        "PATH": os.pathsep.join(dict.fromkeys(executable_directories)),
+        "GCM_INTERACTIVE": "Never",
+        "GIT_ALLOW_PROTOCOL": "https",
+        "GIT_ASKPASS": "false",
+        "GIT_ATTR_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_TERMINAL_PROMPT": "0",
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
     }
-    environment.update(
-        {
-            "GCM_INTERACTIVE": "Never",
-            "GIT_ALLOW_PROTOCOL": "https",
-            "GIT_ASKPASS": "false",
-            "GIT_ATTR_NOSYSTEM": "1",
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_TERMINAL_PROMPT": "0",
-        }
-    )
-    return environment
 
 
 def _run_git(directory: Path, *arguments: str) -> str:
     """Run a non-interactive Git operation with hooks and non-HTTPS blocked."""
     completed = subprocess.run(
         [
-            "git",
+            str(_trusted_git_binary()),
             "-c",
             "core.hooksPath=/dev/null",
             "-c",
@@ -231,14 +251,18 @@ def _installed_python(vault_root: Path) -> Path | None:
 
 
 def _reexec_in_installed_runtime(vault_root: Path, argv: list[str]) -> None:
-    """Restart once in the install's existing dependency runtime, if needed."""
-    if os.environ.get("DEX_UPDATE_BRIDGE_RUNTIME") == "1":
-        return
-    interpreter = _installed_python(vault_root)
-    if interpreter is None or interpreter.resolve() == Path(sys.executable).resolve():
-        return
+    """Enter one clean process before loading any foundation code.
+
+    The installed venv can resolve to the same binary as the invoking Python,
+    but running it by its venv path still selects the installed dependencies.
+    Never trust a caller-supplied runtime marker: it is accepted only when the
+    complete environment already equals the closed runtime environment.
+    """
     environment = _bridge_environment()
-    environment["DEX_UPDATE_BRIDGE_RUNTIME"] = "1"
+    environment[_CLEAN_RUNTIME_MARKER] = "1"
+    if os.environ.get(_CLEAN_RUNTIME_MARKER) == "1" and dict(os.environ) == environment:
+        return
+    interpreter = _installed_python(vault_root) or Path(sys.executable).resolve()
     os.execve(
         str(interpreter),
         [str(interpreter), str(Path(__file__).resolve()), *argv],
@@ -432,9 +456,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if sys.platform.startswith("win"):
         parser.error("this P0 bridge supports macOS and Linux only")
-    if shutil.which("git") is None:
-        parser.error("Git is required for the one-time Dex update bridge")
     try:
+        _trusted_git_binary()
         vault = _validate_vault(args.vault)
         # A completed bridge has all durable state locally.  Check before
         # selecting the old virtualenv or downloading source so resuming it is

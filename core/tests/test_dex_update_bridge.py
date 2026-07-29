@@ -280,6 +280,54 @@ def test_main_resumes_completed_foundation_before_runtime_or_source_download(
     assert '"foundation-already-installed"' in output
 
 
+def test_runtime_reexec_cleans_a_hostile_same_interpreter_and_preset_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_execve(interpreter: str, argv: list[str], environment: dict[str, str]) -> None:
+        captured["interpreter"] = interpreter
+        captured["argv"] = argv
+        captured["environment"] = environment
+
+    monkeypatch.setattr(bridge, "_installed_python", lambda _vault: Path(sys.executable))
+    monkeypatch.setattr(bridge.os, "execve", fake_execve)
+    monkeypatch.setenv(bridge._CLEAN_RUNTIME_MARKER, "1")
+    monkeypatch.setenv("PATH", "/private/attacker-bin")
+    monkeypatch.setenv("GIT_DIR", "/private/attacker-repository")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/private/attacker-config")
+    monkeypatch.setenv("GIT_SSH_COMMAND", "attacker-command")
+    monkeypatch.setenv("PYTHONPATH", "/private/attacker-python")
+    monkeypatch.setenv("NODE_OPTIONS", "--require=/private/attacker-node")
+
+    bridge._reexec_in_installed_runtime(_vault(tmp_path), ["--vault", "/safe/vault"])
+
+    assert captured["interpreter"] == str(Path(sys.executable))
+    assert captured["argv"] == [
+        str(Path(sys.executable)),
+        str(Path(bridge.__file__).resolve()),
+        "--vault",
+        "/safe/vault",
+    ]
+    environment = captured["environment"]
+    assert isinstance(environment, dict)
+    assert environment[bridge._CLEAN_RUNTIME_MARKER] == "1"
+    assert "/private/attacker-bin" not in environment["PATH"]
+    assert environment["GIT_CONFIG_GLOBAL"] == os.devnull
+    for name in ("GIT_DIR", "GIT_SSH_COMMAND", "PYTHONPATH", "NODE_OPTIONS"):
+        assert name not in environment
+
+
+def test_trusted_executable_does_not_consult_caller_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    attacker_git = tmp_path / "git"
+    attacker_git.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    attacker_git.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setattr(bridge, "_TRUSTED_EXECUTABLE_DIRECTORIES", (tmp_path / "system-bin",))
+
+    assert bridge._trusted_executable("git") is None
+
+
 def test_git_subprocess_environment_excludes_caller_git_and_credential_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -294,6 +342,7 @@ def test_git_subprocess_environment_excludes_caller_git_and_credential_settings(
     monkeypatch.setenv("GIT_DIR", "/private/attacker-repository")
     monkeypatch.setenv("GIT_SSH_COMMAND", "attacker-command")
     monkeypatch.setenv("HOME", "/private/credential-home")
+    monkeypatch.setenv("PATH", "/private/attacker-bin")
     monkeypatch.setenv("PYTHONPATH", "/private/attacker-python")
     monkeypatch.setattr(bridge.subprocess, "run", fake_run)
 
@@ -304,6 +353,7 @@ def test_git_subprocess_environment_excludes_caller_git_and_credential_settings(
     assert environment["GIT_CONFIG_GLOBAL"] == os.devnull
     assert environment["GIT_CONFIG_NOSYSTEM"] == "1"
     assert environment["GIT_TERMINAL_PROMPT"] == "0"
+    assert "/private/attacker-bin" not in environment["PATH"]
     assert "HOME" not in environment
     assert "PYTHONPATH" not in environment
     assert "GIT_DIR" not in environment
