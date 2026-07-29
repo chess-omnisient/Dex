@@ -106,7 +106,11 @@ async function startCallbackServer({
             ? '<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>Callback not accepted</h2><p>Dex is still waiting for the connection to finish.</p></body></html>'
             : error
             ? `<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>Connection failed</h2><p>${escapeHtml(error)}</p><p>You can close this tab and return to Dex.</p></body></html>`
-            : `<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>✅ Connected</h2><p>You can close this tab and return to Dex.</p></body></html>`
+            // Receiving Google's redirect only proves that the person approved
+            // the request. Dex still has to exchange that short-lived code and
+            // store the resulting token, so do not claim the connection is
+            // complete until cmdConnect has actually done that work.
+            : '<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>Approval received</h2><p>Dex is finishing the secure connection. Return to Dex to see whether it completed.</p></body></html>'
         );
         if (!terminal) return;
         clearTimeout(timeout);
