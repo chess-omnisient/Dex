@@ -218,6 +218,7 @@ def test_registration_snippet_shape_is_pinned() -> None:
 
     assert mcp_registration_snippet() == {
         "customization-migration-mcp": {
+            "type": "stdio",
             "command": "{{VAULT_PATH}}/.venv/bin/python",
             "args": [
                 "{{VAULT_PATH}}/core/mcp/customization_migration_server.py"
