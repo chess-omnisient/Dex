@@ -48,7 +48,7 @@ from core.lifecycle.retention import compute_retention_report
 from core.path_safety import unsafe_existing_parent
 from core.transaction.engine import PlanEntry, PlanRejected, Transaction
 
-api_version = "1.5.0"
+api_version = "1.4.0"
 
 _CATALOG_RELATIVE = "System/.release-catalog.json"
 _PURPOSE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
@@ -324,9 +324,10 @@ def _onboarding_context_preview(
     profile = root / _ONBOARDING_PROFILE_RELATIVE
     if profile.is_symlink() or not profile.is_file():
         raise PlanRejected("onboarding context requires a finalized regular user profile")
+    original = profile.read_bytes()
     try:
-        current = yaml.safe_load(profile.read_text(encoding="utf-8")) or {}
-    except yaml.YAMLError as error:
+        current = yaml.safe_load(original.decode("utf-8")) or {}
+    except (UnicodeDecodeError, yaml.YAMLError) as error:
         raise PlanRejected("user profile is not valid YAML") from error
     if not isinstance(current, dict):
         raise PlanRejected("user profile must be a YAML object")
@@ -334,7 +335,6 @@ def _onboarding_context_preview(
     updated = dict(current)
     updated["working_context"] = context
     updated["calendar"] = source
-    original = profile.read_bytes()
     plan = [
         PlanEntry(
             _ONBOARDING_PROFILE_RELATIVE,

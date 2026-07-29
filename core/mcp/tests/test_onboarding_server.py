@@ -97,6 +97,93 @@ def test_confirmed_context_tools_preview_then_apply_without_creating_a_session(
     assert not session_file.exists()
 
 
+def test_confirmed_context_tools_do_not_change_an_existing_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = tmp_path / "vault"
+    system = vault / "System"
+    system.mkdir(parents=True)
+    (system / "user-profile.yaml").write_text("name: Example User\n", encoding="utf-8")
+    (system / ".onboarding-complete").write_text("{}\n", encoding="utf-8")
+    session_file = system / ".onboarding-session.json"
+    session_file.write_text('{"keep": "exactly"}\n', encoding="utf-8")
+    original_session = session_file.read_bytes()
+    monkeypatch.setattr(onboarding_server, "BASE_DIR", vault)
+    monkeypatch.setattr(onboarding_server, "MARKER_FILE", system / ".onboarding-complete")
+    monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+
+    previewed = _call_tool(
+        "preview_confirmed_onboarding_context",
+        {
+            "working_context": {"role_focus": "Lead product work", "key_people": []},
+            "calendar_source": {"provider": "none"},
+        },
+    )
+    applied = _call_tool(
+        "apply_confirmed_onboarding_context",
+        {
+            "preview": previewed["data"]["preview"],
+            "approval_token": previewed["data"]["approval_token"],
+        },
+    )
+
+    assert previewed["success"] is True
+    assert applied["success"] is True
+    assert session_file.read_bytes() == original_session
+
+
+def test_apply_confirmed_context_refuses_a_missing_token_without_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = tmp_path / "vault"
+    system = vault / "System"
+    system.mkdir(parents=True)
+    profile = system / "user-profile.yaml"
+    profile.write_text("name: Example User\n", encoding="utf-8")
+    (system / ".onboarding-complete").write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(onboarding_server, "BASE_DIR", vault)
+    monkeypatch.setattr(onboarding_server, "MARKER_FILE", system / ".onboarding-complete")
+    monkeypatch.setattr(onboarding_server, "SESSION_FILE", system / ".onboarding-session.json")
+    previewed = _call_tool(
+        "preview_confirmed_onboarding_context",
+        {
+            "working_context": {"role_focus": "Lead product work", "key_people": []},
+            "calendar_source": {"provider": "none"},
+        },
+    )
+    original_profile = profile.read_bytes()
+
+    applied = _call_tool(
+        "apply_confirmed_onboarding_context",
+        {"preview": previewed["data"]["preview"]},
+    )
+
+    assert applied["success"] is False
+    assert profile.read_bytes() == original_profile
+
+
+def test_onboarding_flow_requires_context_preview_and_explicit_approval() -> None:
+    flow = (REPO_ROOT / ".claude/flows/onboarding.md").read_text(encoding="utf-8")
+    confirmation = flow.split("### Confirm working context and calendar", 1)[1].split(
+        "### Automatic First-Week Reveal",
+        1,
+    )[0]
+
+    assert "working_context" in confirmation
+    assert "calendar_source" in confirmation
+    assert "preview_confirmed_onboarding_context" in confirmation
+    assert "apply_confirmed_onboarding_context" in confirmation
+    assert "explicit Yes" in confirmation
+    assert confirmation.index("preview_confirmed_onboarding_context") < confirmation.index(
+        "explicit Yes"
+    )
+    assert confirmation.index("explicit Yes") < confirmation.index(
+        "apply_confirmed_onboarding_context"
+    )
+
+
 class TestStepOrdering:
     def test_rejects_out_of_order_step_with_next_expected_step(
         self, tmp_path, monkeypatch

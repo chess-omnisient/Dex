@@ -250,8 +250,18 @@ def create_new_session() -> Dict:
 
 
 def _calendar_addressed(session: Dict[str, Any]) -> bool:
-    """Return whether calendar setup was saved or explicitly skipped."""
-    return bool(session.get("data", {}).get("calendar"))
+    """Return whether calendar setup was validated or explicitly skipped."""
+    return session.get("calendar_addressed") is True or bool(
+        session.get("data", {}).get("calendar")
+    )
+
+
+def _approved_profile_session_data(session: Dict[str, Any]) -> Dict[str, Any]:
+    """Exclude context that requires a separate explicit lifecycle approval."""
+    data = dict(session["data"])
+    for field in ("calendar", "calendar_source", "work_email", "working_context"):
+        data.pop(field, None)
+    return data
 
 
 def _next_required_step_before(
@@ -470,7 +480,7 @@ def _provision_folders(capability_states: Dict[str, bool] | None = None) -> List
 
 def _finalize_through_provisioner(session: Dict) -> Dict[str, Any]:
     """Collect onboarding inputs and let the sanctioned provisioner mutate."""
-    data = dict(session["data"])
+    data = _approved_profile_session_data(session)
     data["pillars"] = [
         {"name": pillar, "description": ""}
         for pillar in data.get("pillars", [])
@@ -1575,7 +1585,10 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="save_calendar_selection",
-            description="Save the work calendar selected during onboarding, or defer calendar permission setup.",
+            description=(
+                "Validate a proposed Apple Calendar selection for later explicit "
+                "profile approval, or choose no calendar."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1586,7 +1599,10 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "work_email": {
                         "type": "string",
-                        "description": "Work email when the selected calendar name is an email address",
+                        "description": (
+                            "Transient identity hint when the calendar name is an "
+                            "email address; never stored in the onboarding session"
+                        ),
                         "default": ""
                     },
                     "calendar_count": {
@@ -2147,7 +2163,6 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             skipped = arguments.get('skipped', False)
             work_calendar = (arguments.get('work_calendar') or '').strip()
             work_email = (arguments.get('work_email') or '').strip()
-            calendar_count = arguments.get('calendar_count', 0)
 
             session = load_session()
             if not session:
@@ -2158,13 +2173,13 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
             if skipped:
-                calendar = {"permissions_pending": True}
-                session['data'].pop('work_email', None)
-                session['data']['calendar'] = calendar
+                session["calendar_addressed"] = True
+                for field in ("calendar", "calendar_source", "work_email"):
+                    session["data"].pop(field, None)
                 save_session(session)
                 result = create_success_response(
                     {
-                        "calendar": calendar,
+                        "calendar_source": {"provider": "none"},
                         "working_week_suggestion": default_working_week_suggestion(),
                     },
                     "Calendar setup skipped for now. /dex-doctor will pick this up later."
@@ -2205,26 +2220,23 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     "/dex-doctor will confirm later."
                 )
 
-            calendar = {
+            calendar_source = {
+                "provider": "apple",
                 "work_calendar": work_calendar,
-                "calendar_count": calendar_count,
-                "lazy_load": True,
             }
-            if work_email:
-                session['data']['work_email'] = work_email
-            else:
-                session['data'].pop('work_email', None)
-            session['data']['calendar'] = calendar
+            session["calendar_addressed"] = True
+            for field in ("calendar", "calendar_source", "work_email"):
+                session["data"].pop(field, None)
             save_session(session)
 
             result = create_success_response(
                 {
                     "work_email": work_email,
-                    "calendar": calendar,
+                    "calendar_source": calendar_source,
                     "derived_identity": derive_identity_from_email(work_email),
                     "working_week_suggestion": default_working_week_suggestion(),
                 },
-                f"Work calendar saved.{verification_note}"
+                f"Work calendar validated for later approval.{verification_note}"
             )
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
         
@@ -2419,7 +2431,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     would_update_configs.append('.mcp.json')
 
                 # Build preview of user-profile.yaml content
-                data = session['data']
+                data = _approved_profile_session_data(session)
                 profile_preview = {
                     'name': data.get('name', ''),
                     'role': data.get('role', ''),
@@ -2440,10 +2452,6 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                         for room in capability_rooms.room_ids()
                     },
                 }
-                if 'calendar' in data:
-                    profile_preview['work_email'] = data.get('work_email', '')
-                    profile_preview['calendar'] = data['calendar']
-
                 # Build preview of pillars.yaml content
                 pillars_preview = []
                 for pillar in data.get('pillars', []):

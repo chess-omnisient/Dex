@@ -69,6 +69,12 @@ save_calendar_selection(
 
 If the save returns `success: false`, show the available names from its error response and ask the user to choose again. If it succeeds, say: "✓ Got it — I'll use [calendar name] for your work schedule."
 
+Keep the returned `calendar_source` object in the current conversation until the
+explicit context-approval step after finalization. It is a proposal, not saved
+profile state. Never copy `calendar_source`, `work_calendar`, or `work_email` into
+the onboarding session or any `validate_and_save_step` call. `work_email` is used
+only for the immediate identity-confirmation offer below.
+
 Keep the `working_week_suggestion` from the successful save response for Step 7. It includes the suggested days, whether the suggestion came from calendar evidence or the safe default, and a plain reason when Dex could not make a useful calendar-based guess.
 
 The successful save response also includes `derived_identity`, with conservative `name` and `domain` guesses when `work_email` is usable:
@@ -89,7 +95,9 @@ Offer two choices:
 1. Try again after granting access — call `calendar_list_calendars` again
 2. Skip for now — call `save_calendar_selection(skipped=true)`
 
-Do not block onboarding when they skip. `/dex-doctor` will confirm the calendar setup later. Continue to Step 1.
+Do not block onboarding when they skip. Keep the returned
+`calendar_source={"provider":"none"}` for the later approval step.
+`/dex-doctor` will confirm the calendar setup later. Continue to Step 1.
 
 ---
 
@@ -449,6 +457,54 @@ The MCP returns a summary of what was created (folders, files, configs).
 **After creation, say:** "✓ Workspace created! You now have a structure tailored for [their role]."
 
 Show the summary from the MCP response.
+
+### Confirm working context and calendar
+
+The profile now exists, so collect the small amount of context Dex needs to be
+useful without putting any of it in the deleted onboarding session. Ask these as
+one short conversational review. The first answer is required; accept "skip" for
+any of the remaining optional answers:
+
+- "What matters most in your role right now?" → `role_focus`
+- "What are you actively working on?" → `current_work`
+- "What would make this week successful?" → `week_success`
+- "What outcome matters most this quarter?" → `quarter_outcome`
+- "Who are up to five people Dex should understand first?" For each confirmed
+  person, collect `name` and optionally `relationship` and `how_to_help` →
+  `key_people`
+- "Anything else Dex should keep in mind?" → `anything_else`
+
+Build one `working_context` object from only those reviewed answers. Omit empty
+text fields and use an empty `key_people` list when none were provided.
+
+Use the exact `calendar_source` returned earlier by
+`save_calendar_selection`. If this is a resumed conversation and that returned
+object is no longer available, repeat the Calendar First choice and validation;
+do not reconstruct it from the onboarding session or guess.
+
+Call:
+
+```text
+preview_confirmed_onboarding_context(
+  working_context={...},
+  calendar_source={...}
+)
+```
+
+Show the normalized `working_context`, `calendar_source`, and the single proposed
+profile path from the returned preview. Ask: "Save exactly this to your Dex
+profile? Yes / Change it / Skip for now."
+
+- On **Change it**, collect the correction and create a fresh preview. Never reuse
+  the old token.
+- On **Skip for now**, do not apply anything. Continue with the first-week reveal.
+- Only after an **explicit Yes**, call
+  `apply_confirmed_onboarding_context(preview=<the exact returned preview>,
+  approval_token=<the exact returned approval_token>)`.
+
+Report success only when the apply response contains the lifecycle receipt. Do
+not call `apply_confirmed_onboarding_context` after silence, an ambiguous answer,
+or approval of a different preview.
 
 ### Automatic First-Week Reveal
 
