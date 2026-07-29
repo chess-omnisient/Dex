@@ -703,6 +703,7 @@ def _journal_can_target(journal: dict[str, Any], transition: PreservationTransit
         (1, 1),
         (1, 2),
         (2, 2),
+        (3, 3),
     }
 
 
@@ -1025,7 +1026,7 @@ def stamp_transition(repo: Path) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "schema_version": transition.schema_version,
     }
-    if transition.schema_version == 2:
+    if transition.schema_version >= 2:
         payload["baseline_version"] = transition.baseline_version
     payload.update({"phase": transition.phase, "release_version": version})
     descriptor, temporary_name = tempfile.mkstemp(prefix=".local-only-transition.", dir=transition_path.parent)

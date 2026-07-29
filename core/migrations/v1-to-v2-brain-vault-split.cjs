@@ -254,7 +254,7 @@ function loadTrackedIgnoreState(root) {
   if (
     expectedTransitionKeys.length === 0
     || Object.keys(transition).sort().join('\0') !== expectedTransitionKeys.join('\0')
-    || (transition.schema_version === 2 && transition.baseline_version !== 2)
+    || (transition.schema_version === 2 && ![2, 3].includes(transition.baseline_version))
   ) {
     throw new Error('Tracked-ignore transition schema is unsupported.');
   }

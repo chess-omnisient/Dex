@@ -87,7 +87,7 @@ def test_preservation_journal_versions_keep_their_original_path_meaning() -> Non
 
 
 def test_preservation_journal_schema_guard_is_red_when_removed() -> None:
-    unsupported = _preservation_journal(3, FUTURE_LOCAL_ONLY_PATHS)
+    unsupported = _preservation_journal(4, FUTURE_LOCAL_ONLY_PATHS)
 
     with pytest.raises(preservation.MigrationError, match="journal schema or phase is unsupported"):
         preservation._validate_journal(unsupported)

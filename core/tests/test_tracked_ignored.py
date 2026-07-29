@@ -18,6 +18,7 @@ from core.utils.tracked_ignored import (
     APPROVED_ROWS,
     BASELINE_ROWS,
     FUTURE_LOCAL_ONLY_PATHS,
+    PROFILE_SAFE_LOCAL_ONLY_PATHS,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -64,10 +65,11 @@ def _set_transition(repo: Path, phase: str) -> None:
     (repo / "package.json").write_text(json.dumps({"version": VERSION}) + "\n", encoding="utf-8")
     target = repo / TRANSITION
     target.parent.mkdir(parents=True, exist_ok=True)
-    schema_version = 2 if phase.endswith("-v2") else 1
+    baseline_version = int(phase.rsplit("-v", 1)[1])
+    schema_version = 1 if baseline_version == 1 else 2
     payload = {"schema_version": schema_version, "phase": phase, "release_version": VERSION}
-    if schema_version == 2:
-        payload["baseline_version"] = 2
+    if schema_version >= 2:
+        payload["baseline_version"] = baseline_version
     target.write_text(
         json.dumps(payload) + "\n",
         encoding="utf-8",
@@ -91,7 +93,7 @@ def tracked_ignored_repo(tmp_path: Path) -> Path:
     _git(repo, "init", "-q")
     _git(repo, "config", "user.email", "tests@example.com")
     _git(repo, "config", "user.name", "Fixture")
-    rows = _policy_rows()
+    rows = _policy_rows(POLICY, 1)
     ignore_lines = []
     for index, row in enumerate(rows):
         relative = row["path"]
@@ -101,7 +103,9 @@ def tracked_ignored_repo(tmp_path: Path) -> Path:
         ignore_lines.append(f"/{relative}")
     fixture_policy = repo / migration.POLICY_RELATIVE
     fixture_policy.parent.mkdir(parents=True, exist_ok=True)
-    fixture_policy.write_bytes(POLICY.read_bytes())
+    policy_payload = yaml.safe_load(POLICY.read_text(encoding="utf-8"))
+    policy_payload["active_baseline_version"] = 1
+    fixture_policy.write_text(yaml.safe_dump(policy_payload, sort_keys=False), encoding="utf-8")
     _set_transition(repo, "bootstrap-v1")
     (repo / ".gitignore").write_text("\n".join(ignore_lines) + "\n", encoding="utf-8")
     _git(repo, "add", ".gitignore", "package.json", TRANSITION.as_posix(), migration.POLICY_RELATIVE.as_posix())
@@ -139,6 +143,10 @@ def future_tracked_ignored_repo(tmp_path: Path) -> Path:
 
 
 def _run_checker(repo: Path, policy: Path = POLICY) -> tuple[int, dict]:
+    if policy == POLICY:
+        fixture_policy = repo / migration.POLICY_RELATIVE
+        if fixture_policy.is_file():
+            policy = fixture_policy
     result = subprocess.run(
         [sys.executable, str(CHECKER), "--repo", str(repo), "--policy", str(policy)],
         capture_output=True,
@@ -168,20 +176,26 @@ def _index_evidence(repo: Path, relative: str) -> tuple[str, str, str]:
 
 def test_repository_policy_carries_exact_current_and_future_baselines():
     rows = checker.load_policy(POLICY)
-    assert tuple((row.path, row.classification) for row in rows) == APPROVED_ROWS
-    assert tuple((row.path, row.classification) for row in rows) == BASELINE_ROWS[1]
+    assert tuple(
+        (row["path"], row["classification"]) for row in _policy_rows(POLICY, 1)
+    ) == APPROVED_ROWS
     assert tuple(
         (row["path"], row["classification"]) for row in _policy_rows(POLICY, 2)
     ) == BASELINE_ROWS[2]
+    assert tuple((row.path, row.classification) for row in rows) == BASELINE_ROWS[3]
+    assert tuple(
+        (row["path"], row["classification"]) for row in _policy_rows(POLICY, 3)
+    ) == BASELINE_ROWS[3]
 
     by_class: dict[str, list[str]] = {}
     for row in rows:
         by_class.setdefault(row.classification, []).append(row.path)
 
-    assert len(by_class["intentional-seed"]) == 23
+    assert len(by_class["intentional-seed"]) == 22
     assert by_class["release-doc"] == ["System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md"]
-    assert tuple(by_class["local-only-must-be-untracked"]) == migration.LOCAL_ONLY_PATHS
+    assert tuple(by_class["local-only-must-be-untracked"]) == PROFILE_SAFE_LOCAL_ONLY_PATHS
     assert len(BASELINE_ROWS[2]) == 24
+    assert len(BASELINE_ROWS[3]) == 26
     assert FUTURE_LOCAL_ONLY_PATHS == ("System/integrations/slack.yaml",)
 
 
@@ -223,6 +237,24 @@ def test_future_v2_journal_round_trips_the_one_entry_baseline(future_tracked_ign
     _set_transition(future_tracked_ignored_repo, "bootstrap-v2")
     assert migration.rewind(future_tracked_ignored_repo, journal)["phase"] == "rewound"
     assert target.read_bytes() == b"newest future Slack bytes\x00"
+
+
+def test_profile_safe_v3_journal_remembers_the_preexisting_three_entry_baseline(
+    tracked_ignored_repo, tmp_path
+):
+    policy_payload = yaml.safe_load(POLICY.read_text(encoding="utf-8"))
+    policy_payload["active_baseline_version"] = 3
+    (tracked_ignored_repo / migration.POLICY_RELATIVE).write_text(
+        yaml.safe_dump(policy_payload, sort_keys=False), encoding="utf-8"
+    )
+    _git(tracked_ignored_repo, "rm", "--cached", "--", "System/user-profile.yaml")
+    _set_transition(tracked_ignored_repo, "bootstrap-v3")
+    journal = tmp_path / "journal-v3"
+
+    captured = migration.capture(tracked_ignored_repo, journal)
+
+    assert captured["schema_version"] == 3
+    assert [entry["path"] for entry in captured["entries"]] == list(PROFILE_SAFE_LOCAL_ONLY_PATHS)
 
 
 def test_unknown_journal_schema_is_rejected_before_git_access(
@@ -289,7 +321,7 @@ def test_checker_rejects_unknown_stale_duplicate_and_non_git_states(tracked_igno
     assert result["errors"] == [{"code": "unknown-tracked-ignored", "paths": ["System/Session_Learnings/Case-É.md"]}]
 
     _git(tracked_ignored_repo, "reset", "--", str(unknown.relative_to(tracked_ignored_repo)))
-    stale = _policy_rows()[0]["path"]
+    stale = _policy_rows(POLICY, 1)[0]["path"]
     _git(tracked_ignored_repo, "rm", "--cached", "--", stale)
     _, result = _run_checker(tracked_ignored_repo)
     assert result["errors"] == [{"code": "stale-policy-row", "paths": [stale]}]
@@ -502,7 +534,9 @@ def test_migration_preserves_modified_deleted_and_modes_then_rewinds_current_cop
     assert not deleted.exists()
     assert stat.S_IMODE(later_modified.stat().st_mode) == 0o640
     assert set(migration._query_tracked_ignored(tracked_ignored_repo)) == {
-        row["path"] for row in _policy_rows() if row["classification"] != "local-only-must-be-untracked"
+        row["path"]
+        for row in _policy_rows(POLICY, 1)
+        if row["classification"] != "local-only-must-be-untracked"
     }
     journal_payload = json.loads((journal / migration.MANIFEST_NAME).read_text())
     assert [entry["worktree"]["state"] for entry in journal_payload["entries"]] == [
@@ -525,7 +559,9 @@ def test_migration_preserves_modified_deleted_and_modes_then_rewinds_current_cop
     rewound = _rewind(tracked_ignored_repo, journal)
 
     assert rewound["phase"] == "rewound"
-    assert set(migration._query_tracked_ignored(tracked_ignored_repo)) == {row["path"] for row in _policy_rows()}
+    assert set(migration._query_tracked_ignored(tracked_ignored_repo)) == {
+        row["path"] for row in _policy_rows(POLICY, 1)
+    }
     assert {
         relative: (
             (tracked_ignored_repo / relative).read_bytes(),
@@ -1143,7 +1179,9 @@ def test_interrupted_rewind_derives_exact_progress_from_live_index(
     monkeypatch.setattr(migration, "_git", original_git)
 
     assert migration.rewind(tracked_ignored_repo, journal)["phase"] == "rewound"
-    assert migration._query_tracked_ignored(tracked_ignored_repo) == {row["path"] for row in _policy_rows()}
+    assert migration._query_tracked_ignored(tracked_ignored_repo) == {
+        row["path"] for row in _policy_rows(POLICY, 1)
+    }
 
 
 def test_rewind_resumes_when_all_index_restores_precede_final_journal_write(
