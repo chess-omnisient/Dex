@@ -14,6 +14,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -99,7 +100,7 @@ MINIMUM_SUPPORTED_NODE_MAJOR = 20
 TRUSTED_PYTHON_CANDIDATES = (Path("/opt/homebrew/bin/python3"),)
 TRUSTED_PYTHON_ROOTS = (Path("/opt/homebrew"),)
 MINIMUM_SUPPORTED_PYTHON = (3, 10)
-INSTALLER_PROCESS_GROUP_GRACE_SECONDS = 1.0
+PROCESS_GROUP_TERMINATION_GRACE_SECONDS = 1.0
 FIXTURE_REQUIRED_PYTHON_DEPENDENCIES = ("mcp", "yaml")
 SEALED_INSTALLER_ENVIRONMENT_KEYS = frozenset(
     {
@@ -832,6 +833,76 @@ def build_fixture(repo: Path, release: DistributionRelease, output: Path) -> Fle
     return FleetCase(release=release, vault=vault, user_hashes=_seed_user_content(vault))
 
 
+def _process_group_exists(process_group_id: int) -> bool:
+    try:
+        os.killpg(process_group_id, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _run_bounded_process_group(
+    command: Sequence[str],
+    *,
+    cwd: Path,
+    environment: Mapping[str, str],
+    timeout_seconds: float,
+) -> subprocess.CompletedProcess[str]:
+    """Run one trusted fixture command and leave no same-group timeout descendants."""
+
+    if os.name != "posix":
+        raise FleetError("historic fixture commands require POSIX process groups")
+    process = subprocess.Popen(
+        list(command),
+        cwd=cwd,
+        env=dict(environment),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        deadline = time.monotonic() + PROCESS_GROUP_TERMINATION_GRACE_SECONDS
+        while True:
+            process.poll()
+            if not _process_group_exists(process.pid):
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(0.02, remaining))
+        if _process_group_exists(process.pid):
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except PermissionError as error:
+                raise FleetError(
+                    "timed-out fixture process group could not be killed"
+                ) from error
+        stdout, stderr = process.communicate()
+        raise subprocess.TimeoutExpired(
+            list(command),
+            timeout_seconds,
+            output=stdout,
+            stderr=stderr,
+        )
+    return subprocess.CompletedProcess(
+        list(command),
+        process.returncode,
+        stdout,
+        stderr,
+    )
+
+
 def _run_historic_installer(
     vault: Path,
     release: DistributionRelease,
@@ -846,51 +917,25 @@ def _run_historic_installer(
     remotes, terminates the whole installer process group on timeout, and proves
     that the installer did not switch away from the immutable release.
     """
-    if os.name != "posix":
-        raise FleetError("historic installer isolation requires POSIX process groups")
     if set(environment) != SEALED_INSTALLER_ENVIRONMENT_KEYS:
         raise FleetError("historic installer requires the sealed fixture environment")
     installer = vault / "install.sh"
     if installer.is_symlink() or not installer.is_file():
         raise FleetError("historic release has no safe install.sh to bootstrap its fixture")
     command = ["bash", "install.sh"]
-    process = subprocess.Popen(
+    result = _run_bounded_process_group(
         command,
         cwd=vault,
-        env=dict(environment),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
+        environment=environment,
+        timeout_seconds=timeout_seconds,
     )
-    try:
-        stdout, stderr = process.communicate(timeout=timeout_seconds)
-    except subprocess.TimeoutExpired:
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        try:
-            stdout, stderr = process.communicate(
-                timeout=INSTALLER_PROCESS_GROUP_GRACE_SECONDS
-            )
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            stdout, stderr = process.communicate()
-        raise subprocess.TimeoutExpired(
-            command,
-            timeout_seconds,
-            output=stdout,
-            stderr=stderr,
-        )
-    if process.returncode:
+    if result.returncode:
         # npm commonly writes benign notices to stderr while the actionable
         # installer failure is on stdout. Keep both for local classification,
         # but never retain volatile fixture output in the discovery artifact.
-        detail = "\n".join(output for output in (stdout, stderr) if output).strip()
+        detail = "\n".join(
+            output for output in (result.stdout, result.stderr) if output
+        ).strip()
         raise FleetError(f"historic installer failed for {vault.name}: {detail}")
     try:
         installed_commit = _git(vault, "rev-parse", "HEAD", environment=environment)
@@ -1004,14 +1049,11 @@ def _doctor_preflight(
     command = [str(fixture_python.requested_python), "-m", "core.utils.doctor"]
     interpreter = {"interpreter": fixture_python.identity()}
     try:
-        result = subprocess.run(
+        result = _run_bounded_process_group(
             command,
             cwd=vault,
-            env=dict(environment),
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            check=False,
+            environment=environment,
+            timeout_seconds=timeout_seconds,
         )
     except subprocess.TimeoutExpired as error:
         return {

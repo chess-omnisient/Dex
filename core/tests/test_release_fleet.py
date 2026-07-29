@@ -259,6 +259,46 @@ def test_installer_timeout_terminates_and_reaps_its_whole_process_group(
     assert not (vault / "child-finished").exists()
 
 
+def test_installer_timeout_kills_detached_term_ignoring_child_after_leader_exits(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _tag_release(repo, "1.60.0", "parent")
+    installer = repo / "install.sh"
+    installer.write_text(
+        "#!/bin/sh\n"
+        "trap 'exit 0' TERM\n"
+        "(\n"
+        "  trap '' TERM\n"
+        "  exec >/dev/null 2>&1\n"
+        "  printf ready > child-ready\n"
+        "  sleep 1.25\n"
+        "  printf escaped > child-finished\n"
+        ") &\n"
+        "while [ ! -e child-ready ]; do :; done\n"
+        "while :; do sleep 10; done\n",
+        encoding="utf-8",
+    )
+    installer.chmod(0o755)
+    _tag_release(repo, "1.61.0", "release")
+    release = release_fleet.discover_distribution_releases(repo)[-1]
+    vault = release_fleet._create_fixture_vault(repo, release, tmp_path / "fleet")
+    environment = release_fleet._case_environment(
+        vault, tmp_path / "installer-runtime"
+    )
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        release_fleet._run_historic_installer(
+            vault,
+            release,
+            environment,
+            timeout_seconds=0.2,
+        )
+
+    time.sleep(2.0)
+    assert not (vault / "child-finished").exists()
+
+
 def test_revision_switching_installer_is_rejected_before_doctor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -941,6 +981,65 @@ def _current_base_python_runtime() -> release_fleet.PythonRuntime:
         python_version=version,
         python_sha256=release_fleet.hashlib.sha256(trusted.read_bytes()).hexdigest(),
     )
+
+
+def test_doctor_timeout_kills_detached_term_ignoring_child_after_leader_exits(
+    tmp_path: Path,
+) -> None:
+    runtime = _current_base_python_runtime()
+    vault = tmp_path / "vault"
+    marker = vault / "doctor-child-finished"
+    ready = vault / "doctor-child-ready"
+    child_program = (
+        "import signal, time\n"
+        "from pathlib import Path\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        f"Path({str(ready)!r}).write_text('ready')\n"
+        "time.sleep(1.25)\n"
+        f"Path({str(marker)!r}).write_text('escaped')\n"
+    )
+    doctor_module = vault / "core" / "utils" / "doctor.py"
+    doctor_module.parent.mkdir(parents=True)
+    doctor_module.write_text(
+        "import signal, subprocess, sys, time\n"
+        "from pathlib import Path\n"
+        f"ready = Path({str(ready)!r})\n"
+        "subprocess.Popen(\n"
+        f"    [sys.executable, '-c', {child_program!r}],\n"
+        "    stdout=subprocess.DEVNULL,\n"
+        "    stderr=subprocess.DEVNULL,\n"
+        ")\n"
+        "while not ready.exists():\n"
+        "    time.sleep(0.01)\n"
+        "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))\n"
+        "while True:\n"
+        "    time.sleep(10)\n",
+        encoding="utf-8",
+    )
+    fixture_python = release_fleet.FixturePython(
+        requested_python=runtime.requested_python,
+        resolved_python=runtime.resolved_python,
+        python_version=runtime.python_version,
+        python_sha256=runtime.python_sha256,
+        pyvenv_cfg=vault / ".venv" / "pyvenv.cfg",
+        pyvenv_cfg_sha256="d" * 64,
+        venv_prefix=vault / ".venv",
+        base_prefix=runtime.resolved_python.parent.parent,
+        dependency_origins=(),
+    )
+    environment = release_fleet._case_environment(vault, tmp_path / "runtime")
+
+    doctor = release_fleet._doctor_preflight(
+        vault,
+        environment,
+        fixture_python=fixture_python,
+        timeout_seconds=0.2,
+    )
+
+    assert doctor["status"] == "failed"
+    assert doctor["code"] == "doctor-timeout"
+    time.sleep(2.0)
+    assert not marker.exists()
 
 
 def test_fixture_python_rejects_a_host_interpreter_symlink_without_a_real_venv(
