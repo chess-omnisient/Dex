@@ -368,11 +368,11 @@ def migrate_legacy_room_state(
     """One-time bridge for vaults onboarded before capability rooms existed.
 
     Preserve each room's pre-migration behavior without overriding an explicit
-    capability value or a legacy config value. Companies is pinned off because
-    its fresh-vault default is now on; Career and Quarter Goals keep the earlier
-    bridge's on default when they have no prior opinion. Fresh installs write
-    explicit room answers at onboarding and are never touched here. Returns the
-    rooms seeded (empty when no migration was needed).
+    capability value or a legacy config value. A room with no recorded opinion
+    is restored to its current default, so the legacy and lifecycle-only paths
+    agree. Fresh installs write explicit room answers at onboarding and are
+    never touched here. Returns the rooms seeded (empty when no migration was
+    needed).
     """
     root = Path(vault_root).resolve()
     profile_file = Path(profile_path or root / "System/user-profile.yaml")
@@ -385,11 +385,11 @@ def migrate_legacy_room_state(
     profile = _read_profile(profile_file, strict=True)
     capability_state = profile.get("capabilities")
     room_defaults = (
-        {"companies": False}
+        {"companies": True}
         if isinstance(capability_state, Mapping)
         else {
             "career": True,
-            "companies": False,
+            "companies": True,
             "quarter_goals": True,
         }
     )
@@ -538,7 +538,7 @@ def render_missing_companies_compatibility_pin(
     *,
     contract_path: Path | str | None = None,
 ) -> str | None:
-    """Render the one-time Companies-off pin without rewriting profile prose.
+    """Render the one-time Companies compatibility pin without rewriting profile prose.
 
     ``None`` means the profile already has an explicit or legacy opinion.
     Invalid state fails closed so an update cannot fall through to the new
