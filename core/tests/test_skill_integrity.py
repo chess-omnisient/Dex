@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -160,23 +161,30 @@ def test_validate_user_profile_rejects_invalid_capability_state(
     assert any(expected in error for error in errors), errors
 
 
-@pytest.mark.parametrize(
-    "profile_path",
-    [
-        REPO_ROOT / "System" / "user-profile.yaml",
-        REPO_ROOT / "System" / "user-profile-template.yaml",
-    ],
-    ids=lambda path: path.name,
-)
-def test_shipped_user_profiles_never_default_to_non_stable(profile_path: Path) -> None:
+def test_shipped_user_profile_template_never_defaults_to_non_stable() -> None:
     # The resolver treats a missing channel as stable, so a shipped profile may omit
     # the block entirely (the placeholder does — leaving it byte-clean for the PII gate).
     # What must never happen is a shipped profile silently defaulting to beta/invalid.
     import yaml
 
-    profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    profile = yaml.safe_load(
+        (REPO_ROOT / "System" / "user-profile-template.yaml").read_text(encoding="utf-8")
+    )
     channel = (profile.get("updates") or {}).get("channel", "stable")
     assert channel == "stable"
+
+
+def test_user_profile_is_created_at_install_and_never_shipped_in_a_release_tree() -> None:
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", "System/user-profile.yaml"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+    assert tracked == ""
+    assert (REPO_ROOT / "System" / "user-profile-template.yaml").is_file()
 
 
 @pytest.mark.parametrize(

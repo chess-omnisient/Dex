@@ -57,7 +57,6 @@ APPROVED_ROWS = (
     ("System/Session_Learnings/README.md", "intentional-seed"),
     ("System/pillars.yaml", "intentional-seed"),
     ("System/usage_log.md", "intentional-seed"),
-    ("System/user-profile.yaml", "intentional-seed"),
     ("System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md", "release-doc"),
     ("System/Session_Learnings/2026-01-29.md", "local-only-must-be-untracked"),
     ("System/Session_Learnings/2026-01-30.md", "local-only-must-be-untracked"),

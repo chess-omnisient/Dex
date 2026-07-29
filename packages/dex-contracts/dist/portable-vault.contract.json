@@ -696,7 +696,7 @@
       "path": "System/user-profile.yaml",
       "kind": "file",
       "ownership": "seed",
-      "note": "shipped blank; user VALUES live here (Vault_Contract \u00a72c) \u2014 never overwritten"
+      "note": "created from the tracked template at install; user VALUES live here and are never released or overwritten"
     },
     {
       "id": "brain-core",

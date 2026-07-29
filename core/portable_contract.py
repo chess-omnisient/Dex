@@ -187,7 +187,7 @@ RULES: tuple[Rule, ...] = (
     # --- seed: shipped once, then the user's; update writes only if absent -
     _r("seed-templates", "System/Templates", "dir", "seed"),
     _r("seed-user-profile-live", "System/user-profile.yaml", "file", "seed",
-       "shipped blank; user VALUES live here (Vault_Contract §2c) — never overwritten"),
+       "created from the tracked template at install; user VALUES live here and are never released or overwritten"),
     _r("seed-user-profile-template", "System/user-profile-template.yaml", "file", "seed",
        "canonical shipped template (the ratified doc names user-profile.example.yaml; "
        "the repo consolidated on -template — deliberate deviation)"),
