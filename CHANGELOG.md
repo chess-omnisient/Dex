@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.80.3] — 🔄 The complete update release (2026-07-29)
+
+This is the fully checked package for the update improvement above. It makes the
+safe, one-time final connection check available to older Dex installations through
+the normal `/dex update` journey.
+
+**What this means for you:**
+
+* **One update command, wherever you are starting from.** Older Dex copies can fetch this package through the normal guided route.
+* **The final setup step stays safe and clear.** Dex shows the one Dex-owned connection it may add, waits for a fresh yes, and never changes anything you already set up.
+* **No silent half-finish.** The update reaches a healthy checkup rather than claiming success while leaving its own required connection missing.
+
 ## [1.80.2] — 🔄 Updating Dex now finishes the connection step (2026-07-29)
 
 An older Dex could safely bring itself up to date, but one small part of its local setup could still be left behind. That meant the update looked complete while Dex's own checkup reported one missing Dex connection afterwards. This release closes that gap.
