@@ -59,6 +59,20 @@ After success, show the topology receipt, including its transaction identifier, 
 
 If the dry-run fails, the report changes before approval, approval is missing, conversion stops, or the final split cannot be proved, show the service refusal and stop. Do not improvise a repair.
 
+## One-time local connection refresh
+
+After the topology branch (or at the start of a split-vault update), ask
+`build_and_preview_mcp_registration`. This checks whether Dex's own
+Customization Migration connection is missing from an older local setup.
+
+- If `needed` is `false`, say that Dex's local connections are already current and continue.
+- If `needed` is `true`, show the returned server name and the complete write preview. Explain: “Dex will add this one Dex-owned local connection. It will not replace, remove, or alter any of your existing connections or their settings.” Ask: “Add this exact Dex connection?”
+- Only after a fresh explicit yes, pass the unchanged preview and approval token to `execute_approved_mcp_registration`. Render its transaction receipt, including the saved recovery snapshot.
+
+This is the only update route allowed to add this missing Dex-owned registration.
+Never edit `.mcp.json` directly, replace an existing server entry, or treat the
+earlier update approval as approval for this connection change.
+
 ## Deeply customised setup
 
 Before applying an update, use the deep Doctor report to decide whether to offer this branch.

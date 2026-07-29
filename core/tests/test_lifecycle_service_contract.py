@@ -22,6 +22,7 @@ SCHEMA_PATH = (
     / "contracts"
     / "api.schema.json"
 )
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _json_type(value: object, expected: str) -> bool:
@@ -115,6 +116,36 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
         "build_inventory_and_plan",
         inventory_request,
         inventory_response,
+    )
+
+    shutil.copy2(
+        REPO_ROOT / "System/.mcp.json.example",
+        vault / "System/.mcp.json.example",
+    )
+    (vault / ".mcp.json").write_text('{"mcpServers": {}}\n', encoding="utf-8")
+    mcp_preview_request = {"vault_root": str(vault)}
+    mcp_preview_response = service.build_and_preview_mcp_registration(vault)
+    _assert_conforms(
+        schema,
+        "build_and_preview_mcp_registration",
+        mcp_preview_request,
+        mcp_preview_response,
+    )
+    mcp_execute_request = {
+        "vault_root": str(vault),
+        "preview": mcp_preview_response["preview"],
+        "approved_token": mcp_preview_response["approval_token"],
+    }
+    mcp_execute_response = service.execute_approved_mcp_registration(
+        vault,
+        mcp_preview_response["preview"],
+        mcp_preview_response["approval_token"],
+    )
+    _assert_conforms(
+        schema,
+        "execute_approved_mcp_registration",
+        mcp_execute_request,
+        mcp_execute_response,
     )
 
     preview_request = {
@@ -254,6 +285,8 @@ def test_public_surface_requires_a_version_bump_and_bridge_to_change() -> None:
         "deliver_latest_release",
         "build_and_preview_delivered_release",
         "execute_approved_delivered_release",
+        "build_and_preview_mcp_registration",
+        "execute_approved_mcp_registration",
         "deliver_and_apply_latest_release",
         "build_and_preview_conflict_resolution",
         "execute_approved_conflict_resolution",

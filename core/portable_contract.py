@@ -311,8 +311,8 @@ RULES: tuple[Rule, ...] = (
     _r("vault-env", ".env", "file", "vault", "raw secret authority (SR1 #150 model)"),
     _r("vault-credentials", "System/credentials", "dir", "vault", "secrets; hard-denied"),
     _r("vault-mcp-json", ".mcp.json", "file", "vault",
-       "REPORT-ONLY: SR1 #150's structural residual detector owns it; no engine "
-       "may rewrite it"),
+       "REPORT-ONLY except the explicitly previewed, user-approved, add-only "
+       "mcp-registration lifecycle transaction"),
     _r("vault-claude-custom", "CLAUDE-custom.md", "file", "vault",
        "the one canonical home for user instructions (Vault_Contract §5)"),
     _r("vault-skills-custom", ".claude/skills-custom", "dir", "vault"),
@@ -413,7 +413,12 @@ def update_write_verdict(
     remapped paths back to their semantic defaults before calling, or treat
     them as unclassified. Unclassified paths fail safe: never written.
     """
-    if operation not in ("update", "customization-migration", "capability-state"):
+    if operation not in (
+        "update",
+        "customization-migration",
+        "capability-state",
+        "mcp-registration",
+    ):
         raise ValueError(f"unknown write operation: {operation}")
 
     if operation == "capability-state":
@@ -454,6 +459,37 @@ def update_write_verdict(
             "outside-capability-state",
             resolution.ownership if resolution is not None else None,
             resolution.rule_id if resolution is not None else None,
+        )
+
+    if operation == "mcp-registration":
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+            resolution = resolve(candidate)
+        except ContractViolation:
+            return WriteVerdict(str(path), False, "outside-mcp-registration", None, None)
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership,
+                resolution.rule_id,
+            )
+        if candidate == ".mcp.json":
+            return WriteVerdict(
+                candidate,
+                True,
+                "write-explicitly-approved-registration",
+                resolution.ownership,
+                resolution.rule_id,
+            )
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-mcp-registration",
+            resolution.ownership,
+            resolution.rule_id,
         )
 
     if operation == "customization-migration":
