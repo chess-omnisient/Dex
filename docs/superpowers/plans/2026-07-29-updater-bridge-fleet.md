@@ -312,7 +312,7 @@ Run:
 .venv/bin/python scripts/release_fleet.py manifest --repo . > /private/tmp/dex-release-fleet-manifest.json
 ```
 
-Expected: the manifest reports 156 distinct starting trees; no path under `~/dex/artifacts/migration-fleet/` is changed. Build and exercise one starting tag at a time with `build --starting-tag TAG` so the final run never stores 156 full repositories concurrently.
+Expected: the manifest reports 156 distinct starting trees; the artifact directory is not changed. Build and exercise one starting tag at a time with `build --starting-tag TAG` so the final run never stores 156 full repositories concurrently.
 
 - [ ] **Step 4: Record the release blocker honestly**
 
