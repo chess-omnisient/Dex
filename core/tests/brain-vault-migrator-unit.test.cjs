@@ -588,7 +588,7 @@ test('P6 treats a markerless CLAUDE.md as nothing to lift', () => {
   assert.equal(fs.existsSync(path.join(root, 'CLAUDE-custom.md')), false);
   assert.equal(state.p6.liftComplete, true);
   assert.equal(state.p6.customSha256, null);
-  assert.match(fs.readFileSync(path.join(root, 'System', 'user-profile.yaml'), 'utf8'), /^vault_schema: 1$/m);
+  assert.equal(fs.readFileSync(path.join(root, 'System', 'user-profile.yaml'), 'utf8'), 'name: Test\n');
 });
 
 test('the pre-split snapshot restores a pre-existing migration report', () => {

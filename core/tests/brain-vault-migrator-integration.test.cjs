@@ -359,7 +359,11 @@ test('real migration preserves user bytes and creates two isolated histories', (
   assert.equal(fs.readFileSync(path.join(vault, 'CLAUDE-custom.md'), 'utf8'), expectedExtensions);
   assert.match(fs.readFileSync(path.join(vault, 'CLAUDE.md'), 'utf8'), /fixture sentinel: café/);
   assert.doesNotMatch(fs.readFileSync(path.join(vault, 'CLAUDE.md'), 'utf8'), /USER_EXTENSIONS_/);
-  assert.match(fs.readFileSync(path.join(vault, 'System', 'user-profile.yaml'), 'utf8'), /^vault_schema: 1$/m);
+  assert.equal(
+    fs.readFileSync(path.join(vault, 'System', 'user-profile.yaml'))
+      .compare(userBytes.get('System/user-profile.yaml')),
+    0,
+  );
   const reportAndBackupText = [
     fs.readFileSync(path.join(vault, 'System', 'migration-report-v2.md'), 'utf8'),
     ...[...snapshotFiles(path.join(vault, 'System', 'backups', 'pre-split')).keys()]
