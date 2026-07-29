@@ -55,6 +55,14 @@
       "request": {"$ref": "#/$defs/mcpRegistrationExecuteRequest"},
       "response": {"$ref": "#/$defs/mcpRegistrationExecuteResponse"}
     },
+    "build_and_preview_onboarding_context": {
+      "request": {"$ref": "#/$defs/onboardingContextPreviewRequest"},
+      "response": {"$ref": "#/$defs/onboardingContextPreviewResponse"}
+    },
+    "execute_approved_onboarding_context": {
+      "request": {"$ref": "#/$defs/onboardingContextExecuteRequest"},
+      "response": {"$ref": "#/$defs/onboardingContextExecuteResponse"}
+    },
     "build_and_preview_conflict_resolution": {
       "request": {"$ref": "#/$defs/resolutionsRequest"},
       "response": {"$ref": "#/$defs/conflictPreviewResponse"}
@@ -295,6 +303,55 @@
       }
     },
     "mcpRegistrationExecuteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt"],
+      "properties": {
+        "api_version": {"const": "1.4.0"},
+        "receipt": {"type": "object"}
+      }
+    },
+    "onboardingContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["working_context", "calendar_source", "writes"],
+      "properties": {
+        "working_context": {"type": "object"},
+        "calendar_source": {"type": "object"},
+        "writes": {"type": "array", "minItems": 1, "items": {"type": "object"}}
+      }
+    },
+    "onboardingContextPreviewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "working_context", "calendar_source"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "working_context": {"type": "object"},
+        "calendar_source": {"type": "object"}
+      }
+    },
+    "onboardingContextPreviewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "preview", "approval_token"],
+      "properties": {
+        "api_version": {"const": "1.4.0"},
+        "preview": {"$ref": "#/$defs/onboardingContext"},
+        "approval_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "onboardingContextExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/onboardingContext"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "onboardingContextExecuteResponse": {
       "type": "object",
       "additionalProperties": false,
       "required": ["api_version", "receipt"],

@@ -39,7 +39,7 @@ def _start_session() -> None:
     assert result["success"] is True
 
 
-def test_save_calendar_selection_stores_valid_live_calendar(
+def test_save_calendar_selection_returns_valid_live_calendar_without_storing_it(
     onboarding_vault,
     monkeypatch,
 ):
@@ -65,11 +65,12 @@ def test_save_calendar_selection_stores_valid_live_calendar(
 
     assert result["success"] is True
     session = onboarding_server.load_session()
-    assert session["data"]["work_email"] == "dave@dex.ai"
-    assert session["data"]["calendar"] == {
+    assert "work_email" not in session["data"]
+    assert "calendar" not in session["data"]
+    assert session["calendar_addressed"] is True
+    assert result["data"]["calendar_source"] == {
+        "provider": "apple",
         "work_calendar": "dave@dex.ai",
-        "calendar_count": 2,
-        "lazy_load": True,
     }
     assert result["data"]["working_week_suggestion"] == {
         "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
@@ -127,10 +128,11 @@ def test_save_calendar_selection_accepts_value_when_live_list_is_unavailable(
 
     assert result["success"] is True
     assert "couldn't verify against your live calendars" in result["message"].lower()
-    assert onboarding_server.load_session()["data"]["calendar"] == {
+    session = onboarding_server.load_session()
+    assert "calendar" not in session["data"]
+    assert result["data"]["calendar_source"] == {
+        "provider": "apple",
         "work_calendar": "Team Calendar",
-        "calendar_count": 3,
-        "lazy_load": True,
     }
 
 
@@ -149,12 +151,13 @@ def test_save_calendar_selection_marks_permissions_pending_when_skipped(
     assert result["success"] is True
     assert "/dex-doctor" in result["message"]
     assert result["data"]["working_week_suggestion"]["basis"] == "default"
-    assert onboarding_server.load_session()["data"]["calendar"] == {
-        "permissions_pending": True,
-    }
+    assert result["data"]["calendar_source"] == {"provider": "none"}
+    session = onboarding_server.load_session()
+    assert session["calendar_addressed"] is True
+    assert "calendar" not in session["data"]
 
 
-def test_save_calendar_selection_clears_old_email_for_non_email_calendar(
+def test_repeated_calendar_selection_never_persists_email_or_source(
     onboarding_vault,
     monkeypatch,
 ):
@@ -184,10 +187,12 @@ def test_save_calendar_selection_clears_old_email_for_non_email_calendar(
     )
 
     assert second_result["success"] is True
-    assert "work_email" not in onboarding_server.load_session()["data"]
+    session = onboarding_server.load_session()
+    assert "work_email" not in session["data"]
+    assert "calendar" not in session["data"]
 
 
-def test_save_calendar_selection_clears_old_email_when_skipped(
+def test_skipping_after_calendar_selection_never_persists_email_or_source(
     onboarding_vault,
     monkeypatch,
 ):
@@ -214,7 +219,9 @@ def test_save_calendar_selection_clears_old_email_when_skipped(
     skipped_result = _call_tool("save_calendar_selection", {"skipped": True})
 
     assert skipped_result["success"] is True
-    assert "work_email" not in onboarding_server.load_session()["data"]
+    session = onboarding_server.load_session()
+    assert "work_email" not in session["data"]
+    assert "calendar" not in session["data"]
 
 
 def test_save_calendar_selection_requires_calendar_name(onboarding_vault):
@@ -232,7 +239,7 @@ def test_save_calendar_selection_is_registered():
     assert "save_calendar_selection" in {tool.name for tool in tools}
 
 
-def test_finalize_dry_run_previews_calendar_selection(onboarding_vault):
+def test_finalize_dry_run_strips_legacy_unapproved_calendar_selection(onboarding_vault):
     session = onboarding_server.create_new_session()
     session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
     session["data"] = {
@@ -255,12 +262,10 @@ def test_finalize_dry_run_previews_calendar_selection(onboarding_vault):
     result = _call_tool("finalize_onboarding", {"dry_run": True})
 
     assert result["success"] is True
-    assert result["data"]["preview_user_profile"]["work_email"] == "dave@dex.ai"
-    assert result["data"]["preview_user_profile"]["calendar"] == {
-        "work_calendar": "dave@dex.ai",
-        "calendar_count": 2,
-        "lazy_load": True,
-    }
+    assert "work_email" not in result["data"]["preview_user_profile"]
+    assert "calendar" not in result["data"]["preview_user_profile"]
+    assert "work_email" not in result["data"]["session_data_snapshot"]
+    assert "calendar" not in result["data"]["session_data_snapshot"]
     assert result["data"]["preview_user_profile"]["entity_creation"] == {
         "mode": "suggest"
     }
