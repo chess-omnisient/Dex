@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -181,7 +182,7 @@ def test_build_fixture_uses_requested_release_and_preserves_user_hashes(tmp_path
     case = release_fleet.build_fixture(repo, release, tmp_path / "fleet")
 
     assert _git(case.vault, "rev-parse", "HEAD^") == release.commit
-    assert _git(case.vault, "remote", "get-url", "upstream") == release_fleet.PUBLIC_REMOTE
+    assert _git(case.vault, "remote", "get-url", "upstream") == "DISABLED"
     assert _git(case.vault, "remote", "get-url", "--push", "upstream") == "DISABLED"
     assert case.user_hashes == release_fleet.hash_user_owned_files(case.vault)
 
@@ -193,7 +194,10 @@ def test_installed_fixture_runs_the_historic_installer_before_seeding_user_conte
     installer = repo / "install.sh"
     installer.write_text(
         "#!/bin/sh\n"
+        "set -eu\n"
         "test ! -e 00-Inbox/keep.md\n"
+        "test \"$(git remote get-url upstream)\" = DISABLED\n"
+        "test \"$(git remote get-url --push upstream)\" = DISABLED\n"
         "mkdir -p System\n"
         "printf installed > System/fixture-install-proof\n",
         encoding="utf-8",
@@ -221,6 +225,141 @@ def test_build_fixture_does_not_preload_future_release_tags(tmp_path: Path) -> N
     case = release_fleet.build_fixture(repo, release, tmp_path / "fleet")
 
     assert _git(case.vault, "tag", "--list", future) == ""
+
+
+def test_installer_timeout_terminates_and_reaps_its_whole_process_group(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _tag_release(repo, "1.60.0", "parent")
+    installer = repo / "install.sh"
+    installer.write_text(
+        "#!/bin/sh\n"
+        "(sleep 0.5; printf escaped > child-finished) &\n"
+        "wait\n",
+        encoding="utf-8",
+    )
+    installer.chmod(0o755)
+    _tag_release(repo, "1.61.0", "release")
+    release = release_fleet.discover_distribution_releases(repo)[-1]
+    vault = release_fleet._create_fixture_vault(repo, release, tmp_path / "fleet")
+    environment = release_fleet._case_environment(
+        vault, tmp_path / "installer-runtime"
+    )
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        release_fleet._run_historic_installer(
+            vault,
+            release,
+            environment,
+            timeout_seconds=0.05,
+        )
+
+    time.sleep(0.6)
+    assert not (vault / "child-finished").exists()
+
+
+def test_installer_timeout_kills_detached_term_ignoring_child_after_leader_exits(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _tag_release(repo, "1.60.0", "parent")
+    installer = repo / "install.sh"
+    installer.write_text(
+        "#!/bin/sh\n"
+        "trap 'exit 0' TERM\n"
+        "(\n"
+        "  trap '' TERM\n"
+        "  exec >/dev/null 2>&1\n"
+        "  printf ready > child-ready\n"
+        "  sleep 1.25\n"
+        "  printf escaped > child-finished\n"
+        ") &\n"
+        "while [ ! -e child-ready ]; do :; done\n"
+        "while :; do sleep 10; done\n",
+        encoding="utf-8",
+    )
+    installer.chmod(0o755)
+    _tag_release(repo, "1.61.0", "release")
+    release = release_fleet.discover_distribution_releases(repo)[-1]
+    vault = release_fleet._create_fixture_vault(repo, release, tmp_path / "fleet")
+    environment = release_fleet._case_environment(
+        vault, tmp_path / "installer-runtime"
+    )
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        release_fleet._run_historic_installer(
+            vault,
+            release,
+            environment,
+            timeout_seconds=0.2,
+        )
+
+    time.sleep(2.0)
+    assert not (vault / "child-finished").exists()
+
+
+def test_revision_switching_installer_is_rejected_before_doctor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repository(tmp_path)
+    _tag_release(repo, "1.60.0", "parent")
+    installer = repo / "install.sh"
+    installer.write_text(
+        "#!/bin/sh\n"
+        "set -eu\n"
+        "git checkout --quiet HEAD^\n",
+        encoding="utf-8",
+    )
+    installer.chmod(0o755)
+    tag = _tag_release(repo, "1.61.0", "release")
+    release = next(
+        candidate
+        for candidate in release_fleet.discover_distribution_releases(repo)
+        if candidate.tag == tag
+    )
+    node_runtime = release_fleet.NodeRuntime(
+        requested_node=tmp_path / "trusted" / "node",
+        resolved_node=tmp_path / "trusted" / "node",
+        node_version="v20.10.0",
+        node_sha256="a" * 64,
+        requested_npm=tmp_path / "trusted" / "npm",
+        resolved_npm=tmp_path / "trusted" / "npm",
+        npm_version="10.8.0",
+        npm_sha256="b" * 64,
+    )
+    python_runtime = release_fleet.PythonRuntime(
+        requested_python=Path(sys.executable),
+        resolved_python=Path(sys.executable),
+        python_version=f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        python_sha256="c" * 64,
+    )
+    monkeypatch.setattr(release_fleet, "resolve_trusted_node_runtime", lambda: node_runtime)
+    monkeypatch.setattr(
+        release_fleet, "resolve_trusted_python_runtime", lambda: python_runtime
+    )
+
+    def doctor_must_not_run(*_args, **_kwargs):
+        raise AssertionError("Doctor ran after the installer changed revisions")
+
+    monkeypatch.setattr(release_fleet, "_doctor_preflight", doctor_must_not_run)
+
+    survey = release_fleet.run_discovery_sweep(
+        repo,
+        releases=(release,),
+        output=tmp_path / "survey",
+        workers=1,
+        install_timeout_seconds=10,
+        doctor_timeout_seconds=10,
+    )
+
+    case = survey["cases"][0]
+    assert case["fixture_install"] == {
+        "status": "failed",
+        "code": "installer-release-identity-changed",
+    }
+    assert case["doctor_preflight"] == {"status": "not-run", "code": "not-run"}
+    assert survey["acceptance"] is False
 
 
 def test_build_fixture_refuses_to_overwrite_an_existing_case(tmp_path: Path) -> None:
@@ -423,6 +562,92 @@ def test_build_command_can_construct_one_historic_release_at_a_time(
     assert exit_code == 0
     assert manifest["case_count"] == 1
     assert manifest["cases"][0]["starting"]["tag"] == first
+
+
+def test_discovery_sweep_uses_disposable_fixtures_and_never_reports_acceptance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repository(tmp_path)
+    (repo / "install.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    _tag_release(repo, "1.61.0", "historic")
+    releases = release_fleet.discover_distribution_releases(repo)
+    output = tmp_path / "survey"
+    runtime = release_fleet.NodeRuntime(
+        requested_node=tmp_path / "trusted" / "node",
+        resolved_node=tmp_path / "trusted" / "node",
+        node_version="v20.10.0",
+        node_sha256="a" * 64,
+        requested_npm=tmp_path / "trusted" / "npm",
+        resolved_npm=tmp_path / "trusted" / "npm",
+        npm_version="10.8.0",
+        npm_sha256="b" * 64,
+    )
+    python_runtime = release_fleet.PythonRuntime(
+        requested_python=Path(sys.executable),
+        resolved_python=Path(sys.executable),
+        python_version="Python 3.14.6",
+        python_sha256="c" * 64,
+    )
+    monkeypatch.setattr(release_fleet, "resolve_trusted_node_runtime", lambda: runtime)
+    monkeypatch.setattr(release_fleet, "resolve_trusted_python_runtime", lambda: python_runtime)
+
+    survey = release_fleet.run_discovery_sweep(
+        repo,
+        releases=releases,
+        output=output,
+        workers=1,
+        install_timeout_seconds=10,
+        doctor_timeout_seconds=10,
+    )
+
+    assert survey["outcome"] == "NON_ACCEPTANCE_DISCOVERY"
+    assert survey["acceptance"] is False
+    assert survey["executed_count"] == survey["expected_count"] == 1
+    assert survey["fixture_runtime"]["node"] == runtime.identity()
+    assert survey["fixture_runtime"]["python"] == python_runtime.identity()
+    case = survey["cases"][0]
+    assert case["fixture_install"] == {"status": "ok", "code": "installer-complete"}
+    assert case["doctor_preflight"] == {
+        "status": "failed",
+        "code": "doctor-fixture-python-unavailable",
+        "requested_interpreter": str(
+            output
+            / release_fleet.DISCOVERY_WORK_NAME
+            / release_fleet.safe_case_name(releases[0])
+            / ".venv"
+            / "bin"
+            / "python"
+        ),
+    }
+    assert case["shipped_update_surface"]["route_classification"] == "missing-dex-update-skill"
+    assert not (output / release_fleet.DISCOVERY_WORK_NAME).exists()
+    assert not (output / release_fleet.safe_case_name(releases[0])).exists()
+
+
+def test_discovery_sweep_groups_known_installer_dependency_failures() -> None:
+    assert release_fleet._installer_failure_code(
+        release_fleet.FleetError("historic installer failed: npm: command not found")
+    ) == "installer-npm-unavailable"
+    assert release_fleet._installer_failure_code(
+        release_fleet.FleetError("historic installer failed: Python 3.9.6 found (too old)")
+    ) == "installer-python-unsupported"
+    assert release_fleet._installer_failure_code(
+        release_fleet.FleetError(
+            "Dex vault provision failed: installed catalog release does not match the designated bridge release"
+        )
+    ) == "installer-lifecycle-bridge-release-mismatch"
+    assert release_fleet._installer_failure_code(
+        release_fleet.FleetError("Dex vault provision failed: ModuleNotFoundError: No module named 'yaml'")
+    ) == "installer-python-yaml-missing"
+
+
+def test_doctor_unhealthy_code_groups_missing_mcp_dependency() -> None:
+    checks = [
+        {"id": "preflight.queue", "verdict": "BROKEN", "detail": "'mcp' package missing"},
+        {"id": "doctor.self", "verdict": "BROKEN", "detail": "same dependency missing"},
+    ]
+
+    assert release_fleet._doctor_unhealthy_code(checks) == "doctor-mcp-dependency-missing"
 
 
 def _write_update_surface(repo: Path) -> None:
@@ -673,6 +898,221 @@ def test_case_environment_is_allowlisted_and_has_an_isolated_home(tmp_path: Path
     assert Path(environment["HOME"]).is_dir()
     assert environment["HOME"] != str(Path.home())
     assert environment["VAULT_PATH"] == str(tmp_path / "vault")
+
+
+def test_trusted_node_runtime_ignores_hostile_path_and_is_explicitly_injected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    trusted = tmp_path / "trusted" / "bin"
+    trusted.mkdir(parents=True)
+    ambient = tmp_path / "ambient"
+    ambient.mkdir()
+    marker = tmp_path / "ambient-node-used"
+    node = trusted / "node"
+    npm = trusted / "npm"
+    node.write_text("#!/bin/sh\nprintf 'v20.10.0\\n'\n", encoding="utf-8")
+    npm.write_text("#!/bin/sh\nprintf '10.8.0\\n'\n", encoding="utf-8")
+    (ambient / "node").write_text(
+        f"#!/bin/sh\ntouch '{marker}'\nprintf 'v99.0.0\\n'\n", encoding="utf-8"
+    )
+    for executable in (node, npm, ambient / "node"):
+        executable.chmod(0o755)
+    monkeypatch.setenv("PATH", str(ambient))
+    monkeypatch.setattr(release_fleet, "TRUSTED_NODE_CANDIDATES", (node,))
+    monkeypatch.setattr(release_fleet, "TRUSTED_NODE_ROOTS", (tmp_path / "trusted",))
+
+    runtime = release_fleet.resolve_trusted_node_runtime()
+    environment = release_fleet._case_environment(
+        tmp_path / "vault", tmp_path / "runtime", node_runtime=runtime
+    )
+
+    assert runtime.resolved_node == node
+    assert runtime.node_version == "v20.10.0"
+    assert runtime.npm_version == "10.8.0"
+    assert runtime.node_sha256 == release_fleet.hashlib.sha256(node.read_bytes()).hexdigest()
+    assert not marker.exists()
+    assert environment["PATH"] == f"{trusted}:/usr/bin:/bin:/usr/sbin:/sbin"
+    assert str(ambient) not in environment["PATH"]
+
+
+def test_trusted_python_runtime_ignores_hostile_path_and_is_explicitly_injected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    trusted = tmp_path / "trusted" / "bin"
+    trusted.mkdir(parents=True)
+    ambient = tmp_path / "ambient"
+    ambient.mkdir()
+    marker = tmp_path / "ambient-python-used"
+    python = trusted / "python3"
+    python.write_text("#!/bin/sh\nprintf 'Python 3.14.6\\n'\n", encoding="utf-8")
+    (ambient / "python3").write_text(
+        f"#!/bin/sh\ntouch '{marker}'\nprintf 'Python 99.0.0\\n'\n", encoding="utf-8"
+    )
+    for executable in (python, ambient / "python3"):
+        executable.chmod(0o755)
+    monkeypatch.setenv("PATH", str(ambient))
+    monkeypatch.setattr(release_fleet, "TRUSTED_PYTHON_CANDIDATES", (python,))
+    monkeypatch.setattr(release_fleet, "TRUSTED_PYTHON_ROOTS", (tmp_path / "trusted",))
+
+    runtime = release_fleet.resolve_trusted_python_runtime()
+    environment = release_fleet._case_environment(
+        tmp_path / "vault", tmp_path / "runtime", python_runtime=runtime
+    )
+
+    assert runtime.resolved_python == python
+    assert runtime.python_version == "Python 3.14.6"
+    assert runtime.python_sha256 == release_fleet.hashlib.sha256(python.read_bytes()).hexdigest()
+    assert not marker.exists()
+    assert environment["PATH"] == f"{trusted}:/usr/bin:/bin:/usr/sbin:/sbin"
+    assert str(ambient) not in environment["PATH"]
+
+
+def _current_base_python_runtime() -> release_fleet.PythonRuntime:
+    trusted = Path(getattr(sys, "_base_executable", sys.executable)).resolve()
+    version = subprocess.run(
+        [str(trusted), "--version"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    return release_fleet.PythonRuntime(
+        requested_python=trusted,
+        resolved_python=trusted,
+        python_version=version,
+        python_sha256=release_fleet.hashlib.sha256(trusted.read_bytes()).hexdigest(),
+    )
+
+
+def test_doctor_timeout_kills_detached_term_ignoring_child_after_leader_exits(
+    tmp_path: Path,
+) -> None:
+    runtime = _current_base_python_runtime()
+    vault = tmp_path / "vault"
+    marker = vault / "doctor-child-finished"
+    ready = vault / "doctor-child-ready"
+    child_program = (
+        "import signal, time\n"
+        "from pathlib import Path\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        f"Path({str(ready)!r}).write_text('ready')\n"
+        "time.sleep(1.25)\n"
+        f"Path({str(marker)!r}).write_text('escaped')\n"
+    )
+    doctor_module = vault / "core" / "utils" / "doctor.py"
+    doctor_module.parent.mkdir(parents=True)
+    doctor_module.write_text(
+        "import signal, subprocess, sys, time\n"
+        "from pathlib import Path\n"
+        f"ready = Path({str(ready)!r})\n"
+        "subprocess.Popen(\n"
+        f"    [sys.executable, '-c', {child_program!r}],\n"
+        "    stdout=subprocess.DEVNULL,\n"
+        "    stderr=subprocess.DEVNULL,\n"
+        ")\n"
+        "while not ready.exists():\n"
+        "    time.sleep(0.01)\n"
+        "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))\n"
+        "while True:\n"
+        "    time.sleep(10)\n",
+        encoding="utf-8",
+    )
+    fixture_python = release_fleet.FixturePython(
+        requested_python=runtime.requested_python,
+        resolved_python=runtime.resolved_python,
+        python_version=runtime.python_version,
+        python_sha256=runtime.python_sha256,
+        pyvenv_cfg=vault / ".venv" / "pyvenv.cfg",
+        pyvenv_cfg_sha256="d" * 64,
+        venv_prefix=vault / ".venv",
+        base_prefix=runtime.resolved_python.parent.parent,
+        dependency_origins=(),
+    )
+    environment = release_fleet._case_environment(vault, tmp_path / "runtime")
+
+    doctor = release_fleet._doctor_preflight(
+        vault,
+        environment,
+        fixture_python=fixture_python,
+        timeout_seconds=0.2,
+    )
+
+    assert doctor["status"] == "failed"
+    assert doctor["code"] == "doctor-timeout"
+    time.sleep(2.0)
+    assert not marker.exists()
+
+
+def test_fixture_python_rejects_a_host_interpreter_symlink_without_a_real_venv(
+    tmp_path: Path,
+) -> None:
+    runtime = _current_base_python_runtime()
+    vault = tmp_path / "vault"
+    fixture_python_path = vault / ".venv" / "bin" / "python"
+    fixture_python_path.parent.mkdir(parents=True)
+    fixture_python_path.symlink_to(runtime.resolved_python)
+
+    with pytest.raises(release_fleet.FleetError, match="pyvenv.cfg"):
+        release_fleet.resolve_fixture_python(vault, trusted_python=runtime)
+
+
+def test_fixture_python_proves_real_venv_and_local_dependencies_before_doctor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _current_base_python_runtime()
+    vault = tmp_path / "vault"
+    fixture_root = vault / ".venv"
+    subprocess.run(
+        [sys.executable, "-m", "venv", str(fixture_root)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    site_packages = (
+        fixture_root
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+    )
+    dependency_origins = {}
+    for dependency in ("mcp", "yaml"):
+        package = site_packages / dependency
+        package.mkdir(parents=True)
+        origin = package / "__init__.py"
+        origin.write_text("# fixture-local test dependency\n", encoding="utf-8")
+        dependency_origins[dependency] = str(origin)
+    doctor_module = vault / "core" / "utils" / "doctor.py"
+    doctor_module.parent.mkdir(parents=True)
+    doctor_module.write_text(
+        "import json\n"
+        "print(json.dumps({'checks': [{'id': 'doctor', 'verdict': 'OK'}]}))\n",
+        encoding="utf-8",
+    )
+    ambient = tmp_path / "ambient"
+    ambient.mkdir()
+    marker = tmp_path / "ambient-python-used"
+    host_python = ambient / "python"
+    host_python.write_text(f"#!/bin/sh\ntouch '{marker}'\nexit 1\n", encoding="utf-8")
+    host_python.chmod(0o755)
+    fixture_python_path = vault / ".venv" / "bin" / "python"
+    monkeypatch.setenv("PATH", str(ambient))
+
+    fixture_python = release_fleet.resolve_fixture_python(vault, trusted_python=runtime)
+    environment = release_fleet._case_environment(vault, tmp_path / "runtime")
+    doctor = release_fleet._doctor_preflight(
+        vault, environment, fixture_python=fixture_python, timeout_seconds=10
+    )
+
+    assert doctor["status"] == "ok"
+    assert doctor["command"] == [str(fixture_python_path), "-m", "core.utils.doctor"]
+    assert doctor["interpreter"] == fixture_python.identity()
+    assert doctor["interpreter"]["venv_prefix"] == str(fixture_root)
+    assert doctor["interpreter"]["base_prefix"] == str(runtime.resolved_python.parent.parent)
+    assert doctor["interpreter"]["dependency_origins"] == dependency_origins
+    assert not marker.exists()
+
+    with pytest.raises(release_fleet.FleetError, match="fixture venv pyvenv.cfg is unavailable"):
+        release_fleet.resolve_fixture_python(tmp_path / "no-venv", trusted_python=runtime)
+    assert not marker.exists()
 
 
 def test_journey_fails_closed_after_recording_immutable_update_surfaces(tmp_path: Path) -> None:
