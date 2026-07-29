@@ -106,8 +106,8 @@ repointed to `/dex-doctor`.
 | mcp.orphans | every `core/mcp/*_server.py` present in `.mcp.json` | — | orphaned server (T2 add) |
 | python.env | `.venv` python exists; `mcp`, `yaml`, `dateutil`, `requests` importable | — | missing (T2: pip install into venv) |
 | hooks.wired | every hook command in `settings.json` points at an existing file | — | dangling hook (T2) |
-| jobs.loaded | for each `~/Library/LaunchAgents/com.dex.*.plist`: `launchctl list` state, interpreter exists+executable (ProgramArguments[0]) | plist not installed | installed but unloaded (T2 load) / interpreter missing (T3 install node) |
-| jobs.fresh | log mtime vs cadence: meeting-intel >48 h, changelog-checker >7 d, learning-review >7 d — only when the job is installed | job not installed | stale beyond threshold (detail says last-run date) |
+| jobs.loaded | for each `~/Library/LaunchAgents/com.dex.*.plist` that has an absolute `ProgramArguments` path under the checked vault: `launchctl list` state, interpreter exists+executable (ProgramArguments[0]). Same-label agents for another vault are skipped; an unreadable plist is `UNKNOWN`, not assumed foreign. | no attributable plist installed | installed but unloaded (T2 load) / interpreter missing (T3 install node) |
+| jobs.fresh | log mtime vs cadence: meeting-intel >48 h, changelog-checker >7 d, learning-review >7 d — only for an attributable job in the checked vault. Same-label foreign jobs are ignored; an unreadable plist is `UNKNOWN`. | no attributable job installed | stale beyond threshold (detail says last-run date) |
 | preflight.queue | `run_preflight()` result + queued errors | — | per preflight |
 | doctor.self | instruments counter; last-run file writable | — | any probe raised (UNKNOWN with error) |
 
