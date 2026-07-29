@@ -71,15 +71,26 @@ RETIRED_FOUNDER_PATHS = frozenset(
     }
 )
 FUTURE_APPROVED_ROWS = tuple(row for row in APPROVED_ROWS if row[0] not in RETIRED_FOUNDER_PATHS)
-BASELINE_ROWS = {1: APPROVED_ROWS, 2: FUTURE_APPROVED_ROWS}
+PROFILE_SAFE_APPROVED_ROWS = tuple(
+    row for row in APPROVED_ROWS if row[0] != "System/user-profile.yaml"
+)
+BASELINE_ROWS = {1: APPROVED_ROWS, 2: FUTURE_APPROVED_ROWS, 3: PROFILE_SAFE_APPROVED_ROWS}
 LOCAL_ONLY_PATHS = tuple(path for path, kind in APPROVED_ROWS if kind == "local-only-must-be-untracked")
 FUTURE_LOCAL_ONLY_PATHS = tuple(
     path for path, kind in FUTURE_APPROVED_ROWS if kind == "local-only-must-be-untracked"
 )
-BASELINE_LOCAL_ONLY_PATHS = {1: LOCAL_ONLY_PATHS, 2: FUTURE_LOCAL_ONLY_PATHS}
+PROFILE_SAFE_LOCAL_ONLY_PATHS = tuple(
+    path for path, kind in PROFILE_SAFE_APPROVED_ROWS if kind == "local-only-must-be-untracked"
+)
+BASELINE_LOCAL_ONLY_PATHS = {
+    1: LOCAL_ONLY_PATHS,
+    2: FUTURE_LOCAL_ONLY_PATHS,
+    3: PROFILE_SAFE_LOCAL_ONLY_PATHS,
+}
 TRANSITION_PHASES = {
     1: {"bootstrap-v1", "untrack-v1"},
     2: {"bootstrap-v2", "untrack-v2"},
+    3: {"bootstrap-v3", "untrack-v3"},
 }
 SAFE_PATH = re.compile(r"^[^\x00-\x1f\\]+$")
 
@@ -160,7 +171,7 @@ def load_transition_metadata(transition_path: Path) -> PreservationTransition:
     if set(payload) != expected_fields:
         raise TrackedIgnoredError("local-only preservation transition has unexpected fields")
     baseline_version = 1 if schema_version == 1 else payload.get("baseline_version")
-    if baseline_version != schema_version or payload.get("phase") not in TRANSITION_PHASES[schema_version]:
+    if baseline_version not in TRANSITION_PHASES or payload.get("phase") not in TRANSITION_PHASES[baseline_version]:
         raise TrackedIgnoredError("local-only preservation transition schema or phase is unsupported")
     version = payload.get("release_version")
     if not isinstance(version, str) or not version:

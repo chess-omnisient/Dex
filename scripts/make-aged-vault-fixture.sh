@@ -76,6 +76,13 @@ if [ ! -f "$VAULT/System/integrations/slack.yaml" ]; then
   printf 'enabled: false\nchannels: []\n' > "$VAULT/System/integrations/slack.yaml"
 fi
 
+# Current releases ship a profile template, never a live profile. An aged user
+# already has a profile, so recreate that installed state before adding fixture
+# choices below.
+if [ ! -f "$VAULT/System/user-profile.yaml" ]; then
+  cp "$VAULT/System/user-profile-template.yaml" "$VAULT/System/user-profile.yaml"
+fi
+
 mkdir -p \
   "$VAULT/04-Projects" \
   "$VAULT/05-Areas/People/External" \

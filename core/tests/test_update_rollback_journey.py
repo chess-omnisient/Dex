@@ -323,10 +323,10 @@ def test_v163_shipped_update_captures_real_untrack_hop_and_rollback_restores_tra
 ) -> None:
     target_policy = load_exact_policy(POLICY)
     target_transition = load_transition(REPO_ROOT)
-    assert target_policy.baseline_version == 1
-    assert target_transition.schema_version == 1
-    assert target_transition.baseline_version == 1
-    assert target_transition.phase == "untrack-v1"
+    assert target_policy.baseline_version == 3
+    assert target_transition.schema_version == 2
+    assert target_transition.baseline_version == 3
+    assert target_transition.phase == "untrack-v3"
     assert (REPO_ROOT / "System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md").is_file()
     assert all(not (REPO_ROOT / relative).exists() for relative in preservation.LOCAL_ONLY_PATHS)
 
