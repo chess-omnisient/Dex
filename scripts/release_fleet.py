@@ -182,7 +182,17 @@ def build_fixture(repo: Path, release: DistributionRelease, output: Path) -> Fle
     if vault.exists():
         raise FleetError(f"fleet case directory must be empty: {vault}")
 
-    _git(repo, "clone", "--quiet", "--no-checkout", "--no-local", str(repo), str(vault))
+    _git(
+        repo,
+        "clone",
+        "--quiet",
+        "--no-checkout",
+        "--no-local",
+        "--no-tags",
+        str(repo),
+        str(vault),
+    )
+    _git(vault, "fetch", "--quiet", "--no-tags", "origin", f"refs/tags/{release.tag}:refs/tags/{release.tag}")
     _git(vault, "checkout", "--quiet", "--detach", release.tag)
     _git(vault, "remote", "rename", "origin", "upstream")
     _git(vault, "remote", "set-url", "upstream", PUBLIC_REMOTE)

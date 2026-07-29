@@ -100,6 +100,21 @@ def test_build_fixture_uses_requested_release_and_preserves_user_hashes(tmp_path
     assert case.user_hashes == release_fleet.hash_user_owned_files(case.vault)
 
 
+def test_build_fixture_does_not_preload_future_release_tags(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    first = _tag_release(repo, "1.61.0", "one")
+    future = _tag_release(repo, "1.62.0", "two")
+    release = next(
+        candidate
+        for candidate in release_fleet.discover_distribution_releases(repo)
+        if candidate.tag == first
+    )
+
+    case = release_fleet.build_fixture(repo, release, tmp_path / "fleet")
+
+    assert _git(case.vault, "tag", "--list", future) == ""
+
+
 def test_build_fixture_refuses_to_overwrite_an_existing_case(tmp_path: Path) -> None:
     repo = _repository(tmp_path)
     _tag_release(repo, "1.61.0", "one")
