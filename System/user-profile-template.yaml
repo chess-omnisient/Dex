@@ -142,7 +142,7 @@ capabilities:
 # key and keep this legacy switch aligned; the migration never runs in reverse.
 quarterly_planning:
   # Whether quarterly planning is enabled
-  enabled: false
+  enabled: true
   
   # Has user been asked about quarterly planning during onboarding?
   prompted: false
