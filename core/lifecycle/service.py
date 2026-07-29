@@ -56,6 +56,7 @@ _ARCHIVE_RELATIVE = ".dex/pre-split-archive.git"
 _ARCHIVE_RECEIPTS_RELATIVE = "System/.dex/archive-removals"
 _MCP_CONFIG_RELATIVE = ".mcp.json"
 _MCP_REGISTRATION_NAME = "customization-migration-mcp"
+_ONBOARDING_PROFILE_RELATIVE = "System/user-profile.yaml"
 _REBUILD_TRANSACTION_PATH = re.compile(
     r"^System/\.dex/customization-migrations/cap-[0-9a-f]{16}/(?:"
     r"receipts/(?:capsule|activation|rewind)\.json|"
@@ -251,6 +252,161 @@ def _execute_approved_transaction(
             "declared_paths": sorted(declared_paths),
         }
     )
+
+
+def _confirmed_onboarding_context(
+    working_context: Mapping[str, object],
+    calendar_source: Mapping[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Validate the closed, user-reviewed onboarding fields for persistence."""
+    context_fields = (
+        "role_focus",
+        "current_work",
+        "week_success",
+        "quarter_outcome",
+        "anything_else",
+    )
+    allowed_context = {*context_fields, "key_people"}
+    if set(working_context) - allowed_context:
+        raise PlanRejected("working context contains unsupported fields")
+    context: dict[str, object] = {}
+    for field in context_fields:
+        value = working_context.get(field, "")
+        if not isinstance(value, str):
+            raise PlanRejected(f"working context {field} must be text")
+        cleaned = value.strip()
+        if cleaned:
+            context[field] = cleaned
+    people = working_context.get("key_people", [])
+    if not isinstance(people, list) or len(people) > 5:
+        raise PlanRejected("working context key_people must contain at most five people")
+    normalized_people: list[dict[str, str]] = []
+    for person in people:
+        if not isinstance(person, Mapping) or set(person) - {"name", "relationship", "how_to_help"}:
+            raise PlanRejected("working context people must contain name, relationship, and how_to_help")
+        name = person.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise PlanRejected("working context people need a name")
+        normalized = {"name": name.strip()}
+        for field in ("relationship", "how_to_help"):
+            value = person.get(field, "")
+            if not isinstance(value, str):
+                raise PlanRejected(f"working context people {field} must be text")
+            if value.strip():
+                normalized[field] = value.strip()
+        normalized_people.append(normalized)
+    context["key_people"] = normalized_people
+    if not context or (set(context) == {"key_people"} and not normalized_people):
+        raise PlanRejected("working context needs at least one confirmed value")
+
+    provider = calendar_source.get("provider")
+    if provider == "none":
+        if set(calendar_source) != {"provider"}:
+            raise PlanRejected("an absent calendar source cannot include calendar details")
+        return context, {"provider": "none"}
+    if provider != "apple" or set(calendar_source) != {"provider", "work_calendar"}:
+        raise PlanRejected("calendar source must be Apple Calendar or no calendar")
+    calendar_name = calendar_source.get("work_calendar")
+    if not isinstance(calendar_name, str) or not calendar_name.strip():
+        raise PlanRejected("Apple Calendar needs a selected calendar name")
+    return context, {"provider": "apple", "work_calendar": calendar_name.strip()}
+
+
+def _onboarding_context_preview(
+    vault_root: str | Path,
+    working_context: Mapping[str, object],
+    calendar_source: Mapping[str, object],
+) -> tuple[dict[str, object], list[PlanEntry]]:
+    """Build the exact profile mutation for confirmed onboarding context."""
+    import yaml
+
+    root = Path(vault_root)
+    profile = root / _ONBOARDING_PROFILE_RELATIVE
+    if profile.is_symlink() or not profile.is_file():
+        raise PlanRejected("onboarding context requires a finalized regular user profile")
+    original = profile.read_bytes()
+    try:
+        current = yaml.safe_load(original.decode("utf-8")) or {}
+    except (UnicodeDecodeError, yaml.YAMLError) as error:
+        raise PlanRejected("user profile is not valid YAML") from error
+    if not isinstance(current, dict):
+        raise PlanRejected("user profile must be a YAML object")
+    context, source = _confirmed_onboarding_context(working_context, calendar_source)
+    updated = dict(current)
+    updated["working_context"] = context
+    updated["calendar"] = source
+    plan = [
+        PlanEntry(
+            _ONBOARDING_PROFILE_RELATIVE,
+            yaml.safe_dump(updated, sort_keys=False, allow_unicode=True).encode("utf-8"),
+            mode=profile.stat().st_mode & 0o777,
+            expected_current_sha256=hashlib.sha256(original).hexdigest(),
+        )
+    ]
+    transaction = _transaction_preview_document(
+        root,
+        plan,
+        purpose="onboarding-context",
+        operation="onboarding-context",
+    )
+    return {
+        "working_context": context,
+        "calendar_source": source,
+        "writes": transaction["writes"],
+    }, plan
+
+
+def build_and_preview_onboarding_context(
+    vault_root: str | Path,
+    working_context: Mapping[str, object],
+    calendar_source: Mapping[str, object],
+) -> dict[str, object]:
+    """Show the confirmed onboarding profile update before writing anything."""
+    preview, _plan = _onboarding_context_preview(vault_root, working_context, calendar_source)
+    return _envelope(
+        preview=preview,
+        approval_token=hashlib.sha256(_canonical(preview)).hexdigest(),
+    )
+
+
+def execute_approved_onboarding_context(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    """Write only the unchanged, confirmed onboarding context through Transaction."""
+    if not isinstance(preview, Mapping):
+        raise PlanRejected("onboarding context preview is malformed")
+    working_context = preview.get("working_context")
+    calendar_source = preview.get("calendar_source")
+    if not isinstance(working_context, Mapping) or not isinstance(calendar_source, Mapping):
+        raise PlanRejected("onboarding context preview is malformed")
+    expected_preview, plan = _onboarding_context_preview(
+        vault_root,
+        working_context,
+        calendar_source,
+    )
+    expected_bytes = _canonical(expected_preview)
+    if (
+        _canonical(dict(preview)) != expected_bytes
+        or not isinstance(approved_token, str)
+        or not hmac.compare_digest(approved_token, hashlib.sha256(expected_bytes).hexdigest())
+    ):
+        raise PlanRejected("onboarding context approval does not match the current exact preview")
+    transaction = _preview_transaction(
+        vault_root,
+        plan,
+        purpose="onboarding-context",
+        operation="onboarding-context",
+    )
+    executed = _execute_approved_transaction(
+        vault_root,
+        plan,
+        purpose="onboarding-context",
+        operation="onboarding-context",
+        approved_token=str(transaction["approval_token"]),
+    )
+    return _envelope(receipt=executed["receipt"])
 
 
 def _missing_companies_default_plan(
@@ -1085,6 +1241,8 @@ __all__ = [
     "execute_approved_delivered_release",
     "build_and_preview_mcp_registration",
     "execute_approved_mcp_registration",
+    "build_and_preview_onboarding_context",
+    "execute_approved_onboarding_context",
     "deliver_and_apply_latest_release",
     "build_and_preview_conflict_resolution",
     "execute_approved_conflict_resolution",

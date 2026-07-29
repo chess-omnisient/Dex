@@ -418,6 +418,7 @@ def update_write_verdict(
         "customization-migration",
         "capability-state",
         "mcp-registration",
+        "onboarding-context",
     ):
         raise ValueError(f"unknown write operation: {operation}")
 
@@ -457,6 +458,46 @@ def update_write_verdict(
             candidate,
             False,
             "outside-capability-state",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
+        )
+
+    if operation == "onboarding-context":
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "outside-onboarding-context",
+                None,
+                None,
+            )
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        if candidate == "System/user-profile.yaml":
+            return WriteVerdict(
+                candidate,
+                True,
+                "write-onboarding-context",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-onboarding-context",
             resolution.ownership if resolution is not None else None,
             resolution.rule_id if resolution is not None else None,
         )

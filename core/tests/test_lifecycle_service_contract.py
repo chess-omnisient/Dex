@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import re
 import shutil
@@ -150,6 +151,45 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
         mcp_execute_response,
     )
 
+    onboarding_vault = tmp_path / "onboarding-vault"
+    (onboarding_vault / "System").mkdir(parents=True)
+    (onboarding_vault / "System" / "user-profile.yaml").write_text(
+        "name: Example User\n",
+        encoding="utf-8",
+    )
+    onboarding_request = {
+        "vault_root": str(onboarding_vault),
+        "working_context": {"role_focus": "Lead product work", "key_people": []},
+        "calendar_source": {"provider": "apple", "work_calendar": "Work"},
+    }
+    onboarding_response = service.build_and_preview_onboarding_context(
+        onboarding_vault,
+        onboarding_request["working_context"],
+        onboarding_request["calendar_source"],
+    )
+    _assert_conforms(
+        schema,
+        "build_and_preview_onboarding_context",
+        onboarding_request,
+        onboarding_response,
+    )
+    onboarding_execute_request = {
+        "vault_root": str(onboarding_vault),
+        "preview": onboarding_response["preview"],
+        "approved_token": onboarding_response["approval_token"],
+    }
+    onboarding_execute_response = service.execute_approved_onboarding_context(
+        onboarding_vault,
+        onboarding_response["preview"],
+        onboarding_response["approval_token"],
+    )
+    _assert_conforms(
+        schema,
+        "execute_approved_onboarding_context",
+        onboarding_execute_request,
+        onboarding_execute_response,
+    )
+
     preview_request = {
         "vault_root": str(vault),
         "release_root": str(release_root),
@@ -276,7 +316,7 @@ def test_api_version_is_present_and_frozen_in_schema() -> None:
     assert schema["properties"]["api_version"] == {"const": service.api_version}
 
 
-def test_public_surface_requires_a_version_bump_and_bridge_to_change() -> None:
+def test_additive_public_surface_preserves_every_existing_operation() -> None:
     assert service.__all__ == [
         "api_version",
         "build_inventory_and_plan",
@@ -289,6 +329,8 @@ def test_public_surface_requires_a_version_bump_and_bridge_to_change() -> None:
         "execute_approved_delivered_release",
         "build_and_preview_mcp_registration",
         "execute_approved_mcp_registration",
+        "build_and_preview_onboarding_context",
+        "execute_approved_onboarding_context",
         "deliver_and_apply_latest_release",
         "build_and_preview_conflict_resolution",
         "execute_approved_conflict_resolution",
@@ -315,6 +357,17 @@ def test_public_surface_requires_a_version_bump_and_bridge_to_change() -> None:
         "abandon_rebuild_capsule",
         "recover_rebuild_transactions",
     ]
+
+
+def test_onboarding_context_operations_have_frozen_signatures() -> None:
+    assert str(inspect.signature(service.build_and_preview_onboarding_context)) == (
+        "(vault_root: 'str | Path', working_context: 'Mapping[str, object]', "
+        "calendar_source: 'Mapping[str, object]') -> 'dict[str, object]'"
+    )
+    assert str(inspect.signature(service.execute_approved_onboarding_context)) == (
+        "(vault_root: 'str | Path', preview: 'Mapping[str, object]', "
+        "approved_token: 'str') -> 'dict[str, object]'"
+    )
     assert "version bump" in service.__doc__.lower()
     assert "bridge" in service.__doc__.lower()
 

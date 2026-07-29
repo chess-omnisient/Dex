@@ -279,6 +279,24 @@ def test_capability_state_operation_only_authorizes_the_live_profile() -> None:
     assert refused.action == "outside-capability-state"
 
 
+def test_onboarding_context_operation_only_authorizes_the_live_profile() -> None:
+    allowed = portable_contract.update_write_verdict(
+        "System/user-profile.yaml",
+        exists=True,
+        operation="onboarding-context",
+    )
+    refused = portable_contract.update_write_verdict(
+        "System/.onboarding-session.json",
+        exists=True,
+        operation="onboarding-context",
+    )
+
+    assert allowed.allowed is True
+    assert allowed.action == "write-onboarding-context"
+    assert refused.allowed is False
+    assert refused.action == "outside-onboarding-context"
+
+
 @pytest.mark.parametrize(
     "path",
     [

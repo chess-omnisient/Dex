@@ -47,6 +47,7 @@ _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core import capabilities as capability_rooms
+from core.lifecycle import service as lifecycle_service
 from core.paths import (
     MARKER_FILE,
     MCP_CONFIG_EXAMPLE,
@@ -55,6 +56,7 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
+from core.transaction.engine import PlanRejected
 from core.utils.nudge_calendar import build_nudge_calendar, is_dex_nudge_event
 
 # User-configured working week (defaults to Monday-Friday)
@@ -248,8 +250,18 @@ def create_new_session() -> Dict:
 
 
 def _calendar_addressed(session: Dict[str, Any]) -> bool:
-    """Return whether calendar setup was saved or explicitly skipped."""
-    return bool(session.get("data", {}).get("calendar"))
+    """Return whether calendar setup was validated or explicitly skipped."""
+    return session.get("calendar_addressed") is True or bool(
+        session.get("data", {}).get("calendar")
+    )
+
+
+def _approved_profile_session_data(session: Dict[str, Any]) -> Dict[str, Any]:
+    """Exclude context that requires a separate explicit lifecycle approval."""
+    data = dict(session["data"])
+    for field in ("calendar", "calendar_source", "work_email", "working_context"):
+        data.pop(field, None)
+    return data
 
 
 def _next_required_step_before(
@@ -468,7 +480,7 @@ def _provision_folders(capability_states: Dict[str, bool] | None = None) -> List
 
 def _finalize_through_provisioner(session: Dict) -> Dict[str, Any]:
     """Collect onboarding inputs and let the sanctioned provisioner mutate."""
-    data = dict(session["data"])
+    data = _approved_profile_session_data(session)
     data["pillars"] = [
         {"name": pillar, "description": ""}
         for pillar in data.get("pillars", [])
@@ -1573,7 +1585,10 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="save_calendar_selection",
-            description="Save the work calendar selected during onboarding, or defer calendar permission setup.",
+            description=(
+                "Validate a proposed Apple Calendar selection for later explicit "
+                "profile approval, or choose no calendar."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1584,7 +1599,10 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "work_email": {
                         "type": "string",
-                        "description": "Work email when the selected calendar name is an email address",
+                        "description": (
+                            "Transient identity hint when the calendar name is an "
+                            "email address; never stored in the onboarding session"
+                        ),
                         "default": ""
                     },
                     "calendar_count": {
@@ -1600,6 +1618,42 @@ async def handle_list_tools() -> list[types.Tool]:
                     }
                 }
             }
+        ),
+        types.Tool(
+            name="preview_confirmed_onboarding_context",
+            description=(
+                "Preview the reviewed working context and Apple Calendar source after "
+                "onboarding is complete. This does not write anything."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "working_context": {
+                        "type": "object",
+                        "description": "The user's reviewed working summary, not source document text.",
+                    },
+                    "calendar_source": {
+                        "type": "object",
+                        "description": "Apple Calendar selection or provider=none; Google is not supported here.",
+                    },
+                },
+                "required": ["working_context", "calendar_source"],
+            },
+        ),
+        types.Tool(
+            name="apply_confirmed_onboarding_context",
+            description=(
+                "Apply only an unchanged onboarding-context preview after explicit approval. "
+                "Returns the lifecycle transaction receipt."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "preview": {"type": "object"},
+                    "approval_token": {"type": "string"},
+                },
+                "required": ["preview", "approval_token"],
+            },
         ),
         types.Tool(
             name="get_onboarding_status",
@@ -1716,7 +1770,63 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
     arguments = arguments or {}
     
     try:
-        if name == "start_onboarding_session":
+        if name == "preview_confirmed_onboarding_context":
+            if not MARKER_FILE.exists():
+                result = create_error_response(
+                    "Finish onboarding before saving working context or a calendar source",
+                    suggestion="Call finalize_onboarding first",
+                )
+            else:
+                working_context = arguments.get("working_context")
+                calendar_source = arguments.get("calendar_source")
+                if not isinstance(working_context, dict) or not isinstance(calendar_source, dict):
+                    result = create_error_response(
+                        "working_context and calendar_source must both be objects",
+                    )
+                else:
+                    try:
+                        previewed = lifecycle_service.build_and_preview_onboarding_context(
+                            BASE_DIR,
+                            working_context,
+                            calendar_source,
+                        )
+                    except PlanRejected as error:
+                        result = create_error_response(str(error))
+                    else:
+                        result = create_success_response(
+                            previewed,
+                            "Review this exact context and calendar source, then approve it to save.",
+                        )
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "apply_confirmed_onboarding_context":
+            if not MARKER_FILE.exists():
+                result = create_error_response(
+                    "Finish onboarding before saving working context or a calendar source",
+                    suggestion="Call finalize_onboarding first",
+                )
+            else:
+                preview = arguments.get("preview")
+                approval_token = arguments.get("approval_token")
+                if not isinstance(preview, dict) or not isinstance(approval_token, str):
+                    result = create_error_response("preview and approval_token are required")
+                else:
+                    try:
+                        executed = lifecycle_service.execute_approved_onboarding_context(
+                            BASE_DIR,
+                            preview,
+                            approval_token,
+                        )
+                    except PlanRejected as error:
+                        result = create_error_response(str(error))
+                    else:
+                        result = create_success_response(
+                            executed,
+                            "Working context and calendar source saved with a lifecycle receipt.",
+                        )
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "start_onboarding_session":
             force_new = arguments.get('force_new', False)
             
             session = load_session()
@@ -2053,7 +2163,6 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             skipped = arguments.get('skipped', False)
             work_calendar = (arguments.get('work_calendar') or '').strip()
             work_email = (arguments.get('work_email') or '').strip()
-            calendar_count = arguments.get('calendar_count', 0)
 
             session = load_session()
             if not session:
@@ -2064,13 +2173,13 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
             if skipped:
-                calendar = {"permissions_pending": True}
-                session['data'].pop('work_email', None)
-                session['data']['calendar'] = calendar
+                session["calendar_addressed"] = True
+                for field in ("calendar", "calendar_source", "work_email"):
+                    session["data"].pop(field, None)
                 save_session(session)
                 result = create_success_response(
                     {
-                        "calendar": calendar,
+                        "calendar_source": {"provider": "none"},
                         "working_week_suggestion": default_working_week_suggestion(),
                     },
                     "Calendar setup skipped for now. /dex-doctor will pick this up later."
@@ -2111,26 +2220,23 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     "/dex-doctor will confirm later."
                 )
 
-            calendar = {
+            calendar_source = {
+                "provider": "apple",
                 "work_calendar": work_calendar,
-                "calendar_count": calendar_count,
-                "lazy_load": True,
             }
-            if work_email:
-                session['data']['work_email'] = work_email
-            else:
-                session['data'].pop('work_email', None)
-            session['data']['calendar'] = calendar
+            session["calendar_addressed"] = True
+            for field in ("calendar", "calendar_source", "work_email"):
+                session["data"].pop(field, None)
             save_session(session)
 
             result = create_success_response(
                 {
                     "work_email": work_email,
-                    "calendar": calendar,
+                    "calendar_source": calendar_source,
                     "derived_identity": derive_identity_from_email(work_email),
                     "working_week_suggestion": default_working_week_suggestion(),
                 },
-                f"Work calendar saved.{verification_note}"
+                f"Work calendar validated for later approval.{verification_note}"
             )
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
         
@@ -2325,7 +2431,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     would_update_configs.append('.mcp.json')
 
                 # Build preview of user-profile.yaml content
-                data = session['data']
+                data = _approved_profile_session_data(session)
                 profile_preview = {
                     'name': data.get('name', ''),
                     'role': data.get('role', ''),
@@ -2346,10 +2452,6 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                         for room in capability_rooms.room_ids()
                     },
                 }
-                if 'calendar' in data:
-                    profile_preview['work_email'] = data.get('work_email', '')
-                    profile_preview['calendar'] = data['calendar']
-
                 # Build preview of pillars.yaml content
                 pillars_preview = []
                 for pillar in data.get('pillars', []):
