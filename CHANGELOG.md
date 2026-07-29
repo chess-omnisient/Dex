@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.80.0] — 🔄 Updating Dex no longer needs Git (2026-07-29)
+
+Updating Dex should be a normal, guided thing to do — not a technical recovery project. This release gives Dex the missing delivery step: from this version onward, `/dex-update` can fetch a verified new release itself, show you exactly what it found, and use the same protected update route that already keeps your notes safe.
+
+**What this changes for you:**
+
+* **Dex can bring the next release to you.** When an update is available, `/dex-update` no longer relies on you knowing Git or finding the right release by hand. Dex fetches the published release, checks that it is the real one, and prepares it locally before anything in your workspace changes.
+* **You approve the exact update, not a vague promise.** Dex shows the files and changes in the specific release it fetched. It only applies that same checked release after a fresh yes. If the available release changes in the meantime, your earlier approval is not reused.
+* **Your notes still go through one protected door.** Downloading an update is read-only. The eventual write remains inside Dex's existing transaction system, which protects user-owned material and can refuse rather than guess.
+* **A new Dex starts setup reliably.** A first session now enters the one canonical setup flow, even if your first message is simply “hi”; an interrupted setup resumes safely instead of dropping you into a half-configured workspace.
+* **Changing your role uses that same safe setup flow.** Dex asks first, previews the result honestly, and leaves your existing notes where they are — no second set of hand-written folder-moving instructions.
+* **Older releases stay visible to the update check.** A release guard now stops duplicate release markers from quietly silencing older Dex copies again.
+
+This is the foundation release for the simpler update experience. The complete historical-fleet proof continues separately: every old release will be exercised through this foundation and a following release before we claim universal update coverage.
+
 ## [1.79.0] — 📋 Your meetings get dealt with without you asking (2026-07-28)
 
 Your meetings did arrive in Dex on their own — but turning them into something useful (updated pages for the people you met, tasks from what you agreed to do, tidy notes) still waited for you to ask. If you never asked, meetings quietly piled up half-done. The docs promised meetings "flow in on their own" — this release makes that promise true.
