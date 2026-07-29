@@ -118,13 +118,15 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
         inventory_response,
     )
 
+    mcp_vault = tmp_path / "mcp-vault"
+    (mcp_vault / "System").mkdir(parents=True)
     shutil.copy2(
         REPO_ROOT / "System/.mcp.json.example",
-        vault / "System/.mcp.json.example",
+        mcp_vault / "System/.mcp.json.example",
     )
-    (vault / ".mcp.json").write_text('{"mcpServers": {}}\n', encoding="utf-8")
-    mcp_preview_request = {"vault_root": str(vault)}
-    mcp_preview_response = service.build_and_preview_mcp_registration(vault)
+    (mcp_vault / ".mcp.json").write_text('{"mcpServers": {}}\n', encoding="utf-8")
+    mcp_preview_request = {"vault_root": str(mcp_vault)}
+    mcp_preview_response = service.build_and_preview_mcp_registration(mcp_vault)
     _assert_conforms(
         schema,
         "build_and_preview_mcp_registration",
@@ -132,12 +134,12 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
         mcp_preview_response,
     )
     mcp_execute_request = {
-        "vault_root": str(vault),
+        "vault_root": str(mcp_vault),
         "preview": mcp_preview_response["preview"],
         "approved_token": mcp_preview_response["approval_token"],
     }
     mcp_execute_response = service.execute_approved_mcp_registration(
-        vault,
+        mcp_vault,
         mcp_preview_response["preview"],
         mcp_preview_response["approval_token"],
     )
