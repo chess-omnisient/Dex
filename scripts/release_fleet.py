@@ -476,7 +476,10 @@ def shipped_update_surface(repo: Path, release: DistributionRelease | ImmutableR
         "preview_approval_receipt": required,
         "delivery_operations": delivery,
         "journey_protocol": protocol_surface,
-        "machine_executable": protocol_bytes is not None,
+        # A valid protocol is a closed declaration, not proof that this runner
+        # executed either update hop. Keep acceptance locked until a separately
+        # released executor owns the evidence-producing journey.
+        "machine_executable": False,
     }
 
 
@@ -1079,7 +1082,6 @@ def classify_historic_update_surface(repo: Path, release: DistributionRelease) -
         repo, release.tag, "core/lifecycle/catalog/bridge-release.json"
     )
     protocol = _optional_tag_file(repo, release.tag, UPDATE_JOURNEY_RELATIVE)
-    machine_executable = False
     if protocol is not None:
         try:
             parsed_protocol = load_update_journey_protocol(protocol)
@@ -1088,9 +1090,8 @@ def classify_historic_update_surface(repo: Path, release: DistributionRelease) -
                 f"{release.tag}: released journey protocol is invalid: {error}"
             ) from error
         _verify_released_protocol_artifacts(repo, release, parsed_protocol)
-        route = "machine-protocol-declared"
-        bridge_requirement = "declared-by-protocol"
-        machine_executable = True
+        route = "machine-protocol-declared-executor-missing"
+        bridge_requirement = "released-journey-executor-required"
     elif skill is None:
         route = "missing-dex-update-skill"
         bridge_requirement = "unsupported-without-published-route"
@@ -1106,7 +1107,7 @@ def classify_historic_update_surface(repo: Path, release: DistributionRelease) -
     return {
         "route_classification": route,
         "bridge_requirement": bridge_requirement,
-        "machine_executable": machine_executable,
+        "machine_executable": False,
         "dex_update_skill": {
             "path": UPDATE_SKILL_RELATIVE,
             "status": "present" if skill is not None else "missing",
@@ -1472,11 +1473,12 @@ def run_journey(
     foundation_tag: str,
     follow_up_tag: str,
 ) -> None:
-    """Fail closed until immutable releases publish a machine-verifiable journey protocol.
+    """Fail closed until an immutable release publishes the journey executor.
 
     The only evidence emitted today is a hash of the exact shipped `/dex-update`
     and rescue material.  The runner never promotes Markdown instructions into
-    commands, invokes lifecycle code, or accepts an external bridge as proof.
+    commands, invokes lifecycle code, or accepts a valid protocol or external
+    bridge as proof that either hop executed.
     """
 
     releases = {release.tag: release for release in discover_distribution_releases(repo)}
@@ -1529,8 +1531,8 @@ def run_journey(
         result["historic_update_surface"] = historic_surface
         result["foundation_update_surface"] = foundation_surface
         raise FleetError(
-            "published /dex-update surfaces are Markdown-only; a future immutable release must "
-            "publish a machine-verifiable journey protocol before fleet execution can continue"
+            "published journey executor is unavailable; the current runner records update "
+            "surfaces but cannot execute either hop"
         )
     except (FleetError, OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as error:
         result["failure"] = str(error)
@@ -1656,8 +1658,8 @@ def assert_evidence_bound(
         protocol_surface = shipped_update_surface(repo, follow_up)
         if protocol_surface["machine_executable"] is not True:
             raise FleetError(
-                f"{case.starting_tag}: immutable executable journey protocol is not published; "
-                "fleet acceptance cannot pass"
+                f"{case.starting_tag}: released journey executor is not implemented; "
+                "a valid protocol alone cannot make fleet acceptance pass"
             )
         protocol = load_update_journey_protocol(
             _tag_file(repo, follow_up.tag, UPDATE_JOURNEY_RELATIVE)
@@ -1998,7 +2000,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     journey = subcommands.add_parser(
         "journey",
-        help="record immutable update surfaces and fail closed until an executable journey protocol ships",
+        help="record immutable update surfaces and fail closed until a released journey executor ships",
     )
     journey.add_argument("--repo", type=Path, required=True)
     journey.add_argument("--output", type=Path, required=True)
@@ -2042,7 +2044,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             foundation_tag=args.foundation_tag,
             follow_up_tag=args.follow_up_tag,
         )
-        raise FleetError("journey returned without an immutable executable protocol")
+        raise FleetError("journey returned without a released journey executor")
 
     if args.command == "survey":
         releases = releases_from_starting_manifest(

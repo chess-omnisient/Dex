@@ -691,7 +691,7 @@ def test_release_build_rejects_malformed_selected_package_before_creating_refs(t
 
 def test_raw_vault_bundle_has_package_profile_manifest_agreement(tmp_path: Path) -> None:
     clone = _clone_repo(tmp_path, "raw-vault-bundle")
-    _sync_release_inputs(clone)
+    _commit_release_inputs_if_changed(clone)
     # Prove the builder regenerates the declaration rather than copying stale bytes.
     (clone / "System/.release-evidence-profile.json").write_text(
         json.dumps({"profile": "legacy-v1", "release_version": "0.0.1", "schema_version": 1}, indent=2) + "\n"
@@ -728,6 +728,50 @@ def test_raw_vault_bundle_has_package_profile_manifest_agreement(tmp_path: Path)
         assert script_name not in package.get("scripts", {})
     assert manifest == sorted(set(manifest))
     assert set(manifest) == shipped
+
+
+def test_raw_vault_bundle_rejects_dirty_protocol_inputs_not_in_source_commit(
+    tmp_path: Path,
+) -> None:
+    clone = _clone_repo(tmp_path, "raw-vault-bundle-dirty-protocol")
+    _commit_release_inputs_if_changed(clone)
+    runner = clone / "scripts/release_fleet.py"
+    runner.write_text(
+        runner.read_text(encoding="utf-8") + "\n# uncommitted runner bytes\n",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        [sys.executable, "scripts/generate-update-journey-protocol.py"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    spy_dir = tmp_path / "dirty-protocol-command-spies"
+    spy_dir.mkdir()
+    sentinel = tmp_path / "dirty-protocol-npm-ran"
+    npm_spy = spy_dir / "npm"
+    npm_spy.write_text(
+        f"#!/bin/sh\ntouch '{sentinel}'\nexit 97\n",
+        encoding="utf-8",
+    )
+    npm_spy.chmod(0o755)
+    environment = os.environ.copy()
+    environment["PATH"] = f"{spy_dir}{os.pathsep}{environment['PATH']}"
+
+    result = subprocess.run(
+        ["bash", "scripts/build-vault-bundle.sh", str(tmp_path / "blocked-bundle")],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=240,
+        env=environment,
+    )
+
+    assert result.returncode == 1
+    assert "protocol inputs differ from recorded source commit" in result.stderr
+    assert not sentinel.exists()
 
 
 def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -> None:

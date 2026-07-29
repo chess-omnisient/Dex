@@ -121,13 +121,16 @@ shell-command format. Version 1 permits only:
 The root also binds the fleet runner bytes and bridge bytes in the immutable
 release catalog's publisher `source_commit`. A release that merely carries a
 plausible JSON file, points at unavailable source, changes an adapter or
-operation, or has a mismatched hash is not machine-executable.
+operation, or has a mismatched hash is invalid. Even a valid protocol remains
+`machine_executable: false`: this runner does not yet contain the released
+executor that can perform both hops and own the resulting evidence.
 
 This protocol is currently LOCAL. Until an immutable public release contains
-it, no synthetic fixture is installed and no bridge, lifecycle method, Git
-merge, or handwritten route wrapper is allowed to run. Publishing the
-contract is a prerequisite, not fleet acceptance: the real foundation and
-follow-up releases must still exist and every historic case must still run.
+it and a separately reviewed released executor exists, no synthetic fixture is
+installed and no bridge, lifecycle method, Git merge, or handwritten route
+wrapper is allowed to run. Publishing the contract is one prerequisite, not
+fleet acceptance: the real foundation and follow-up releases must still exist
+and every historic case must still run.
 
 The resulting `<case>.evidence/` directory is beside—not inside—a future
 fixture. Its content-addressed manifest records the exact release identities,
@@ -148,13 +151,14 @@ The command first verifies the generated starting manifest against the current
 immutable release trees, then requires that many cases on every declared
 platform. It cannot pass while the required released route says
 `machine_executable: false`, regardless of how internally consistent a report,
-manifest, transcript, or artifact set appears. A valid published protocol must
-also bind its runner and bridge bytes to the release catalog's immutable source
-commit. Finished evidence still requires ordered commands and SHA-256-bound
-artifacts: the transcript, release-surface snapshots, receipts, Doctor reports,
-and smoke/platform evidence. Paths, symlinks, malformed JSON, mismatched
-identities, incomplete platform coverage, and unknown/broken Doctor results all
-fail the report.
+manifest, transcript, or artifact set appears. A valid published protocol still
+does not unlock the checker: only a future released executor that owns the
+two-hop run and evidence can do that. The protocol must also bind its runner and
+bridge bytes to the release catalog's immutable source commit. Finished evidence
+still requires ordered commands and SHA-256-bound artifacts: the transcript,
+release-surface snapshots, receipts, Doctor reports, and smoke/platform evidence.
+Paths, symlinks, malformed JSON, mismatched identities, incomplete platform
+coverage, and unknown/broken Doctor results all fail the report.
 
 ## Claim language
 

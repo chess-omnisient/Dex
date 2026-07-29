@@ -30,7 +30,24 @@ trap 'rm -rf "$STAGING_DIR" "$ALL_FILES" "$EXCLUDED_FILES" "$INCLUDED_FILES" "$J
 
 cd "$REPO_ROOT"
 
-# The bundle must carry the protocol for these exact source artifacts.
+# The release catalog records HEAD as its source commit. Refuse a bundle whose
+# protocol, parser, generator, or referenced adapter/runner bytes come from the
+# working tree instead of that exact commit.
+SOURCE_COMMIT="$(git rev-parse --verify 'HEAD^{commit}')"
+PROTOCOL_SOURCE_PATHS=(
+  "System/.update-journey-v1.json"
+  "core/update/journey_protocol.py"
+  "scripts/dex_update_bridge.py"
+  "scripts/generate-update-journey-protocol.py"
+  "scripts/release_fleet.py"
+)
+if ! git diff --quiet "$SOURCE_COMMIT" -- "${PROTOCOL_SOURCE_PATHS[@]}"; then
+  echo "Error: protocol inputs differ from recorded source commit $SOURCE_COMMIT." >&2
+  echo "Commit the protocol, parser, generator, bridge, and runner bytes before building." >&2
+  exit 1
+fi
+
+# The bundle must carry the protocol for these exact committed source artifacts.
 python3 "$REPO_ROOT/scripts/generate-update-journey-protocol.py" \
   --output "$JOURNEY_PROTOCOL_CHECK"
 if ! cmp -s "$JOURNEY_PROTOCOL_CHECK" "$REPO_ROOT/System/.update-journey-v1.json"; then
@@ -92,7 +109,6 @@ python3 "$REPO_ROOT/core/utils/manifest.py" \
   --validate-file "$STAGING_DIR/System/.installed-files.manifest" \
   --require-lifecycle-contracts
 
-SOURCE_COMMIT="$(git rev-parse HEAD)"
 python3 "$REPO_ROOT/scripts/generate-release-catalog.py" \
   --release-root "$STAGING_DIR" \
   --channel release \

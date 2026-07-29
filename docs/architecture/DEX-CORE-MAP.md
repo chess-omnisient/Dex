@@ -97,7 +97,10 @@ or approval shapes fail closed; there is no arbitrary command vocabulary.
 
 This is implementation truth, not release acceptance. No public distribution
 tag contains the protocol yet, no foundation/follow-up pair has completed the
-real two-hop journey, and the 168-case acceptance result remains false.
+real two-hop journey, and the current runner deliberately reports
+`machine_executable: false` even for a valid protocol until a separately
+released executor owns the run and evidence. The 168-case acceptance result
+remains false.
 
 ## 5. The 10 MCP servers — SHIPPED
 
