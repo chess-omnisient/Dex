@@ -1653,6 +1653,23 @@ def test_shipped_job_from_another_vault_is_not_attributed_to_this_vault(monkeypa
     assert fresh.verdict == "OFF"
 
 
+def test_corrupt_dex_plist_is_unknown_not_foreign(monkeypatch, context):
+    """A malformed plist has no trustworthy ownership evidence either way."""
+    agents = context.home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    plist = agents / "com.dex.meeting-intel.plist"
+    plist.write_bytes(b"not a plist")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    loaded = doctor._probe_jobs_loaded(context)
+    fresh = doctor._probe_jobs_fresh(context)
+
+    assert loaded.verdict == "UNKNOWN"
+    assert fresh.verdict == "UNKNOWN"
+    assert plist.name in loaded.detail
+    assert plist.name in fresh.detail
+
+
 def test_jobs_loaded_owns_unshipped_label_with_program_path_inside_vault(monkeypatch, context):
     plist = _write_plist(context, "com.dex.local-job")
     missing_script = context.vault_root / ".scripts" / "local-job.py"

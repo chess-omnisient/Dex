@@ -2285,6 +2285,13 @@ def _with_skipped_launch_agents(detail: str, skipped_count: int) -> str:
     return f"{detail}; {note}"
 
 
+def _unattributable_launch_agent_detail(plist: Path, error: Exception) -> str:
+    return (
+        f"Could not determine whether {plist.name} belongs to this vault "
+        f"({_one_line(error)})"
+    )
+
+
 def _plist_configuration_issue(plist: Path, data: dict[str, Any], context: DoctorContext) -> str | None:
     arguments = data.get("ProgramArguments")
     if not isinstance(arguments, list) or not arguments or not isinstance(arguments[0], str):
@@ -2379,16 +2386,20 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     unknowns = []
     runtime_labels = []
     skipped_count = 0
+    owned_count = 0
     for plist in plists:
         try:
             data = _plist_data(plist)
-        except RuntimeError:
-            # A corrupt plist cannot be safely attributed from its filename.
-            skipped_count += 1
+        except RuntimeError as error:
+            # A corrupt plist could belong to this vault, but a filename alone
+            # cannot establish that safely. Surface the uncertainty instead of
+            # falsely treating it as a foreign Dex installation.
+            unknowns.append(_unattributable_launch_agent_detail(plist, error))
             continue
         if not _plist_owned_by_vault(plist, data, context):
             skipped_count += 1
             continue
+        owned_count += 1
         label = str(data.get("Label") or plist.stem)
         configuration_issue = _plist_configuration_issue(plist, data, context)
         if configuration_issue:
@@ -2424,8 +2435,12 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
                     unknowns.append(f"{label} is loaded but has no observable LastExitStatus")
                 elif status["last_exit_status"] != 0:
                     issues.append((2, f"{label} last exited with status {status['last_exit_status']}"))
-    owned_count = len(plists) - skipped_count
     if not owned_count:
+        if unknowns:
+            return ProbeResult(
+                "UNKNOWN",
+                _with_skipped_launch_agents("; ".join(unknowns), skipped_count),
+            )
         return ProbeResult(
             "OFF",
             _with_skipped_launch_agents("No launch agents for this vault are installed", skipped_count),
@@ -2460,15 +2475,19 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
 
 def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     installed = set()
+    unknowns = []
     for plist in _installed_launch_agents(context):
         try:
             data = _plist_data(plist)
-        except RuntimeError:
+        except RuntimeError as error:
+            unknowns.append(_unattributable_launch_agent_detail(plist, error))
             continue
         if _plist_owned_by_vault(plist, data, context):
             installed.add(str(data.get("Label") or plist.stem))
     monitored = [label for label in JOB_FRESHNESS if label in installed]
     if not monitored:
+        if unknowns:
+            return ProbeResult("UNKNOWN", "; ".join(unknowns))
         return ProbeResult("OFF", "No monitored Dex freshness jobs are installed")
 
     stale = []
@@ -2484,9 +2503,11 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     if stale:
         return ProbeResult(
             "BROKEN",
-            "; ".join(stale),
+            "; ".join([*stale, *unknowns]),
             Heal(tier=2, action="Run the stale job once and inspect its application log.", applied=False),
         )
+    if unknowns:
+        return ProbeResult("UNKNOWN", "; ".join(unknowns))
     return ProbeResult("OK", f"All {len(monitored)} installed job logs are within their freshness thresholds")
 
 
