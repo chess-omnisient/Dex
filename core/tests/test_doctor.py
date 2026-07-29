@@ -1362,7 +1362,7 @@ def test_doctor_heal_reconciles_room_assets_and_preserves_user_content(
     profile = (
         context.vault_root / "System/user-profile.yaml"
     ).read_text(encoding="utf-8")
-    assert "companies:\n    enabled: false" in profile
+    assert "companies:\n    enabled: true" in profile
 
 
 def test_mcp_registered_distinguishes_never_onboarded_from_missing_after_onboarding(context):

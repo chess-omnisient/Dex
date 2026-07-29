@@ -136,6 +136,15 @@ def test_no_opinion_rooms_default_on_and_legacy_quarterly_planning_is_a_fallback
     ) is True
 
 
+def test_profile_template_keeps_quarter_goal_defaults_aligned() -> None:
+    profile = yaml.safe_load(
+        (REPO_ROOT / "System/user-profile-template.yaml").read_text(encoding="utf-8")
+    )
+
+    assert profile["capabilities"]["quarter_goals"]["enabled"] is True
+    assert profile["quarterly_planning"]["enabled"] is True
+
+
 def test_flipped_rooms_default_on_but_a_recorded_answer_always_wins(
     tmp_path: Path,
 ) -> None:
@@ -433,9 +442,9 @@ def test_setup_defers_rooms_to_the_onboarding_flow_and_creates_nothing_itself() 
     assert "- `05-Areas/Companies/`" not in setup
 
 
-def test_legacy_onboarded_vault_pins_companies_off_and_honors_legacy_state(tmp_path):
-    """An existing vault gets a durable Companies-off opinion before the
-    contract default changes, while its legacy quarter choice remains authoritative."""
+def test_legacy_onboarded_vault_restores_companies_and_honors_legacy_state(tmp_path):
+    """An existing vault with no Companies opinion gets the current default,
+    while its explicit legacy quarter choice remains authoritative."""
     from core import capabilities
 
     vault = _fake_vault(tmp_path)
@@ -451,10 +460,10 @@ def test_legacy_onboarded_vault_pins_companies_off_and_honors_legacy_state(tmp_p
     assert sorted(seeded) == ["career", "companies"]
     profile_path = vault / "System" / "user-profile.yaml"
     assert capabilities.enabled("career", profile_path=profile_path) is True
-    assert capabilities.enabled("companies", profile_path=profile_path) is False
+    assert capabilities.enabled("companies", profile_path=profile_path) is True
     assert capabilities.enabled("quarter_goals", profile_path=profile_path) is False
     profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
-    assert profile["capabilities"]["companies"]["enabled"] is False
+    assert profile["capabilities"]["companies"]["enabled"] is True
     assert profile["quarterly_planning"]["enabled"] is False
     # Idempotent: a second run seeds nothing.
     assert capabilities.migrate_legacy_room_state(vault) == []
@@ -475,7 +484,7 @@ def test_pre_engine_identity_without_marker_gets_legacy_room_pins(
 
     assert sorted(seeded) == ["career", "companies", "quarter_goals"]
     assert capabilities.enabled("career", profile_path=profile_path) is True
-    assert capabilities.enabled("companies", profile_path=profile_path) is False
+    assert capabilities.enabled("companies", profile_path=profile_path) is True
     assert capabilities.enabled("quarter_goals", profile_path=profile_path) is True
 
 
@@ -493,7 +502,7 @@ def test_real_room_content_without_marker_counts_as_onboarding_evidence(
     seeded = capabilities.migrate_legacy_room_state(vault)
 
     assert sorted(seeded) == ["career", "companies", "quarter_goals"]
-    assert capabilities.enabled("companies", profile_path=profile_path) is False
+    assert capabilities.enabled("companies", profile_path=profile_path) is True
 
 
 def test_shipped_room_seed_without_identity_is_not_onboarding_evidence(
@@ -603,7 +612,7 @@ def test_legacy_migration_preserves_explicit_company_state(
     }
 
 
-def test_partial_capability_map_only_gains_the_companies_compatibility_pin(
+def test_partial_capability_map_gains_the_enabled_companies_compatibility_pin(
     tmp_path: Path,
 ) -> None:
     vault = _fake_vault(tmp_path)
@@ -621,7 +630,7 @@ def test_partial_capability_map_only_gains_the_companies_compatibility_pin(
     assert seeded == ["companies"]
     assert profile["capabilities"] == {
         "career": {"enabled": False},
-        "companies": {"enabled": False},
+        "companies": {"enabled": True},
     }
     assert capabilities.enabled(
         "quarter_goals",
