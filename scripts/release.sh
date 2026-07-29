@@ -110,8 +110,20 @@ fi
 
 # Insert a new section right after the first "---" separator (after the preamble)
 # The CHANGELOG format is:  ## [X.Y.Z] — Title (YYYY-MM-DD)
-sed -i.bak "0,/^---$/s/^---$/---\n\n## [${NEW_VERSION}] — (${TODAY})\n/" CHANGELOG.md
-rm -f CHANGELOG.md.bak
+python3 - "$NEW_VERSION" "$TODAY" <<'CHANGELOG'
+from pathlib import Path
+import sys
+
+path = Path("CHANGELOG.md")
+lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+for index, line in enumerate(lines):
+    if line.rstrip("\r\n") == "---":
+        lines.insert(index + 1, f"\n## [{sys.argv[1]}] — ({sys.argv[2]})\n")
+        path.write_text("".join(lines), encoding="utf-8")
+        break
+else:
+    raise SystemExit("Error: CHANGELOG.md has no preamble separator")
+CHANGELOG
 
 # --- Generate installed-files manifest -----------------------------------------
 
