@@ -66,10 +66,11 @@ the portability audit — reusing the existing `quarterly_planning.enabled` prec
 Contract rule: an absent room is VALID (repair/convergence must not recreate it).
 
 ## vault_schema
-Declared in `System/user-profile.yaml` (`vault_schema: 1`); the contract JSON carries
-`vault_schema_supported: ">=1 <2"`. Boot comparison semantics per Vault_Contract §6
-(older → offer migrator; newer → refuse writes) — enforcement lands with the engine
-PRs, the contract just carries the declaration.
+The contract JSON carries `vault_schema_supported: ">=1 <2"`. The migration must
+not stamp or rewrite `System/user-profile.yaml` to record this: that file belongs to
+the user. Boot comparison semantics per Vault_Contract §6 (older → offer migrator;
+newer → refuse writes) remain an engine concern; the contract only carries the
+supported range.
 
 ## The CI gate (red-when-removed)
 `scripts/check-portable-contract.sh` fails when:

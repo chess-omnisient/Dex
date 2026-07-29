@@ -1712,13 +1712,6 @@ function phase5Swap(root, state) {
   writeTopologySentinel(root, state.preflight.releaseCommit);
 }
 
-function stampVaultSchema(source) {
-  if (/^vault_schema:\s*/m.test(source)) {
-    return source.replace(/^vault_schema:\s*.*$/m, 'vault_schema: 1');
-  }
-  return `${source.replace(/\s*$/, '')}\n\nvault_schema: 1\n`;
-}
-
 function mergedCustomInstructions(existingCustom, inlineExtensions) {
   if (existingCustom === inlineExtensions) {
     return { content: existingCustom, appended: false };
@@ -1775,10 +1768,6 @@ function phase6Rematerialize(root, state = {}) {
     throw new Error('Stopped safely inside P6 after preserving the lifted instructions. Run --resume to continue.');
   }
 
-  const profilePath = path.join(root, 'System', 'user-profile.yaml');
-  if (exists(profilePath)) {
-    writeMigrationFile(root, profilePath, stampVaultSchema(fs.readFileSync(profilePath, 'utf8')), 0o644);
-  }
 }
 
 function phase7ReportOnly(state) {
