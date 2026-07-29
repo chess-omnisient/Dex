@@ -250,19 +250,41 @@ def _installed_python(vault_root: Path) -> Path | None:
     return candidate
 
 
+def _running_in_selected_runtime(interpreter: Path) -> bool:
+    """Prove this process was launched through the selected vault virtualenv.
+
+    Virtualenv Python binaries may be symlinks to the host binary, so comparing
+    resolved executables would accept a host-Python invocation.  Preserve the
+    invocation path and require the virtualenv's runtime prefixes as well.
+    """
+    selected_prefix = interpreter.parent.parent
+    return (
+        os.path.abspath(sys.executable) == str(interpreter)
+        and os.path.abspath(sys.prefix) == str(selected_prefix)
+        and os.path.abspath(sys.exec_prefix) == str(selected_prefix)
+    )
+
+
 def _reexec_in_installed_runtime(vault_root: Path, argv: list[str]) -> None:
     """Enter one clean process before loading any foundation code.
 
     The installed venv can resolve to the same binary as the invoking Python,
     but running it by its venv path still selects the installed dependencies.
     Never trust a caller-supplied runtime marker: it is accepted only when the
-    complete environment already equals the closed runtime environment.
+    complete environment already equals the closed runtime environment and the
+    running Python identifies as the selected vault virtualenv.
     """
+    interpreter = _installed_python(vault_root)
+    if interpreter is None:
+        raise BridgeError("Dex's installed virtualenv is required for the one-time update bridge")
     environment = _bridge_environment()
     environment[_CLEAN_RUNTIME_MARKER] = "1"
-    if os.environ.get(_CLEAN_RUNTIME_MARKER) == "1" and dict(os.environ) == environment:
+    if (
+        os.environ.get(_CLEAN_RUNTIME_MARKER) == "1"
+        and dict(os.environ) == environment
+        and _running_in_selected_runtime(interpreter)
+    ):
         return
-    interpreter = _installed_python(vault_root) or Path(sys.executable).resolve()
     os.execve(
         str(interpreter),
         [str(interpreter), str(Path(__file__).resolve()), *argv],
