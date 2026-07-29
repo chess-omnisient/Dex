@@ -589,18 +589,6 @@ JOB_FRESHNESS = {
     ),
 }
 
-# Ownership includes every launch agent this repo can install; only some emit freshness logs.
-SHIPPED_LAUNCH_AGENT_LABELS = frozenset(
-    {
-        "com.dex.changelog-checker",
-        "com.dex.learning-review",
-        "com.dex.meeting-intel",
-        "com.dex.obsidian-sync",
-        "com.dex.smoke-nightly",
-    }
-)
-
-
 QUICK_CHECKS = (
     CheckDefinition("vault.structure", "Vault structure", "_probe_vault_structure"),
     CheckDefinition("vault.configs", "Vault configuration", "_probe_vault_configs"),
@@ -2261,9 +2249,13 @@ def _plist_strings(value: object) -> Iterator[str]:
 
 
 def _plist_owned_by_vault(plist: Path, data: dict[str, Any], context: DoctorContext) -> bool:
-    label = str(data.get("Label") or plist.stem)
-    if label in SHIPPED_LAUNCH_AGENT_LABELS:
-        return True
+    """Return whether a launch agent explicitly points into this vault.
+
+    Labels are shared between Dex installs, so they are not ownership evidence.
+    A known ``com.dex.*`` label can still belong to another Dex vault on the
+    same Mac; only an absolute ProgramArguments path beneath this vault makes
+    it this vault's responsibility.
+    """
     arguments = data.get("ProgramArguments")
     if not isinstance(arguments, list):
         return False
@@ -2390,11 +2382,9 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     for plist in plists:
         try:
             data = _plist_data(plist)
-        except RuntimeError as error:
-            if plist.stem in SHIPPED_LAUNCH_AGENT_LABELS:
-                issues.append((2, _one_line(error)))
-            else:
-                skipped_count += 1
+        except RuntimeError:
+            # A corrupt plist cannot be safely attributed from its filename.
+            skipped_count += 1
             continue
         if not _plist_owned_by_vault(plist, data, context):
             skipped_count += 1
@@ -2469,7 +2459,14 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
 
 
 def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
-    installed = {_plist_label(plist) for plist in _installed_launch_agents(context)}
+    installed = set()
+    for plist in _installed_launch_agents(context):
+        try:
+            data = _plist_data(plist)
+        except RuntimeError:
+            continue
+        if _plist_owned_by_vault(plist, data, context):
+            installed.add(str(data.get("Label") or plist.stem))
     monitored = [label for label in JOB_FRESHNESS if label in installed]
     if not monitored:
         return ProbeResult("OFF", "No monitored Dex freshness jobs are installed")
