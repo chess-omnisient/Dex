@@ -7,9 +7,11 @@ import argparse
 import concurrent.futures
 import hashlib
 import json
+import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -29,7 +31,6 @@ ARCHIVE_RELEASE_TAG = re.compile(
     r"^dist/archive/v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-(?P<short>[0-9a-f]{7,64})$"
 )
 LEGACY_RELEASE_TAG = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
-PUBLIC_REMOTE = "https://github.com/davekilleen/Dex.git"
 USER_FIXTURES = {
     str(INBOX_DIR.relative_to(VAULT_ROOT) / "keep.md"): b"# User note\nThis must survive updates.\n",
     str(TASKS_FILE.relative_to(VAULT_ROOT)): b"# My task\n- Keep this task exactly.\n",
@@ -98,6 +99,41 @@ MINIMUM_SUPPORTED_NODE_MAJOR = 20
 TRUSTED_PYTHON_CANDIDATES = (Path("/opt/homebrew/bin/python3"),)
 TRUSTED_PYTHON_ROOTS = (Path("/opt/homebrew"),)
 MINIMUM_SUPPORTED_PYTHON = (3, 10)
+INSTALLER_PROCESS_GROUP_GRACE_SECONDS = 1.0
+FIXTURE_REQUIRED_PYTHON_DEPENDENCIES = ("mcp", "yaml")
+SEALED_INSTALLER_ENVIRONMENT_KEYS = frozenset(
+    {
+        "HOME",
+        "TMPDIR",
+        "PATH",
+        "LANG",
+        "LC_ALL",
+        "PYTHONNOUSERSITE",
+        "PYTHONDONTWRITEBYTECODE",
+        "GIT_CONFIG_NOSYSTEM",
+        "GIT_TERMINAL_PROMPT",
+        "VAULT_PATH",
+    }
+)
+FIXTURE_PYTHON_PROBE = """
+import importlib.util
+import json
+import platform
+import sys
+
+origins = {}
+for name in ("mcp", "yaml"):
+    spec = importlib.util.find_spec(name)
+    locations = list(spec.submodule_search_locations or ()) if spec else []
+    origins[name] = spec.origin if spec and spec.origin else (str(locations[0]) if locations else "")
+print(json.dumps({
+    "version": "Python " + platform.python_version(),
+    "prefix": sys.prefix,
+    "base_prefix": sys.base_prefix,
+    "executable": sys.executable,
+    "dependencies": origins,
+}, sort_keys=True))
+"""
 
 class FleetError(RuntimeError):
     """The historic release fleet could not be built safely."""
@@ -163,13 +199,23 @@ class FixturePython:
     resolved_python: Path
     python_version: str
     python_sha256: str
+    pyvenv_cfg: Path
+    pyvenv_cfg_sha256: str
+    venv_prefix: Path
+    base_prefix: Path
+    dependency_origins: tuple[tuple[str, str], ...]
 
-    def identity(self) -> dict[str, str]:
+    def identity(self) -> dict[str, object]:
         return {
             "requested_python": str(self.requested_python),
             "resolved_python": str(self.resolved_python),
             "python_version": self.python_version,
             "python_sha256": self.python_sha256,
+            "pyvenv_cfg": str(self.pyvenv_cfg),
+            "pyvenv_cfg_sha256": self.pyvenv_cfg_sha256,
+            "venv_prefix": str(self.venv_prefix),
+            "base_prefix": str(self.base_prefix),
+            "dependency_origins": dict(self.dependency_origins),
         }
 
 
@@ -457,9 +503,23 @@ def resolve_trusted_python_runtime() -> PythonRuntime:
 
 
 def resolve_fixture_python(vault: Path, *, trusted_python: PythonRuntime) -> FixturePython:
-    """Bind Doctor to the fixture's own venv interpreter, never a PATH lookup."""
+    """Prove Doctor's interpreter and dependencies belong to one real fixture venv."""
 
-    requested_python = vault / ".venv" / "bin" / "python"
+    venv_root = vault / ".venv"
+    requested_python = venv_root / "bin" / "python"
+    pyvenv_cfg = venv_root / "pyvenv.cfg"
+    if pyvenv_cfg.is_symlink() or not pyvenv_cfg.is_file():
+        raise FleetError(f"fixture venv pyvenv.cfg is unavailable: {pyvenv_cfg}")
+    try:
+        config_raw = pyvenv_cfg.read_bytes()
+        config_text = config_raw.decode("utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise FleetError(f"fixture venv pyvenv.cfg is unreadable: {pyvenv_cfg}") from error
+    if re.search(
+        r"(?im)^include-system-site-packages\s*=\s*false\s*$", config_text
+    ) is None:
+        raise FleetError("fixture venv must not inherit system site-packages")
+
     try:
         resolved_python = requested_python.resolve(strict=True)
     except OSError as error:
@@ -470,10 +530,68 @@ def resolve_fixture_python(vault: Path, *, trusted_python: PythonRuntime) -> Fix
     if digest != trusted_python.python_sha256:
         raise FleetError("fixture venv Python does not bind the trusted Python runtime")
     runtime_path = f"{requested_python.parent}:/usr/bin:/bin:/usr/sbin:/sbin"
-    version = _runtime_command_output([str(requested_python), "--version"], path=runtime_path)
+    probe_result = subprocess.run(
+        [str(requested_python), "-I", "-c", FIXTURE_PYTHON_PROBE],
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": runtime_path,
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+            "PYTHONNOUSERSITE": "1",
+        },
+        check=False,
+    )
+    if probe_result.returncode:
+        raise FleetError("fixture venv Python provenance probe failed")
+    try:
+        provenance = json.loads(probe_result.stdout)
+    except json.JSONDecodeError as error:
+        raise FleetError("fixture venv Python provenance probe was not valid JSON") from error
+    if not isinstance(provenance, Mapping):
+        raise FleetError("fixture venv Python provenance probe was malformed")
+    version = provenance.get("version")
     if version != trusted_python.python_version:
         raise FleetError("fixture venv Python version does not match the trusted Python runtime")
-    return FixturePython(requested_python, resolved_python, version, digest)
+    try:
+        venv_prefix = Path(str(provenance["prefix"])).resolve(strict=True)
+        base_prefix = Path(str(provenance["base_prefix"])).resolve(strict=True)
+        executable = Path(str(provenance["executable"])).resolve(strict=True)
+    except (KeyError, OSError) as error:
+        raise FleetError("fixture venv Python provenance paths were invalid") from error
+    expected_venv = venv_root.resolve(strict=True)
+    expected_base = trusted_python.resolved_python.parent.parent
+    if venv_prefix != expected_venv or venv_prefix == base_prefix:
+        raise FleetError("fixture Python is not running inside the fixture venv")
+    if base_prefix != expected_base or executable != trusted_python.resolved_python:
+        raise FleetError("fixture venv Python base does not match the trusted Python runtime")
+    raw_dependencies = provenance.get("dependencies")
+    if not isinstance(raw_dependencies, Mapping):
+        raise FleetError("fixture venv dependency provenance was malformed")
+    dependency_origins: list[tuple[str, str]] = []
+    for dependency in FIXTURE_REQUIRED_PYTHON_DEPENDENCIES:
+        origin = raw_dependencies.get(dependency)
+        if not isinstance(origin, str) or not origin:
+            raise FleetError(f"fixture venv dependency is unavailable: {dependency}")
+        try:
+            resolved_origin = Path(origin).resolve(strict=True)
+            resolved_origin.relative_to(expected_venv)
+        except (OSError, ValueError) as error:
+            raise FleetError(
+                f"fixture venv dependency escapes the fixture: {dependency}"
+            ) from error
+        dependency_origins.append((dependency, str(resolved_origin)))
+    return FixturePython(
+        requested_python=requested_python,
+        resolved_python=resolved_python,
+        python_version=str(version),
+        python_sha256=digest,
+        pyvenv_cfg=pyvenv_cfg,
+        pyvenv_cfg_sha256=hashlib.sha256(config_raw).hexdigest(),
+        venv_prefix=venv_prefix,
+        base_prefix=base_prefix,
+        dependency_origins=tuple(dependency_origins),
+    )
 
 
 def _case_environment(
@@ -652,12 +770,48 @@ def _create_fixture_vault(
     _git(vault, "fetch", "--quiet", "--no-tags", "origin", f"refs/tags/{release.tag}:refs/tags/{release.tag}", environment=environment)
     _git(vault, "checkout", "--quiet", "--detach", release.tag, environment=environment)
     _git(vault, "remote", "rename", "origin", "upstream", environment=environment)
-    _git(vault, "remote", "set-url", "upstream", PUBLIC_REMOTE, environment=environment)
-    _git(vault, "remote", "set-url", "--push", "upstream", "DISABLED", environment=environment)
+    _disable_fixture_remotes(vault, environment)
 
     _git(vault, "config", "user.name", "Dex Fleet Fixture", environment=environment)
     _git(vault, "config", "user.email", "fleet@example.com", environment=environment)
     return vault
+
+
+def _disable_fixture_remotes(
+    vault: Path, environment: Mapping[str, str] | None = None
+) -> None:
+    """Keep historic installers from fetching or pushing a moving revision."""
+
+    remotes = tuple(_git(vault, "remote", environment=environment).splitlines())
+    for remote in remotes:
+        _git(vault, "remote", "remove", remote, environment=environment)
+        _git(vault, "remote", "add", remote, "DISABLED", environment=environment)
+        _git(
+            vault,
+            "remote",
+            "set-url",
+            "--push",
+            remote,
+            "DISABLED",
+            environment=environment,
+        )
+    for remote in remotes:
+        fetch_urls = tuple(
+            _git(vault, "remote", "get-url", "--all", remote, environment=environment).splitlines()
+        )
+        push_urls = tuple(
+            _git(
+                vault,
+                "remote",
+                "get-url",
+                "--push",
+                "--all",
+                remote,
+                environment=environment,
+            ).splitlines()
+        )
+        if fetch_urls != ("DISABLED",) or push_urls != ("DISABLED",):
+            raise FleetError(f"fixture remote {remote!r} could not be disabled")
 
 
 def _seed_user_content(vault: Path, environment: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -680,28 +834,75 @@ def build_fixture(repo: Path, release: DistributionRelease, output: Path) -> Fle
 
 def _run_historic_installer(
     vault: Path,
-    environment: Mapping[str, str] | None = None,
+    release: DistributionRelease,
+    environment: Mapping[str, str],
     *,
     timeout_seconds: int = 15 * 60,
 ) -> None:
-    """Make the cloned release a realistic installed Dex before adding user data."""
+    """Run trusted first-party installer code inside a sealed disposable fixture.
+
+    Published Dex installers are trusted first-party code, not arbitrary hostile
+    programs. The runner still removes ambient HOME/TMP/PATH state, disables Git
+    remotes, terminates the whole installer process group on timeout, and proves
+    that the installer did not switch away from the immutable release.
+    """
+    if os.name != "posix":
+        raise FleetError("historic installer isolation requires POSIX process groups")
+    if set(environment) != SEALED_INSTALLER_ENVIRONMENT_KEYS:
+        raise FleetError("historic installer requires the sealed fixture environment")
     installer = vault / "install.sh"
     if installer.is_symlink() or not installer.is_file():
         raise FleetError("historic release has no safe install.sh to bootstrap its fixture")
-    result = subprocess.run(
-        ["bash", "install.sh"],
+    command = ["bash", "install.sh"]
+    process = subprocess.Popen(
+        command,
         cwd=vault,
-        env=dict(environment) if environment is not None else None,
-        capture_output=True,
+        env=dict(environment),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=timeout_seconds,
+        start_new_session=True,
     )
-    if result.returncode:
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            stdout, stderr = process.communicate(
+                timeout=INSTALLER_PROCESS_GROUP_GRACE_SECONDS
+            )
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            stdout, stderr = process.communicate()
+        raise subprocess.TimeoutExpired(
+            command,
+            timeout_seconds,
+            output=stdout,
+            stderr=stderr,
+        )
+    if process.returncode:
         # npm commonly writes benign notices to stderr while the actionable
         # installer failure is on stdout. Keep both for local classification,
         # but never retain volatile fixture output in the discovery artifact.
-        detail = "\n".join(output for output in (result.stdout, result.stderr) if output).strip()
+        detail = "\n".join(output for output in (stdout, stderr) if output).strip()
         raise FleetError(f"historic installer failed for {vault.name}: {detail}")
+    try:
+        installed_commit = _git(vault, "rev-parse", "HEAD", environment=environment)
+        installed_tree = _git(vault, "rev-parse", "HEAD^{tree}", environment=environment)
+    except FleetError as error:
+        raise FleetError("historic installer release identity could not be proved") from error
+    if installed_commit != release.commit or installed_tree != release.tree:
+        raise FleetError(
+            "historic installer changed immutable release identity "
+            f"(expected {release.commit}/{release.tree}, "
+            f"found {installed_commit}/{installed_tree})"
+        )
 
 
 def build_installed_fixture(
@@ -712,9 +913,20 @@ def build_installed_fixture(
     environment: Mapping[str, str] | None = None,
 ) -> FleetCase:
     """Install the historic release, then add synthetic user-owned data for updating."""
-    vault = _create_fixture_vault(repo, release, output, environment=environment)
-    _run_historic_installer(vault, environment)
-    return FleetCase(release=release, vault=vault, user_hashes=_seed_user_content(vault, environment))
+    vault = output / safe_case_name(release)
+    runtime_root = output / f"{safe_case_name(release)}.runtime"
+    sealed_environment = (
+        dict(environment)
+        if environment is not None
+        else _case_environment(vault, runtime_root)
+    )
+    _create_fixture_vault(repo, release, output, environment=sealed_environment)
+    _run_historic_installer(vault, release, sealed_environment)
+    return FleetCase(
+        release=release,
+        vault=vault,
+        user_hashes=_seed_user_content(vault, sealed_environment),
+    )
 
 
 def _optional_tag_file(repo: Path, tag: str, relative: str) -> bytes | None:
@@ -874,6 +1086,11 @@ def _installer_failure_code(error: FleetError) -> str:
     """Normalize expected fixture setup failures without retaining installer output."""
 
     detail = str(error).lower()
+    if (
+        "historic installer changed immutable release identity" in detail
+        or "historic installer release identity could not be proved" in detail
+    ):
+        return "installer-release-identity-changed"
     if "installed catalog release does not match the designated bridge release" in detail:
         return "installer-lifecycle-bridge-release-mismatch"
     if "no module named 'yaml'" in detail:
@@ -968,7 +1185,10 @@ def _survey_case(
         _create_fixture_vault(repo, release, work_root, environment=environment)
         try:
             _run_historic_installer(
-                vault, environment, timeout_seconds=install_timeout_seconds
+                vault,
+                release,
+                environment,
+                timeout_seconds=install_timeout_seconds,
             )
         except subprocess.TimeoutExpired as error:
             result["fixture_install"] = {
