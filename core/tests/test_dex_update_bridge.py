@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -65,7 +66,7 @@ def test_foundation_pin_is_closed_and_uses_only_the_release_channel() -> None:
 
 def test_bridge_success_copy_names_the_canonical_dex_update_command() -> None:
     source = Path(bridge.__file__).read_text(encoding="utf-8")
-    assert "Future updates use dex-update." in source
+    assert "future updates use /dex-update." in source
     assert "Future updates use /dex update." not in source
 
 
@@ -133,6 +134,43 @@ def test_bridge_rejects_a_symlinked_vault_before_calling_the_service_or_fetching
     assert service.calls == []
 
 
+@pytest.mark.parametrize("private_parent", (".venv", ".dex"))
+def test_bridge_rejects_a_symlinked_private_parent_before_service_or_fetch(
+    tmp_path: Path, private_parent: str
+) -> None:
+    service = _Service()
+    vault = _vault(tmp_path)
+    target = tmp_path / f"{private_parent.removeprefix('.')}target"
+    private_path = vault / private_parent
+    if private_path.exists():
+        private_path.rename(target)
+    else:
+        target.mkdir()
+    (vault / private_parent).symlink_to(target, target_is_directory=True)
+
+    with pytest.raises(bridge.BridgeError, match=rf"{private_parent} must not be a symlink"):
+        bridge.run_bridge(
+            vault,
+            service,
+            fetch_foundation=lambda _vault, _pin: pytest.fail("release fetch must not happen"),
+            input_fn=lambda _prompt: pytest.fail("approval must not be requested"),
+            output_fn=lambda _line: pytest.fail("preview must not be rendered"),
+        )
+
+    assert service.calls == []
+
+
+def test_normal_virtualenv_python_symlink_remains_accepted(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    venv = vault / ".venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /synthetic\n", encoding="utf-8")
+    (venv / "bin" / "python").symlink_to(Path(sys.executable))
+
+    assert bridge._validate_vault(vault) == vault
+    assert bridge._installed_python(vault) == venv / "bin" / "python"
+
+
 def test_bridge_stops_before_delivered_release_execution_when_second_preview_is_not_approved(tmp_path: Path) -> None:
     service = _Service()
     answers = iter(("APPLY", "no"))
@@ -166,7 +204,7 @@ def test_bridge_does_not_repeat_a_completed_topology_conversion(tmp_path: Path) 
     assert service.calls == ["topology-preview", "release-preview", "release-execute:release-token"]
 
 
-def test_bridge_can_resume_after_the_foundation_was_installed_before_a_later_step(
+def test_bridge_resumes_offline_without_fetching_or_revalidating_an_advanced_channel(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service = _SplitService()
@@ -175,10 +213,11 @@ def test_bridge_can_resume_after_the_foundation_was_installed_before_a_later_ste
     result = bridge.run_bridge(
         _vault(tmp_path),
         service,
-        fetch_foundation=lambda _vault, _pin: None,
+        fetch_foundation=lambda _vault, _pin: pytest.fail("completed bridge must not fetch"),
         input_fn=lambda _prompt: pytest.fail("already-installed bridge must not request approval"),
         output_fn=lambda _line: pytest.fail("already-installed bridge must not render a preview"),
     )
 
+    assert result["topology_receipt"] == {"skipped": "foundation-already-installed"}
     assert result["delivery_receipt"] == {"skipped": "foundation-already-installed"}
-    assert service.calls == ["topology-preview"]
+    assert service.calls == []

@@ -156,6 +156,12 @@ def _validate_vault(vault_root: Path) -> Path:
         raise BridgeError("Dex vault does not have a safe Git history")
     if (root / "System").is_symlink() or not (root / "System").is_dir():
         raise BridgeError("Dex vault does not have a safe System directory")
+    for private_parent in (".venv", ".dex"):
+        candidate = root / private_parent
+        if candidate.is_symlink():
+            raise BridgeError(f"Dex vault {private_parent} must not be a symlink")
+        if candidate.exists() and not candidate.is_dir():
+            raise BridgeError(f"Dex vault {private_parent} must be a directory")
     return root
 
 
@@ -167,8 +173,11 @@ def _installed_python(vault_root: Path) -> Path | None:
     downloads Python packages at update time.  This is deliberately a POSIX
     seam; Windows gets its own reviewed bridge rather than guessed paths.
     """
-    candidate = vault_root / ".venv" / "bin" / "python"
-    config = vault_root / ".venv" / "pyvenv.cfg"
+    venv = vault_root / ".venv"
+    if venv.is_symlink() or (venv.exists() and not venv.is_dir()):
+        return None
+    candidate = venv / "bin" / "python"
+    config = venv / "pyvenv.cfg"
     # POSIX venvs normally expose Python as a symlink to the system interpreter;
     # executing that entrypoint is what makes its dependency site-packages
     # available, so reject only a missing/non-executable resolved target.
@@ -251,9 +260,20 @@ def _fetch_foundation_into_brain(vault_root: Path, pin: ReleasePin) -> None:
 
 
 def _foundation_is_installed(vault_root: Path, pin: ReleasePin) -> bool:
+    """Check the local installed ref without fetching or consulting a channel.
+
+    This is deliberately safe to call before topology conversion: an old vault
+    simply has no private brain store yet, whereas a completed bridge can
+    resume offline even if the public stable channel has advanced.
+    """
     brain = vault_root / ".dex" / "brain.git"
-    if brain.is_symlink() or not brain.is_dir():
-        raise BridgeError("topology conversion did not create a safe Dex brain store")
+    dex_root = vault_root / ".dex"
+    if dex_root.is_symlink() or brain.is_symlink():
+        raise BridgeError("Dex private code store must not contain a symlink")
+    if not dex_root.exists() or not brain.exists():
+        return False
+    if not dex_root.is_dir() or not brain.is_dir():
+        raise BridgeError("Dex private code store is not a safe directory")
     try:
         installed = _run_git(brain, "rev-parse", "--verify", "refs/dex/installed^{commit}")
     except BridgeError:
@@ -264,6 +284,17 @@ def _foundation_is_installed(vault_root: Path, pin: ReleasePin) -> bool:
 def run_bridge(vault_root: Path, service: LifecycleService, *, pin: ReleasePin = FOUNDATION, fetch_foundation: Callable[[Path, ReleasePin], None] = _fetch_foundation_into_brain, input_fn: Callable[[str], str] = input, output_fn: Callable[[str], None] = print) -> Mapping[str, Any]:
     """Run two fresh approval boundaries using the verified foundation service."""
     root = _validate_vault(vault_root)
+    # This local ref is the authoritative resume marker. Check it before
+    # importing/calling lifecycle code or attempting any network operation: a
+    # completed bridge must work offline and must not be disturbed merely
+    # because the stable channel has subsequently advanced.
+    if _foundation_is_installed(root, pin):
+        return {
+            "foundation": pin.identity(),
+            "topology_receipt": {"skipped": "foundation-already-installed"},
+            "delivery_receipt": {"skipped": "foundation-already-installed"},
+        }
+
     topology = service.build_and_preview_topology_migration(root)
     preview = topology.get("preview")
     # Foundation v1.80.5 calls a completed conversion ``post-split`` and still
@@ -284,15 +315,12 @@ def run_bridge(vault_root: Path, service: LifecycleService, *, pin: ReleasePin =
     # This fetch touches only Dex's private code store. The following preview is
     # still the sole authority for every vault-content write.
     fetch_foundation(root, pin)
-    if _foundation_is_installed(root, pin):
-        delivery_receipt: Mapping[str, Any] = {"skipped": "foundation-already-installed"}
-    else:
-        delivery = service.build_and_preview_delivered_release(root, pin.identity())
-        release_preview = delivery.get("preview")
-        if not isinstance(release_preview, Mapping):
-            raise BridgeError("foundation could not produce a delivered-release preview")
-        release_preview, release_token = _approved_preview(f"Dex will now install verified foundation v{pin.version}.", release_preview, delivery.get("approval_token"), input_fn=input_fn, output_fn=output_fn)
-        delivery_receipt = service.execute_approved_delivered_release(root, release_preview, release_token)
+    delivery = service.build_and_preview_delivered_release(root, pin.identity())
+    release_preview = delivery.get("preview")
+    if not isinstance(release_preview, Mapping):
+        raise BridgeError("foundation could not produce a delivered-release preview")
+    release_preview, release_token = _approved_preview(f"Dex will now install verified foundation v{pin.version}.", release_preview, delivery.get("approval_token"), input_fn=input_fn, output_fn=output_fn)
+    delivery_receipt = service.execute_approved_delivered_release(root, release_preview, release_token)
 
     return {
         "foundation": pin.identity(),
@@ -320,7 +348,7 @@ def main(argv: list[str] | None = None) -> int:
     except (BridgeError, OSError, RuntimeError) as error:
         print(f"Dex update bridge stopped safely: {error}", file=sys.stderr)
         return 1
-    print("Dex is now on the self-delivering updater. Future updates use dex-update.")
+    print("Foundation delivery is complete. Once historical support is verified, future updates use /dex-update.")
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 

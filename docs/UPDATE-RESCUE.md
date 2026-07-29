@@ -82,12 +82,21 @@ begin. The bridge is intentionally not a raw Git merge: it fetches only the
 pre-pinned foundation release, proves its annotated tag, commit, and tree, then
 uses that foundation's existing topology and receipt-backed transaction service.
 
-On macOS or Linux, from the old Dex folder, download the separately published,
-versioned bridge file and verify the SHA-256 printed beside that exact file
-before running it. Use the bridge file matched to the currently published
-stable foundation; an older bridge refuses rather than silently substituting a
+This source is not yet a published historical-support promise. Its pinned
+foundation is exactly v1.80.5; it cannot include repairs introduced in later
+source commits. In particular, do not treat a later MCP-registration repair as
+evidence that a v1.74–v1.79 bridge journey is complete. Each historical route
+needs an installed-fixture rehearsal, preserved-user-file hashes, Doctor output,
+and path evidence before it can be offered as supported recovery.
+
+Do not run this unpublished source as a rescue command. When a later immutable
+foundation includes the repair and the full fixture evidence is green, publish a
+separately versioned bridge file with its SHA-256, then use the file matched to
+that foundation. An older bridge must refuse rather than silently substituting a
 newer release.
 
+# This is the eventual published-artifact invocation, not an instruction to
+# run this repository source before that release exists.
 ```bash
 python3 dex_update_bridge.py --vault "$PWD"
 ```
@@ -95,8 +104,9 @@ python3 dex_update_bridge.py --vault "$PWD"
 It shows two independent previews and requires `APPLY` for each: first the
 one-time separation of Dex code from the user's notes, then the exact files for
 the verified foundation release. It never pushes, never uses a branch, and
-stops before a user-file change if either proof or approval is missing. Once it
-finishes, all later updates are the ordinary `dex-update` route.
+stops before a user-file change if either proof or approval is missing. Only a
+published bridge whose historical fixture proof is green may say that later
+updates are the ordinary `/dex-update` route.
 
 Windows is not part of this P0 bridge. Do not substitute an unverified PowerShell
 or Git command; use the supported rescue path until a Windows bridge is
