@@ -160,7 +160,7 @@ def build_fixture(repo: Path, release: DistributionRelease, output: Path) -> Fle
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content)
     _run(vault, "config", "user.name", "Dex Fleet Fixture")
-    _run(vault, "config", "user.email", "fleet@example.invalid")
+    _run(vault, "config", "user.email", "fleet@example.com")
     _run(vault, "add", "-A")
     _run(vault, "commit", "-m", "test: simulated user content")
     return FleetCase(release=release, vault=vault, user_hashes=hash_user_owned_files(vault))

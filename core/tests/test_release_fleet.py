@@ -24,7 +24,7 @@ def _repository(tmp_path: Path) -> Path:
     repo = tmp_path / "releases"
     _git(tmp_path, "init", "--quiet", str(repo))
     _git(repo, "config", "user.name", "Dex Fleet Tests")
-    _git(repo, "config", "user.email", "fleet-tests@example.invalid")
+    _git(repo, "config", "user.email", "fleet-tests@example.com")
     return repo
 
 

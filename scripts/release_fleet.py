@@ -187,7 +187,7 @@ def build_fixture(repo: Path, release: DistributionRelease, output: Path) -> Fle
         path.write_bytes(content)
 
     _git(vault, "config", "user.name", "Dex Fleet Fixture")
-    _git(vault, "config", "user.email", "fleet@example.invalid")
+    _git(vault, "config", "user.email", "fleet@example.com")
     _git(vault, "add", "-f", "--", *USER_FIXTURES)
     _git(vault, "commit", "--quiet", "-m", "test: simulated user content")
     return FleetCase(release=release, vault=vault, user_hashes=hash_user_owned_files(vault))
