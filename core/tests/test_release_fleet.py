@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -216,6 +217,22 @@ def test_manifest_command_lists_every_release_without_building_fixtures(
     assert exit_code == 0
     assert manifest["case_count"] == 2
     assert not output.exists()
+
+
+def test_manifest_cli_runs_from_the_documented_repository_root(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    _tag_release(repo, "1.61.0", "one")
+
+    result = subprocess.run(
+        [sys.executable, release_fleet.__file__, "manifest", "--repo", str(repo)],
+        cwd=release_fleet.Path(__file__).resolve().parents[2],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["case_count"] == 1
 
 
 def test_build_command_can_construct_one_historic_release_at_a_time(
