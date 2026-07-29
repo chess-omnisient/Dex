@@ -38,7 +38,7 @@ def _tag_release(
     suffix: str | None = None,
 ) -> str:
     (repo / "README.md").write_text(content + "\n", encoding="utf-8")
-    _git(repo, "add", "README.md")
+    _git(repo, "add", "-A")
     commit_args = ["commit", "--quiet", "-m", f"release {version}"]
     if allow_empty:
         commit_args.insert(1, "--allow-empty")
@@ -97,6 +97,28 @@ def test_build_fixture_uses_requested_release_and_preserves_user_hashes(tmp_path
     assert _git(case.vault, "rev-parse", "HEAD^") == release.commit
     assert _git(case.vault, "remote", "get-url", "upstream") == release_fleet.PUBLIC_REMOTE
     assert _git(case.vault, "remote", "get-url", "--push", "upstream") == "DISABLED"
+    assert case.user_hashes == release_fleet.hash_user_owned_files(case.vault)
+
+
+def test_installed_fixture_runs_the_historic_installer_before_seeding_user_content(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    installer = repo / "install.sh"
+    installer.write_text(
+        "#!/bin/sh\n"
+        "test ! -e 00-Inbox/keep.md\n"
+        "mkdir -p System\n"
+        "printf installed > System/fixture-install-proof\n",
+        encoding="utf-8",
+    )
+    installer.chmod(0o755)
+    _tag_release(repo, "1.61.0", "one")
+    release = release_fleet.discover_distribution_releases(repo)[0]
+
+    case = release_fleet.build_installed_fixture(repo, release, tmp_path / "fleet")
+
+    assert (case.vault / "System/fixture-install-proof").read_text(encoding="utf-8") == "installed"
     assert case.user_hashes == release_fleet.hash_user_owned_files(case.vault)
 
 

@@ -172,8 +172,8 @@ def hash_user_owned_files(vault: Path) -> dict[str, str]:
     return hashes
 
 
-def build_fixture(repo: Path, release: DistributionRelease, output: Path) -> FleetCase:
-    """Create a disposable old install without overwriting any existing case."""
+def _create_fixture_vault(repo: Path, release: DistributionRelease, output: Path) -> Path:
+    """Clone one historic release without inheriting later release metadata."""
 
     if output.exists() and not output.is_dir():
         raise FleetError(f"fleet output is not a directory: {output}")
@@ -198,16 +198,51 @@ def build_fixture(repo: Path, release: DistributionRelease, output: Path) -> Fle
     _git(vault, "remote", "set-url", "upstream", PUBLIC_REMOTE)
     _git(vault, "remote", "set-url", "--push", "upstream", "DISABLED")
 
+    _git(vault, "config", "user.name", "Dex Fleet Fixture")
+    _git(vault, "config", "user.email", "fleet@example.com")
+    return vault
+
+
+def _seed_user_content(vault: Path) -> dict[str, str]:
+    """Place fixed user-owned content only after the historic install is ready."""
     for relative, content in USER_FIXTURES.items():
         path = vault / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content)
 
-    _git(vault, "config", "user.name", "Dex Fleet Fixture")
-    _git(vault, "config", "user.email", "fleet@example.com")
     _git(vault, "add", "-f", "--", *USER_FIXTURES)
     _git(vault, "commit", "--quiet", "-m", "test: simulated user content")
-    return FleetCase(release=release, vault=vault, user_hashes=hash_user_owned_files(vault))
+    return hash_user_owned_files(vault)
+
+
+def build_fixture(repo: Path, release: DistributionRelease, output: Path) -> FleetCase:
+    """Create a structural historic-release fixture without running its installer."""
+    vault = _create_fixture_vault(repo, release, output)
+    return FleetCase(release=release, vault=vault, user_hashes=_seed_user_content(vault))
+
+
+def _run_historic_installer(vault: Path) -> None:
+    """Make the cloned release a realistic installed Dex before adding user data."""
+    installer = vault / "install.sh"
+    if installer.is_symlink() or not installer.is_file():
+        raise FleetError("historic release has no safe install.sh to bootstrap its fixture")
+    result = subprocess.run(
+        ["bash", "install.sh"],
+        cwd=vault,
+        capture_output=True,
+        text=True,
+        timeout=15 * 60,
+    )
+    if result.returncode:
+        detail = (result.stderr or result.stdout).strip()
+        raise FleetError(f"historic installer failed for {vault.name}: {detail}")
+
+
+def build_installed_fixture(repo: Path, release: DistributionRelease, output: Path) -> FleetCase:
+    """Install the historic release, then add synthetic user-owned data for updating."""
+    vault = _create_fixture_vault(repo, release, output)
+    _run_historic_installer(vault)
+    return FleetCase(release=release, vault=vault, user_hashes=_seed_user_content(vault))
 
 
 def assert_complete(report: AcceptanceReport, expected_start_tags: set[str]) -> None:
