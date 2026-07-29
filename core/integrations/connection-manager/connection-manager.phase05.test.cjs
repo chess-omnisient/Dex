@@ -267,7 +267,9 @@ test('callback server skips a contended port and completes on the next one', asy
     const pending = cb.waitForCode({ expectedState: 'right-state' });
     const response = harness.request(harness.servers[1], '/callback?code=good-code&state=right-state');
     assert.equal(response.headers['Content-Type'], 'text/html; charset=utf-8');
-    assert.match(response.body, /✅ Connected/);
+    assert.match(response.body, /Approval received/);
+    assert.match(response.body, /Return to Dex to see whether it completed/);
+    assert.doesNotMatch(response.body, /Connected/);
     assert.deepEqual(await pending, { code: 'good-code', state: 'right-state' });
   } finally {
     cb.close();
