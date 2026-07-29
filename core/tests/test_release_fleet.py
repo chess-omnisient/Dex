@@ -58,6 +58,14 @@ def _tag_legacy_release(repo: Path, version: str, content: str) -> str:
     return tag
 
 
+def _archive_release_tag(repo: Path, tag: str) -> str:
+    commit = _git(repo, "rev-parse", f"{tag}^{{commit}}")
+    version, short = tag.removeprefix("dist/release/v").split("-", maxsplit=1)
+    archive_tag = f"dist/archive/v{version}-{short}"
+    _git(repo, "tag", "-a", archive_tag, commit, "-m", archive_tag)
+    return archive_tag
+
+
 def test_discovers_each_distinct_distribution_tree_once(tmp_path: Path) -> None:
     repo = _repository(tmp_path)
     first = _tag_release(repo, "1.61.0", "one")
@@ -75,6 +83,84 @@ def test_rejects_distribution_tag_that_does_not_name_its_commit(tmp_path: Path) 
 
     with pytest.raises(release_fleet.FleetError, match="does not match"):
         release_fleet.discover_distribution_releases(repo)
+
+
+def test_discovers_archived_distribution_tree_when_the_canonical_tag_is_absent(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    tag = _tag_release(repo, "1.64.0", "historic release")
+    archive_tag = _archive_release_tag(repo, tag)
+    _git(repo, "tag", "-d", tag)
+
+    releases = release_fleet.discover_distribution_releases(repo)
+
+    assert [release.tag for release in releases] == [archive_tag]
+
+
+def test_discovers_exact_v164_archived_starting_tree(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    tag = "dist/archive/v1.64.0-366c168"
+    commit = "366c168af61c50ee7157976a9eb8a154ca0fd7f4"
+    tree = "0bf7e30785d511e4b3774358f73ce569167f3f60"
+
+    def fake_git(_repo: Path, *arguments: str) -> str:
+        if arguments == ("tag", "--list"):
+            return tag
+        if arguments == ("rev-parse", f"{tag}^{{commit}}"):
+            return commit
+        if arguments == ("rev-parse", f"{tag}^{{tree}}"):
+            return tree
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(release_fleet, "_git", fake_git)
+
+    assert release_fleet.discover_distribution_releases(tmp_path) == (
+        release_fleet.DistributionRelease(
+            tag=tag,
+            version="1.64.0",
+            commit=commit,
+            tree=tree,
+        ),
+    )
+
+
+def test_prefers_canonical_tag_when_archive_tag_has_the_same_tree(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    tag = _tag_release(repo, "1.64.0", "historic release")
+    _archive_release_tag(repo, tag)
+
+    releases = release_fleet.discover_distribution_releases(repo)
+
+    assert [release.tag for release in releases] == [tag]
+
+
+def test_rejects_colliding_immutable_distribution_identities(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    canonical_tag = "dist/release/v1.64.0-366c168"
+    archive_tag = "dist/archive/v1.64.0-366c168"
+    commits = {
+        canonical_tag: "366c168af61c50ee7157976a9eb8a154ca0fd7f4",
+        archive_tag: "366c168dddddddddddddddddddddddddddddddddd",
+    }
+    trees = {
+        canonical_tag: "0bf7e30785d511e4b3774358f73ce569167f3f60",
+        archive_tag: "ad5c7be7f2075bc3de74d4d0b168bb29e72c2d4e",
+    }
+
+    def fake_git(_repo: Path, *arguments: str) -> str:
+        if arguments == ("tag", "--list"):
+            return "\n".join((canonical_tag, archive_tag))
+        for suffix, values in (("^{commit}", commits), ("^{tree}", trees)):
+            tag = arguments[1].removesuffix(suffix)
+            if arguments == ("rev-parse", f"{tag}{suffix}"):
+                return values[tag]
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(release_fleet, "_git", fake_git)
+
+    with pytest.raises(release_fleet.FleetError, match="ambiguous immutable distribution identity"):
+        release_fleet.discover_distribution_releases(tmp_path)
 
 
 def test_discovers_legacy_published_release_trees_too(tmp_path: Path) -> None:
