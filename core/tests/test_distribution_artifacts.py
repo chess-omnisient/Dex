@@ -757,6 +757,13 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
     package = _git_json(clone, "HEAD:package.json")
     profile = _git_json(clone, "HEAD:System/.release-evidence-profile.json")
     transition = _git_json(clone, "HEAD:System/.local-only-preservation-transition.json")
+    changelog = subprocess.run(
+        ["git", "show", "HEAD:CHANGELOG.md"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
     assert package["version"] == bumped
     assert profile == {"profile": "legacy-v1", "release_version": bumped, "schema_version": 1}
     assert transition == {
@@ -765,6 +772,7 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
         "phase": "untrack-v3",
         "release_version": bumped,
     }
+    assert f"---\n\n## [{bumped}] — (" in changelog
     assert "System/.release-evidence-profile.json" in _release_manifest(clone, "HEAD")
     assert subprocess.run(
         ["git", "rev-parse", f"v{bumped}^{{}}"], cwd=clone, check=True, capture_output=True, text=True
