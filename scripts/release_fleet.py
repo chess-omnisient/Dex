@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
+import json
 import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Mapping, Sequence
 
 RELEASE_TAG = re.compile(
     r"^dist/release/v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-(?P<short>[0-9a-f]{7,64})$"
@@ -22,6 +25,20 @@ USER_FIXTURES = {
         b"---\n# User skill\n"
     ),
 }
+REPORT_KEYS = frozenset({"foundation_tag", "follow_up_tag", "cases"})
+CASE_RESULT_KEYS = frozenset(
+    {
+        "starting_tag",
+        "reached_foundation",
+        "reached_follow_up",
+        "foundation_doctor_healthy",
+        "follow_up_doctor_healthy",
+        "user_hashes_before",
+        "user_hashes_after_foundation",
+        "user_hashes_after_follow_up",
+        "transcript_path",
+    }
+)
 
 
 class FleetError(RuntimeError):
@@ -45,6 +62,30 @@ class FleetCase:
     release: DistributionRelease
     vault: Path
     user_hashes: dict[str, str]
+
+
+@dataclass(frozen=True)
+class CaseResult:
+    """Evidence from one historic installation's two-release journey."""
+
+    starting_tag: str
+    reached_foundation: bool
+    reached_follow_up: bool
+    foundation_doctor_healthy: bool
+    follow_up_doctor_healthy: bool
+    user_hashes_before: dict[str, str]
+    user_hashes_after_foundation: dict[str, str]
+    user_hashes_after_follow_up: dict[str, str]
+    transcript_path: str
+
+
+@dataclass(frozen=True)
+class AcceptanceReport:
+    """The complete evidence set required before claiming fleet acceptance."""
+
+    foundation_tag: str
+    follow_up_tag: str
+    cases: tuple[CaseResult, ...]
 
 
 def _git(repo: Path, *arguments: str) -> str:
@@ -142,3 +183,160 @@ def build_fixture(repo: Path, release: DistributionRelease, output: Path) -> Fle
     _git(vault, "add", "-f", "--", *USER_FIXTURES)
     _git(vault, "commit", "--quiet", "-m", "test: simulated user content")
     return FleetCase(release=release, vault=vault, user_hashes=hash_user_owned_files(vault))
+
+
+def assert_complete(report: AcceptanceReport, expected_start_tags: set[str]) -> None:
+    """Refuse a release claim unless every historic package completed both hops."""
+
+    if not report.cases:
+        raise FleetError("acceptance report contains no historic releases")
+    actual_tags = {case.starting_tag for case in report.cases}
+    if len(actual_tags) != len(report.cases):
+        raise FleetError("acceptance report contains a duplicate historic release")
+    missing = sorted(expected_start_tags - actual_tags)
+    if missing:
+        raise FleetError("acceptance report is missing historic releases: " + ", ".join(missing))
+    unexpected = sorted(actual_tags - expected_start_tags)
+    if unexpected:
+        raise FleetError("acceptance report contains unknown historic releases: " + ", ".join(unexpected))
+
+    for case in report.cases:
+        if not case.reached_foundation:
+            raise FleetError(f"{case.starting_tag}: foundation release was not reached")
+        if not case.reached_follow_up:
+            raise FleetError(f"{case.starting_tag}: follow-up release was not reached")
+        if not case.foundation_doctor_healthy:
+            raise FleetError(f"{case.starting_tag}: Doctor was unhealthy after foundation release")
+        if not case.follow_up_doctor_healthy:
+            raise FleetError(f"{case.starting_tag}: Doctor was unhealthy after follow-up release")
+        if not case.user_hashes_before:
+            raise FleetError(f"{case.starting_tag}: user-content evidence is missing")
+        if case.user_hashes_before != case.user_hashes_after_foundation:
+            raise FleetError(f"{case.starting_tag}: user content changed during foundation release")
+        if case.user_hashes_before != case.user_hashes_after_follow_up:
+            raise FleetError(f"{case.starting_tag}: user content changed during follow-up release")
+        if not case.transcript_path:
+            raise FleetError(f"{case.starting_tag}: user-visible journey transcript is missing")
+
+
+def _required_string(value: Mapping[str, Any], key: str, context: str) -> str:
+    candidate = value.get(key)
+    if not isinstance(candidate, str) or not candidate:
+        raise FleetError(f"{context} has no valid {key}")
+    return candidate
+
+
+def _hash_map(value: object, context: str) -> dict[str, str]:
+    if not isinstance(value, Mapping) or not value:
+        raise FleetError(f"{context} must be a non-empty object")
+    hashes: dict[str, str] = {}
+    for relative, digest in value.items():
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or not isinstance(digest, str)
+            or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+        ):
+            raise FleetError(f"{context} contains an invalid user-content hash")
+        hashes[relative] = digest
+    return hashes
+
+
+def acceptance_report_from_json(source: str) -> AcceptanceReport:
+    """Parse a strict, machine-readable two-release acceptance report."""
+
+    try:
+        raw = json.loads(source)
+    except json.JSONDecodeError as error:
+        raise FleetError("acceptance report is not valid JSON") from error
+    if not isinstance(raw, Mapping) or set(raw) != REPORT_KEYS:
+        raise FleetError("acceptance report has an invalid top-level shape")
+    foundation_tag = _required_string(raw, "foundation_tag", "acceptance report")
+    follow_up_tag = _required_string(raw, "follow_up_tag", "acceptance report")
+    cases_raw = raw.get("cases")
+    if not isinstance(cases_raw, list):
+        raise FleetError("acceptance report cases must be a list")
+
+    cases: list[CaseResult] = []
+    for index, case_raw in enumerate(cases_raw, start=1):
+        context = f"acceptance case {index}"
+        if not isinstance(case_raw, Mapping) or set(case_raw) != CASE_RESULT_KEYS:
+            raise FleetError(f"{context} has an invalid shape")
+        boolean_keys = (
+            "reached_foundation",
+            "reached_follow_up",
+            "foundation_doctor_healthy",
+            "follow_up_doctor_healthy",
+        )
+        if any(not isinstance(case_raw[key], bool) for key in boolean_keys):
+            raise FleetError(f"{context} has an invalid boolean verdict")
+        cases.append(
+            CaseResult(
+                starting_tag=_required_string(case_raw, "starting_tag", context),
+                reached_foundation=bool(case_raw["reached_foundation"]),
+                reached_follow_up=bool(case_raw["reached_follow_up"]),
+                foundation_doctor_healthy=bool(case_raw["foundation_doctor_healthy"]),
+                follow_up_doctor_healthy=bool(case_raw["follow_up_doctor_healthy"]),
+                user_hashes_before=_hash_map(case_raw["user_hashes_before"], context),
+                user_hashes_after_foundation=_hash_map(
+                    case_raw["user_hashes_after_foundation"], context
+                ),
+                user_hashes_after_follow_up=_hash_map(
+                    case_raw["user_hashes_after_follow_up"], context
+                ),
+                transcript_path=_required_string(case_raw, "transcript_path", context),
+            )
+        )
+    return AcceptanceReport(foundation_tag, follow_up_tag, tuple(cases))
+
+
+def _case_manifest(case: FleetCase) -> dict[str, object]:
+    return {
+        "starting": {
+            "tag": case.release.tag,
+            "version": case.release.version,
+            "commit": case.release.commit,
+            "tree": case.release.tree,
+        },
+        "vault": str(case.vault),
+        "user_hashes": case.user_hashes,
+    }
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Build the historic fleet or validate a completed two-release report."""
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    subcommands = parser.add_subparsers(dest="command", required=True)
+    build = subcommands.add_parser("build", help="build clean historic-release fixtures")
+    build.add_argument("--repo", type=Path, required=True)
+    build.add_argument("--output", type=Path, required=True)
+    check = subcommands.add_parser("check-report", help="fail closed on incomplete fleet evidence")
+    check.add_argument("--repo", type=Path, required=True)
+    check.add_argument("report", type=Path)
+    args = parser.parse_args(argv)
+
+    if args.command == "build":
+        releases = discover_distribution_releases(args.repo)
+        cases = [build_fixture(args.repo, release, args.output) for release in releases]
+        print(
+            json.dumps(
+                {"case_count": len(cases), "cases": [_case_manifest(case) for case in cases]},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+
+    report = acceptance_report_from_json(args.report.read_text(encoding="utf-8"))
+    expected_start_tags = {release.tag for release in discover_distribution_releases(args.repo)}
+    assert_complete(report, expected_start_tags)
+    print(f"PASS: {len(report.cases)} historic release trees reached both releases")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except FleetError as error:
+        raise SystemExit(f"FAIL: {error}") from error
