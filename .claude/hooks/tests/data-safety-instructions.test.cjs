@@ -66,6 +66,8 @@ const UPDATE_SERVICE_OPERATIONS = new Set([
   'deliver_latest_release',
   'build_and_preview_delivered_release',
   'execute_approved_delivered_release',
+  'build_and_preview_mcp_registration',
+  'execute_approved_mcp_registration',
   // Capsule journey (Lane H): read-only customization-migration operations and the
   // authority fields the skill must reproduce verbatim. The CLI create/abandon writes
   // are human-confirmed and capsule-scoped; they never touch vault user files.
@@ -241,6 +243,7 @@ test('update mutation follows the immutable preview, approval, execute service r
   assert.match(UPDATE_SKILL, /ask `deliver_latest_release`\s+through `core\.lifecycle\.service`/);
   assert.match(UPDATE_SKILL, /ask\s+`build_and_preview_delivered_release` through `core\.lifecycle\.service`/);
   assert.match(UPDATE_SKILL, /`execute_approved_delivered_release` with the same preview and approval token/);
+  assert.match(UPDATE_SKILL, /Only after a fresh explicit yes, pass the unchanged preview and approval token to `execute_approved_mcp_registration`/);
   assert.match(UPDATE_SKILL, /The lifecycle service owns every mutation\./);
 
   assertInOrder(UPDATE_SKILL, [

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import difflib
 import re
 import sys
@@ -40,6 +41,27 @@ def extract_defined_tool_names(source: str) -> set[str]:
     return set(TOOL_DECLARATION.findall(source)) | set(
         FASTMCP_TOOL_DECLARATION.findall(source)
     )
+
+
+def extract_public_lifecycle_operations(source: str) -> set[str]:
+    """Return the statically declared public lifecycle-service operations."""
+    tree = ast.parse(source)
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not any(
+            isinstance(target, ast.Name) and target.id == "__all__"
+            for target in node.targets
+        ):
+            continue
+        if not isinstance(node.value, (ast.List, ast.Tuple)):
+            return set()
+        return {
+            item.value
+            for item in node.value.elts
+            if isinstance(item, ast.Constant)
+            and isinstance(item.value, str)
+            and re.fullmatch(TOOL_NAME_PATTERN, item.value) is not None
+        }
+    return set()
 
 
 def parse_allowlist(source: str) -> set[str]:
@@ -115,10 +137,14 @@ def is_instruction_surface(path: Path, repo_root: Path = REPO_ROOT) -> bool:
 
 
 def collect_defined_tools(repo_root: Path = REPO_ROOT) -> set[str]:
-    """Collect every statically declared top-level MCP tool."""
+    """Collect statically declared MCP tools and public lifecycle operations."""
     defined_tools: set[str] = set()
     for path in sorted((repo_root / "core" / "mcp").glob("*.py")):
         defined_tools.update(extract_defined_tool_names(path.read_text(encoding="utf-8")))
+    lifecycle_service = repo_root / "core" / "lifecycle" / "service.py"
+    defined_tools.update(
+        extract_public_lifecycle_operations(lifecycle_service.read_text(encoding="utf-8"))
+    )
     return defined_tools
 
 

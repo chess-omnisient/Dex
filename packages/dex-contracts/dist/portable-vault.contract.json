@@ -122,7 +122,7 @@
       "path": ".mcp.json",
       "kind": "file",
       "ownership": "vault",
-      "note": "REPORT-ONLY: SR1 #150's structural residual detector owns it; no engine may rewrite it"
+      "note": "REPORT-ONLY except the explicitly previewed, user-approved, add-only mcp-registration lifecycle transaction"
     },
     {
       "id": "brain-obsidian",

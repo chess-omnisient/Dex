@@ -53,6 +53,9 @@ _CATALOG_RELATIVE = "System/.release-catalog.json"
 _PURPOSE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _ARCHIVE_RELATIVE = ".dex/pre-split-archive.git"
 _ARCHIVE_RECEIPTS_RELATIVE = "System/.dex/archive-removals"
+_MCP_CONFIG_RELATIVE = ".mcp.json"
+_MCP_TEMPLATE_RELATIVE = "System/.mcp.json.example"
+_MCP_REGISTRATION_NAME = "customization-migration-mcp"
 _REBUILD_TRANSACTION_PATH = re.compile(
     r"^System/\.dex/customization-migrations/cap-[0-9a-f]{16}/(?:"
     r"receipts/(?:capsule|activation|rewind)\.json|"
@@ -699,6 +702,118 @@ def execute_approved_delivered_release(
     return _envelope(receipt=executed["receipt"], release=expected_preview["release"])
 
 
+def _mcp_registration_preview(
+    vault_root: str | Path,
+) -> tuple[dict[str, object] | None, list[PlanEntry]]:
+    """Build the one explicitly approved, add-only MCP registration write."""
+    root = Path(vault_root).resolve()
+    target = root / _MCP_CONFIG_RELATIVE
+    template = root / _MCP_TEMPLATE_RELATIVE
+    if target.is_symlink() or (target.exists() and not target.is_file()):
+        raise PlanRejected(".mcp.json must be a regular file")
+    if template.is_symlink() or not template.is_file():
+        raise PlanRejected("System/.mcp.json.example must be a regular file")
+    try:
+        existing = json.loads(target.read_text(encoding="utf-8")) if target.exists() else {}
+        generated = json.loads(template.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise PlanRejected("MCP configuration must contain valid JSON") from error
+    if not isinstance(existing, dict) or not isinstance(generated, dict):
+        raise PlanRejected("MCP configuration must contain a JSON object")
+    servers = existing.get("mcpServers")
+    generated_servers = generated.get("mcpServers")
+    if servers is None:
+        servers = {}
+    if not isinstance(servers, dict) or not isinstance(generated_servers, dict):
+        raise PlanRejected("MCP configuration must contain an mcpServers object")
+    registration = generated_servers.get(_MCP_REGISTRATION_NAME)
+    if not isinstance(registration, dict):
+        raise PlanRejected("the shipped MCP registration is missing or malformed")
+    if _MCP_REGISTRATION_NAME in servers:
+        return None, []
+
+    rendered = json.loads(json.dumps(registration).replace("{{VAULT_PATH}}", str(root)))
+    if os.name == "nt":
+        rendered = json.loads(
+            json.dumps(rendered).replace(".venv/bin/python", ".venv/Scripts/python.exe")
+        )
+    updated = dict(existing)
+    updated_servers = dict(servers)
+    updated_servers[_MCP_REGISTRATION_NAME] = rendered
+    updated["mcpServers"] = updated_servers
+    content = (json.dumps(updated, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    current = target.read_bytes() if target.exists() else None
+    plan = [
+        PlanEntry(
+            _MCP_CONFIG_RELATIVE,
+            content,
+            mode=(target.stat().st_mode & 0o777) if target.exists() else 0o600,
+            expected_current_sha256=(hashlib.sha256(current).hexdigest() if current else None),
+            expected_absent=not target.exists(),
+        )
+    ]
+    transaction = _transaction_preview_document(
+        root,
+        plan,
+        purpose="mcp-registration",
+        operation="mcp-registration",
+    )
+    preview = {
+        "registration": {
+            "config_path": _MCP_CONFIG_RELATIVE,
+            "server_name": _MCP_REGISTRATION_NAME,
+            "action": "add-only",
+        },
+        "writes": transaction["writes"],
+    }
+    return preview, plan
+
+
+def build_and_preview_mcp_registration(vault_root: str | Path) -> dict[str, object]:
+    """Show the exact missing Dex MCP registration before any configuration write."""
+    preview, _plan = _mcp_registration_preview(vault_root)
+    if preview is None:
+        return _envelope(needed=False, preview=None, approval_token=None)
+    return _envelope(
+        needed=True,
+        preview=preview,
+        approval_token=hashlib.sha256(_canonical(preview)).hexdigest(),
+    )
+
+
+def execute_approved_mcp_registration(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    """Add only the exact previewed Dex registration through one transaction."""
+    try:
+        expected_preview, plan = _mcp_registration_preview(vault_root)
+        supplied = _canonical(dict(preview))
+    except (TypeError, ValueError) as error:
+        raise PlanRejected("MCP registration preview is not canonical JSON") from error
+    if expected_preview is None:
+        raise PlanRejected("the customization migration MCP registration is already present")
+    expected = _canonical(expected_preview)
+    token = hashlib.sha256(expected).hexdigest()
+    if not isinstance(approved_token, str) or not hmac.compare_digest(supplied, expected) or not hmac.compare_digest(approved_token, token):
+        raise PlanRejected("MCP registration approval does not match the current exact preview")
+    transaction = _preview_transaction(
+        vault_root,
+        plan,
+        purpose="mcp-registration",
+        operation="mcp-registration",
+    )
+    executed = _execute_approved_transaction(
+        vault_root,
+        plan,
+        purpose="mcp-registration",
+        operation="mcp-registration",
+        approved_token=str(transaction["approval_token"]),
+    )
+    return _envelope(receipt=executed["receipt"])
+
+
 def deliver_and_apply_latest_release(vault_root: str | Path) -> dict[str, object]:
     """Safe v1.3 bridge: never apply a release that was not previewed."""
     del vault_root
@@ -973,6 +1088,8 @@ __all__ = [
     "deliver_latest_release",
     "build_and_preview_delivered_release",
     "execute_approved_delivered_release",
+    "build_and_preview_mcp_registration",
+    "execute_approved_mcp_registration",
     "deliver_and_apply_latest_release",
     "build_and_preview_conflict_resolution",
     "execute_approved_conflict_resolution",

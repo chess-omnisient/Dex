@@ -47,6 +47,14 @@
       "request": {"$ref": "#/$defs/deliveredReleaseExecuteRequest"},
       "response": {"$ref": "#/$defs/deliveredReleaseExecuteResponse"}
     },
+    "build_and_preview_mcp_registration": {
+      "request": {"$ref": "#/$defs/vaultRequest"},
+      "response": {"$ref": "#/$defs/mcpRegistrationPreviewResponse"}
+    },
+    "execute_approved_mcp_registration": {
+      "request": {"$ref": "#/$defs/mcpRegistrationExecuteRequest"},
+      "response": {"$ref": "#/$defs/mcpRegistrationExecuteResponse"}
+    },
     "build_and_preview_conflict_resolution": {
       "request": {"$ref": "#/$defs/resolutionsRequest"},
       "response": {"$ref": "#/$defs/conflictPreviewResponse"}
@@ -231,6 +239,69 @@
           }
         }
       ]
+    },
+    "mcpRegistrationPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registration", "writes"],
+      "properties": {
+        "registration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["config_path", "server_name", "action"],
+          "properties": {
+            "config_path": {"const": ".mcp.json"},
+            "server_name": {"const": "customization-migration-mcp"},
+            "action": {"const": "add-only"}
+          }
+        },
+        "writes": {"type": "array", "minItems": 1, "items": {"type": "object"}}
+      }
+    },
+    "mcpRegistrationPreviewResponse": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api_version", "needed", "preview", "approval_token"],
+          "properties": {
+            "api_version": {"const": "1.4.0"},
+            "needed": {"const": true},
+            "preview": {"$ref": "#/$defs/mcpRegistrationPreview"},
+            "approval_token": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api_version", "needed", "preview", "approval_token"],
+          "properties": {
+            "api_version": {"const": "1.4.0"},
+            "needed": {"const": false},
+            "preview": {"type": "null"},
+            "approval_token": {"type": "null"}
+          }
+        }
+      ]
+    },
+    "mcpRegistrationExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/mcpRegistrationPreview"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "mcpRegistrationExecuteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt"],
+      "properties": {
+        "api_version": {"const": "1.4.0"},
+        "receipt": {"type": "object"}
+      }
     },
     "previewRequest": {
       "type": "object",
