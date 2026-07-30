@@ -163,8 +163,8 @@ echo ""
 git checkout -B "$RELEASE_BRANCH" "$SOURCE_SHA" --quiet
 
 # Refuse to publish a journey control plane that does not bind the exact
-# selected source bytes. The generated root itself ships; the bridge and fleet
-# runner remain publisher-source artifacts referenced by SHA-256.
+# selected source bytes. The generated root itself ships; the bridge, fleet
+# runner, and executor remain publisher-source artifacts referenced by SHA-256.
 python3 scripts/generate-update-journey-protocol.py --output "$JOURNEY_PROTOCOL_CHECK"
 if ! cmp -s "$JOURNEY_PROTOCOL_CHECK" System/.update-journey-v1.json; then
     echo "Error: System/.update-journey-v1.json is stale for selected source '$SOURCE_BRANCH'." >&2

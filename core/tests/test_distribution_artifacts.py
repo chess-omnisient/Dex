@@ -98,6 +98,7 @@ RELEASE_BUILD_INPUTS = (
     "scripts/generate-release-catalog.py",
     "scripts/generate-update-journey-protocol.py",
     "scripts/release_fleet.py",
+    "scripts/release_fleet_executor.py",
     "scripts/resolve-distignore-files.sh",
     "scripts/security-gate.sh",
     "scripts/verify-distribution.sh",
@@ -735,9 +736,9 @@ def test_raw_vault_bundle_rejects_dirty_protocol_inputs_not_in_source_commit(
 ) -> None:
     clone = _clone_repo(tmp_path, "raw-vault-bundle-dirty-protocol")
     _commit_release_inputs_if_changed(clone)
-    runner = clone / "scripts/release_fleet.py"
-    runner.write_text(
-        runner.read_text(encoding="utf-8") + "\n# uncommitted runner bytes\n",
+    executor = clone / "scripts/release_fleet_executor.py"
+    executor.write_text(
+        executor.read_text(encoding="utf-8") + "\n# uncommitted executor bytes\n",
         encoding="utf-8",
     )
     subprocess.run(

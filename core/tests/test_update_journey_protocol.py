@@ -36,7 +36,8 @@ def test_release_owned_protocol_binds_only_the_reviewed_update_adapters() -> Non
     assert protocol.bridge.approval_word == protocol.follow_up.approval_word == "APPLY"
     assert protocol.bridge.approval_count == 2
     assert protocol.follow_up.approval_count == 1
-    for artifact in (protocol.bridge.artifact, protocol.runner):
+    assert protocol.executor.source_path == "scripts/release_fleet_executor.py"
+    for artifact in (protocol.bridge.artifact, protocol.runner, protocol.executor):
         source = REPO_ROOT / artifact.source_path
         assert artifact.sha256 == hashlib.sha256(source.read_bytes()).hexdigest()
 

@@ -40,10 +40,11 @@ PROTOCOL_SOURCE_PATHS=(
   "scripts/dex_update_bridge.py"
   "scripts/generate-update-journey-protocol.py"
   "scripts/release_fleet.py"
+  "scripts/release_fleet_executor.py"
 )
 if ! git diff --quiet "$SOURCE_COMMIT" -- "${PROTOCOL_SOURCE_PATHS[@]}"; then
   echo "Error: protocol inputs differ from recorded source commit $SOURCE_COMMIT." >&2
-  echo "Commit the protocol, parser, generator, bridge, and runner bytes before building." >&2
+  echo "Commit the protocol, parser, generator, bridge, runner, and executor bytes before building." >&2
   exit 1
 fi
 

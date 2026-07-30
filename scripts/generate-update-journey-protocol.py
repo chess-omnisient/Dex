@@ -22,6 +22,7 @@ from core.update.journey_protocol import (
     BRIDGE_ADAPTER,
     BRIDGE_SOURCE,
     CONTROLLER,
+    EXECUTOR_SOURCE,
     FOLLOW_UP_ADAPTER,
     FOLLOW_UP_OPERATIONS,
     PROTOCOL_RELATIVE,
@@ -48,6 +49,10 @@ def protocol_document() -> dict[str, object]:
         "runner": {
             "source_path": RUNNER_SOURCE,
             "sha256": _sha256(RUNNER_SOURCE),
+        },
+        "executor": {
+            "source_path": EXECUTOR_SOURCE,
+            "sha256": _sha256(EXECUTOR_SOURCE),
         },
         "historic_to_foundation": {
             "adapter": BRIDGE_ADAPTER,

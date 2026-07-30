@@ -1,0 +1,484 @@
+"""Integration and adversarial contracts for the released journey executor."""
+
+from __future__ import annotations
+
+import io
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from core.update.journey_protocol import load_update_journey_protocol
+from scripts import release_fleet_executor as executor
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _identity(version: str, fill: str) -> dict[str, str]:
+    commit = fill * 40
+    return {
+        "tag": f"dist/release/v{version}-{commit[:7]}",
+        "tag_object": ("f" if fill != "f" else "e") * 40,
+        "commit": commit,
+        "tree": ("d" if fill != "d" else "c") * 40,
+        "version": version,
+        "channel": "stable",
+    }
+
+
+def _executor_source_commit(tmp_path: Path) -> tuple[Path, str]:
+    repo = tmp_path / "source"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Dex Tests"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "tests@example.com"], cwd=repo, check=True)
+    for relative in (
+        "scripts/dex_update_bridge.py",
+        "scripts/release_fleet.py",
+        "scripts/release_fleet_executor.py",
+    ):
+        target = repo / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO_ROOT / relative, target)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "released executor source"],
+        cwd=repo,
+        check=True,
+    )
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    return repo, commit
+
+
+def _commit_executor_tamper(repo: Path) -> str:
+    path = repo / "scripts/release_fleet_executor.py"
+    path.write_bytes(path.read_bytes() + b"\n# externally substituted bytes\n")
+    subprocess.run(["git", "add", str(path)], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "substitute executor"],
+        cwd=repo,
+        check=True,
+    )
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _vault(tmp_path: Path) -> tuple[Path, tuple[str, ...]]:
+    root = tmp_path / "vault"
+    user_files = (
+        "00-Inbox/keep.md",
+        "03-Tasks/Tasks.md",
+        "System/user-profile.yaml",
+        ".claude/skills/my-weekly-review/SKILL.md",
+    )
+    for relative in user_files:
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"user-owned:{relative}\n", encoding="utf-8")
+    return root, user_files
+
+
+class _Runtime:
+    def __init__(self, follow_up: dict[str, str]) -> None:
+        self.follow_up = follow_up
+        self.installed = ""
+        self.calls: list[str] = []
+
+    def bridge_to_foundation(self, vault: Path, foundation, *, input_fn, output_fn):
+        self.calls.append("bridge")
+        output_fn(json.dumps({"preview": "topology"}))
+        assert input_fn("topology approval") == "APPLY"
+        output_fn(json.dumps({"preview": "foundation"}))
+        assert input_fn("foundation approval") == "APPLY"
+        self.installed = foundation["commit"]
+        return {
+            "foundation": dict(foundation),
+            "topology_receipt": {"receipt": {"transaction_id": "topology-tx"}},
+            "delivery_receipt": {"receipt": {"transaction_id": "foundation-tx"}},
+        }
+
+    def installed_release(self, vault: Path) -> str:
+        self.calls.append("installed")
+        return self.installed
+
+    def doctor(self, vault: Path) -> dict[str, object]:
+        self.calls.append("doctor")
+        return {"checks": [{"id": "doctor.self", "verdict": "OK"}]}
+
+    def deliver_latest_release(self, vault: Path) -> dict[str, object]:
+        self.calls.append("deliver_latest_release")
+        return {"api_version": "1.4.0", "status": "delivered", "release": self.follow_up}
+
+    def build_and_preview_delivered_release(
+        self, vault: Path, release
+    ) -> dict[str, object]:
+        self.calls.append("build_and_preview_delivered_release")
+        return {
+            "api_version": "1.4.0",
+            "preview": {
+                "release": dict(release),
+                "previous_commit": self.installed,
+                "writes": [{"path": "core/released.py"}],
+            },
+            "approval_token": "exact-preview-token",
+        }
+
+    def execute_approved_delivered_release(
+        self, vault: Path, preview, approved_token: str
+    ) -> dict[str, object]:
+        self.calls.append("execute_approved_delivered_release")
+        assert approved_token == "exact-preview-token"
+        self.installed = self.follow_up["commit"]
+        return {
+            "api_version": "1.4.0",
+            "receipt": {"transaction_id": "follow-up-tx"},
+            "release": self.follow_up,
+        }
+
+    def smoke(self, vault: Path) -> dict[str, object]:
+        self.calls.append("smoke")
+        return {
+            "schema_version": 1,
+            "journeys": [{"id": "topology", "verdict": "OK", "detail": "healthy"}],
+            "summary": {"ok": 1, "broken": 0, "unknown": 0, "off": 0},
+        }
+
+
+def test_serialized_or_directly_constructed_run_cannot_gain_executor_authority() -> None:
+    authored = {"case": {"starting_tag": "dist/release/v1.0.0-deadbee"}}
+
+    assert executor.is_authoritative_executor_run(authored) is False
+    assert not hasattr(executor, "_EXECUTOR_AUTHORITY")
+    with pytest.raises(executor.ExecutorError, match="live executor"):
+        executor.ExecutorRun(authored["case"])
+
+
+def test_executor_owns_the_closed_two_hop_journey_and_returned_evidence(
+    tmp_path: Path,
+) -> None:
+    protocol = load_update_journey_protocol(
+        (REPO_ROOT / "System/.update-journey-v1.json").read_bytes()
+    )
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+    vault, user_files = _vault(tmp_path)
+    starting = _identity("1.61.0", "a")
+    follow_up = _identity("1.81.0", "b")
+    runtime = _Runtime(follow_up)
+    rendered: list[str] = []
+
+    run = executor.execute_journey(
+        repo_root=source_repo,
+        source_commit=source_commit,
+        vault_root=vault,
+        evidence_root=tmp_path / "case.evidence",
+        starting_release=starting,
+        foundation_release=protocol.foundation,
+        follow_up_release=follow_up,
+        protocol=protocol,
+        historic_surface={"release": starting, "machine_executable": False},
+        foundation_surface={"release": protocol.foundation, "machine_executable": False},
+        user_owned_paths=user_files,
+        platform="darwin",
+        input_fn=lambda _prompt: "APPLY",
+        output_fn=rendered.append,
+        _runtime=runtime,
+    )
+
+    assert executor.is_authoritative_executor_run(run)
+    assert run.case["reached_foundation"] is True
+    assert run.case["reached_follow_up"] is True
+    assert run.case["user_hashes_before"] == run.case["user_hashes_after_foundation"]
+    assert run.case["user_hashes_before"] == run.case["user_hashes_after_follow_up"]
+    assert runtime.calls == [
+        "bridge",
+        "installed",
+        "doctor",
+        "deliver_latest_release",
+        "build_and_preview_delivered_release",
+        "execute_approved_delivered_release",
+        "installed",
+        "doctor",
+        "smoke",
+    ]
+    evidence = tmp_path / "case.evidence"
+    foundation_receipt = json.loads((evidence / "foundation-receipt.json").read_text())
+    follow_up_receipt = json.loads((evidence / "follow-up-receipt.json").read_text())
+    transcript = json.loads((evidence / "journey-transcript.json").read_text())
+    assert foundation_receipt["receipt"]["delivery_receipt"]["receipt"]["transaction_id"] == "foundation-tx"
+    assert follow_up_receipt["receipt"]["receipt"]["transaction_id"] == "follow-up-tx"
+    assert [event["id"] for event in transcript["events"]] == list(protocol.evidence)
+    assert transcript["events"][2]["approval_count"] == 2
+    assert rendered
+
+
+def _execute(
+    tmp_path: Path,
+    runtime: _Runtime,
+    *,
+    source_repo: Path,
+    source_commit: str,
+    input_fn=lambda _prompt: "APPLY",
+) -> executor.ExecutorRun:
+    protocol = load_update_journey_protocol(
+        (REPO_ROOT / "System/.update-journey-v1.json").read_bytes()
+    )
+    vault, user_files = _vault(tmp_path)
+    starting = _identity("1.61.0", "a")
+    return executor.execute_journey(
+        repo_root=source_repo,
+        source_commit=source_commit,
+        vault_root=vault,
+        evidence_root=tmp_path / "case.evidence",
+        starting_release=starting,
+        foundation_release=protocol.foundation,
+        follow_up_release=runtime.follow_up,
+        protocol=protocol,
+        historic_surface={"release": starting, "machine_executable": False},
+        foundation_surface={"release": protocol.foundation, "machine_executable": False},
+        user_owned_paths=user_files,
+        platform="darwin",
+        input_fn=input_fn,
+        output_fn=lambda _line: None,
+        _runtime=runtime,
+    )
+
+
+def test_executor_refuses_released_source_with_substituted_executor_bytes(
+    tmp_path: Path,
+) -> None:
+    source_repo, _source_commit = _executor_source_commit(tmp_path)
+    substituted_commit = _commit_executor_tamper(source_repo)
+    runtime = _Runtime(_identity("1.81.0", "b"))
+
+    with pytest.raises(executor.ExecutorError, match="released protocol source"):
+        _execute(
+            tmp_path,
+            runtime,
+            source_repo=source_repo,
+            source_commit=substituted_commit,
+        )
+
+    assert runtime.calls == []
+
+
+def test_executor_refuses_a_bridge_without_a_real_or_resumed_receipt(
+    tmp_path: Path,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+
+    class MissingReceiptRuntime(_Runtime):
+        def bridge_to_foundation(
+            self, vault: Path, foundation, *, input_fn, output_fn
+        ):
+            result = dict(
+                super().bridge_to_foundation(
+                    vault,
+                    foundation,
+                    input_fn=input_fn,
+                    output_fn=output_fn,
+                )
+            )
+            result["delivery_receipt"] = {"status": "claimed-complete"}
+            return result
+
+    runtime = MissingReceiptRuntime(_identity("1.81.0", "b"))
+
+    with pytest.raises(executor.ExecutorError, match="transaction receipt"):
+        _execute(
+            tmp_path,
+            runtime,
+            source_repo=source_repo,
+            source_commit=source_commit,
+        )
+
+
+def test_executor_records_the_bridge_approval_count_that_actually_occurred(
+    tmp_path: Path,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+
+    class OneApprovalRuntime(_Runtime):
+        def bridge_to_foundation(
+            self, vault: Path, foundation, *, input_fn, output_fn
+        ):
+            self.calls.append("bridge")
+            output_fn(json.dumps({"preview": "foundation"}))
+            assert input_fn("foundation approval") == "APPLY"
+            self.installed = foundation["commit"]
+            return {
+                "foundation": dict(foundation),
+                "topology_receipt": {"skipped": "already-brain-vault-split"},
+                "delivery_receipt": {
+                    "receipt": {"transaction_id": "foundation-tx"}
+                },
+            }
+
+    runtime = OneApprovalRuntime(_identity("1.81.0", "b"))
+    run = _execute(
+        tmp_path,
+        runtime,
+        source_repo=source_repo,
+        source_commit=source_commit,
+    )
+
+    transcript = json.loads(
+        (
+            tmp_path
+            / "case.evidence"
+            / "journey-transcript.json"
+        ).read_text()
+    )
+    assert executor.is_authoritative_executor_run(run)
+    assert transcript["events"][2]["approval_count"] == 1
+    assert transcript["events"][2]["approvals"] == [
+        {"prompt": "foundation approval", "answer": "APPLY"}
+    ]
+
+
+def test_executor_refuses_user_content_mutation_and_unhealthy_proof(
+    tmp_path: Path,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+
+    class MutatingRuntime(_Runtime):
+        def bridge_to_foundation(
+            self, vault: Path, foundation, *, input_fn, output_fn
+        ):
+            result = super().bridge_to_foundation(
+                vault,
+                foundation,
+                input_fn=input_fn,
+                output_fn=output_fn,
+            )
+            (vault / "00-Inbox/keep.md").write_text(
+                "mutated by update\n",
+                encoding="utf-8",
+            )
+            return result
+
+    with pytest.raises(executor.ExecutorError, match="user-owned content changed"):
+        _execute(
+            tmp_path,
+            MutatingRuntime(_identity("1.81.0", "b")),
+            source_repo=source_repo,
+            source_commit=source_commit,
+        )
+
+    healthy_root = tmp_path / "unhealthy"
+    healthy_root.mkdir()
+    source_repo_2, source_commit_2 = _executor_source_commit(healthy_root)
+
+    class UnhealthyRuntime(_Runtime):
+        def doctor(self, vault: Path) -> dict[str, object]:
+            self.calls.append("doctor")
+            return {"checks": [{"id": "doctor.self", "verdict": "BROKEN"}]}
+
+    with pytest.raises(executor.ExecutorError, match="Doctor is unhealthy"):
+        _execute(
+            healthy_root,
+            UnhealthyRuntime(_identity("1.81.0", "b")),
+            source_repo=source_repo_2,
+            source_commit=source_commit_2,
+        )
+
+
+def test_production_runtime_refuses_undeclared_lifecycle_operation() -> None:
+    with pytest.raises(executor.ExecutorError, match="not declared"):
+        executor._ProductionRuntime._service_call(
+            object(),
+            "run_any_command",
+        )
+
+
+def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cleaned: list[bool] = []
+
+    class Temporary:
+        def cleanup(self) -> None:
+            cleaned.append(True)
+
+    class Service:
+        @staticmethod
+        def deliver_latest_release(vault: Path) -> dict[str, object]:
+            return {"status": "delivered", "vault": str(vault)}
+
+    def run_bridge(vault, service, *, pin, input_fn, output_fn):
+        assert service.__class__ is Service
+        assert pin is executor.dex_update_bridge.FOUNDATION
+        output_fn("exact topology preview")
+        assert input_fn("exact topology prompt") == "APPLY"
+        return {
+            "foundation": pin.identity(),
+            "topology_receipt": {"receipt": {"transaction_id": "topology"}},
+            "delivery_receipt": {"receipt": {"transaction_id": "foundation"}},
+        }
+
+    monkeypatch.setattr(
+        executor.dex_update_bridge,
+        "_validate_vault",
+        lambda vault: vault,
+    )
+    monkeypatch.setattr(
+        executor.dex_update_bridge,
+        "_foundation_is_installed",
+        lambda *_args: False,
+    )
+    monkeypatch.setattr(
+        executor.dex_update_bridge,
+        "acquire_foundation_source",
+        lambda: (Temporary(), tmp_path / "foundation"),
+    )
+    monkeypatch.setattr(
+        executor.dex_update_bridge,
+        "_load_lifecycle_service",
+        lambda _source: Service(),
+    )
+    monkeypatch.setattr(executor.dex_update_bridge, "run_bridge", run_bridge)
+    request_stream = io.StringIO(
+        "\n".join(
+            (
+                '{"operation":"bridge"}',
+                '{"answer":"APPLY"}',
+                '{"operation":"deliver_latest_release"}',
+                '{"operation":"close"}',
+                "",
+            )
+        )
+    )
+    response_stream = io.StringIO()
+    monkeypatch.setattr(executor.sys, "stdin", request_stream)
+    monkeypatch.setattr(executor.sys, "stdout", response_stream)
+
+    assert executor._runtime_server(tmp_path / "vault") == 0
+
+    messages = [
+        json.loads(line)
+        for line in response_stream.getvalue().splitlines()
+    ]
+    assert [message["kind"] for message in messages] == [
+        "ready",
+        "output",
+        "prompt",
+        "result",
+        "result",
+    ]
+    assert messages[1]["text"] == "exact topology preview"
+    assert messages[2]["prompt"] == "exact topology prompt"
+    assert messages[4]["value"]["status"] == "delivered"
+    assert cleaned == [True]

@@ -20,6 +20,7 @@ SUPPORTED_PLATFORMS = ("darwin", "linux")
 BRIDGE_ADAPTER = "pinned-foundation-bridge-v1"
 BRIDGE_SOURCE = "scripts/dex_update_bridge.py"
 RUNNER_SOURCE = "scripts/release_fleet.py"
+EXECUTOR_SOURCE = "scripts/release_fleet_executor.py"
 FOLLOW_UP_ADAPTER = "lifecycle-delivered-release-v1"
 FOLLOW_UP_OPERATIONS = (
     "deliver_latest_release",
@@ -45,6 +46,7 @@ _TOP_LEVEL_FIELDS = frozenset(
         "controller",
         "platforms",
         "runner",
+        "executor",
         "historic_to_foundation",
         "foundation_to_follow_up",
         "evidence",
@@ -106,6 +108,7 @@ class UpdateJourneyProtocol:
     controller: str
     platforms: tuple[str, ...]
     runner: ProtocolArtifact
+    executor: ProtocolArtifact
     bridge: BridgeHop
     follow_up: FollowUpHop
     evidence: tuple[str, ...]
@@ -208,6 +211,11 @@ def load_update_journey_protocol(source: bytes | str) -> UpdateJourneyProtocol:
         source_path=RUNNER_SOURCE,
         context="journey protocol runner",
     )
+    executor = _artifact(
+        document["executor"],
+        source_path=EXECUTOR_SOURCE,
+        context="journey protocol executor",
+    )
     bridge_document = _object(
         document["historic_to_foundation"],
         _BRIDGE_FIELDS,
@@ -257,6 +265,7 @@ def load_update_journey_protocol(source: bytes | str) -> UpdateJourneyProtocol:
         controller=CONTROLLER,
         platforms=SUPPORTED_PLATFORMS,
         runner=runner,
+        executor=executor,
         bridge=bridge,
         follow_up=FollowUpHop(
             adapter=FOLLOW_UP_ADAPTER,
@@ -272,6 +281,7 @@ __all__ = [
     "BRIDGE_ADAPTER",
     "BRIDGE_SOURCE",
     "CONTROLLER",
+    "EXECUTOR_SOURCE",
     "FOLLOW_UP_ADAPTER",
     "FOLLOW_UP_OPERATIONS",
     "JourneyProtocolError",
