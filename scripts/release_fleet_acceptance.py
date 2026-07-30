@@ -30,7 +30,15 @@ from scripts.dex_update_bridge import FOUNDATION
 
 EXPECTED_HISTORIC_CASES = 168
 COHORT_SCHEMA_VERSION = 1
+PLATFORM_MANIFEST_SCHEMA_VERSION = 1
 ACCEPTANCE_SOURCE = "scripts/release_fleet_acceptance.py"
+FIRST_PARTY_PLATFORM_JOBS = {
+    "darwin": "historic-fleet-darwin",
+    "linux": "historic-fleet-linux",
+}
+MAX_PLATFORM_MANIFEST_BYTES = 16 * 1024 * 1024
+PLATFORM_MANIFEST_NAME = "platform-manifest.json"
+PLATFORM_RECEIPT_NAME = "platform-receipt.json"
 _COHORT_FIELDS = frozenset({"schema_version", "foundation", "case_count", "cases"})
 _RELEASE_FIELDS = frozenset({"tag", "version", "commit", "tree"})
 _SEMVER = re.compile(
@@ -60,17 +68,22 @@ _RECEIPT_FIELDS = frozenset(
         "schema_version",
         "session_id",
         "platform",
+        "manifest_sha256",
+    }
+)
+_PLATFORM_MANIFEST_FIELDS = frozenset(
+    {
+        "schema_version",
+        "outcome",
+        "acceptance",
+        "session_id",
+        "platform",
         "cohort_sha256",
-        "foundation_tag",
+        "foundation",
         "follow_up_tag",
         "source_commit",
         "acceptance_source_sha256",
-        "case_count",
-        "started",
-        "completed",
-        "passed",
-        "failed",
-        "case_result_sha256",
+        "report",
     }
 )
 
@@ -378,7 +391,6 @@ def create_acceptance_session(
     acceptance_source_sha256: str,
     protocol_platforms: Sequence[str],
     key: bytes,
-    expected_count: int = EXPECTED_HISTORIC_CASES,
     session_id: str,
 ) -> dict[str, object]:
     """Create one authenticated session shared by both platform processes."""
@@ -391,7 +403,6 @@ def create_acceptance_session(
         or _HEX_64.fullmatch(session_id) is None
         or _HEX_40.fullmatch(source_commit) is None
         or release_fleet.RELEASE_TAG.fullmatch(follow_up_tag) is None
-        or expected_count < 1
     ):
         raise release_fleet.FleetError("fleet acceptance session identity is invalid")
     return _sign(
@@ -404,92 +415,118 @@ def create_acceptance_session(
             "source_commit": source_commit,
             "acceptance_source_sha256": acceptance_source_sha256,
             "platforms": list(platforms),
-            "case_count": expected_count,
-            "journey_count": expected_count * len(platforms),
+            "case_count": EXPECTED_HISTORIC_CASES,
+            "journey_count": EXPECTED_HISTORIC_CASES * len(platforms),
         },
         key,
     )
 
 
-def sign_platform_receipt(
-    session: object,
-    *,
-    platform: str,
-    case_result_sha256: str,
-    key: bytes,
-    started: int,
-    completed: int,
-    passed: int,
-    failed: int,
-) -> dict[str, object]:
-    """Authenticate a live platform verdict for later cross-process aggregation."""
+def _immutable_manifest_bytes(path: Path) -> bytes:
+    """Reopen one write-closed regular file without following aliases."""
 
-    session_payload = _verified_payload(
-        session,
-        key=key,
-        fields=_SESSION_FIELDS,
-        context="fleet acceptance session",
-    )
-    platforms = _require_protocol_platforms(
-        session_payload.get("platforms", ())  # type: ignore[arg-type]
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise release_fleet.FleetError("platform fleet manifest is not immutable") from error
+    if (
+        path.is_symlink()
+        or not stat.S_ISREG(metadata.st_mode)
+        or stat.S_IMODE(metadata.st_mode) & 0o222
+        or metadata.st_nlink != 1
+        or metadata.st_size < 1
+        or metadata.st_size > MAX_PLATFORM_MANIFEST_BYTES
+    ):
+        raise release_fleet.FleetError("platform fleet manifest is not immutable")
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+        try:
+            before = os.fstat(descriptor)
+            chunks: list[bytes] = []
+            remaining = before.st_size
+            while remaining:
+                chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            content = b"".join(chunks)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError as error:
+        raise release_fleet.FleetError("platform fleet manifest is not immutable") from error
+    identity = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_nlink",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
     )
     if (
-        platform not in platforms
-        or _HEX_64.fullmatch(case_result_sha256) is None
-        or any(
-            isinstance(value, bool) or not isinstance(value, int) or value < 0
-            for value in (started, completed, passed, failed)
-        )
+        any(getattr(metadata, field) != getattr(before, field) for field in identity)
+        or stat.S_IMODE(before.st_mode) & 0o222
+        or len(content) != before.st_size
+        or any(getattr(before, field) != getattr(after, field) for field in identity)
     ):
-        raise release_fleet.FleetError("platform fleet receipt identity is invalid")
-    foundation = session_payload["foundation"]
-    assert isinstance(foundation, Mapping)
-    return _sign(
-        {
-            "schema_version": 1,
-            "session_id": session_payload["session_id"],
-            "platform": platform,
-            "cohort_sha256": session_payload["cohort_sha256"],
-            "foundation_tag": foundation["tag"],
-            "follow_up_tag": session_payload["follow_up_tag"],
-            "source_commit": session_payload["source_commit"],
-            "acceptance_source_sha256": session_payload["acceptance_source_sha256"],
-            "case_count": session_payload["case_count"],
-            "started": started,
-            "completed": completed,
-            "passed": passed,
-            "failed": failed,
-            "case_result_sha256": case_result_sha256,
-        },
-        key,
+        raise release_fleet.FleetError("platform fleet manifest changed while it was read")
+    return content
+
+
+def _parse_platform_manifest(
+    path: Path,
+) -> tuple[bytes, dict[str, object], release_fleet.AcceptanceReport]:
+    content = _immutable_manifest_bytes(path)
+    try:
+        document = json.loads(content)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise release_fleet.FleetError("platform fleet manifest is invalid") from error
+    if (
+        not isinstance(document, Mapping)
+        or set(document) != _PLATFORM_MANIFEST_FIELDS
+        or document.get("schema_version") != PLATFORM_MANIFEST_SCHEMA_VERSION
+        or document.get("outcome") != "HISTORIC_PLATFORM_EVIDENCE"
+        or document.get("acceptance") is not False
+        or not isinstance(document.get("report"), Mapping)
+    ):
+        raise release_fleet.FleetError("platform fleet manifest shape is invalid")
+    report = release_fleet.acceptance_report_from_json(
+        json.dumps(
+            document["report"],
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
     )
+    return content, dict(document), report
 
 
-def aggregate_signed_platform_receipts(
+def aggregate_platform_evidence(
     session: object,
     receipts: Sequence[object],
+    manifest_paths: Sequence[Path],
     *,
     key: bytes,
-    protocol_platforms: Sequence[str],
-    expected_count: int = EXPECTED_HISTORIC_CASES,
+    inputs: FleetInputs,
 ) -> dict[str, object]:
-    """Produce one verdict from exact signed Darwin and Linux process receipts."""
+    """Validate serialized evidence while refusing to treat it as execution authority."""
 
-    platforms = _require_protocol_platforms(protocol_platforms)
-    session_payload = _verified_payload(
+    platforms = _require_protocol_platforms(inputs.protocol.platforms)
+    session_payload = _assert_session_matches_inputs(
         session,
         key=key,
-        fields=_SESSION_FIELDS,
-        context="fleet acceptance session",
+        inputs=inputs,
     )
-    if (
-        tuple(session_payload.get("platforms", ())) != platforms
-        or session_payload.get("case_count") != expected_count
-        or session_payload.get("journey_count") != expected_count * len(platforms)
-    ):
-        raise release_fleet.FleetError("fleet acceptance session is not bound to the protocol platforms and cohort")
+    expected_tags = {release.tag for release in inputs.releases}
+    if len(inputs.releases) != EXPECTED_HISTORIC_CASES or len(expected_tags) != EXPECTED_HISTORIC_CASES:
+        raise release_fleet.FleetError("fleet inputs do not contain the exact historic cohort")
 
-    by_platform: dict[str, dict[str, object]] = {}
+    receipts_by_platform: dict[str, dict[str, object]] = {}
     for signed in receipts:
         receipt = _verified_payload(
             signed,
@@ -498,46 +535,69 @@ def aggregate_signed_platform_receipts(
             context="platform fleet receipt",
         )
         platform = receipt.get("platform")
-        if not isinstance(platform, str) or platform in by_platform:
-            raise release_fleet.FleetError("platform receipts do not cover the exact protocol platforms")
-        by_platform[platform] = receipt
-    if set(by_platform) != set(platforms) or len(by_platform) != len(platforms):
-        raise release_fleet.FleetError("platform receipts do not cover the exact protocol platforms")
+        if not isinstance(platform, str) or platform in receipts_by_platform:
+            raise release_fleet.FleetError("platform evidence does not cover the exact protocol platforms")
+        receipts_by_platform[platform] = receipt
+
+    manifests_by_platform: dict[str, tuple[bytes, dict[str, object], release_fleet.AcceptanceReport]] = {}
+    for path in manifest_paths:
+        content, manifest, report = _parse_platform_manifest(path)
+        platform = manifest.get("platform")
+        if not isinstance(platform, str) or platform in manifests_by_platform:
+            raise release_fleet.FleetError("platform evidence does not cover the exact protocol platforms")
+        manifests_by_platform[platform] = (content, manifest, report)
+
+    if (
+        set(receipts_by_platform) != set(platforms)
+        or set(manifests_by_platform) != set(platforms)
+        or len(receipts_by_platform) != len(platforms)
+        or len(manifests_by_platform) != len(platforms)
+    ):
+        raise release_fleet.FleetError("platform evidence does not cover the exact protocol platforms")
 
     for platform in platforms:
-        receipt = by_platform[platform]
-        foundation = session_payload["foundation"]
-        assert isinstance(foundation, Mapping)
-        identity_fields = (
-            receipt.get("session_id") == session_payload["session_id"],
-            receipt.get("cohort_sha256") == session_payload["cohort_sha256"],
-            receipt.get("foundation_tag") == foundation["tag"],
-            receipt.get("follow_up_tag") == session_payload["follow_up_tag"],
-            receipt.get("source_commit") == session_payload["source_commit"],
-            receipt.get("acceptance_source_sha256") == session_payload["acceptance_source_sha256"],
-            receipt.get("case_count") == expected_count,
-            isinstance(receipt.get("case_result_sha256"), str)
-            and _HEX_64.fullmatch(str(receipt["case_result_sha256"])) is not None,
+        receipt = receipts_by_platform[platform]
+        content, manifest, report = manifests_by_platform[platform]
+        if (
+            receipt.get("schema_version") != 1
+            or receipt.get("session_id") != session_payload["session_id"]
+            or receipt.get("manifest_sha256") != hashlib.sha256(content).hexdigest()
+        ):
+            raise release_fleet.FleetError(f"{platform}: platform manifest hash is not bound to its receipt")
+        if (
+            manifest.get("session_id") != session_payload["session_id"]
+            or manifest.get("platform") != platform
+            or manifest.get("cohort_sha256") != inputs.cohort_sha256
+            or manifest.get("foundation") != inputs.foundation.identity()
+            or manifest.get("follow_up_tag") != inputs.follow_up.tag
+            or manifest.get("source_commit") != inputs.source_commit
+            or manifest.get("acceptance_source_sha256") != inputs.acceptance_source_sha256
+        ):
+            raise release_fleet.FleetError(f"{platform}: platform manifest is not bound to the session")
+        assert_platform_report_bound(
+            report,
+            protocol=inputs.protocol,
+            running_platform=platform,
+            expected_start_tags=expected_tags,
         )
-        if not all(identity_fields):
-            raise release_fleet.FleetError(f"{platform}: platform fleet receipt is not bound to the session")
-        counts = tuple(receipt.get(field) for field in ("started", "completed", "passed", "failed"))
-        if counts != (expected_count, expected_count, expected_count, 0):
-            raise release_fleet.FleetError(f"{platform}: platform fleet receipt is incomplete or failed")
+        if len(report.cases) != EXPECTED_HISTORIC_CASES:
+            raise release_fleet.FleetError(f"{platform}: platform manifest has an invalid case count")
 
-    total = expected_count * len(platforms)
+    total = EXPECTED_HISTORIC_CASES * len(platforms)
     return {
-        "outcome": "HISTORIC_FLEET_ACCEPTED",
-        "acceptance": True,
+        "outcome": "HISTORIC_FLEET_EVIDENCE_AGGREGATED",
+        "acceptance": False,
+        "authority_complete": False,
         "platforms": list(platforms),
-        "case_count": expected_count,
+        "case_count": EXPECTED_HISTORIC_CASES,
         "journey_count": total,
-        "discovered": expected_count,
+        "discovered": EXPECTED_HISTORIC_CASES,
         "started": total,
         "completed": total,
         "passed": total,
         "failed": 0,
         "session_id": session_payload["session_id"],
+        "required_job_conclusions": dict(FIRST_PARTY_PLATFORM_JOBS),
     }
 
 
@@ -614,24 +674,23 @@ def _platform_receipt_boundary():
     evidence_validator = release_fleet.assert_evidence_bound
     complete_validator = release_fleet.assert_complete
     platform_validator = assert_platform_report_bound
+    if sys.platform == "darwin":
+        host_platform = "darwin"
+    elif sys.platform.startswith("linux"):
+        host_platform = "linux"
+    else:
+        host_platform = ""
 
     def finalize_live_platform_execution(
         execution: PlatformExecution,
         *,
         repo: Path,
         evidence_root: Path,
-        foundation: release_fleet.ImmutableRelease,
-        follow_up: release_fleet.ImmutableRelease,
-        protocol: object,
-        expected_start_tags: set[str],
+        inputs: FleetInputs,
         session: object,
         key: bytes,
-        cohort_sha256: str,
-        source_commit: str,
-        acceptance_source_sha256: str,
-        expected_count: int = EXPECTED_HISTORIC_CASES,
     ) -> dict[str, object]:
-        """Validate live authority, then and only then authenticate one receipt."""
+        """Validate live authority, then write one immutable evidence pair."""
 
         if (
             release_fleet.assert_evidence_bound is not evidence_validator
@@ -639,60 +698,105 @@ def _platform_receipt_boundary():
             or globals().get("assert_platform_report_bound") is not platform_validator
         ):
             raise release_fleet.FleetError("fleet acceptance validator changed during the live process")
+        expected_start_tags = {release.tag for release in inputs.releases}
+        if (
+            len(inputs.releases) != EXPECTED_HISTORIC_CASES
+            or len(expected_start_tags) != EXPECTED_HISTORIC_CASES
+        ):
+            raise release_fleet.FleetError("fleet inputs do not contain the exact historic cohort")
         platform_validator(
             execution.report,
-            protocol=protocol,
-            running_platform=execution.report.platforms[0] if len(execution.report.platforms) == 1 else "",
+            protocol=inputs.protocol,
+            running_platform=host_platform,
             expected_start_tags=expected_start_tags,
         )
         evidence_validator(
             execution.report,
             repo=repo,
             evidence_root=evidence_root,
-            foundation=foundation,
-            follow_up=follow_up,
+            foundation=inputs.foundation,
+            follow_up=inputs.follow_up,
             executor_runs=execution.executor_runs,
         )
 
         counts = execution.counts
         if counts != {
-            "discovered": expected_count,
-            "started": expected_count,
-            "completed": expected_count,
-            "passed": expected_count,
+            "discovered": EXPECTED_HISTORIC_CASES,
+            "started": EXPECTED_HISTORIC_CASES,
+            "completed": EXPECTED_HISTORIC_CASES,
+            "passed": EXPECTED_HISTORIC_CASES,
             "failed": 0,
         }:
             raise release_fleet.FleetError("live platform execution is incomplete or failed")
-        session_payload = _verified_payload(
+        session_payload = _assert_session_matches_inputs(
             session,
             key=key,
-            fields=_SESSION_FIELDS,
-            context="fleet acceptance session",
+            inputs=inputs,
         )
         if (
-            session_payload.get("cohort_sha256") != cohort_sha256
-            or session_payload.get("foundation") != foundation.identity()
-            or session_payload.get("follow_up_tag") != follow_up.tag
-            or session_payload.get("source_commit") != source_commit
-            or session_payload.get("acceptance_source_sha256") != acceptance_source_sha256
-            or session_payload.get("case_count") != expected_count
-            or tuple(session_payload.get("platforms", ())) != tuple(getattr(protocol, "platforms", ()))
+            execution.report.foundation_tag != inputs.foundation.tag
+            or execution.report.follow_up_tag != inputs.follow_up.tag
         ):
-            raise release_fleet.FleetError("live platform execution is not bound to the acceptance session")
-        cases = [
+            raise release_fleet.FleetError("live platform execution is not bound to the immutable releases")
+        if len(execution.report.cases) != EXPECTED_HISTORIC_CASES:
+            raise release_fleet.FleetError("live platform execution does not have exactly 168 final starts")
+        cases: list[dict[str, object]] = [
             {field: getattr(case, field) for field in sorted(release_fleet.CASE_RESULT_KEYS)}
             for case in execution.report.cases
         ]
-        return sign_platform_receipt(
-            session,
-            platform=execution.report.platforms[0],
-            case_result_sha256=hashlib.sha256(_canonical_bytes(cases)).hexdigest(),
-            key=key,
-            started=counts["started"],
-            completed=counts["completed"],
-            passed=counts["passed"],
-            failed=counts["failed"],
+        manifest = {
+            "schema_version": PLATFORM_MANIFEST_SCHEMA_VERSION,
+            "outcome": "HISTORIC_PLATFORM_EVIDENCE",
+            "acceptance": False,
+            "session_id": session_payload["session_id"],
+            "platform": host_platform,
+            "cohort_sha256": inputs.cohort_sha256,
+            "foundation": inputs.foundation.identity(),
+            "follow_up_tag": inputs.follow_up.tag,
+            "source_commit": inputs.source_commit,
+            "acceptance_source_sha256": inputs.acceptance_source_sha256,
+            "report": {
+                "foundation_tag": execution.report.foundation_tag,
+                "follow_up_tag": execution.report.follow_up_tag,
+                "platforms": list(execution.report.platforms),
+                "cases": cases,
+            },
+        }
+        try:
+            root_metadata = evidence_root.lstat()
+        except OSError as error:
+            raise release_fleet.FleetError("platform fleet output is unsafe") from error
+        if (
+            evidence_root.is_symlink()
+            or not stat.S_ISDIR(root_metadata.st_mode)
+            or stat.S_IMODE(root_metadata.st_mode) != 0o700
+        ):
+            raise release_fleet.FleetError("platform fleet output is unsafe")
+        manifest_output = evidence_root / PLATFORM_MANIFEST_NAME
+        receipt_output = evidence_root / PLATFORM_RECEIPT_NAME
+        manifest_bytes = _json_bytes(manifest)
+        for output in (manifest_output, receipt_output):
+            if output.exists() or output.is_symlink():
+                raise release_fleet.FleetError(f"acceptance output already exists: {output}")
+        _write_exclusive(manifest_output, manifest_bytes, mode=0o444)
+        manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+        receipt = _sign(
+            {
+                "schema_version": 1,
+                "session_id": session_payload["session_id"],
+                "platform": host_platform,
+                "manifest_sha256": manifest_sha256,
+            },
+            key,
         )
+        _write_exclusive(receipt_output, _json_bytes(receipt), mode=0o444)
+        return {
+            "acceptance": False,
+            "platform": host_platform,
+            "manifest_sha256": manifest_sha256,
+            "manifest_output": str(manifest_output),
+            "receipt_output": str(receipt_output),
+        }
 
     return finalize_live_platform_execution
 
@@ -779,6 +883,28 @@ def _read_json(path: Path, *, context: str) -> object:
         raise release_fleet.FleetError(f"{context} is unavailable or invalid") from error
 
 
+def _create_private_run_root(path: Path) -> None:
+    """Create the controller-owned root that may contain disposable fixtures."""
+
+    if path.exists() or path.is_symlink():
+        raise release_fleet.FleetError(f"platform fleet output already exists: {path}")
+    parent = path.parent
+    try:
+        parent_metadata = parent.lstat()
+    except OSError as error:
+        raise release_fleet.FleetError(f"platform fleet output parent is unavailable: {parent}") from error
+    if parent.is_symlink() or not stat.S_ISDIR(parent_metadata.st_mode):
+        raise release_fleet.FleetError(f"platform fleet output parent is unsafe: {parent}")
+    try:
+        path.mkdir(mode=0o700)
+        path.chmod(0o700)
+        metadata = path.lstat()
+    except OSError as error:
+        raise release_fleet.FleetError(f"platform fleet output cannot be created: {path}") from error
+    if path.is_symlink() or not stat.S_ISDIR(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) != 0o700:
+        raise release_fleet.FleetError(f"platform fleet output is unsafe: {path}")
+
+
 def _assert_session_matches_inputs(
     session: object,
     *,
@@ -845,16 +971,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     session.add_argument("--key-output", type=Path, required=True)
     platform = subcommands.add_parser(
         "platform",
-        help="run all frozen starts on this platform and mint one live-bound receipt",
+        help="run all frozen starts in one process and write live-validated platform evidence",
     )
     _add_bound_input_arguments(platform)
     platform.add_argument("--session", type=Path, required=True)
     platform.add_argument("--key", type=Path, required=True)
     platform.add_argument("--output", type=Path, required=True)
-    platform.add_argument("--receipt-output", type=Path, required=True)
     aggregate = subcommands.add_parser(
         "aggregate",
-        help="verify exact Darwin and Linux receipts and produce one fleet verdict",
+        help="validate serialized Darwin and Linux evidence without minting acceptance",
     )
     _add_bound_input_arguments(aggregate)
     aggregate.add_argument("--session", type=Path, required=True)
@@ -865,6 +990,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         required=True,
         help="signed platform receipt; provide once for Darwin and once for Linux",
+    )
+    aggregate.add_argument(
+        "--manifest",
+        action="append",
+        type=Path,
+        required=True,
+        help="immutable platform manifest; provide once for Darwin and once for Linux",
     )
     aggregate.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -940,12 +1072,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _assert_session_matches_inputs(signed_session, key=key, inputs=inputs)
 
     if args.command == "platform":
-        if args.output.exists() or args.output.is_symlink():
-            raise release_fleet.FleetError(f"platform fleet output already exists: {args.output}")
-        try:
-            args.output.mkdir(mode=0o700)
-        except OSError as error:
-            raise release_fleet.FleetError(f"platform fleet output cannot be created: {args.output}") from error
+        _create_private_run_root(args.output)
         running_platform = _running_platform()
         execution = collect_platform_runs(
             args.repo,
@@ -955,33 +1082,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             follow_up_tag=inputs.follow_up.tag,
             running_platform=running_platform,
         )
-        receipt = finalize_live_platform_execution(
+        finalized = finalize_live_platform_execution(
             execution,
             repo=args.repo,
             evidence_root=args.output.resolve(),
-            foundation=inputs.foundation,
-            follow_up=inputs.follow_up,
-            protocol=inputs.protocol,
-            expected_start_tags={release.tag for release in inputs.releases},
+            inputs=inputs,
             session=signed_session,
             key=key,
-            cohort_sha256=inputs.cohort_sha256,
-            source_commit=inputs.source_commit,
-            acceptance_source_sha256=inputs.acceptance_source_sha256,
-        )
-        _write_exclusive(
-            args.receipt_output,
-            _json_bytes(receipt),
-            mode=0o644,
         )
         print(
             json.dumps(
                 {
-                    "outcome": "HISTORIC_PLATFORM_ACCEPTED",
+                    "outcome": "HISTORIC_PLATFORM_EVIDENCE",
                     "acceptance": False,
                     "platform": running_platform,
                     **execution.counts,
-                    "receipt_output": str(args.receipt_output),
+                    "manifest_output": finalized["manifest_output"],
+                    "receipt_output": finalized["receipt_output"],
+                    "manifest_sha256": finalized["manifest_sha256"],
                 },
                 indent=2,
                 sort_keys=True,
@@ -990,13 +1108,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     receipts = [_read_json(path, context=f"platform fleet receipt {path}") for path in args.receipt]
-    result = aggregate_signed_platform_receipts(
+    result = aggregate_platform_evidence(
         signed_session,
         receipts,
+        args.manifest,
         key=key,
-        protocol_platforms=inputs.protocol.platforms,
+        inputs=inputs,
     )
-    _write_exclusive(args.output, _json_bytes(result), mode=0o644)
+    _write_exclusive(args.output, _json_bytes(result), mode=0o444)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
