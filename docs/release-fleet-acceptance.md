@@ -92,12 +92,11 @@ gate bounded rather than storing 120 full repositories on disk.
 
 ## Establish the executable-journey prerequisite
 
-The `journey` command currently **does not execute an update**. It reads and
-hashes the exact `/dex-update` skill and rescue material from the historic and
-foundation immutable tags, writes a failed-at-the-boundary transcript, and
-stops. This is intentional: those release surfaces are Markdown instructions,
-not a machine-callable API. Treating them as an API would manufacture a
-successful-looking update path that no released user can actually invoke.
+The `journey` command executes one case only when the follow-up distribution
+publishes the closed protocol and its catalog points to exact source bytes for
+the runner, executor, and pinned bridge. A release missing any of those pieces
+fails before a fixture is built. The command never promotes the historic
+Markdown `/dex-update` instructions into an API.
 
 ```bash
 python3 scripts/release_fleet.py journey --repo . --output "$fleet_root" \
@@ -106,36 +105,43 @@ python3 scripts/release_fleet.py journey --repo . --output "$fleet_root" \
   --follow-up-tag dist/release/v1.80.5-EXACTFOLLOWUP
 ```
 
-The repository now has the canonical protocol source at
+The repository has the canonical protocol source at
 `System/.update-journey-v1.json`, with a strict parser in
 `core/update/journey_protocol.py`. It is a closed operation vocabulary, not a
 shell-command format. Version 1 permits only:
 
-- the reviewed pinned-foundation bridge, with its exact source SHA-256 and two
-  explicit `APPLY` approvals;
+- the reviewed pinned-foundation bridge, with its exact source SHA-256 and up
+  to two conditional `APPLY` approvals (topology and delivery previews are
+  requested only when the actual fixture state requires them);
 - `deliver_latest_release`, `build_and_preview_delivered_release`, then
   `execute_approved_delivered_release`, with one fresh `APPLY` approval; and
 - the fixed evidence order needed for refusal, bridge provenance, preview,
   receipt, installed identity, Doctor, and released-platform smoke proof.
 
-The root also binds the fleet runner bytes and bridge bytes in the immutable
+The root binds the fleet runner, executor, and bridge bytes in the immutable
 release catalog's publisher `source_commit`. A release that merely carries a
 plausible JSON file, points at unavailable source, changes an adapter or
-operation, or has a mismatched hash is invalid. Even a valid protocol remains
-`machine_executable: false`: this runner does not yet contain the released
-executor that can perform both hops and own the resulting evidence.
+operation, or has a mismatched hash is invalid.
 
-This protocol is currently LOCAL. Until an immutable public release contains
-it and a separately reviewed released executor exists, no synthetic fixture is
-installed and no bridge, lifecycle method, Git merge, or handwritten route
-wrapper is allowed to run. Publishing the contract is one prerequisite, not
-fleet acceptance: the real foundation and follow-up releases must still exist
-and every historic case must still run.
+The executor at `scripts/release_fleet_executor.py` verifies those released
+bytes before calling the pinned bridge. It then invokes only the three declared
+lifecycle operations, captures their real previews and receipts, verifies the
+installed release markers after each hop, runs the installed Doctor and smoke
+suite, and hashes user-owned content before and after. It writes the evidence
+files and transcript itself. The bridge approval count in the transcript is the
+number of prompts that actually occurred, never a fixed or inferred claim.
 
-The resulting `<case>.evidence/` directory is beside—not inside—a future
-fixture. Its content-addressed manifest records the exact release identities,
-ordered commands, and artifact hashes. A failed prerequisite attempt is useful
-diagnostic evidence, never fleet acceptance evidence.
+The executor returns a process-local authority object. Its JSON artifacts are
+review material, not authority: reserializing, editing, or independently
+constructing the same documents cannot unlock acceptance. The resulting
+`<case>.evidence/` directory is beside—not inside—the disposable fixture. Its
+content-addressed manifest records the exact executor identity, release
+identities, ordered operations, and artifact hashes.
+
+The protocol and executor are currently LOCAL. Public v1.80.5 contains neither,
+so its surface remains `machine_executable: false`. Publishing both is one
+prerequisite, not fleet acceptance: the real follow-up release must exist and
+every historic case must still run on every declared platform.
 
 ## Validate the finished evidence
 
@@ -149,16 +155,15 @@ python3 scripts/release_fleet.py check-report --repo . \
 
 The command first verifies the generated starting manifest against the current
 immutable release trees, then requires that many cases on every declared
-platform. It cannot pass while the required released route says
-`machine_executable: false`, regardless of how internally consistent a report,
-manifest, transcript, or artifact set appears. A valid published protocol still
-does not unlock the checker: only a future released executor that owns the
-two-hop run and evidence can do that. The protocol must also bind its runner and
-bridge bytes to the release catalog's immutable source commit. Finished evidence
-still requires ordered commands and SHA-256-bound artifacts: the transcript,
-release-surface snapshots, receipts, Doctor reports, and smoke/platform evidence.
-Paths, symlinks, malformed JSON, mismatched identities, incomplete platform
-coverage, and unknown/broken Doctor results all fail the report.
+platform. It remains fail-closed for a report read from disk: no internally
+consistent report, manifest, transcript, receipt, or artifact set can recreate
+the executor's live process authority. Fleet orchestration must keep each
+`ExecutorRun` in the process that performs the corresponding journey and pass
+those live results into the validator. Finished evidence still requires ordered
+operations and SHA-256-bound artifacts: the transcript, release-surface
+snapshots, receipts, Doctor reports, and smoke/platform evidence. Paths,
+symlinks, malformed JSON, mismatched identities, incomplete platform coverage,
+and unknown/broken Doctor results all fail the report.
 
 ## Claim language
 

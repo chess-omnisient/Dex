@@ -12,6 +12,10 @@
     "follow-up-doctor",
     "follow-up-smoke"
   ],
+  "executor": {
+    "sha256": "f2935ecb3230213934ee9f4aaaf2c5ed0d77df3c7f15dc33338120b62b5d78d6",
+    "source_path": "scripts/release_fleet_executor.py"
+  },
   "foundation_to_follow_up": {
     "adapter": "lifecycle-delivered-release-v1",
     "approval": {
@@ -48,7 +52,7 @@
     "linux"
   ],
   "runner": {
-    "sha256": "77f49a9a565d99db379b2457ef891fcbe7fa4b8a9636baba75fd7fd19bcdf84e",
+    "sha256": "91a0648ebb6036eaf477776ee1ad32bdd4150f6801cc9a79d81675cf71f0bd4b",
     "source_path": "scripts/release_fleet.py"
   },
   "schema_version": 1

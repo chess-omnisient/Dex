@@ -79,7 +79,15 @@ _HEX = re.compile(r"^[0-9a-f]{40}$")
 UPDATE_SKILL_RELATIVE = ".claude/skills/dex-update/SKILL.md"
 UPDATE_RESCUE_RELATIVE = "docs/UPDATE-RESCUE.md"
 EVIDENCE_MANIFEST_KEYS = frozenset(
-    {"schema_version", "starting_release", "foundation_release", "follow_up_release", "events", "artifacts"}
+    {
+        "schema_version",
+        "executor",
+        "starting_release",
+        "foundation_release",
+        "follow_up_release",
+        "events",
+        "artifacts",
+    }
 )
 RUNNER_ARTIFACT_KEYS = frozenset(
     {
@@ -394,6 +402,7 @@ def _verify_released_protocol_artifacts(
     source_commit = _released_protocol_source_commit(repo, release.tag)
     for label, artifact in (
         ("fleet runner", protocol.runner),
+        ("journey executor", protocol.executor),
         ("foundation bridge", protocol.bridge.artifact),
     ):
         try:
@@ -442,6 +451,7 @@ def shipped_update_surface(repo: Path, release: DistributionRelease | ImmutableR
         "sha256": None,
         "schema_version": None,
         "controller": None,
+        "executor": None,
     }
     if protocol_bytes is not None:
         try:
@@ -457,6 +467,10 @@ def shipped_update_surface(repo: Path, release: DistributionRelease | ImmutableR
             "sha256": hashlib.sha256(protocol_bytes).hexdigest(),
             "schema_version": protocol.schema_version,
             "controller": protocol.controller,
+            "executor": {
+                "source_path": protocol.executor.source_path,
+                "sha256": protocol.executor.sha256,
+            },
             "source_commit": source_commit,
         }
     identity = release.identity() if isinstance(release, ImmutableRelease) else {
@@ -476,10 +490,9 @@ def shipped_update_surface(repo: Path, release: DistributionRelease | ImmutableR
         "preview_approval_receipt": required,
         "delivery_operations": delivery,
         "journey_protocol": protocol_surface,
-        # A valid protocol is a closed declaration, not proof that this runner
-        # executed either update hop. Keep acceptance locked until a separately
-        # released executor owns the evidence-producing journey.
-        "machine_executable": False,
+        # This describes released capability, not successful execution.
+        # Acceptance still requires a live, process-local ExecutorRun.
+        "machine_executable": protocol_bytes is not None,
     }
 
 
@@ -490,9 +503,36 @@ def _has_transaction_receipt(value: object) -> bool:
         return False
     if isinstance(value.get("transaction_id"), str) and value["transaction_id"]:
         return True
-    nested = value.get("receipt")
-    return isinstance(nested, Mapping) and isinstance(nested.get("transaction_id"), str) and bool(
-        nested["transaction_id"]
+    return any(
+        _has_transaction_receipt(nested)
+        for nested in value.values()
+        if isinstance(nested, Mapping)
+    )
+
+
+def _valid_foundation_bridge_receipt(
+    value: object,
+    *,
+    expected_foundation: Mapping[str, object],
+    approval_count: int,
+) -> bool:
+    """Accept either the exact resume receipt or an approved lifecycle mutation."""
+
+    if (
+        not isinstance(value, Mapping)
+        or set(value)
+        != {"foundation", "topology_receipt", "delivery_receipt"}
+        or value["foundation"] != expected_foundation
+    ):
+        return False
+    already_installed = {"skipped": "foundation-already-installed"}
+    if (
+        value["topology_receipt"] == already_installed
+        and value["delivery_receipt"] == already_installed
+    ):
+        return approval_count == 0
+    return approval_count > 0 and _has_transaction_receipt(
+        value["delivery_receipt"]
     )
 
 
@@ -1090,8 +1130,8 @@ def classify_historic_update_surface(repo: Path, release: DistributionRelease) -
                 f"{release.tag}: released journey protocol is invalid: {error}"
             ) from error
         _verify_released_protocol_artifacts(repo, release, parsed_protocol)
-        route = "machine-protocol-declared-executor-missing"
-        bridge_requirement = "released-journey-executor-required"
+        route = "machine-protocol-released-executor"
+        bridge_requirement = "released-journey-executor"
     elif skill is None:
         route = "missing-dex-update-skill"
         bridge_requirement = "unsupported-without-published-route"
@@ -1107,7 +1147,7 @@ def classify_historic_update_surface(repo: Path, release: DistributionRelease) -
     return {
         "route_classification": route,
         "bridge_requirement": bridge_requirement,
-        "machine_executable": False,
+        "machine_executable": protocol is not None,
         "dex_update_skill": {
             "path": UPDATE_SKILL_RELATIVE,
             "status": "present" if skill is not None else "missing",
@@ -1472,15 +1512,15 @@ def run_journey(
     starting_tag: str,
     foundation_tag: str,
     follow_up_tag: str,
-) -> None:
-    """Fail closed until an immutable release publishes the journey executor.
+) -> object:
+    """Build one fixture and delegate the closed journey to its released executor."""
 
-    The only evidence emitted today is a hash of the exact shipped `/dex-update`
-    and rescue material.  The runner never promotes Markdown instructions into
-    commands, invokes lifecycle code, or accepts a valid protocol or external
-    bridge as proof that either hop executed.
-    """
-
+    if sys.platform == "darwin":
+        journey_platform = "darwin"
+    elif sys.platform.startswith("linux"):
+        journey_platform = "linux"
+    else:
+        raise FleetError("released journey executor supports macOS and Linux only")
     releases = {release.tag: release for release in discover_distribution_releases(repo)}
     start = releases.get(starting_tag)
     if start is None:
@@ -1489,71 +1529,85 @@ def run_journey(
     follow_up = resolve_immutable_release(repo, follow_up_tag)
     if foundation.tag == follow_up.tag or foundation.commit == follow_up.commit:
         raise FleetError("foundation and follow-up must be different immutable releases")
+    protocol_bytes = _optional_tag_file(repo, follow_up.tag, UPDATE_JOURNEY_RELATIVE)
+    if protocol_bytes is None:
+        raise FleetError("follow-up release has no released journey executor")
+    try:
+        protocol = load_update_journey_protocol(protocol_bytes)
+    except JourneyProtocolError as error:
+        raise FleetError(f"follow-up released journey protocol is invalid: {error}") from error
+    if protocol.foundation != foundation.identity():
+        raise FleetError("released journey protocol names a different foundation")
+    source_commit = _verify_released_protocol_artifacts(repo, follow_up, protocol)
+    for label, artifact, running_path in (
+        ("fleet runner", protocol.runner, Path(__file__).resolve()),
+        (
+            "journey executor",
+            protocol.executor,
+            PROJECT_ROOT / protocol.executor.source_path,
+        ),
+        (
+            "foundation bridge",
+            protocol.bridge.artifact,
+            PROJECT_ROOT / protocol.bridge.artifact.source_path,
+        ),
+    ):
+        running = running_path.read_bytes()
+        released = _tag_file(repo, source_commit, artifact.source_path)
+        if (
+            hashlib.sha256(running).hexdigest() != artifact.sha256
+            or running != released
+        ):
+            raise FleetError(
+                f"running {label} bytes do not match the released journey source"
+            )
+
     # Evidence must not become an untracked vault file that influences either
-    # release preview.  Keep it beside a future disposable fixture.
+    # release preview. Keep it beside the disposable fixture.
     evidence_relative = f"{safe_case_name(start)}.evidence"
     evidence_root = output / evidence_relative
     if evidence_root.exists():
         raise FleetError("journey evidence directory must be empty")
-    transcript_path = evidence_root / "journey-transcript.json"
-    result_path = evidence_root / "journey-result.json"
-    events: list[dict[str, object]] = []
-    result: dict[str, object] = {
-        "starting_tag": start.tag,
-        "foundation_tag": foundation.tag,
-        "follow_up_tag": follow_up.tag,
-        "transcript_path": f"{evidence_relative}/journey-transcript.json",
-    }
-
+    case_name = safe_case_name(start)
+    vault = output / case_name
+    runtime_root = output / f"{case_name}.runtime"
+    historic_surface = shipped_update_surface(repo, start)
+    foundation_surface = shipped_update_surface(repo, foundation)
+    node_runtime = resolve_trusted_node_runtime()
+    python_runtime = resolve_trusted_python_runtime()
+    environment = _case_environment(
+        vault,
+        runtime_root,
+        node_runtime=node_runtime,
+        python_runtime=python_runtime,
+    )
     try:
-        historic_surface = shipped_update_surface(repo, start)
-        foundation_surface = shipped_update_surface(repo, foundation)
-        _write_json(evidence_root / "historic-update-surface.json", historic_surface)
-        _write_json(evidence_root / "foundation-update-surface.json", foundation_surface)
-        events.extend(
-            (
-                {
-                    "id": "historic-update-surface",
-                    "command": ["git", "show", f"{start.tag}:{UPDATE_SKILL_RELATIVE}"],
-                    "release": historic_surface["release"],
-                    "skill_sha256": historic_surface["skill_sha256"],
-                    "rescue_sha256": historic_surface["rescue_sha256"],
-                },
-                {
-                    "id": "foundation-update-surface",
-                    "command": ["git", "show", f"{foundation.tag}:{UPDATE_SKILL_RELATIVE}"],
-                    "release": foundation_surface["release"],
-                    "skill_sha256": foundation_surface["skill_sha256"],
-                    "rescue_sha256": foundation_surface["rescue_sha256"],
-                },
-            )
+        case = build_installed_fixture(
+            repo,
+            start,
+            output,
+            environment=environment,
         )
-        result["historic_update_surface"] = historic_surface
-        result["foundation_update_surface"] = foundation_surface
-        raise FleetError(
-            "published journey executor is unavailable; the current runner records update "
-            "surfaces but cannot execute either hop"
+        resolve_fixture_python(case.vault, trusted_python=python_runtime)
+        from scripts import release_fleet_executor
+
+        return release_fleet_executor.execute_journey(
+            repo_root=repo,
+            source_commit=source_commit,
+            vault_root=case.vault,
+            evidence_root=evidence_root,
+            starting_release=historic_surface["release"],
+            foundation_release=foundation.identity(),
+            follow_up_release=follow_up.identity(),
+            protocol=protocol,
+            historic_surface=historic_surface,
+            foundation_surface=foundation_surface,
+            user_owned_paths=tuple(USER_FIXTURES),
+            platform=journey_platform,
         )
-    except (FleetError, OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as error:
-        result["failure"] = str(error)
-        _write_json(transcript_path, {"events": events})
-        artifacts: dict[str, Path] = {"transcript": transcript_path}
-        if (evidence_root / "historic-update-surface.json").is_file():
-            artifacts["historic_update_surface"] = evidence_root / "historic-update-surface.json"
-        if (evidence_root / "foundation-update-surface.json").is_file():
-            artifacts["foundation_update_surface"] = evidence_root / "foundation-update-surface.json"
-        manifest_path, manifest_sha256 = _write_evidence_manifest(
-            evidence_root,
-            start=historic_surface if "historic_surface" in locals() else {"tag": start.tag},
-            foundation=foundation,
-            follow_up=follow_up,
-            events=events,
-            artifacts=artifacts,
-        )
-        result["evidence_manifest_path"] = manifest_path
-        result["evidence_manifest_sha256"] = manifest_sha256
-        _write_json(result_path, result)
-        raise
+    finally:
+        _remove_disposable_fixture(vault, output)
+        _remove_disposable_fixture(runtime_root, output)
 
 
 def assert_complete(report: AcceptanceReport, expected_start_tags: set[str]) -> None:
@@ -1644,8 +1698,32 @@ def assert_evidence_bound(
     evidence_root: Path,
     foundation: ImmutableRelease,
     follow_up: ImmutableRelease,
+    executor_runs: Sequence[object] = (),
 ) -> None:
     """Open runner-owned evidence and bind it to released source bytes."""
+
+    from scripts import release_fleet_executor
+
+    if len(executor_runs) != len(report.cases) or any(
+        not release_fleet_executor.is_authoritative_executor_run(run)
+        for run in executor_runs
+    ):
+        raise FleetError(
+            "released journey executor authority is required in this live process; "
+            "serialized evidence cannot substitute for execution"
+        )
+    authoritative_cases = [run.case for run in executor_runs]  # type: ignore[attr-defined]
+    expected_cases = [
+        {
+            field: getattr(case, field)
+            for field in CASE_RESULT_KEYS
+        }
+        for case in report.cases
+    ]
+    if authoritative_cases != expected_cases:
+        raise FleetError(
+            "released journey executor authority does not match the acceptance report"
+        )
 
     releases = {release.tag: release for release in discover_distribution_releases(repo)}
 
@@ -1664,6 +1742,7 @@ def assert_evidence_bound(
         protocol = load_update_journey_protocol(
             _tag_file(repo, follow_up.tag, UPDATE_JOURNEY_RELATIVE)
         )
+        source_commit = _verify_released_protocol_artifacts(repo, follow_up, protocol)
         if protocol.foundation != foundation.identity():
             raise FleetError(
                 f"{case.starting_tag}: released journey protocol names a different foundation"
@@ -1680,6 +1759,22 @@ def assert_evidence_bound(
         )
         if (
             manifest["schema_version"] != 1
+            or manifest["executor"]
+            != {
+                "source_commit": source_commit,
+                "executor": {
+                    "source_path": protocol.executor.source_path,
+                    "sha256": protocol.executor.sha256,
+                },
+                "fleet_runner": {
+                    "source_path": protocol.runner.source_path,
+                    "sha256": protocol.runner.sha256,
+                },
+                "foundation_bridge": {
+                    "source_path": protocol.bridge.artifact.source_path,
+                    "sha256": protocol.bridge.artifact.sha256,
+                },
+            }
             or not isinstance(manifest["starting_release"], Mapping)
             or manifest["starting_release"].get("tag") != case.starting_tag
             or manifest["foundation_release"] != foundation.identity()
@@ -1722,21 +1817,56 @@ def assert_evidence_bound(
             or events["historic-update-surface"].get("rescue_sha256")
             != expected_historic_surface["rescue_sha256"]
             or events["historic-route-refusal"].get("release") != expected_historic_surface["release"]
+            or events["historic-route-refusal"].get("command")
+            != [protocol.executor.source_path, "classify-historic-route"]
             or events["bridge-foundation"].get("release") != foundation.identity()
+            or events["bridge-foundation"].get("command")
+            != [protocol.executor.source_path, protocol.bridge.adapter]
             or events["foundation-update-surface"].get("release") != foundation.identity()
+            or events["foundation-update-surface"].get("command")
+            != ["git", "show", f"{foundation.tag}:{UPDATE_SKILL_RELATIVE}"]
             or events["foundation-update-surface"].get("skill_sha256")
             != expected_foundation_surface["skill_sha256"]
             or events["foundation-update-surface"].get("rescue_sha256")
             != expected_foundation_surface["rescue_sha256"]
             or events["foundation-preview"].get("from_release") != foundation.identity()
             or events["foundation-preview"].get("target_release") != follow_up.identity()
+            or events["foundation-preview"].get("command")
+            != list(protocol.follow_up.operations[:2])
             or events["foundation-approval"].get("target_release") != follow_up.identity()
             or events["foundation-approval"].get("answer") != "APPLY"
+            or events["foundation-approval"].get("command")
+            != [protocol.executor.source_path, "approve-follow-up"]
             or events["foundation-receipt"].get("release") != follow_up.identity()
+            or events["foundation-receipt"].get("command")
+            != [protocol.follow_up.operations[2]]
             or events["follow-up-installed"].get("release") != follow_up.identity()
+            or events["follow-up-installed"].get("command")
+            != [protocol.executor.source_path, "verify-installed-release"]
+            or events["follow-up-doctor"].get("command")
+            != [protocol.executor.source_path, "doctor"]
+            or events["follow-up-smoke"].get("command")
+            != [protocol.executor.source_path, "smoke"]
             or events["follow-up-smoke"].get("platform") != case.platform
         ):
             raise FleetError(f"{case.starting_tag}: evidence manifest commands or identities are not bound")
+        bridge_approvals = events["bridge-foundation"].get("approvals")
+        approval_count = events["bridge-foundation"].get("approval_count")
+        if (
+            not isinstance(approval_count, int)
+            or approval_count < 0
+            or approval_count > protocol.bridge.approval_count
+            or not isinstance(bridge_approvals, list)
+            or approval_count != len(bridge_approvals)
+            or any(
+                not isinstance(approval, Mapping)
+                or set(approval) != {"prompt", "answer"}
+                or not isinstance(approval["prompt"], str)
+                or approval["answer"] != protocol.bridge.approval_word
+                for approval in bridge_approvals
+            )
+        ):
+            raise FleetError(f"{case.starting_tag}: bridge approvals are not exact")
         artifacts = manifest["artifacts"]
         if set(artifacts) != RUNNER_ARTIFACT_KEYS:
             raise FleetError(f"{case.starting_tag}: runner manifest has an invalid artifact set")
@@ -1778,8 +1908,13 @@ def assert_evidence_bound(
         follow_receipt = _read_evidence_json(
             evidence_root, case.follow_up_receipt_path, f"{case.starting_tag} follow-up receipt"
         )
-        if foundation_receipt["release"] != foundation.identity() or not _has_transaction_receipt(
-            foundation_receipt["receipt"]
+        if (
+            foundation_receipt["release"] != foundation.identity()
+            or not _valid_foundation_bridge_receipt(
+                foundation_receipt["receipt"],
+                expected_foundation=foundation.identity(),
+                approval_count=approval_count,
+            )
         ):
             raise FleetError(f"{case.starting_tag}: foundation receipt is not bound to the supplied release")
         if follow_receipt["release"] != follow_up.identity() or not _has_transaction_receipt(
@@ -2000,7 +2135,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     journey = subcommands.add_parser(
         "journey",
-        help="record immutable update surfaces and fail closed until a released journey executor ships",
+        help="run one released, closed historic update journey",
     )
     journey.add_argument("--repo", type=Path, required=True)
     journey.add_argument("--output", type=Path, required=True)
@@ -2037,14 +2172,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.command == "journey":
-        run_journey(
+        run = run_journey(
             args.repo,
             output=args.output,
             starting_tag=args.starting_tag,
             foundation_tag=args.foundation_tag,
             follow_up_tag=args.follow_up_tag,
         )
-        raise FleetError("journey returned without a released journey executor")
+        print(
+            json.dumps(
+                {
+                    "outcome": "JOURNEY_COMPLETE_NON_ACCEPTANCE",
+                    "acceptance": False,
+                    "case": run.case,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
 
     if args.command == "survey":
         releases = releases_from_starting_manifest(

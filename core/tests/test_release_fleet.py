@@ -676,7 +676,11 @@ def _tag_protocol_control_release(
     foundation: release_fleet.ImmutableRelease,
     version: str,
 ) -> str:
-    for relative in ("scripts/dex_update_bridge.py", "scripts/release_fleet.py"):
+    for relative in (
+        "scripts/dex_update_bridge.py",
+        "scripts/release_fleet.py",
+        "scripts/release_fleet_executor.py",
+    ):
         source = repo / relative
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_bytes((release_fleet.PROJECT_ROOT / relative).read_bytes())
@@ -1229,14 +1233,16 @@ def test_fixture_python_proves_real_venv_and_local_dependencies_before_doctor(
     assert not marker.exists()
 
 
-def test_journey_fails_closed_after_recording_immutable_update_surfaces(tmp_path: Path) -> None:
+def test_journey_fails_closed_before_building_when_release_has_no_executor(
+    tmp_path: Path,
+) -> None:
     repo = _repository(tmp_path)
     _write_update_surface(repo)
     start_tag = _tag_release(repo, "1.61.0", "start")
     foundation_tag = _tag_release(repo, "1.80.0", "foundation")
     follow_up_tag = _tag_release(repo, "1.80.5", "follow-up")
 
-    with pytest.raises(release_fleet.FleetError, match="executor is unavailable"):
+    with pytest.raises(release_fleet.FleetError, match="released journey executor"):
         release_fleet.run_journey(
             repo,
             output=tmp_path / "output",
@@ -1245,21 +1251,151 @@ def test_journey_fails_closed_after_recording_immutable_update_surfaces(tmp_path
             follow_up_tag=follow_up_tag,
         )
 
-    start = next(item for item in release_fleet.discover_distribution_releases(repo) if item.tag == start_tag)
-    evidence_root = tmp_path / "output" / f"{release_fleet.safe_case_name(start)}.evidence"
-    result = json.loads((evidence_root / "journey-result.json").read_text())
-    manifest = evidence_root / "evidence-manifest.json"
-    transcript = json.loads((evidence_root / "journey-transcript.json").read_text())
-    assert result["failure"].startswith("published journey executor is unavailable")
-    assert result["evidence_manifest_sha256"] == release_fleet.hashlib.sha256(manifest.read_bytes()).hexdigest()
-    assert [event["id"] for event in transcript["events"]] == [
-        "historic-update-surface",
-        "foundation-update-surface",
-    ]
+    assert not (tmp_path / "output").exists()
+
+
+def test_journey_refuses_an_undeclared_host_platform(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(release_fleet.sys, "platform", "win32")
+
+    with pytest.raises(release_fleet.FleetError, match="macOS and Linux only"):
+        release_fleet.run_journey(
+            tmp_path,
+            output=tmp_path / "output",
+            starting_tag="unused",
+            foundation_tag="unused",
+            follow_up_tag="unused",
+        )
+
+
+def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.update.journey_protocol import load_update_journey_protocol
+    from scripts import release_fleet_executor
+
+    protocol_bytes = (
+        release_fleet.PROJECT_ROOT / release_fleet.UPDATE_JOURNEY_RELATIVE
+    ).read_bytes()
+    protocol = load_update_journey_protocol(protocol_bytes)
+    foundation = release_fleet.ImmutableRelease(
+        tag=protocol.foundation["tag"],
+        tag_object=protocol.foundation["tag_object"],
+        commit=protocol.foundation["commit"],
+        tree=protocol.foundation["tree"],
+        version=protocol.foundation["version"],
+    )
+    follow_up = release_fleet.ImmutableRelease(
+        tag="dist/release/v1.81.0-bbbbbbb",
+        tag_object="c" * 40,
+        commit="b" * 40,
+        tree="d" * 40,
+        version="1.81.0",
+    )
+    start = release_fleet.DistributionRelease(
+        tag="dist/release/v1.61.0-aaaaaaa",
+        version="1.61.0",
+        commit="a" * 40,
+        tree="e" * 40,
+    )
+    source_commit = "f" * 40
+    captured: dict[str, object] = {}
+
+    class Run:
+        case = {"starting_tag": start.tag}
+
+    monkeypatch.setattr(
+        release_fleet,
+        "discover_distribution_releases",
+        lambda _repo: (start,),
+    )
+    monkeypatch.setattr(
+        release_fleet,
+        "resolve_immutable_release",
+        lambda _repo, tag: foundation if tag == foundation.tag else follow_up,
+    )
+    monkeypatch.setattr(
+        release_fleet,
+        "_optional_tag_file",
+        lambda _repo, _tag, relative: (
+            protocol_bytes
+            if relative == release_fleet.UPDATE_JOURNEY_RELATIVE
+            else None
+        ),
+    )
+    monkeypatch.setattr(
+        release_fleet,
+        "_verify_released_protocol_artifacts",
+        lambda _repo, _release, _protocol: source_commit,
+    )
+    monkeypatch.setattr(
+        release_fleet,
+        "_tag_file",
+        lambda _repo, _commit, relative: (
+            release_fleet.PROJECT_ROOT / relative
+        ).read_bytes(),
+    )
+    monkeypatch.setattr(
+        release_fleet,
+        "shipped_update_surface",
+        lambda _repo, release: {
+            "release": (
+                release.identity()
+                if isinstance(release, release_fleet.ImmutableRelease)
+                else {
+                    "tag": release.tag,
+                    "tag_object": "9" * 40,
+                    "commit": release.commit,
+                    "tree": release.tree,
+                    "version": release.version,
+                    "channel": "stable",
+                }
+            ),
+            "machine_executable": False,
+        },
+    )
+    monkeypatch.setattr(release_fleet, "resolve_trusted_node_runtime", object)
+    monkeypatch.setattr(release_fleet, "resolve_trusted_python_runtime", object)
+    monkeypatch.setattr(
+        release_fleet,
+        "_case_environment",
+        lambda *_args, **_kwargs: {},
+    )
+
+    def build_case(_repo, release, output, *, environment):
+        assert environment == {}
+        vault = output / release_fleet.safe_case_name(release)
+        vault.mkdir(parents=True)
+        return release_fleet.FleetCase(release, vault, {"00-Inbox/keep.md": "0" * 64})
+
+    def execute(**kwargs):
+        captured.update(kwargs)
+        return Run()
+
+    monkeypatch.setattr(release_fleet, "build_installed_fixture", build_case)
+    monkeypatch.setattr(release_fleet, "resolve_fixture_python", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(release_fleet_executor, "execute_journey", execute)
+
+    run = release_fleet.run_journey(
+        tmp_path,
+        output=tmp_path / "output",
+        starting_tag=start.tag,
+        foundation_tag=foundation.tag,
+        follow_up_tag=follow_up.tag,
+    )
+
+    assert run.case == {"starting_tag": start.tag}
+    assert captured["source_commit"] == source_commit
+    assert captured["foundation_release"] == foundation.identity()
+    assert captured["follow_up_release"] == follow_up.identity()
+    assert captured["user_owned_paths"] == tuple(release_fleet.USER_FIXTURES)
     assert not (tmp_path / "output" / release_fleet.safe_case_name(start)).exists()
 
 
-def test_shipped_update_surface_validates_protocol_but_keeps_it_non_executable(
+def test_shipped_update_surface_requires_and_exposes_the_released_executor(
     tmp_path: Path,
 ) -> None:
     repo = _repository(tmp_path)
@@ -1269,7 +1405,11 @@ def test_shipped_update_surface_validates_protocol_but_keeps_it_non_executable(
 
     assert release_fleet.shipped_update_surface(repo, prose_release)["machine_executable"] is False
 
-    for relative in ("scripts/dex_update_bridge.py", "scripts/release_fleet.py"):
+    for relative in (
+        "scripts/dex_update_bridge.py",
+        "scripts/release_fleet.py",
+        "scripts/release_fleet_executor.py",
+    ):
         source = repo / relative
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_bytes((release_fleet.PROJECT_ROOT / relative).read_bytes())
@@ -1298,18 +1438,24 @@ def test_shipped_update_surface_validates_protocol_but_keeps_it_non_executable(
     protocol_release = release_fleet.resolve_immutable_release(repo, protocol_tag)
     surface = release_fleet.shipped_update_surface(repo, protocol_release)
 
-    assert surface["machine_executable"] is False
+    assert surface["machine_executable"] is True
     assert surface["journey_protocol"]["path"] == release_fleet.UPDATE_JOURNEY_RELATIVE
     assert surface["journey_protocol"]["schema_version"] == 1
     assert surface["journey_protocol"]["source_commit"] == source_commit
+    assert surface["journey_protocol"]["executor"] == {
+        "source_path": "scripts/release_fleet_executor.py",
+        "sha256": release_fleet.hashlib.sha256(
+            (release_fleet.PROJECT_ROOT / "scripts/release_fleet_executor.py").read_bytes()
+        ).hexdigest(),
+    }
     distribution = next(
         item
         for item in release_fleet.discover_distribution_releases(repo)
         if item.tag == protocol_tag
     )
     classification = release_fleet.classify_historic_update_surface(repo, distribution)
-    assert classification["machine_executable"] is False
-    assert classification["route_classification"] == "machine-protocol-declared-executor-missing"
+    assert classification["machine_executable"] is True
+    assert classification["route_classification"] == "machine-protocol-released-executor"
 
 
 def test_shipped_update_surface_rejects_a_protocol_with_an_unknown_operation(

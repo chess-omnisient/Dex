@@ -4,7 +4,7 @@
 >
 > **Status vocabulary.** `SHIPPED` = in a released version tag. `LOCAL` = merged on `main`, not yet in a release tag. `PROTOTYPE` = built, not verified against live/real use. `PLANNED` = designed, not built.
 >
-> **Ground truth as of** `upstream/main` at `ae0815fd`, latest release tag **v1.80.5** (2026-07-29). This branch adds the release-owned historic updater journey protocol. It is LOCAL until merged and published in a later immutable release; no historic fleet case has passed because of it.
+> **Ground truth as of** `upstream/main` at `7edae25df`, latest release tag **v1.80.5** (2026-07-29). This branch adds the release-owned historic updater journey executor to the already-merged protocol. It remains LOCAL until merged and both pieces remain unpublished until a later immutable release; no historic fleet case has passed because of them.
 >
 > **Don't duplicate generated files.** Tool lists, skill lists, ownership-class path tables, and MCP↔skill wiring live in the auto-generated `docs/architecture/INVENTORY.md`. This map cross-references it; it does not restate it.
 >
@@ -20,7 +20,7 @@
 | Transaction core | **SHIPPED** (v1.66) | `core/transaction/*` | Crash-safe snapshot→apply→verify→commit/rollback substrate the lifecycle engine writes through |
 | Portable ownership contract | **SHIPPED** (v1.64+) | `core/portable_contract.py` | Source of truth: every path is brain/seed/generated/vault/runtime; decides what an update may write |
 | Release catalog + bridge | **SHIPPED** (v1.65–v1.68) | `core/lifecycle/catalog/*`, `bridge.py` | Publisher-declared packing list per release; one-release handoff from the legacy updater |
-| Historic updater journey protocol | **LOCAL** | `System/.update-journey-v1.json`, `core/update/journey_protocol.py` | Closed release-owned machine contract for the pinned bridge and lifecycle delivery route; not yet published or fleet-executed |
+| Historic updater journey protocol + executor | **LOCAL** | `System/.update-journey-v1.json`, `core/update/journey_protocol.py`, `scripts/release_fleet_executor.py` | Closed release-owned machine contract and evidence-owning implementation for the pinned bridge and lifecycle delivery route; not yet published or fleet-executed |
 | 10 MCP servers | **SHIPPED** (mixed ages) | `core/mcp/*_server.py` | The tool surface Dex acts through; Work MCP is the giant (46 tools) |
 | Connection Manager (OAuth/token) | **SHIPPED ENGINE, `/connect` HELD** | `core/integrations/connection-manager/` | Local-first OAuth via Nango catalog-as-data; encrypted on-device tokens; hardened through security Phases 0–5g, but the `/connect` doorway stays held (draft PR #231) |
 | Customization migration | **SHIPPED** assess/capsule/guided-journey (v1.75.x) / **LOCAL** rebuild engine and doorway | `core/customization_migration/*`, `core/mcp/customization_migration_server.py` | Inventories customizations, preserves a Capsule, and offers a human-confirmed, receipt-backed rebuild and rewind; the doorway is authorized but remains unshipped until its release |
@@ -90,17 +90,24 @@ historic fleet evidence. Its strict parser permits only the pinned
 foundation-bridge adapter and the existing
 `deliver_latest_release` → `build_and_preview_delivered_release` →
 `execute_approved_delivered_release` lifecycle sequence. The generated root
-binds the exact bridge and fleet-runner bytes in the publisher source commit,
-the immutable v1.80.5 foundation identity, approval counts, Mac/Linux support,
-and the required evidence order. Unknown fields, adapters, operations, hashes,
-or approval shapes fail closed; there is no arbitrary command vocabulary.
+binds the exact bridge, fleet-runner, and executor bytes in the publisher
+source commit, the immutable v1.80.5 foundation identity, maximum conditional
+approval counts, Mac/Linux support, and the required evidence order. Unknown
+fields, adapters, operations, hashes, or approval shapes fail closed; there is
+no arbitrary command vocabulary.
+
+`scripts/release_fleet_executor.py` owns one real journey: it verifies its
+released source identity, invokes the pinned bridge and only the three declared
+lifecycle operations, records the approval prompts that actually occurred,
+checks installed refs, runs the installed Doctor and smoke suite, hashes
+user-owned files, and writes receipts and the transcript itself. Its successful
+result carries process-local authority that serialized JSON cannot recreate;
+`check-report` therefore stays closed to externally authored substitutes.
 
 This is implementation truth, not release acceptance. No public distribution
-tag contains the protocol yet, no foundation/follow-up pair has completed the
-real two-hop journey, and the current runner deliberately reports
-`machine_executable: false` even for a valid protocol until a separately
-released executor owns the run and evidence. The 168-case acceptance result
-remains false.
+tag contains the protocol or executor yet, no foundation/follow-up pair has
+completed the real two-hop journey, and the public v1.80.5 surface remains
+`machine_executable: false`. The 168-case acceptance result remains false.
 
 ## 5. The 10 MCP servers — SHIPPED
 
