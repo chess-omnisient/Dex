@@ -9,11 +9,13 @@ from pathlib import Path
 
 DEFAULT_MANIFEST = Path("System/.installed-files.manifest")
 REQUIRED_LIFECYCLE_RELEASE_PATHS = (
+    "System/.update-journey-v1.json",
     "core/lifecycle/bridge.py",
     "core/lifecycle/catalog/bridge-release.json",
     "core/lifecycle/contracts/api.schema.json",
     "core/lifecycle/service.py",
     "core/portable_contract.py",
+    "core/update/journey_protocol.py",
     "packages/dex-contracts/dist/portable-vault.contract.json",
 )
 

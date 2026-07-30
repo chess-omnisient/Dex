@@ -74,8 +74,9 @@ DISTIGNORE=$(mktemp)
 TAU_CHECKER=$(mktemp)
 CATALOG_GENERATOR=$(mktemp)
 CATALOG_COVERAGE_CHECKER=$(mktemp)
+JOURNEY_PROTOCOL_CHECK=$(mktemp)
 MATCHES_FILE=$(mktemp)
-trap 'rm -f "$DISTIGNORE" "$TAU_CHECKER" "$CATALOG_GENERATOR" "$CATALOG_COVERAGE_CHECKER" "$MATCHES_FILE"' EXIT
+trap 'rm -f "$DISTIGNORE" "$TAU_CHECKER" "$CATALOG_GENERATOR" "$CATALOG_COVERAGE_CHECKER" "$JOURNEY_PROTOCOL_CHECK" "$MATCHES_FILE"' EXIT
 if ! git show "$SOURCE_BRANCH:.distignore" > "$DISTIGNORE"; then
     echo "Error: .distignore not found in selected source '$SOURCE_BRANCH'." >&2
     exit 1
@@ -160,6 +161,16 @@ echo ""
 # Create or reset release branch to the immutable source identity validated
 # above, even if the source branch moves while this build is running.
 git checkout -B "$RELEASE_BRANCH" "$SOURCE_SHA" --quiet
+
+# Refuse to publish a journey control plane that does not bind the exact
+# selected source bytes. The generated root itself ships; the bridge and fleet
+# runner remain publisher-source artifacts referenced by SHA-256.
+python3 scripts/generate-update-journey-protocol.py --output "$JOURNEY_PROTOCOL_CHECK"
+if ! cmp -s "$JOURNEY_PROTOCOL_CHECK" System/.update-journey-v1.json; then
+    echo "Error: System/.update-journey-v1.json is stale for selected source '$SOURCE_BRANCH'." >&2
+    echo "Run python3 scripts/generate-update-journey-protocol.py and commit the result." >&2
+    exit 1
+fi
 
 # Remove dev-only files
 REMOVED=0

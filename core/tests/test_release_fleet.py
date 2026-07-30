@@ -670,6 +670,41 @@ def _write_starting_manifest(root: Path, releases: tuple[release_fleet.Distribut
     return path
 
 
+def _tag_protocol_control_release(
+    repo: Path,
+    *,
+    foundation: release_fleet.ImmutableRelease,
+    version: str,
+) -> str:
+    for relative in ("scripts/dex_update_bridge.py", "scripts/release_fleet.py"):
+        source = repo / relative
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes((release_fleet.PROJECT_ROOT / relative).read_bytes())
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "--quiet", "-m", "release-owned journey source")
+    source_commit = _git(repo, "rev-parse", "HEAD")
+
+    protocol_path = repo / release_fleet.UPDATE_JOURNEY_RELATIVE
+    protocol_path.parent.mkdir(parents=True, exist_ok=True)
+    document = json.loads(
+        (release_fleet.PROJECT_ROOT / release_fleet.UPDATE_JOURNEY_RELATIVE).read_text()
+    )
+    document["historic_to_foundation"]["foundation"] = foundation.identity()
+    protocol_path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
+    (repo / "System/.release-catalog.json").write_text(
+        json.dumps(
+            {
+                "catalog_version": 1,
+                "release": {"source_commit": source_commit},
+                "items": [],
+                "integrity": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return _tag_release(repo, version, "protocol control release")
+
+
 def _write_complete_evidence(
     repo: Path,
     root: Path,
@@ -750,7 +785,7 @@ def _write_complete_evidence(
     return ({"events": events}, manifest_path, manifest_sha256)
 
 
-def test_check_report_rejects_a_fully_self_consistent_evidence_set_without_an_executable_protocol(
+def test_check_report_rejects_a_fully_self_consistent_evidence_set_without_a_released_executor(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = _repository(tmp_path)
@@ -796,7 +831,86 @@ def test_check_report_rejects_a_fully_self_consistent_evidence_set_without_an_ex
     report_path = tmp_path / "report.json"
     report_path.write_text(json.dumps(report), encoding="utf-8")
 
-    with pytest.raises(release_fleet.FleetError, match="executable journey protocol"):
+    with pytest.raises(release_fleet.FleetError, match="released journey executor"):
+        release_fleet.main(
+            [
+                "check-report",
+                "--repo",
+                str(repo),
+                "--starting-manifest",
+                str(starting_manifest),
+                str(report_path),
+            ]
+        )
+
+    assert "PASS" not in capsys.readouterr().out
+
+
+def test_check_report_rejects_hand_authored_evidence_even_with_a_valid_protocol(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repository(tmp_path)
+    _write_update_surface(repo)
+    start_tag = _tag_release(repo, "1.61.0", "start")
+    foundation_tag = _tag_release(repo, "1.80.0", "foundation")
+    start = next(
+        item
+        for item in release_fleet.discover_distribution_releases(repo)
+        if item.tag == start_tag
+    )
+    foundation = release_fleet.resolve_immutable_release(repo, foundation_tag)
+    follow_up_tag = _tag_protocol_control_release(
+        repo,
+        foundation=foundation,
+        version="1.80.1",
+    )
+    follow_up = release_fleet.resolve_immutable_release(repo, follow_up_tag)
+    monkeypatch.setattr(release_fleet, "discover_distribution_releases", lambda _repo: (start,))
+    _events, manifest_path, manifest_sha256 = _write_complete_evidence(
+        repo,
+        tmp_path,
+        start=start,
+        foundation=foundation,
+        follow_up=follow_up,
+    )
+    hashes = {"00-Inbox/keep.md": "a" * 64}
+    starting_manifest = _write_starting_manifest(tmp_path, (start,))
+    report_path = tmp_path / "report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "foundation_tag": foundation.tag,
+                "follow_up_tag": follow_up.tag,
+                "platforms": ["darwin"],
+                "cases": [
+                    {
+                        "starting_tag": start.tag,
+                        "reached_foundation": True,
+                        "reached_follow_up": True,
+                        "foundation_doctor_healthy": True,
+                        "follow_up_doctor_healthy": True,
+                        "user_hashes_before": hashes,
+                        "user_hashes_after_foundation": hashes,
+                        "user_hashes_after_follow_up": hashes,
+                        "transcript_path": "case.evidence/journey.json",
+                        "foundation_receipt_path": "case.evidence/foundation-receipt.json",
+                        "follow_up_receipt_path": "case.evidence/follow-up-receipt.json",
+                        "foundation_doctor_path": "case.evidence/foundation-doctor.json",
+                        "follow_up_doctor_path": "case.evidence/follow-up-doctor.json",
+                        "follow_up_smoke_path": "case.evidence/smoke.json",
+                        "platform": "darwin",
+                        "evidence_manifest_path": manifest_path,
+                        "evidence_manifest_sha256": manifest_sha256,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(release_fleet.FleetError, match="released journey executor"):
         release_fleet.main(
             [
                 "check-report",
@@ -859,7 +973,7 @@ def test_check_report_rejects_a_plausible_manifest_when_surface_bytes_are_not_fr
     report_path = tmp_path / "report.json"
     report_path.write_text(json.dumps(report))
 
-    with pytest.raises(release_fleet.FleetError, match="executable journey protocol"):
+    with pytest.raises(release_fleet.FleetError, match="released journey executor"):
         release_fleet.main(
             [
                 "check-report",
@@ -1122,7 +1236,7 @@ def test_journey_fails_closed_after_recording_immutable_update_surfaces(tmp_path
     foundation_tag = _tag_release(repo, "1.80.0", "foundation")
     follow_up_tag = _tag_release(repo, "1.80.5", "follow-up")
 
-    with pytest.raises(release_fleet.FleetError, match="Markdown-only"):
+    with pytest.raises(release_fleet.FleetError, match="executor is unavailable"):
         release_fleet.run_journey(
             repo,
             output=tmp_path / "output",
@@ -1136,10 +1250,82 @@ def test_journey_fails_closed_after_recording_immutable_update_surfaces(tmp_path
     result = json.loads((evidence_root / "journey-result.json").read_text())
     manifest = evidence_root / "evidence-manifest.json"
     transcript = json.loads((evidence_root / "journey-transcript.json").read_text())
-    assert result["failure"].startswith("published /dex-update surfaces are Markdown-only")
+    assert result["failure"].startswith("published journey executor is unavailable")
     assert result["evidence_manifest_sha256"] == release_fleet.hashlib.sha256(manifest.read_bytes()).hexdigest()
     assert [event["id"] for event in transcript["events"]] == [
         "historic-update-surface",
         "foundation-update-surface",
     ]
     assert not (tmp_path / "output" / release_fleet.safe_case_name(start)).exists()
+
+
+def test_shipped_update_surface_validates_protocol_but_keeps_it_non_executable(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _write_update_surface(repo)
+    prose_tag = _tag_release(repo, "1.80.5", "prose")
+    prose_release = release_fleet.resolve_immutable_release(repo, prose_tag)
+
+    assert release_fleet.shipped_update_surface(repo, prose_release)["machine_executable"] is False
+
+    for relative in ("scripts/dex_update_bridge.py", "scripts/release_fleet.py"):
+        source = repo / relative
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes((release_fleet.PROJECT_ROOT / relative).read_bytes())
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "--quiet", "-m", "release-owned journey source")
+    source_commit = _git(repo, "rev-parse", "HEAD")
+
+    protocol_path = repo / release_fleet.UPDATE_JOURNEY_RELATIVE
+    protocol_path.parent.mkdir(parents=True, exist_ok=True)
+    protocol_path.write_bytes(
+        (release_fleet.PROJECT_ROOT / release_fleet.UPDATE_JOURNEY_RELATIVE).read_bytes()
+    )
+    catalog = repo / "System/.release-catalog.json"
+    catalog.write_text(
+        json.dumps(
+            {
+                "catalog_version": 1,
+                "release": {"source_commit": source_commit},
+                "items": [],
+                "integrity": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    protocol_tag = _tag_release(repo, "1.80.6", "protocol")
+    protocol_release = release_fleet.resolve_immutable_release(repo, protocol_tag)
+    surface = release_fleet.shipped_update_surface(repo, protocol_release)
+
+    assert surface["machine_executable"] is False
+    assert surface["journey_protocol"]["path"] == release_fleet.UPDATE_JOURNEY_RELATIVE
+    assert surface["journey_protocol"]["schema_version"] == 1
+    assert surface["journey_protocol"]["source_commit"] == source_commit
+    distribution = next(
+        item
+        for item in release_fleet.discover_distribution_releases(repo)
+        if item.tag == protocol_tag
+    )
+    classification = release_fleet.classify_historic_update_surface(repo, distribution)
+    assert classification["machine_executable"] is False
+    assert classification["route_classification"] == "machine-protocol-declared-executor-missing"
+
+
+def test_shipped_update_surface_rejects_a_protocol_with_an_unknown_operation(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _write_update_surface(repo)
+    protocol_path = repo / release_fleet.UPDATE_JOURNEY_RELATIVE
+    protocol_path.parent.mkdir(parents=True, exist_ok=True)
+    document = json.loads(
+        (release_fleet.PROJECT_ROOT / release_fleet.UPDATE_JOURNEY_RELATIVE).read_text()
+    )
+    document["foundation_to_follow_up"]["operations"].append("run_any_command")
+    protocol_path.write_text(json.dumps(document), encoding="utf-8")
+    tag = _tag_release(repo, "1.80.6", "invalid-protocol")
+    release = release_fleet.resolve_immutable_release(repo, tag)
+
+    with pytest.raises(release_fleet.FleetError, match="journey protocol"):
+        release_fleet.shipped_update_surface(repo, release)

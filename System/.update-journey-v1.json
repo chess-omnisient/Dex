@@ -1,0 +1,55 @@
+{
+  "controller": "release-fleet-v1",
+  "evidence": [
+    "historic-update-surface",
+    "historic-route-refusal",
+    "bridge-foundation",
+    "foundation-update-surface",
+    "foundation-preview",
+    "foundation-approval",
+    "foundation-receipt",
+    "follow-up-installed",
+    "follow-up-doctor",
+    "follow-up-smoke"
+  ],
+  "foundation_to_follow_up": {
+    "adapter": "lifecycle-delivered-release-v1",
+    "approval": {
+      "count": 1,
+      "word": "APPLY"
+    },
+    "operations": [
+      "deliver_latest_release",
+      "build_and_preview_delivered_release",
+      "execute_approved_delivered_release"
+    ]
+  },
+  "historic_to_foundation": {
+    "adapter": "pinned-foundation-bridge-v1",
+    "approval": {
+      "count": 2,
+      "word": "APPLY"
+    },
+    "artifact": {
+      "sha256": "1a0235616d257c3c779681f034d05c86d2cf5483fef3bc7694315b65acc3af75",
+      "source_path": "scripts/dex_update_bridge.py"
+    },
+    "foundation": {
+      "channel": "stable",
+      "commit": "9211053235d7c1837a6e327bff1596b593323fc6",
+      "tag": "dist/release/v1.80.5-9211053",
+      "tag_object": "ff94463b191bb2c503ffec42ce288e961ca79659",
+      "tree": "d394658e2bf1125b96eb5afdace24f3a5ba3107e",
+      "version": "1.80.5"
+    }
+  },
+  "platforms": [
+    "darwin",
+    "linux"
+  ],
+  "runner": {
+    "sha256": "77f49a9a565d99db379b2457ef891fcbe7fa4b8a9636baba75fd7fd19bcdf84e",
+    "source_path": "scripts/release_fleet.py"
+  },
+  "schema_version": 1
+}

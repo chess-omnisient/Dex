@@ -65,6 +65,7 @@ RELEASE_BUILD_INPUTS = (
     ".claude/skills/dex-update/SKILL.md",
     ".claude/skills/dex-rollback/SKILL.md",
     "System/.local-only-preservation-transition.json",
+    "System/.update-journey-v1.json",
     "System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md",
     "core/migrations/preserve_local_only_paths.py",
     "core/migrations/tracked-ignored-policy.yaml",
@@ -81,6 +82,7 @@ RELEASE_BUILD_INPUTS = (
     "core/provision.cjs",
     "core/transaction/engine.py",
     "core/transaction/journal.py",
+    "core/update/journey_protocol.py",
     "core/utils/tracked_ignored.py",
     "core/utils/manifest.py",
     "core/utils/update_verifier.py",
@@ -91,8 +93,11 @@ RELEASE_BUILD_INPUTS = (
     "scripts/build-vault-bundle.sh",
     "scripts/check-catalog-coverage.py",
     "scripts/check-tau-removal.py",
+    "scripts/dex_update_bridge.py",
     "scripts/generate-manifest.sh",
     "scripts/generate-release-catalog.py",
+    "scripts/generate-update-journey-protocol.py",
+    "scripts/release_fleet.py",
     "scripts/resolve-distignore-files.sh",
     "scripts/security-gate.sh",
     "scripts/verify-distribution.sh",
@@ -129,11 +134,13 @@ def test_release_builders_gate_frozen_lifecycle_contract_artifacts() -> None:
     from core.utils.manifest import REQUIRED_LIFECYCLE_RELEASE_PATHS
 
     assert REQUIRED_LIFECYCLE_RELEASE_PATHS == (
+        "System/.update-journey-v1.json",
         "core/lifecycle/bridge.py",
         "core/lifecycle/catalog/bridge-release.json",
         "core/lifecycle/contracts/api.schema.json",
         "core/lifecycle/service.py",
         "core/portable_contract.py",
+        "core/update/journey_protocol.py",
         "packages/dex-contracts/dist/portable-vault.contract.json",
     )
     for script_name in ("build-release.sh", "build-vault-bundle.sh"):
@@ -397,10 +404,12 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
     assert "System/.installed-files.manifest" in members
     assert "System/.release-catalog.json" in members
     assert "System/.release-evidence-profile.json" in members
+    assert "System/.update-journey-v1.json" in members
     assert "core/lifecycle/catalog/bridge-release.json" in members
     assert "core/lifecycle/contracts/api.schema.json" in members
     assert "core/lifecycle/service.py" in members
     assert "core/lifecycle/bridge.py" in members
+    assert "core/update/journey_protocol.py" in members
     assert "System/.dex/lifecycle/activation.json" not in members
     assert "System/.local-only-preservation-transition.json" in members
     assert "core/migrations/preserve_local_only_paths.py" in members
@@ -422,6 +431,8 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
     assert "core/tests/test_distribution_artifacts.py" not in manifest
     assert "core/lifecycle/catalog/bridge-release.json" in manifest
     assert "core/lifecycle/contracts/api.schema.json" in manifest
+    assert "System/.update-journey-v1.json" in manifest
+    assert "core/update/journey_protocol.py" in manifest
     assert "System/.dex/lifecycle/activation.json" not in manifest
     catalog = _git_json(clone, "release:System/.release-catalog.json")
     package = _git_json(clone, "release:package.json")
@@ -680,7 +691,7 @@ def test_release_build_rejects_malformed_selected_package_before_creating_refs(t
 
 def test_raw_vault_bundle_has_package_profile_manifest_agreement(tmp_path: Path) -> None:
     clone = _clone_repo(tmp_path, "raw-vault-bundle")
-    _sync_release_inputs(clone)
+    _commit_release_inputs_if_changed(clone)
     # Prove the builder regenerates the declaration rather than copying stale bytes.
     (clone / "System/.release-evidence-profile.json").write_text(
         json.dumps({"profile": "legacy-v1", "release_version": "0.0.1", "schema_version": 1}, indent=2) + "\n"
@@ -717,6 +728,50 @@ def test_raw_vault_bundle_has_package_profile_manifest_agreement(tmp_path: Path)
         assert script_name not in package.get("scripts", {})
     assert manifest == sorted(set(manifest))
     assert set(manifest) == shipped
+
+
+def test_raw_vault_bundle_rejects_dirty_protocol_inputs_not_in_source_commit(
+    tmp_path: Path,
+) -> None:
+    clone = _clone_repo(tmp_path, "raw-vault-bundle-dirty-protocol")
+    _commit_release_inputs_if_changed(clone)
+    runner = clone / "scripts/release_fleet.py"
+    runner.write_text(
+        runner.read_text(encoding="utf-8") + "\n# uncommitted runner bytes\n",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        [sys.executable, "scripts/generate-update-journey-protocol.py"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    spy_dir = tmp_path / "dirty-protocol-command-spies"
+    spy_dir.mkdir()
+    sentinel = tmp_path / "dirty-protocol-npm-ran"
+    npm_spy = spy_dir / "npm"
+    npm_spy.write_text(
+        f"#!/bin/sh\ntouch '{sentinel}'\nexit 97\n",
+        encoding="utf-8",
+    )
+    npm_spy.chmod(0o755)
+    environment = os.environ.copy()
+    environment["PATH"] = f"{spy_dir}{os.pathsep}{environment['PATH']}"
+
+    result = subprocess.run(
+        ["bash", "scripts/build-vault-bundle.sh", str(tmp_path / "blocked-bundle")],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=240,
+        env=environment,
+    )
+
+    assert result.returncode == 1
+    assert "protocol inputs differ from recorded source commit" in result.stderr
+    assert not sentinel.exists()
 
 
 def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -> None:
