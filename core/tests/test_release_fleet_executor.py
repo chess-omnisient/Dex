@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from core.update.journey_protocol import load_update_journey_protocol
+from scripts import release_fleet
 from scripts import release_fleet_executor as executor
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -26,6 +27,12 @@ def _identity(version: str, fill: str) -> dict[str, str]:
         "version": version,
         "channel": "stable",
     }
+
+
+def _legacy_identity(version: str, fill: str) -> dict[str, str]:
+    identity = _identity(version, fill)
+    identity["tag"] = f"v{version}"
+    return identity
 
 
 def _executor_source_commit(tmp_path: Path) -> tuple[Path, str]:
@@ -162,8 +169,18 @@ def test_serialized_or_directly_constructed_run_cannot_gain_executor_authority()
 
     assert executor.is_authoritative_executor_run(authored) is False
     assert not hasattr(executor, "_EXECUTOR_AUTHORITY")
+    assert not hasattr(executor, "_authoritative_run")
     with pytest.raises(executor.ExecutorError, match="live executor"):
         executor.ExecutorRun(authored["case"])
+    forged = object.__new__(executor.ExecutorRun)
+    assert executor.is_authoritative_executor_run(forged) is False
+    object.__setattr__(forged, "_authority", object())
+    object.__setattr__(
+        forged,
+        "_case_json",
+        json.dumps(authored["case"]).encode("utf-8"),
+    )
+    assert executor.is_authoritative_executor_run(forged) is False
 
 
 def test_executor_owns_the_closed_two_hop_journey_and_returned_evidence(
@@ -197,7 +214,7 @@ def test_executor_owns_the_closed_two_hop_journey_and_returned_evidence(
         _runtime=runtime,
     )
 
-    assert executor.is_authoritative_executor_run(run)
+    assert executor.is_authoritative_executor_run(run) is False
     assert run.case["reached_foundation"] is True
     assert run.case["reached_follow_up"] is True
     assert run.case["user_hashes_before"] == run.case["user_hashes_after_foundation"]
@@ -218,10 +235,21 @@ def test_executor_owns_the_closed_two_hop_journey_and_returned_evidence(
     follow_up_receipt = json.loads((evidence / "follow-up-receipt.json").read_text())
     transcript = json.loads((evidence / "journey-transcript.json").read_text())
     assert foundation_receipt["receipt"]["delivery_receipt"]["receipt"]["transaction_id"] == "foundation-tx"
+    assert release_fleet._valid_foundation_bridge_receipt(
+        foundation_receipt["receipt"],
+        expected_foundation=protocol.foundation,
+        approval_count=2,
+    )
     assert follow_up_receipt["receipt"]["receipt"]["transaction_id"] == "follow-up-tx"
     assert [event["id"] for event in transcript["events"]] == list(protocol.evidence)
     assert transcript["events"][2]["approval_count"] == 2
     assert rendered
+
+    mutable_copy = run.case
+    mutable_copy["user_hashes_before"]["00-Inbox/keep.md"] = "0" * 64
+    assert run.case["user_hashes_before"]["00-Inbox/keep.md"] != "0" * 64
+    with pytest.raises(executor.ExecutorError, match="immutable"):
+        run._case_json = b"{}"
 
 
 def _execute(
@@ -231,12 +259,13 @@ def _execute(
     source_repo: Path,
     source_commit: str,
     input_fn=lambda _prompt: "APPLY",
+    starting: dict[str, str] | None = None,
 ) -> executor.ExecutorRun:
     protocol = load_update_journey_protocol(
         (REPO_ROOT / "System/.update-journey-v1.json").read_bytes()
     )
     vault, user_files = _vault(tmp_path)
-    starting = _identity("1.61.0", "a")
+    starting = starting or _identity("1.61.0", "a")
     return executor.execute_journey(
         repo_root=source_repo,
         source_commit=source_commit,
@@ -254,6 +283,55 @@ def _execute(
         output_fn=lambda _line: None,
         _runtime=runtime,
     )
+
+
+def test_executor_accepts_an_exact_legacy_starting_tag_without_widening_targets(
+    tmp_path: Path,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+    runtime = _Runtime(_identity("1.81.0", "b"))
+    starting = _legacy_identity("1.20.1", "a")
+
+    run = _execute(
+        tmp_path,
+        runtime,
+        source_repo=source_repo,
+        source_commit=source_commit,
+        starting=starting,
+    )
+
+    assert run.case["starting_tag"] == "v1.20.1"
+    assert executor.is_authoritative_executor_run(run) is False
+
+
+@pytest.mark.parametrize(
+    "tag",
+    (
+        "refs/tags/v1.20.1",
+        "v01.20.1",
+        "v1.20",
+        "legacy/v1.20.1",
+    ),
+)
+def test_executor_rejects_malformed_or_arbitrary_starting_refs(
+    tmp_path: Path,
+    tag: str,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+    runtime = _Runtime(_identity("1.81.0", "b"))
+    starting = _legacy_identity("1.20.1", "a")
+    starting["tag"] = tag
+
+    with pytest.raises(executor.ExecutorError, match="starting release identity"):
+        _execute(
+            tmp_path,
+            runtime,
+            source_repo=source_repo,
+            source_commit=source_commit,
+            starting=starting,
+        )
+
+    assert runtime.calls == []
 
 
 def test_executor_refuses_released_source_with_substituted_executor_bytes(
@@ -341,11 +419,102 @@ def test_executor_records_the_bridge_approval_count_that_actually_occurred(
             / "journey-transcript.json"
         ).read_text()
     )
-    assert executor.is_authoritative_executor_run(run)
+    assert executor.is_authoritative_executor_run(run) is False
     assert transcript["events"][2]["approval_count"] == 1
     assert transcript["events"][2]["approvals"] == [
         {"prompt": "foundation approval", "answer": "APPLY"}
     ]
+
+
+def test_already_installed_foundation_executes_and_validates_without_a_fake_transaction(
+    tmp_path: Path,
+) -> None:
+    protocol = load_update_journey_protocol(
+        (REPO_ROOT / "System/.update-journey-v1.json").read_bytes()
+    )
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+
+    class AlreadyInstalledRuntime(_Runtime):
+        def bridge_to_foundation(
+            self, vault: Path, foundation, *, input_fn, output_fn
+        ):
+            self.calls.append("bridge")
+            self.installed = foundation["commit"]
+            return {
+                "foundation": dict(foundation),
+                "topology_receipt": {
+                    "skipped": "foundation-already-installed"
+                },
+                "delivery_receipt": {
+                    "skipped": "foundation-already-installed"
+                },
+            }
+
+    runtime = AlreadyInstalledRuntime(_identity("1.81.0", "b"))
+    run = _execute(
+        tmp_path,
+        runtime,
+        source_repo=source_repo,
+        source_commit=source_commit,
+    )
+    evidence = tmp_path / "case.evidence"
+    transcript = json.loads((evidence / "journey-transcript.json").read_text())
+    foundation_receipt = json.loads(
+        (evidence / "foundation-receipt.json").read_text()
+    )
+
+    assert run.case["reached_foundation"] is True
+    assert transcript["events"][2]["approval_count"] == 0
+    assert "transaction_id" not in json.dumps(foundation_receipt)
+    assert foundation_receipt["release"] == protocol.foundation
+    assert release_fleet._valid_foundation_bridge_receipt(
+        foundation_receipt["receipt"],
+        expected_foundation=protocol.foundation,
+        approval_count=0,
+    )
+
+
+def test_mutating_foundation_bridge_still_requires_a_real_delivery_receipt() -> None:
+    foundation = _identity("1.80.5", "c")
+    claimed_mutation = {
+        "foundation": foundation,
+        "topology_receipt": {"skipped": "already-brain-vault-split"},
+        "delivery_receipt": {"status": "claimed-complete"},
+    }
+
+    assert not release_fleet._valid_foundation_bridge_receipt(
+        claimed_mutation,
+        expected_foundation=foundation,
+        approval_count=1,
+    )
+
+
+def test_executor_rejects_a_partial_already_installed_claim(
+    tmp_path: Path,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+
+    class PartialResumeRuntime(_Runtime):
+        def bridge_to_foundation(
+            self, vault: Path, foundation, *, input_fn, output_fn
+        ):
+            self.calls.append("bridge")
+            self.installed = foundation["commit"]
+            return {
+                "foundation": dict(foundation),
+                "topology_receipt": {"status": "claimed-complete"},
+                "delivery_receipt": {
+                    "skipped": "foundation-already-installed"
+                },
+            }
+
+    with pytest.raises(executor.ExecutorError, match="transaction receipt"):
+        _execute(
+            tmp_path,
+            PartialResumeRuntime(_identity("1.81.0", "b")),
+            source_repo=source_repo,
+            source_commit=source_commit,
+        )
 
 
 def test_executor_refuses_user_content_mutation_and_unhealthy_proof(

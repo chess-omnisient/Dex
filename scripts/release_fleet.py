@@ -510,6 +510,32 @@ def _has_transaction_receipt(value: object) -> bool:
     )
 
 
+def _valid_foundation_bridge_receipt(
+    value: object,
+    *,
+    expected_foundation: Mapping[str, object],
+    approval_count: int,
+) -> bool:
+    """Accept either the exact resume receipt or an approved lifecycle mutation."""
+
+    if (
+        not isinstance(value, Mapping)
+        or set(value)
+        != {"foundation", "topology_receipt", "delivery_receipt"}
+        or value["foundation"] != expected_foundation
+    ):
+        return False
+    already_installed = {"skipped": "foundation-already-installed"}
+    if (
+        value["topology_receipt"] == already_installed
+        and value["delivery_receipt"] == already_installed
+    ):
+        return approval_count == 0
+    return approval_count > 0 and _has_transaction_receipt(
+        value["delivery_receipt"]
+    )
+
+
 def _trusted_runtime_path(path: Path, *, label: str, roots: Sequence[Path]) -> Path:
     """Resolve an allowlisted runtime file without accepting an ambient executable."""
 
@@ -1882,8 +1908,13 @@ def assert_evidence_bound(
         follow_receipt = _read_evidence_json(
             evidence_root, case.follow_up_receipt_path, f"{case.starting_tag} follow-up receipt"
         )
-        if foundation_receipt["release"] != foundation.identity() or not _has_transaction_receipt(
-            foundation_receipt["receipt"]
+        if (
+            foundation_receipt["release"] != foundation.identity()
+            or not _valid_foundation_bridge_receipt(
+                foundation_receipt["receipt"],
+                expected_foundation=foundation.identity(),
+                approval_count=approval_count,
+            )
         ):
             raise FleetError(f"{case.starting_tag}: foundation receipt is not bound to the supplied release")
         if follow_receipt["release"] != follow_up.identity() or not _has_transaction_receipt(

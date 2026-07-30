@@ -37,6 +37,10 @@ _RELEASE_TAG = re.compile(
     r"^dist/release/v(?P<version>(?:0|[1-9][0-9]*)\."
     r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))-(?P<short>[0-9a-f]{7,40})$"
 )
+_LEGACY_RELEASE_TAG = re.compile(
+    r"^v(?P<version>(?:0|[1-9][0-9]*)\."
+    r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$"
+)
 _DECLARED_LIFECYCLE_OPERATIONS = frozenset(
     {
         "deliver_latest_release",
@@ -53,37 +57,22 @@ class ExecutorError(RuntimeError):
 class ExecutorRun:
     """One live executor result that cannot be reconstructed from JSON."""
 
-    __slots__ = ("_authority", "_case")
+    __slots__ = ("_authority", "_case_json")
 
     def __init__(self, case: Mapping[str, object]) -> None:
         raise ExecutorError(
             "only the live executor can create an authoritative journey run"
         )
 
+    def __setattr__(self, name: str, value: object) -> None:
+        raise ExecutorError("executor run proof is immutable")
+
     @property
     def case(self) -> dict[str, object]:
-        return dict(self._case)
-
-
-def _authority_boundary():
-    """Keep the live capability outside the module namespace."""
-
-    authority = object()
-
-    def create(case: Mapping[str, object]) -> ExecutorRun:
-        run = object.__new__(ExecutorRun)
-        run._case = dict(case)
-        run._authority = authority
-        return run
-
-    def check(value: object) -> bool:
-        return isinstance(value, ExecutorRun) and value._authority is authority
-
-    return create, check
-
-
-_authoritative_run, is_authoritative_executor_run = _authority_boundary()
-del _authority_boundary
+        value = json.loads(self._case_json)
+        if not isinstance(value, dict):
+            raise ExecutorError("executor run proof is malformed")
+        return value
 
 
 class JourneyRuntime(Protocol):
@@ -566,18 +555,34 @@ def _runtime_server(vault: Path) -> int:
     return 1
 
 
-def _strict_identity(value: Mapping[str, object], context: str) -> dict[str, str]:
+def _strict_identity(
+    value: Mapping[str, object],
+    context: str,
+    *,
+    allow_legacy: bool = False,
+) -> dict[str, str]:
     if set(value) != _IDENTITY_FIELDS or not all(
         isinstance(value[field], str) for field in _IDENTITY_FIELDS
     ):
         raise ExecutorError(f"{context} release identity is malformed")
     identity = {field: str(value[field]) for field in _IDENTITY_FIELDS}
     tag_match = _RELEASE_TAG.fullmatch(identity["tag"])
+    legacy_match = (
+        _LEGACY_RELEASE_TAG.fullmatch(identity["tag"]) if allow_legacy else None
+    )
+    version = (
+        tag_match.group("version")
+        if tag_match is not None
+        else legacy_match.group("version") if legacy_match is not None else None
+    )
     if (
         any(_HEX_40.fullmatch(identity[field]) is None for field in ("tag_object", "commit", "tree"))
-        or tag_match is None
-        or tag_match.group("version") != identity["version"]
-        or not identity["commit"].startswith(tag_match.group("short"))
+        or version is None
+        or version != identity["version"]
+        or (
+            tag_match is not None
+            and not identity["commit"].startswith(tag_match.group("short"))
+        )
         or identity["channel"] != "stable"
     ):
         raise ExecutorError(f"{context} release identity is malformed")
@@ -752,7 +757,11 @@ def _validate_bridge_result(
     if value["foundation"] != foundation:
         raise ExecutorError("foundation bridge returned a different release identity")
     delivery = value["delivery_receipt"]
-    completed = delivery == {"skipped": "foundation-already-installed"}
+    already_installed = {"skipped": "foundation-already-installed"}
+    completed = (
+        value["topology_receipt"] == already_installed
+        and delivery == already_installed
+    )
     if not _contains_transaction_receipt(delivery) and not completed:
         raise ExecutorError(
             "foundation bridge did not return a lifecycle transaction receipt"
@@ -796,12 +805,12 @@ def _execute_journey_with_runtime(
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], None] = print,
     _runtime: JourneyRuntime,
-) -> ExecutorRun:
+) -> dict[str, object]:
     """Execute and own one closed two-hop journey in the current process."""
 
     if platform not in protocol.platforms:
         raise ExecutorError(f"journey platform is not declared by the protocol: {platform}")
-    start = _strict_identity(starting_release, "starting")
+    start = _strict_identity(starting_release, "starting", allow_legacy=True)
     foundation = _strict_identity(foundation_release, "foundation")
     follow_up = _strict_identity(follow_up_release, "follow-up")
     if foundation == follow_up:
@@ -1044,52 +1053,115 @@ def _execute_journey_with_runtime(
         "evidence_manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
     }
     _write_json(evidence_root / "journey-result.json", case)
-    return _authoritative_run(case)
+    return case
 
 
-def execute_journey(
-    *,
-    repo_root: Path,
-    source_commit: str,
-    vault_root: Path,
-    evidence_root: Path,
-    starting_release: Mapping[str, object],
-    foundation_release: Mapping[str, object],
-    follow_up_release: Mapping[str, object],
-    protocol: UpdateJourneyProtocol,
-    historic_surface: Mapping[str, object],
-    foundation_surface: Mapping[str, object],
-    user_owned_paths: Sequence[str],
-    platform: str,
-    input_fn: Callable[[str], str] = input,
-    output_fn: Callable[[str], None] = print,
-    _runtime: JourneyRuntime | None = None,
-) -> ExecutorRun:
-    """Execute one released journey and retain authority in this process."""
+def _executor_boundary():
+    """Create the sole production entrypoint without exporting a proof mint."""
 
-    owned_runtime = _runtime is None
-    runtime = _runtime or _ProductionRuntime()
-    try:
-        return _execute_journey_with_runtime(
-            repo_root=repo_root,
-            source_commit=source_commit,
-            vault_root=vault_root,
-            evidence_root=evidence_root,
-            starting_release=starting_release,
-            foundation_release=foundation_release,
-            follow_up_release=follow_up_release,
-            protocol=protocol,
-            historic_surface=historic_surface,
-            foundation_surface=foundation_surface,
-            user_owned_paths=user_owned_paths,
-            platform=platform,
-            input_fn=input_fn,
-            output_fn=output_fn,
-            _runtime=runtime,
+    authority = object()
+    production_runtime_type = _ProductionRuntime
+    execute_with_runtime = _execute_journey_with_runtime
+    production_methods = {
+        name: getattr(production_runtime_type, name)
+        for name in (
+            "bridge_to_foundation",
+            "installed_release",
+            "doctor",
+            "deliver_latest_release",
+            "build_and_preview_delivered_release",
+            "execute_approved_delivered_release",
+            "smoke",
+            "close",
         )
-    finally:
-        if owned_runtime:
-            runtime.close()  # type: ignore[attr-defined]
+    }
+
+    def execute_journey(
+        *,
+        repo_root: Path,
+        source_commit: str,
+        vault_root: Path,
+        evidence_root: Path,
+        starting_release: Mapping[str, object],
+        foundation_release: Mapping[str, object],
+        follow_up_release: Mapping[str, object],
+        protocol: UpdateJourneyProtocol,
+        historic_surface: Mapping[str, object],
+        foundation_surface: Mapping[str, object],
+        user_owned_paths: Sequence[str],
+        platform: str,
+        input_fn: Callable[[str], str] = input,
+        output_fn: Callable[[str], None] = print,
+        _runtime: JourneyRuntime | None = None,
+    ) -> ExecutorRun:
+        """Execute one released journey and retain production authority here."""
+
+        production_owned = _runtime is None
+        runtime = production_runtime_type() if production_owned else _runtime
+        assert runtime is not None
+        try:
+            case = execute_with_runtime(
+                repo_root=repo_root,
+                source_commit=source_commit,
+                vault_root=vault_root,
+                evidence_root=evidence_root,
+                starting_release=starting_release,
+                foundation_release=foundation_release,
+                follow_up_release=follow_up_release,
+                protocol=protocol,
+                historic_surface=historic_surface,
+                foundation_surface=foundation_surface,
+                user_owned_paths=user_owned_paths,
+                platform=platform,
+                input_fn=input_fn,
+                output_fn=output_fn,
+                _runtime=runtime,
+            )
+        finally:
+            if production_owned:
+                runtime.close()  # type: ignore[attr-defined]
+        case_json = json.dumps(
+            case,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        run = object.__new__(ExecutorRun)
+        object.__setattr__(run, "_case_json", case_json)
+        production_intact = (
+            production_owned
+            and type(runtime) is production_runtime_type
+            and all(
+                getattr(production_runtime_type, name) is function
+                for name, function in production_methods.items()
+            )
+        )
+        seal = (
+            (authority, hashlib.sha256(case_json).digest())
+            if production_intact
+            else None
+        )
+        object.__setattr__(run, "_authority", seal)
+        return run
+
+    def is_authoritative_executor_run(value: object) -> bool:
+        if not isinstance(value, ExecutorRun):
+            return False
+        seal = getattr(value, "_authority", None)
+        case_json = getattr(value, "_case_json", None)
+        return (
+            isinstance(seal, tuple)
+            and len(seal) == 2
+            and seal[0] is authority
+            and isinstance(seal[1], bytes)
+            and isinstance(case_json, bytes)
+            and seal[1] == hashlib.sha256(case_json).digest()
+        )
+
+    return execute_journey, is_authoritative_executor_run
+
+
+execute_journey, is_authoritative_executor_run = _executor_boundary()
+del _executor_boundary
 
 
 __all__ = [
