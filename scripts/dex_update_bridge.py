@@ -1013,13 +1013,52 @@ def _foundation_is_installed(vault_root: Path, pin: ReleasePin) -> bool:
     return True
 
 
-def _completed_bridge_result(pin: ReleasePin) -> dict[str, object]:
+def _completed_bridge_result(
+    pin: ReleasePin,
+    mcp_registration_receipt: Mapping[str, Any],
+) -> dict[str, object]:
     return {
         "foundation": pin.identity(),
         "topology_receipt": {"skipped": "foundation-already-installed"},
         "delivery_receipt": {"skipped": "foundation-already-installed"},
-        "mcp_registration_receipt": {"skipped": "foundation-already-installed"},
+        "mcp_registration_receipt": dict(mcp_registration_receipt),
     }
+
+
+def _complete_mcp_registration(
+    vault_root: Path,
+    service: LifecycleService,
+    *,
+    input_fn: Callable[[str], str],
+    output_fn: Callable[[str], None],
+) -> Mapping[str, Any]:
+    registration = service.build_and_preview_mcp_registration(vault_root)
+    if registration.get("needed") is False:
+        if (
+            registration.get("preview") is not None
+            or registration.get("approval_token") is not None
+        ):
+            raise BridgeError("foundation returned a malformed completed MCP registration")
+        return {"skipped": "mcp-already-registered"}
+
+    registration_preview = registration.get("preview")
+    if registration.get("needed") is not True or not isinstance(
+        registration_preview,
+        Mapping,
+    ):
+        raise BridgeError("foundation could not produce an MCP registration preview")
+    registration_preview, registration_token = _approved_preview(
+        "Dex will add the current customization migration server to your MCP configuration.",
+        registration_preview,
+        registration.get("approval_token"),
+        input_fn=input_fn,
+        output_fn=output_fn,
+    )
+    return service.execute_approved_mcp_registration(
+        vault_root,
+        registration_preview,
+        registration_token,
+    )
 
 
 def run_bridge(vault_root: Path, service: LifecycleService, *, pin: ReleasePin = FOUNDATION, fetch_foundation: Callable[[Path, ReleasePin], None] = _fetch_foundation_into_brain, input_fn: Callable[[str], str] = input, output_fn: Callable[[str], None] = print) -> Mapping[str, Any]:
@@ -1030,7 +1069,15 @@ def run_bridge(vault_root: Path, service: LifecycleService, *, pin: ReleasePin =
     # completed bridge must work offline and must not be disturbed merely
     # because the stable channel has subsequently advanced.
     if _foundation_is_installed(root, pin):
-        return _completed_bridge_result(pin)
+        return _completed_bridge_result(
+            pin,
+            _complete_mcp_registration(
+                root,
+                service,
+                input_fn=input_fn,
+                output_fn=output_fn,
+            ),
+        )
 
     topology = service.build_and_preview_topology_migration(root)
     preview = topology.get("preview")
@@ -1059,35 +1106,12 @@ def run_bridge(vault_root: Path, service: LifecycleService, *, pin: ReleasePin =
     release_preview, release_token = _approved_preview(f"Dex will now install verified foundation v{pin.version}.", release_preview, delivery.get("approval_token"), input_fn=input_fn, output_fn=output_fn)
     delivery_receipt = service.execute_approved_delivered_release(root, release_preview, release_token)
 
-    registration = service.build_and_preview_mcp_registration(root)
-    if registration.get("needed") is False:
-        if (
-            registration.get("preview") is not None
-            or registration.get("approval_token") is not None
-        ):
-            raise BridgeError("foundation returned a malformed completed MCP registration")
-        mcp_registration_receipt: Mapping[str, Any] = {
-            "skipped": "mcp-already-registered"
-        }
-    else:
-        registration_preview = registration.get("preview")
-        if registration.get("needed") is not True or not isinstance(
-            registration_preview,
-            Mapping,
-        ):
-            raise BridgeError("foundation could not produce an MCP registration preview")
-        registration_preview, registration_token = _approved_preview(
-            "Dex will add the current customization migration server to your MCP configuration.",
-            registration_preview,
-            registration.get("approval_token"),
-            input_fn=input_fn,
-            output_fn=output_fn,
-        )
-        mcp_registration_receipt = service.execute_approved_mcp_registration(
-            root,
-            registration_preview,
-            registration_token,
-        )
+    mcp_registration_receipt = _complete_mcp_registration(
+        root,
+        service,
+        input_fn=input_fn,
+        output_fn=output_fn,
+    )
 
     return {
         "foundation": pin.identity(),
@@ -1110,7 +1134,14 @@ def main(argv: list[str] | None = None) -> int:
         # selecting the old virtualenv or downloading source so resuming it is
         # genuinely offline and independent of a later stable-channel change.
         if _foundation_is_installed(vault, FOUNDATION):
-            result = _completed_bridge_result(FOUNDATION)
+            _reexec_in_installed_runtime(
+                vault,
+                sys.argv[1:] if argv is None else argv,
+            )
+            result = run_bridge(
+                vault,
+                _load_lifecycle_service(vault),
+            )
         else:
             _reexec_in_installed_runtime(vault, sys.argv[1:] if argv is None else argv)
             temporary, source = acquire_foundation_source()

@@ -970,7 +970,16 @@ def test_bridge_does_not_repeat_a_completed_topology_conversion(tmp_path: Path) 
 def test_bridge_resumes_offline_without_fetching_or_revalidating_an_advanced_channel(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    service = _SplitService()
+    class CurrentMcpService(_SplitService):
+        def build_and_preview_mcp_registration(self, vault_root: Path):
+            self.calls.append("mcp-preview")
+            return {
+                "needed": False,
+                "preview": None,
+                "approval_token": None,
+            }
+
+    service = CurrentMcpService()
     monkeypatch.setattr(bridge, "_foundation_is_installed", lambda _vault, _pin: True)
 
     result = bridge.run_bridge(
@@ -984,9 +993,29 @@ def test_bridge_resumes_offline_without_fetching_or_revalidating_an_advanced_cha
     assert result["topology_receipt"] == {"skipped": "foundation-already-installed"}
     assert result["delivery_receipt"] == {"skipped": "foundation-already-installed"}
     assert result["mcp_registration_receipt"] == {
-        "skipped": "foundation-already-installed"
+        "skipped": "mcp-already-registered"
     }
-    assert service.calls == []
+    assert service.calls == ["mcp-preview"]
+
+
+def test_bridge_retry_finishes_missing_mcp_registration_without_repeating_update_hops(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = _SplitService()
+    monkeypatch.setattr(bridge, "_foundation_is_installed", lambda _vault, _pin: True)
+
+    result = bridge.run_bridge(
+        _vault(tmp_path),
+        service,
+        fetch_foundation=lambda _vault, _pin: pytest.fail("completed bridge must not fetch"),
+        input_fn=lambda _prompt: "APPLY",
+        output_fn=lambda _line: None,
+    )
+
+    assert result["topology_receipt"] == {"skipped": "foundation-already-installed"}
+    assert result["delivery_receipt"] == {"skipped": "foundation-already-installed"}
+    assert result["mcp_registration_receipt"] == {"receipt": "mcp-registration"}
+    assert service.calls == ["mcp-preview", "mcp-execute:mcp-token"]
 
 
 def test_completed_foundation_requires_all_durable_split_markers(
@@ -1003,25 +1032,40 @@ def test_completed_foundation_requires_all_durable_split_markers(
         bridge._foundation_is_installed(vault, bridge.FOUNDATION)
 
 
-def test_main_resumes_completed_foundation_before_runtime_or_source_download(
+def test_main_resumes_completed_foundation_from_installed_service_without_download(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    class CurrentMcpService(_SplitService):
+        def build_and_preview_mcp_registration(self, vault_root: Path):
+            self.calls.append("mcp-preview")
+            return {
+                "needed": False,
+                "preview": None,
+                "approval_token": None,
+            }
+
     vault = _completed_vault(tmp_path)
+    service = CurrentMcpService()
+    reexec_calls: list[tuple[Path, list[str]]] = []
     monkeypatch.setattr(bridge, "_run_git", lambda *_arguments: bridge.FOUNDATION.commit)
     monkeypatch.setattr(
         bridge,
         "_reexec_in_installed_runtime",
-        lambda *_arguments: pytest.fail("completed bridge must not re-exec"),
+        lambda root, arguments: reexec_calls.append((root, list(arguments))),
     )
     monkeypatch.setattr(
         bridge,
         "acquire_foundation_source",
         lambda: pytest.fail("completed bridge must not download source"),
     )
+    monkeypatch.setattr(bridge, "_load_lifecycle_service", lambda source: service)
 
     assert bridge.main(["--vault", str(vault)]) == 0
     output = capsys.readouterr().out
     assert '"foundation-already-installed"' in output
+    assert '"mcp-already-registered"' in output
+    assert service.calls == ["mcp-preview"]
+    assert reexec_calls == [(vault, ["--vault", str(vault)])]
 
 
 def test_runtime_reexec_cleans_a_hostile_same_interpreter_and_preset_marker(

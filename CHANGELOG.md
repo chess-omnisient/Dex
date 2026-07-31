@@ -23,6 +23,12 @@ verified local Git history. It stopped safely before changing the fixture.
   both.
 * **Machine-wide Git security remains untouched.** No global setting is written,
   and every other bridge operation keeps the existing HTTPS-only boundary.
+* **Interrupted upgrades finish their health setup on retry.** If the foundation
+  is already installed but Dex's current customization connection is still
+  missing, the bridge shows the exact add-only change and asks before adding it.
+* **Health checks see QMD only when it is really installed.** The sealed fleet
+  journey exposes that one optional executable without inheriting other ambient
+  machine commands.
 * **Failures still stop before personal files change.** The original fleet
   attempt failed closed, and the journey continues to verify every protected
   user-file hash across both update hops.

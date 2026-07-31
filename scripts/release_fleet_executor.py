@@ -980,27 +980,26 @@ def _validate_bridge_result(
         raise ExecutorError("foundation bridge returned a different release identity")
     delivery = value["delivery_receipt"]
     already_installed = {"skipped": "foundation-already-installed"}
-    completed = (
+    foundation_completed = (
         value["topology_receipt"] == already_installed
         and delivery == already_installed
-        and value["mcp_registration_receipt"] == already_installed
     )
-    if not _contains_transaction_receipt(delivery) and not completed:
+    if not _contains_transaction_receipt(delivery) and not foundation_completed:
         raise ExecutorError(
             "foundation bridge did not return a lifecycle transaction receipt"
         )
-    if completed and approval_count != 0:
-        raise ExecutorError("completed foundation bridge requested an approval")
-    if not completed and approval_count == 0:
+    if not foundation_completed and approval_count == 0:
         raise ExecutorError("foundation delivery completed without an approval")
     registration = value["mcp_registration_receipt"]
-    if (
-        not completed
-        and registration != {"skipped": "mcp-already-registered"}
-        and not _contains_transaction_receipt(registration)
-    ):
+    registration_current = registration == {"skipped": "mcp-already-registered"}
+    registration_completed = _contains_transaction_receipt(registration)
+    if not registration_current and not registration_completed:
         raise ExecutorError(
             "foundation bridge did not return an MCP registration transaction receipt"
+        )
+    if foundation_completed and approval_count != int(registration_completed):
+        raise ExecutorError(
+            "completed foundation bridge approval did not match MCP registration"
         )
     return dict(value)
 

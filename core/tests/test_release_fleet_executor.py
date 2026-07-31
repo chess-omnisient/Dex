@@ -598,7 +598,7 @@ def test_already_installed_foundation_executes_and_validates_without_a_fake_tran
                     "skipped": "foundation-already-installed"
                 },
                 "mcp_registration_receipt": {
-                    "skipped": "foundation-already-installed"
+                    "skipped": "mcp-already-registered"
                 },
             }
 
@@ -623,6 +623,53 @@ def test_already_installed_foundation_executes_and_validates_without_a_fake_tran
         foundation_receipt["receipt"],
         expected_foundation=protocol.foundation,
         approval_count=0,
+    )
+
+
+def test_already_installed_foundation_can_finish_one_approved_mcp_registration(
+    tmp_path: Path,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+
+    class ResumeRegistrationRuntime(_Runtime):
+        def bridge_to_foundation(
+            self, vault: Path, foundation, *, input_fn, output_fn
+        ):
+            self.calls.append("bridge")
+            output_fn(json.dumps({"preview": "mcp-registration"}))
+            assert input_fn("mcp approval") == "APPLY"
+            self.installed = foundation["commit"]
+            return {
+                "foundation": dict(foundation),
+                "topology_receipt": {
+                    "skipped": "foundation-already-installed"
+                },
+                "delivery_receipt": {
+                    "skipped": "foundation-already-installed"
+                },
+                "mcp_registration_receipt": {
+                    "receipt": {"transaction_id": "mcp-registration-tx"}
+                },
+            }
+
+    run = _execute(
+        tmp_path,
+        ResumeRegistrationRuntime(_identity("1.81.0", "b")),
+        source_repo=source_repo,
+        source_commit=source_commit,
+    )
+    evidence = tmp_path / "case.evidence"
+    transcript = json.loads((evidence / "journey-transcript.json").read_text())
+    foundation_receipt = json.loads(
+        (evidence / "foundation-receipt.json").read_text()
+    )
+
+    assert run.case["reached_foundation"] is True
+    assert transcript["events"][2]["approval_count"] == 1
+    assert release_fleet._valid_foundation_bridge_receipt(
+        foundation_receipt["receipt"],
+        expected_foundation=foundation_receipt["release"],
+        approval_count=1,
     )
 
 
