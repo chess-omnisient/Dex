@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -182,6 +183,29 @@ def test_foundation_cache_rejects_wrong_channel_or_unsafe_permissions(
         executor._validate_foundation_cache(cache, pin)
 
 
+def test_production_runtime_exposes_only_installed_qmd_not_ambient_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    qmd = tmp_path / ".bun" / "bin" / "qmd"
+    qmd.parent.mkdir(parents=True)
+    qmd.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    qmd.chmod(0o755)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", f"{tmp_path / 'ambient'}:/usr/bin")
+
+    runtime = executor._ProductionRuntime()
+    try:
+        environment = runtime._runtime_environment(tmp_path)
+        runtime_tools = Path(environment["PATH"].split(os.pathsep)[0])
+
+        assert (runtime_tools / "qmd").resolve() == qmd.resolve()
+        assert str(qmd.parent) not in environment["PATH"].split(os.pathsep)
+        assert str(tmp_path / "ambient") not in environment["PATH"]
+    finally:
+        runtime.close()
+
+
 def _commit_executor_tamper(repo: Path) -> str:
     path = repo / "scripts/release_fleet_executor.py"
     path.write_bytes(path.read_bytes() + b"\n# externally substituted bytes\n")
@@ -227,11 +251,16 @@ class _Runtime:
         assert input_fn("topology approval") == "APPLY"
         output_fn(json.dumps({"preview": "foundation"}))
         assert input_fn("foundation approval") == "APPLY"
+        output_fn(json.dumps({"preview": "mcp-registration"}))
+        assert input_fn("mcp approval") == "APPLY"
         self.installed = foundation["commit"]
         return {
             "foundation": dict(foundation),
             "topology_receipt": {"receipt": {"transaction_id": "topology-tx"}},
             "delivery_receipt": {"receipt": {"transaction_id": "foundation-tx"}},
+            "mcp_registration_receipt": {
+                "receipt": {"transaction_id": "mcp-registration-tx"}
+            },
         }
 
     def installed_release(self, vault: Path) -> str:
@@ -355,11 +384,11 @@ def test_executor_owns_the_closed_two_hop_journey_and_returned_evidence(
     assert release_fleet._valid_foundation_bridge_receipt(
         foundation_receipt["receipt"],
         expected_foundation=protocol.foundation,
-        approval_count=2,
+        approval_count=3,
     )
     assert follow_up_receipt["receipt"]["receipt"]["transaction_id"] == "follow-up-tx"
     assert [event["id"] for event in transcript["events"]] == list(protocol.evidence)
-    assert transcript["events"][2]["approval_count"] == 2
+    assert transcript["events"][2]["approval_count"] == 3
     assert rendered
 
     mutable_copy = run.case
@@ -519,6 +548,9 @@ def test_executor_records_the_bridge_approval_count_that_actually_occurred(
                 "delivery_receipt": {
                     "receipt": {"transaction_id": "foundation-tx"}
                 },
+                "mcp_registration_receipt": {
+                    "skipped": "mcp-already-registered"
+                },
             }
 
     runtime = OneApprovalRuntime(_identity("1.81.0", "b"))
@@ -565,6 +597,9 @@ def test_already_installed_foundation_executes_and_validates_without_a_fake_tran
                 "delivery_receipt": {
                     "skipped": "foundation-already-installed"
                 },
+                "mcp_registration_receipt": {
+                    "skipped": "foundation-already-installed"
+                },
             }
 
     runtime = AlreadyInstalledRuntime(_identity("1.81.0", "b"))
@@ -597,6 +632,7 @@ def test_mutating_foundation_bridge_still_requires_a_real_delivery_receipt() -> 
         "foundation": foundation,
         "topology_receipt": {"skipped": "already-brain-vault-split"},
         "delivery_receipt": {"status": "claimed-complete"},
+        "mcp_registration_receipt": {"skipped": "mcp-already-registered"},
     }
 
     assert not release_fleet._valid_foundation_bridge_receipt(
@@ -621,6 +657,9 @@ def test_executor_rejects_a_partial_already_installed_claim(
                 "foundation": dict(foundation),
                 "topology_receipt": {"status": "claimed-complete"},
                 "delivery_receipt": {
+                    "skipped": "foundation-already-installed"
+                },
+                "mcp_registration_receipt": {
                     "skipped": "foundation-already-installed"
                 },
             }
@@ -720,6 +759,9 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
             "foundation": pin.identity(),
             "topology_receipt": {"receipt": {"transaction_id": "topology"}},
             "delivery_receipt": {"receipt": {"transaction_id": "foundation"}},
+            "mcp_registration_receipt": {
+                "receipt": {"transaction_id": "mcp-registration"}
+            },
         }
 
     monkeypatch.setattr(

@@ -39,6 +39,24 @@ class _Service:
         assert preview == {"step": "release"}
         return {"receipt": "release"}
 
+    def build_and_preview_mcp_registration(self, vault_root: Path):
+        self.calls.append("mcp-preview")
+        return {
+            "needed": True,
+            "preview": {"step": "mcp-registration"},
+            "approval_token": "mcp-token",
+        }
+
+    def execute_approved_mcp_registration(
+        self,
+        vault_root: Path,
+        preview,
+        approved_token: str,
+    ):
+        self.calls.append(f"mcp-execute:{approved_token}")
+        assert preview == {"step": "mcp-registration"}
+        return {"receipt": "mcp-registration"}
+
 
 
 class _SplitService(_Service):
@@ -755,9 +773,9 @@ def test_release_pin_rejects_a_mutable_or_incomplete_identity() -> None:
         bridge.ReleasePin("dist/release/v1.80.5-aaaaaaa", "not-a-hash", "b" * 40, "c" * 40, "1.80.5")
 
 
-def test_bridge_requires_two_new_approvals_and_routes_writes_through_foundation_service(tmp_path: Path) -> None:
+def test_bridge_requires_three_new_approvals_and_routes_writes_through_foundation_service(tmp_path: Path) -> None:
     service = _Service()
-    answers = iter(("APPLY", "APPLY"))
+    answers = iter(("APPLY", "APPLY", "APPLY"))
     fetched: list[Path] = []
     vault = _vault(tmp_path)
 
@@ -775,6 +793,8 @@ def test_bridge_requires_two_new_approvals_and_routes_writes_through_foundation_
         "topology-execute:topology-token",
         "release-preview",
         "release-execute:release-token",
+        "mcp-preview",
+        "mcp-execute:mcp-token",
     ]
     assert fetched == [vault]
 
@@ -865,10 +885,69 @@ def test_bridge_stops_before_delivered_release_execution_when_second_preview_is_
     assert service.calls == ["topology-preview", "topology-execute:topology-token", "release-preview"]
 
 
+def test_bridge_stops_before_mcp_registration_when_third_preview_is_not_approved(
+    tmp_path: Path,
+) -> None:
+    service = _Service()
+    answers = iter(("APPLY", "APPLY", "no"))
+
+    with pytest.raises(bridge.BridgeError, match="no change"):
+        bridge.run_bridge(
+            _vault(tmp_path),
+            service,
+            fetch_foundation=lambda _vault, _pin: None,
+            input_fn=lambda _prompt: next(answers),
+            output_fn=lambda _line: None,
+        )
+
+    assert service.calls == [
+        "topology-preview",
+        "topology-execute:topology-token",
+        "release-preview",
+        "release-execute:release-token",
+        "mcp-preview",
+    ]
+
+
+def test_bridge_does_not_request_mcp_approval_when_registration_is_current(
+    tmp_path: Path,
+) -> None:
+    class CurrentMcpService(_Service):
+        def build_and_preview_mcp_registration(self, vault_root: Path):
+            self.calls.append("mcp-preview")
+            return {
+                "needed": False,
+                "preview": None,
+                "approval_token": None,
+            }
+
+    service = CurrentMcpService()
+    answers = iter(("APPLY", "APPLY"))
+
+    result = bridge.run_bridge(
+        _vault(tmp_path),
+        service,
+        fetch_foundation=lambda _vault, _pin: None,
+        input_fn=lambda _prompt: next(answers),
+        output_fn=lambda _line: None,
+    )
+
+    assert result["mcp_registration_receipt"] == {
+        "skipped": "mcp-already-registered"
+    }
+    assert service.calls == [
+        "topology-preview",
+        "topology-execute:topology-token",
+        "release-preview",
+        "release-execute:release-token",
+        "mcp-preview",
+    ]
+
+
 def test_bridge_does_not_repeat_a_completed_topology_conversion(tmp_path: Path) -> None:
     service = _SplitService()
     vault = _vault(tmp_path)
-    answers = iter(("APPLY",))
+    answers = iter(("APPLY", "APPLY"))
 
     result = bridge.run_bridge(
         vault,
@@ -879,7 +958,13 @@ def test_bridge_does_not_repeat_a_completed_topology_conversion(tmp_path: Path) 
     )
 
     assert result["topology_receipt"] == {"skipped": "already-brain-vault-split"}
-    assert service.calls == ["topology-preview", "release-preview", "release-execute:release-token"]
+    assert service.calls == [
+        "topology-preview",
+        "release-preview",
+        "release-execute:release-token",
+        "mcp-preview",
+        "mcp-execute:mcp-token",
+    ]
 
 
 def test_bridge_resumes_offline_without_fetching_or_revalidating_an_advanced_channel(
@@ -898,6 +983,9 @@ def test_bridge_resumes_offline_without_fetching_or_revalidating_an_advanced_cha
 
     assert result["topology_receipt"] == {"skipped": "foundation-already-installed"}
     assert result["delivery_receipt"] == {"skipped": "foundation-already-installed"}
+    assert result["mcp_registration_receipt"] == {
+        "skipped": "foundation-already-installed"
+    }
     assert service.calls == []
 
 

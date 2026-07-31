@@ -111,8 +111,9 @@ The repository has the canonical protocol source at
 shell-command format. Version 1 permits only:
 
 - the reviewed pinned-foundation bridge, with its exact source SHA-256 and up
-  to two conditional `APPLY` approvals (topology and delivery previews are
-  requested only when the actual fixture state requires them);
+  to three conditional `APPLY` approvals (topology, delivery, and a missing
+  current MCP registration are requested only when the fixture state requires
+  them);
 - `deliver_latest_release`, `build_and_preview_delivered_release`, then
   `execute_approved_delivered_release`, with one fresh `APPLY` approval; and
 - the fixed evidence order needed for refusal, bridge provenance, preview,

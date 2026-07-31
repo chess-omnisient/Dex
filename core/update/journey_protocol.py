@@ -225,7 +225,7 @@ def load_update_journey_protocol(source: bytes | str) -> UpdateJourneyProtocol:
         raise JourneyProtocolError("journey protocol historic hop uses an unsupported adapter")
     bridge_word, bridge_count = _approval(
         bridge_document["approval"],
-        expected_count=2,
+        expected_count=3,
         context="journey protocol historic approval",
     )
     bridge = BridgeHop(
