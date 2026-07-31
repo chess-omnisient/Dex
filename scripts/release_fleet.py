@@ -1189,14 +1189,24 @@ def _run_bounded_process_group(
                 break
             time.sleep(min(0.02, remaining))
         if _process_group_exists(process.pid):
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            except PermissionError as error:
-                raise FleetError(
-                    "timed-out fixture process group could not be killed"
-                ) from error
+            kill_deadline = time.monotonic() + PROCESS_GROUP_TERMINATION_GRACE_SECONDS
+            permission_error: PermissionError | None = None
+            while _process_group_exists(process.pid):
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    permission_error = None
+                except ProcessLookupError:
+                    break
+                except PermissionError as error:
+                    permission_error = error
+                remaining = kill_deadline - time.monotonic()
+                if remaining <= 0:
+                    if _process_group_exists(process.pid):
+                        raise FleetError(
+                            "timed-out fixture process group could not be killed"
+                        ) from permission_error
+                    break
+                time.sleep(min(0.02, remaining))
         stdout, stderr = process.communicate()
         raise subprocess.TimeoutExpired(
             list(command),
