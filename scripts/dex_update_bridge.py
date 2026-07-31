@@ -196,6 +196,13 @@ def _legacy_preload_bytes() -> bytes:
 const fs = require('node:fs');
 const path = require('node:path');
 
+if (process.env.GIT_ALLOW_PROTOCOL !== 'https') {{
+  throw new Error('Dex update bridge refused an unsafe inherited Git protocol policy.');
+}}
+// The pinned topology migrator uses only the vault's existing local Git store.
+// Replace, rather than widen, the bridge's HTTPS policy inside this one child.
+process.env.GIT_ALLOW_PROTOCOL = 'file';
+
 const root = fs.realpathSync(process.cwd());
 const shippedLink = path.join(root, '{_LEGACY_SHIPPED_SYMLINK_RELATIVE.as_posix()}');
 const shippedLinkParent = path.dirname(shippedLink);

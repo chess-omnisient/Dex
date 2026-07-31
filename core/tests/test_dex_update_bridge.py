@@ -96,8 +96,18 @@ def _foundation_topology_adapter(
     def original_command(_vault_root: Path, _mode: str) -> list[str]:
         raise RuntimeError("vault migrator was rejected")
 
+    def original_run(vault_root: Path, mode: str):
+        return subprocess.run(
+            engine._migrator_command(vault_root, mode),
+            cwd=vault_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
     engine.topology_state = original_state
     engine._migrator_command = original_command
+    engine._run_topology_migrator = original_run
     apply_update = ModuleType("test_foundation_apply_update")
     apply_update._tree_entries = lambda *_arguments: ()
     apply_update._verify_manifest = lambda *_arguments: None
@@ -301,6 +311,92 @@ def test_foundation_service_uses_verified_migrator_for_exact_legacy_topology_onl
     assert engine._migrator_command is original_command
 
 
+def test_verified_legacy_migrator_gets_only_scoped_local_git_transport(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, engine, vault, migrator = _foundation_topology_adapter(tmp_path)
+    subprocess.run(["git", "init", "--quiet", str(vault)], check=True)
+    migrator.write_text(
+        """'use strict';
+const { spawnSync } = require('node:child_process');
+const path = require('node:path');
+const result = spawnSync(
+  'git',
+  [
+    '-c',
+    'protocol.file.allow=always',
+    'clone',
+    '--bare',
+    path.join(process.cwd(), '.git'),
+    path.join(process.cwd(), '.dex', 'transport-proof.git'),
+  ],
+  { encoding: 'utf8' },
+);
+if (result.status !== 0) {
+  process.stderr.write(result.stderr || result.stdout);
+  process.exit(result.status || 1);
+}
+const network = spawnSync(
+  'git',
+  ['ls-remote', 'https://example.invalid/dex.git'],
+  { encoding: 'utf8' },
+);
+if (
+  network.status === 0
+  || !String(network.stderr).includes("transport 'https' not allowed")
+) {
+  process.stderr.write(network.stderr || network.stdout || 'HTTPS was not blocked');
+  process.exit(network.status || 1);
+}
+""",
+        encoding="utf-8",
+    )
+    service = bridge._FoundationLifecycleService(
+        service._service,
+        engine,
+        service._apply_update,
+        service._source,
+    )
+
+    class RunningService:
+        @staticmethod
+        def build_and_preview_topology_migration(vault_root: Path):
+            assert engine.topology_state(vault_root) == "combined"
+            return engine._run_topology_migrator(vault_root, "--dry-run")
+
+    service._service = RunningService()
+    monkeypatch.setattr(bridge, "_supported_legacy_topology", lambda _root: True)
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "https")
+    parent_environment = bridge._bridge_environment()
+    parent_attempt = subprocess.run(
+        [
+            "git",
+            "-c",
+            "protocol.file.allow=always",
+            "clone",
+            "--bare",
+            str(vault / ".git"),
+            str(vault / ".dex" / "parent-transport-proof.git"),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=parent_environment,
+    )
+
+    assert parent_attempt.returncode != 0
+    assert "transport 'file' not allowed" in parent_attempt.stderr
+    assert parent_environment["GIT_ALLOW_PROTOCOL"] == "https"
+    assert parent_environment["GIT_CONFIG_GLOBAL"] == os.devnull
+
+    result = service.build_and_preview_topology_migration(vault)
+
+    assert result.returncode == 0, result.stderr
+    assert (vault / ".dex" / "transport-proof.git").is_dir()
+    assert os.environ["GIT_ALLOW_PROTOCOL"] == "https"
+
+
 def test_foundation_service_keeps_unknown_or_ambiguous_topology_fail_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -367,6 +463,7 @@ process.stdout.write(JSON.stringify({policy, transition}));
         check=True,
         capture_output=True,
         text=True,
+        env=bridge._bridge_environment(),
     )
     supplied = json.loads(result.stdout)
 
@@ -398,6 +495,7 @@ def test_legacy_preload_refuses_an_existing_or_symlinked_compatibility_input(
         check=False,
         capture_output=True,
         text=True,
+        env=bridge._bridge_environment(),
     )
 
     assert result.returncode != 0
@@ -429,6 +527,7 @@ process.stdout.write(JSON.stringify(names));
         check=True,
         capture_output=True,
         text=True,
+        env=bridge._bridge_environment(),
     )
 
     assert json.loads(result.stdout) == []
@@ -455,6 +554,7 @@ def test_legacy_preload_refuses_a_changed_release_symlink(
         check=False,
         capture_output=True,
         text=True,
+        env=bridge._bridge_environment(),
     )
 
     assert result.returncode != 0
