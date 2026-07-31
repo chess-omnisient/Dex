@@ -542,18 +542,32 @@ def _valid_foundation_bridge_receipt(
     if (
         not isinstance(value, Mapping)
         or set(value)
-        != {"foundation", "topology_receipt", "delivery_receipt"}
+        != {
+            "foundation",
+            "topology_receipt",
+            "delivery_receipt",
+            "mcp_registration_receipt",
+        }
         or value["foundation"] != expected_foundation
     ):
         return False
     already_installed = {"skipped": "foundation-already-installed"}
-    if (
+    foundation_completed = (
         value["topology_receipt"] == already_installed
         and value["delivery_receipt"] == already_installed
-    ):
-        return approval_count == 0
-    return approval_count > 0 and _has_transaction_receipt(
-        value["delivery_receipt"]
+    )
+    registration = value["mcp_registration_receipt"]
+    registration_current = registration == {"skipped": "mcp-already-registered"}
+    registration_completed = _has_transaction_receipt(registration)
+    if foundation_completed:
+        return (
+            (registration_current and approval_count == 0)
+            or (registration_completed and approval_count == 1)
+        )
+    return (
+        approval_count > 0
+        and _has_transaction_receipt(value["delivery_receipt"])
+        and (registration_current or registration_completed)
     )
 
 

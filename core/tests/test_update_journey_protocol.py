@@ -48,7 +48,7 @@ def test_release_owned_protocol_binds_only_the_reviewed_update_adapters() -> Non
         "execute_approved_delivered_release",
     )
     assert protocol.bridge.approval_word == protocol.follow_up.approval_word == "APPLY"
-    assert protocol.bridge.approval_count == 2
+    assert protocol.bridge.approval_count == 3
     assert protocol.follow_up.approval_count == 1
     assert protocol.executor.source_path == "scripts/release_fleet_executor.py"
     for artifact in (protocol.bridge.artifact, protocol.runner, protocol.executor):
@@ -62,6 +62,23 @@ def test_protocol_rejects_an_arbitrary_command_adapter() -> None:
     document["historic_to_foundation"]["command"] = ["sh", "-c", "anything"]
 
     with pytest.raises(JourneyProtocolError, match="invalid shape|unsupported adapter"):
+        load_update_journey_protocol(json.dumps(document).encode())
+
+
+def test_protocol_reader_keeps_the_published_two_approval_bridge_compatible() -> None:
+    document = json.loads(PROTOCOL_PATH.read_text(encoding="utf-8"))
+    document["historic_to_foundation"]["approval"]["count"] = 2
+
+    protocol = load_update_journey_protocol(json.dumps(document).encode())
+
+    assert protocol.bridge.approval_count == 2
+
+
+def test_protocol_rejects_an_unreviewed_bridge_approval_count() -> None:
+    document = json.loads(PROTOCOL_PATH.read_text(encoding="utf-8"))
+    document["historic_to_foundation"]["approval"]["count"] = 4
+
+    with pytest.raises(JourneyProtocolError, match="reviewed approval boundary"):
         load_update_journey_protocol(json.dumps(document).encode())
 
 

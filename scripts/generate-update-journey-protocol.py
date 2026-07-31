@@ -61,7 +61,7 @@ def protocol_document() -> dict[str, object]:
                 "sha256": _sha256(BRIDGE_SOURCE),
             },
             "foundation": FOUNDATION.identity(),
-            "approval": {"word": "APPLY", "count": 2},
+            "approval": {"word": "APPLY", "count": 3},
         },
         "foundation_to_follow_up": {
             "adapter": FOLLOW_UP_ADAPTER,

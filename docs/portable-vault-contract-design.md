@@ -50,7 +50,10 @@ path traversal. (From #141 ownership.cjs deny set + Vault_Contract §3 secrets r
 - `System/integrations/config.yaml` = `seed` (shipped reference-schema template;
   install-if-absent; never overwritten once user-owned).
 - `.mcp.json` = `vault` + `report_only: true` (SR1's structural residual detector owns
-  it; no engine may rewrite it).
+  it; release updates and migration engines never rewrite it). The one narrow
+  exception is the later-ratified lifecycle registration repair: after showing
+  the exact preview and receiving explicit approval, it may add Dex's own missing
+  Customization Migration entry. It cannot replace or remove any user entry.
 - Raw secret authority = vault-root `.env` (hard-deny).
 
 ## Capability registry (Decision C, Option 2)

@@ -39,6 +39,24 @@ class _Service:
         assert preview == {"step": "release"}
         return {"receipt": "release"}
 
+    def build_and_preview_mcp_registration(self, vault_root: Path):
+        self.calls.append("mcp-preview")
+        return {
+            "needed": True,
+            "preview": {"step": "mcp-registration"},
+            "approval_token": "mcp-token",
+        }
+
+    def execute_approved_mcp_registration(
+        self,
+        vault_root: Path,
+        preview,
+        approved_token: str,
+    ):
+        self.calls.append(f"mcp-execute:{approved_token}")
+        assert preview == {"step": "mcp-registration"}
+        return {"receipt": "mcp-registration"}
+
 
 
 class _SplitService(_Service):
@@ -96,8 +114,18 @@ def _foundation_topology_adapter(
     def original_command(_vault_root: Path, _mode: str) -> list[str]:
         raise RuntimeError("vault migrator was rejected")
 
+    def original_run(vault_root: Path, mode: str):
+        return subprocess.run(
+            engine._migrator_command(vault_root, mode),
+            cwd=vault_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
     engine.topology_state = original_state
     engine._migrator_command = original_command
+    engine._run_topology_migrator = original_run
     apply_update = ModuleType("test_foundation_apply_update")
     apply_update._tree_entries = lambda *_arguments: ()
     apply_update._verify_manifest = lambda *_arguments: None
@@ -301,6 +329,92 @@ def test_foundation_service_uses_verified_migrator_for_exact_legacy_topology_onl
     assert engine._migrator_command is original_command
 
 
+def test_verified_legacy_migrator_gets_only_scoped_local_git_transport(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, engine, vault, migrator = _foundation_topology_adapter(tmp_path)
+    subprocess.run(["git", "init", "--quiet", str(vault)], check=True)
+    migrator.write_text(
+        """'use strict';
+const { spawnSync } = require('node:child_process');
+const path = require('node:path');
+const result = spawnSync(
+  'git',
+  [
+    '-c',
+    'protocol.file.allow=always',
+    'clone',
+    '--bare',
+    path.join(process.cwd(), '.git'),
+    path.join(process.cwd(), '.dex', 'transport-proof.git'),
+  ],
+  { encoding: 'utf8' },
+);
+if (result.status !== 0) {
+  process.stderr.write(result.stderr || result.stdout);
+  process.exit(result.status || 1);
+}
+const network = spawnSync(
+  'git',
+  ['ls-remote', 'https://example.invalid/dex.git'],
+  { encoding: 'utf8' },
+);
+if (
+  network.status === 0
+  || !String(network.stderr).includes("transport 'https' not allowed")
+) {
+  process.stderr.write(network.stderr || network.stdout || 'HTTPS was not blocked');
+  process.exit(network.status || 1);
+}
+""",
+        encoding="utf-8",
+    )
+    service = bridge._FoundationLifecycleService(
+        service._service,
+        engine,
+        service._apply_update,
+        service._source,
+    )
+
+    class RunningService:
+        @staticmethod
+        def build_and_preview_topology_migration(vault_root: Path):
+            assert engine.topology_state(vault_root) == "combined"
+            return engine._run_topology_migrator(vault_root, "--dry-run")
+
+    service._service = RunningService()
+    monkeypatch.setattr(bridge, "_supported_legacy_topology", lambda _root: True)
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "https")
+    parent_environment = bridge._bridge_environment()
+    parent_attempt = subprocess.run(
+        [
+            "git",
+            "-c",
+            "protocol.file.allow=always",
+            "clone",
+            "--bare",
+            str(vault / ".git"),
+            str(vault / ".dex" / "parent-transport-proof.git"),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=parent_environment,
+    )
+
+    assert parent_attempt.returncode != 0
+    assert "transport 'file' not allowed" in parent_attempt.stderr
+    assert parent_environment["GIT_ALLOW_PROTOCOL"] == "https"
+    assert parent_environment["GIT_CONFIG_GLOBAL"] == os.devnull
+
+    result = service.build_and_preview_topology_migration(vault)
+
+    assert result.returncode == 0, result.stderr
+    assert (vault / ".dex" / "transport-proof.git").is_dir()
+    assert os.environ["GIT_ALLOW_PROTOCOL"] == "https"
+
+
 def test_foundation_service_keeps_unknown_or_ambiguous_topology_fail_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -367,6 +481,7 @@ process.stdout.write(JSON.stringify({policy, transition}));
         check=True,
         capture_output=True,
         text=True,
+        env=bridge._bridge_environment(),
     )
     supplied = json.loads(result.stdout)
 
@@ -398,6 +513,7 @@ def test_legacy_preload_refuses_an_existing_or_symlinked_compatibility_input(
         check=False,
         capture_output=True,
         text=True,
+        env=bridge._bridge_environment(),
     )
 
     assert result.returncode != 0
@@ -429,6 +545,7 @@ process.stdout.write(JSON.stringify(names));
         check=True,
         capture_output=True,
         text=True,
+        env=bridge._bridge_environment(),
     )
 
     assert json.loads(result.stdout) == []
@@ -455,6 +572,7 @@ def test_legacy_preload_refuses_a_changed_release_symlink(
         check=False,
         capture_output=True,
         text=True,
+        env=bridge._bridge_environment(),
     )
 
     assert result.returncode != 0
@@ -655,9 +773,9 @@ def test_release_pin_rejects_a_mutable_or_incomplete_identity() -> None:
         bridge.ReleasePin("dist/release/v1.80.5-aaaaaaa", "not-a-hash", "b" * 40, "c" * 40, "1.80.5")
 
 
-def test_bridge_requires_two_new_approvals_and_routes_writes_through_foundation_service(tmp_path: Path) -> None:
+def test_bridge_requires_three_new_approvals_and_routes_writes_through_foundation_service(tmp_path: Path) -> None:
     service = _Service()
-    answers = iter(("APPLY", "APPLY"))
+    answers = iter(("APPLY", "APPLY", "APPLY"))
     fetched: list[Path] = []
     vault = _vault(tmp_path)
 
@@ -675,6 +793,8 @@ def test_bridge_requires_two_new_approvals_and_routes_writes_through_foundation_
         "topology-execute:topology-token",
         "release-preview",
         "release-execute:release-token",
+        "mcp-preview",
+        "mcp-execute:mcp-token",
     ]
     assert fetched == [vault]
 
@@ -765,10 +885,69 @@ def test_bridge_stops_before_delivered_release_execution_when_second_preview_is_
     assert service.calls == ["topology-preview", "topology-execute:topology-token", "release-preview"]
 
 
+def test_bridge_stops_before_mcp_registration_when_third_preview_is_not_approved(
+    tmp_path: Path,
+) -> None:
+    service = _Service()
+    answers = iter(("APPLY", "APPLY", "no"))
+
+    with pytest.raises(bridge.BridgeError, match="no change"):
+        bridge.run_bridge(
+            _vault(tmp_path),
+            service,
+            fetch_foundation=lambda _vault, _pin: None,
+            input_fn=lambda _prompt: next(answers),
+            output_fn=lambda _line: None,
+        )
+
+    assert service.calls == [
+        "topology-preview",
+        "topology-execute:topology-token",
+        "release-preview",
+        "release-execute:release-token",
+        "mcp-preview",
+    ]
+
+
+def test_bridge_does_not_request_mcp_approval_when_registration_is_current(
+    tmp_path: Path,
+) -> None:
+    class CurrentMcpService(_Service):
+        def build_and_preview_mcp_registration(self, vault_root: Path):
+            self.calls.append("mcp-preview")
+            return {
+                "needed": False,
+                "preview": None,
+                "approval_token": None,
+            }
+
+    service = CurrentMcpService()
+    answers = iter(("APPLY", "APPLY"))
+
+    result = bridge.run_bridge(
+        _vault(tmp_path),
+        service,
+        fetch_foundation=lambda _vault, _pin: None,
+        input_fn=lambda _prompt: next(answers),
+        output_fn=lambda _line: None,
+    )
+
+    assert result["mcp_registration_receipt"] == {
+        "skipped": "mcp-already-registered"
+    }
+    assert service.calls == [
+        "topology-preview",
+        "topology-execute:topology-token",
+        "release-preview",
+        "release-execute:release-token",
+        "mcp-preview",
+    ]
+
+
 def test_bridge_does_not_repeat_a_completed_topology_conversion(tmp_path: Path) -> None:
     service = _SplitService()
     vault = _vault(tmp_path)
-    answers = iter(("APPLY",))
+    answers = iter(("APPLY", "APPLY"))
 
     result = bridge.run_bridge(
         vault,
@@ -779,13 +958,28 @@ def test_bridge_does_not_repeat_a_completed_topology_conversion(tmp_path: Path) 
     )
 
     assert result["topology_receipt"] == {"skipped": "already-brain-vault-split"}
-    assert service.calls == ["topology-preview", "release-preview", "release-execute:release-token"]
+    assert service.calls == [
+        "topology-preview",
+        "release-preview",
+        "release-execute:release-token",
+        "mcp-preview",
+        "mcp-execute:mcp-token",
+    ]
 
 
 def test_bridge_resumes_offline_without_fetching_or_revalidating_an_advanced_channel(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    service = _SplitService()
+    class CurrentMcpService(_SplitService):
+        def build_and_preview_mcp_registration(self, vault_root: Path):
+            self.calls.append("mcp-preview")
+            return {
+                "needed": False,
+                "preview": None,
+                "approval_token": None,
+            }
+
+    service = CurrentMcpService()
     monkeypatch.setattr(bridge, "_foundation_is_installed", lambda _vault, _pin: True)
 
     result = bridge.run_bridge(
@@ -798,7 +992,30 @@ def test_bridge_resumes_offline_without_fetching_or_revalidating_an_advanced_cha
 
     assert result["topology_receipt"] == {"skipped": "foundation-already-installed"}
     assert result["delivery_receipt"] == {"skipped": "foundation-already-installed"}
-    assert service.calls == []
+    assert result["mcp_registration_receipt"] == {
+        "skipped": "mcp-already-registered"
+    }
+    assert service.calls == ["mcp-preview"]
+
+
+def test_bridge_retry_finishes_missing_mcp_registration_without_repeating_update_hops(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = _SplitService()
+    monkeypatch.setattr(bridge, "_foundation_is_installed", lambda _vault, _pin: True)
+
+    result = bridge.run_bridge(
+        _vault(tmp_path),
+        service,
+        fetch_foundation=lambda _vault, _pin: pytest.fail("completed bridge must not fetch"),
+        input_fn=lambda _prompt: "APPLY",
+        output_fn=lambda _line: None,
+    )
+
+    assert result["topology_receipt"] == {"skipped": "foundation-already-installed"}
+    assert result["delivery_receipt"] == {"skipped": "foundation-already-installed"}
+    assert result["mcp_registration_receipt"] == {"receipt": "mcp-registration"}
+    assert service.calls == ["mcp-preview", "mcp-execute:mcp-token"]
 
 
 def test_completed_foundation_requires_all_durable_split_markers(
@@ -815,25 +1032,40 @@ def test_completed_foundation_requires_all_durable_split_markers(
         bridge._foundation_is_installed(vault, bridge.FOUNDATION)
 
 
-def test_main_resumes_completed_foundation_before_runtime_or_source_download(
+def test_main_resumes_completed_foundation_from_installed_service_without_download(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    class CurrentMcpService(_SplitService):
+        def build_and_preview_mcp_registration(self, vault_root: Path):
+            self.calls.append("mcp-preview")
+            return {
+                "needed": False,
+                "preview": None,
+                "approval_token": None,
+            }
+
     vault = _completed_vault(tmp_path)
+    service = CurrentMcpService()
+    reexec_calls: list[tuple[Path, list[str]]] = []
     monkeypatch.setattr(bridge, "_run_git", lambda *_arguments: bridge.FOUNDATION.commit)
     monkeypatch.setattr(
         bridge,
         "_reexec_in_installed_runtime",
-        lambda *_arguments: pytest.fail("completed bridge must not re-exec"),
+        lambda root, arguments: reexec_calls.append((root, list(arguments))),
     )
     monkeypatch.setattr(
         bridge,
         "acquire_foundation_source",
         lambda: pytest.fail("completed bridge must not download source"),
     )
+    monkeypatch.setattr(bridge, "_load_lifecycle_service", lambda source: service)
 
     assert bridge.main(["--vault", str(vault)]) == 0
     output = capsys.readouterr().out
     assert '"foundation-already-installed"' in output
+    assert '"mcp-already-registered"' in output
+    assert service.calls == ["mcp-preview"]
+    assert reexec_calls == [(vault, ["--vault", str(vault)])]
 
 
 def test_runtime_reexec_cleans_a_hostile_same_interpreter_and_preset_marker(

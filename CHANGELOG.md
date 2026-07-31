@@ -7,6 +7,32 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.3] — 🧭 The oldest supported Dex can cross its local-history bridge (2026-07-31)
+
+The full historic Mac journey reached the oldest published starting package,
+1.20.1, and found that its one-time migration was blocked from reading its own
+verified local Git history. It stopped safely before changing the fixture.
+
+**What this fixes for you:**
+
+* **The legacy bridge can build its private update history.** Only the exact,
+  verified 1.20.1 migration process may read the vault's existing local Git
+  store during the split.
+* **The exception cannot reach the network.** The migration child switches from
+  HTTPS-only to local-file-only access; it does not widen the bridge to accept
+  both.
+* **Machine-wide Git security remains untouched.** No global setting is written,
+  and every other bridge operation keeps the existing HTTPS-only boundary.
+* **Interrupted upgrades finish their health setup on retry.** If the foundation
+  is already installed but Dex's current customization connection is still
+  missing, the bridge shows the exact add-only change and asks before adding it.
+* **Health checks see QMD only when it is really installed.** The sealed fleet
+  journey exposes that one optional executable without inheriting other ambient
+  machine commands.
+* **Failures still stop before personal files change.** The original fleet
+  attempt failed closed, and the journey continues to verify every protected
+  user-file hash across both update hops.
+
 ## [1.81.2] — 🔗 The update bridge stays valid when a newer release goes live (2026-07-31)
 
 The first public journey from Amit's 1.77.2 release found that the bridge still

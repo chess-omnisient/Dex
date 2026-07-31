@@ -266,11 +266,41 @@ class _ProductionRuntime:
         self._server_stderr = tempfile.TemporaryFile(mode="w+b")
         self._server_vault: Path | None = None
         self._server_buffer = bytearray()
+        self._runtime_tools = Path(self._runtime_home.name) / "tools"
+        self._runtime_tools.mkdir(mode=0o700)
+        self._link_optional_qmd()
         self._foundation_cache = (
             _validate_foundation_cache(foundation_cache)
             if foundation_cache is not None
             else None
         )
+
+    def _link_optional_qmd(self) -> None:
+        """Expose only a real controller QMD binary to installed health checks.
+
+        The bridge environment deliberately ignores caller PATH. Very old Dex
+        releases nevertheless registered optional QMD by default, so hiding a
+        QMD binary that is genuinely installed on the fleet controller creates
+        a false Doctor failure. Link only that exact executable into the closed
+        runtime tool directory; no other ambient command becomes available.
+        """
+
+        home = Path.home()
+        candidates = (
+            home / ".bun" / "bin" / "qmd",
+            home / ".local" / "bin" / "qmd",
+            Path("/usr/local/bin/qmd"),
+            Path("/opt/homebrew/bin/qmd"),
+        )
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve(strict=True)
+            except OSError:
+                continue
+            if not resolved.is_file() or not os.access(resolved, os.X_OK):
+                continue
+            (self._runtime_tools / "qmd").symlink_to(resolved)
+            return
 
     def close(self) -> None:
         process = self._server
@@ -293,6 +323,9 @@ class _ProductionRuntime:
     def _runtime_environment(self, vault: Path) -> dict[str, str]:
         runtime_root = Path(self._runtime_home.name)
         environment = dex_update_bridge._bridge_environment()
+        environment["PATH"] = os.pathsep.join(
+            (str(self._runtime_tools), environment["PATH"])
+        )
         environment.update(
             {
                 "DEX_VAULT": str(vault),
@@ -936,24 +969,38 @@ def _validate_bridge_result(
     foundation: Mapping[str, str],
     approval_count: int,
 ) -> dict[str, object]:
-    if set(value) != {"foundation", "topology_receipt", "delivery_receipt"}:
+    if set(value) != {
+        "foundation",
+        "topology_receipt",
+        "delivery_receipt",
+        "mcp_registration_receipt",
+    }:
         raise ExecutorError("foundation bridge returned malformed evidence")
     if value["foundation"] != foundation:
         raise ExecutorError("foundation bridge returned a different release identity")
     delivery = value["delivery_receipt"]
     already_installed = {"skipped": "foundation-already-installed"}
-    completed = (
+    foundation_completed = (
         value["topology_receipt"] == already_installed
         and delivery == already_installed
     )
-    if not _contains_transaction_receipt(delivery) and not completed:
+    if not _contains_transaction_receipt(delivery) and not foundation_completed:
         raise ExecutorError(
             "foundation bridge did not return a lifecycle transaction receipt"
         )
-    if completed and approval_count != 0:
-        raise ExecutorError("completed foundation bridge requested an approval")
-    if not completed and approval_count == 0:
+    if not foundation_completed and approval_count == 0:
         raise ExecutorError("foundation delivery completed without an approval")
+    registration = value["mcp_registration_receipt"]
+    registration_current = registration == {"skipped": "mcp-already-registered"}
+    registration_completed = _contains_transaction_receipt(registration)
+    if not registration_current and not registration_completed:
+        raise ExecutorError(
+            "foundation bridge did not return an MCP registration transaction receipt"
+        )
+    if foundation_completed and approval_count != int(registration_completed):
+        raise ExecutorError(
+            "completed foundation bridge approval did not match MCP registration"
+        )
     return dict(value)
 
 
