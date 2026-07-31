@@ -35,23 +35,23 @@
       "word": "APPLY"
     },
     "artifact": {
-      "sha256": "0d40463658d3f760e0f5a24061e1ff642306d1604d3cef8c5d9f89c97f4b7d9b",
+      "sha256": "8a6f9edac91ec1bf78b89256ab985feb868c1ace883da1c86cbb7ad36ce86bf9",
       "source_path": "scripts/dex_update_bridge.py"
     },
     "foundation": {
       "channel": "stable",
-      "commit": "9211053235d7c1837a6e327bff1596b593323fc6",
-      "tag": "dist/release/v1.80.5-9211053",
-      "tag_object": "ff94463b191bb2c503ffec42ce288e961ca79659",
-      "tree": "d394658e2bf1125b96eb5afdace24f3a5ba3107e",
-      "version": "1.80.5"
+      "commit": "6bc490e7caec22f60f097c6b54bb563382f542b8",
+      "tag": "dist/release/v1.81.0-6bc490e",
+      "tag_object": "54b1ceef8b1f7ad4f67e4d4d045a134ea443ab53",
+      "tree": "dad3e43774e772dfc42df698f8a9818956346d78",
+      "version": "1.81.0"
     }
   },
   "platforms": [
     "darwin"
   ],
   "runner": {
-    "sha256": "6f44f9a718a066e3964a7a502f8ef0f2fb193214ccc58874f0059bc5af033a19",
+    "sha256": "c6c94344cf4974dea70aa718a81f55a7ae4bfabbf33357a76ffce97c8d91a181",
     "source_path": "scripts/release_fleet.py"
   },
   "schema_version": 1

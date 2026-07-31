@@ -82,23 +82,21 @@ begin. The bridge is intentionally not a raw Git merge: it fetches only the
 pre-pinned foundation release, proves its annotated tag, commit, and tree, then
 uses that foundation's existing topology and receipt-backed transaction service.
 
-This source is not yet a published historical-support promise. Its pinned
-foundation is exactly v1.80.5; it cannot include repairs introduced in later
-source commits. In particular, do not treat a later MCP-registration repair as
-evidence that a v1.74–v1.79 bridge journey is complete. Each historical route
-needs an installed-fixture rehearsal, preserved-user-file hashes, Doctor output,
-and path evidence before it can be offered as supported recovery.
+The bridge now pins the exact public v1.81.0 foundation: its annotated
+distribution tag, tag object, commit, and tree are all closed in the released
+journey contract. That publication is not, by itself, proof that every historic
+route works. Each supported route still needs an installed-fixture rehearsal,
+preserved-user-file hashes, Doctor output, and path evidence before it counts as
+accepted recovery.
 
-Do not run this unpublished source as a rescue command. When a later immutable
-foundation includes the repair and the full fixture evidence is green, publish a
-separately versioned bridge file with its SHA-256 and the exact annotated
-distribution tag, tag object, commit, and tree it pins. That bridge source and
-artifact must name that same future foundation identity; rebasing this file onto
-`main` is not a substitute for a released tag. An older bridge must refuse
-rather than silently substituting a newer release.
+Do not run repository source as a substitute for the released bridge. The
+released artifact and journey contract must name the same immutable foundation
+identity. A newer source commit, a mutable branch, or a similarly named tag is
+not equivalent, and an older bridge must refuse rather than silently
+substituting a newer release.
 
-# This is the eventual published-artifact invocation, not an instruction to
-# run this repository source before that release exists.
+# This is the released-artifact invocation, not an instruction to run a
+# similarly named file copied from a repository checkout.
 ```bash
 python3 dex_update_bridge.py --vault "$PWD"
 ```

@@ -612,6 +612,47 @@ def test_installer_timeout_kills_detached_term_ignoring_child_after_leader_exits
     assert not (vault / "child-finished").exists()
 
 
+def test_timeout_retries_transient_permission_error_while_group_is_reaped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = tmp_path / "child-finished"
+    real_killpg = release_fleet.os.killpg
+    kill_attempts = 0
+
+    def transient_killpg(process_group_id: int, requested_signal: int) -> None:
+        nonlocal kill_attempts
+        if requested_signal == release_fleet.signal.SIGKILL:
+            kill_attempts += 1
+            if kill_attempts == 1:
+                raise PermissionError("macOS is still reaping the exited process group")
+        real_killpg(process_group_id, requested_signal)
+
+    monkeypatch.setattr(release_fleet.os, "killpg", transient_killpg)
+    command = [
+        "/bin/sh",
+        "-c",
+        (
+            "trap 'exit 0' TERM; "
+            "(trap '' TERM; exec >/dev/null 2>&1; "
+            f"sleep 1.25; printf escaped > {marker!s}) & "
+            "while :; do sleep 10; done"
+        ),
+    ]
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        release_fleet._run_bounded_process_group(
+            command,
+            cwd=tmp_path,
+            environment=release_fleet.os.environ,
+            timeout_seconds=0.2,
+        )
+
+    assert kill_attempts >= 2
+    time.sleep(2.0)
+    assert not marker.exists()
+
+
 def test_revision_switching_installer_is_rejected_before_doctor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -7,6 +7,25 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.1] — ✅ The update bridge proves it can deliver its own follow-up (2026-07-31)
+
+Dex 1.81.0 gave recent older installations a safe bridge back onto the protected
+update route. This deliberately separate follow-up proves that the bridge
+foundation can recognise, fetch, and deliver its own successor from the public
+release channel.
+
+**What this means for you:**
+
+* **The bridge is a real route, not a one-off repair.** Recent older Dex versions
+  can move through the 1.81.0 foundation and continue to this release using the
+  same guided update journey.
+* **Every handoff is pinned to one exact release.** Dex verifies the immutable
+  public identity of the bridge before trusting it, so a similarly named tag or
+  changed package cannot silently replace the tested foundation.
+* **Your own files remain outside the release.** Both update hops use Dex's
+  protected transaction boundary, with Doctor checking the result before the
+  journey is allowed to count as complete.
+
 ## [1.81.0] — 🛟 Older Dex installations have a safe way forward again (2026-07-31)
 
 Some people on recent older versions of Dex could see that an update existed but
