@@ -384,13 +384,29 @@ def _supported_legacy_topology(
     ):
         return False
     try:
-        if _run_git(root, "cat-file", "-t", pin.tag) != "tag":
+        tag_object = _run_git(
+            root,
+            "for-each-ref",
+            "--format=%(objectname)",
+            f"refs/tags/{pin.tag}",
+        )
+        if tag_object:
+            if tag_object != pin.tag_object:
+                return False
+            if _run_git(root, "cat-file", "-t", pin.tag_object) != "tag":
+                return False
+            identity = pin.tag
+        else:
+            # Historic installers retained their own release tag but could
+            # prune older tag labels. The pinned commit remains a safe proof
+            # only when its object type, commit identity, tree, and ancestry
+            # all match the closed v1.20.1 foundation.
+            if _run_git(root, "cat-file", "-t", pin.commit) != "commit":
+                return False
+            identity = pin.commit
+        if _run_git(root, "rev-parse", "--verify", f"{identity}^{{commit}}") != pin.commit:
             return False
-        if _run_git(root, "rev-parse", "--verify", f"refs/tags/{pin.tag}") != pin.tag_object:
-            return False
-        if _run_git(root, "rev-parse", "--verify", f"{pin.tag}^{{commit}}") != pin.commit:
-            return False
-        if _run_git(root, "rev-parse", "--verify", f"{pin.tag}^{{tree}}") != pin.tree:
+        if _run_git(root, "rev-parse", "--verify", f"{identity}^{{tree}}") != pin.tree:
             return False
         head = _run_git(root, "rev-parse", "--verify", "HEAD^{commit}")
         if _HEX.fullmatch(head) is None:
