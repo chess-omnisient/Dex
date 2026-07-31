@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import stat
 import subprocess
 import sys
 import time
@@ -196,20 +197,332 @@ def test_installed_fixture_runs_the_historic_installer_before_seeding_user_conte
         "#!/bin/sh\n"
         "set -eu\n"
         "test ! -e 00-Inbox/keep.md\n"
-        "test \"$(git remote get-url upstream)\" = DISABLED\n"
-        "test \"$(git remote get-url --push upstream)\" = DISABLED\n"
+        f'test "$(git remote get-url upstream)" = "{release_fleet.OFFICIAL_REPOSITORY_URL}"\n'
         "mkdir -p System\n"
         "printf installed > System/fixture-install-proof\n",
         encoding="utf-8",
     )
     installer.chmod(0o755)
-    _tag_release(repo, "1.61.0", "one")
+    tag = _tag_release(repo, "1.61.0", "one")
+    _git(
+        repo,
+        "update-ref",
+        release_fleet.OFFICIAL_RELEASE_REF,
+        _git(repo, "rev-parse", f"{tag}^{{commit}}"),
+    )
     release = release_fleet.discover_distribution_releases(repo)[0]
 
     case = release_fleet.build_installed_fixture(repo, release, tmp_path / "fleet")
 
     assert (case.vault / "System/fixture-install-proof").read_text(encoding="utf-8") == "installed"
     assert case.user_hashes == release_fleet.hash_user_owned_files(case.vault)
+
+
+def test_installer_sees_the_official_release_ref_then_the_runner_disables_it(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    installer = repo / "install.sh"
+    installer.write_text(
+        "#!/bin/sh\n"
+        "set -eu\n"
+        f'test "$(git remote get-url upstream)" = "{release_fleet.OFFICIAL_REPOSITORY_URL}"\n'
+        'test "$(git remote get-url --push upstream)" = "DISABLED"\n'
+        "test -n \"$(git rev-parse refs/remotes/upstream/release)\"\n",
+        encoding="utf-8",
+    )
+    installer.chmod(0o755)
+    tag = _tag_release(repo, "1.80.5", "foundation")
+    commit = _git(repo, "rev-parse", f"{tag}^{{commit}}")
+    _git(repo, "update-ref", release_fleet.OFFICIAL_RELEASE_REF, commit)
+    release = release_fleet.discover_distribution_releases(repo)[0]
+
+    case = release_fleet.build_installed_fixture(repo, release, tmp_path / "fleet")
+
+    assert _git(case.vault, "remote", "get-url", "upstream") == "DISABLED"
+    assert _git(case.vault, "remote", "get-url", "--push", "upstream") == "DISABLED"
+
+
+def test_installer_release_ref_is_pinned_to_the_historic_start(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    tag = _tag_release(repo, "1.20.1", "historic")
+    release = release_fleet.discover_distribution_releases(repo)[0]
+    (repo / "current-foundation").write_text("newer release\n", encoding="utf-8")
+    _git(repo, "add", "current-foundation")
+    _git(repo, "commit", "--quiet", "-m", "current foundation")
+    current_foundation = _git(repo, "rev-parse", "HEAD")
+    _git(
+        repo,
+        "update-ref",
+        release_fleet.OFFICIAL_RELEASE_REF,
+        current_foundation,
+    )
+    vault = release_fleet._create_fixture_vault(
+        repo,
+        release,
+        tmp_path / "fleet",
+    )
+    environment = release_fleet._case_environment(vault, tmp_path / "runtime")
+
+    release_commit, release_tree = release_fleet._prepare_installer_release_remote(
+        repo,
+        vault,
+        release,
+        environment,
+    )
+
+    assert release_commit == release.commit
+    assert release_tree == release.tree
+    assert (
+        _git(vault, "rev-parse", release_fleet.OFFICIAL_RELEASE_REF)
+        == release.commit
+    )
+    assert release_commit != current_foundation
+    assert _git(repo, "rev-parse", f"{tag}^{{commit}}") == release.commit
+
+
+def test_installer_created_split_topology_preserves_the_exact_starting_release(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    tag = _tag_release(repo, "1.80.5", "foundation")
+    commit = _git(repo, "rev-parse", f"{tag}^{{commit}}")
+    tree = _git(repo, "rev-parse", f"{tag}^{{tree}}")
+    _git(repo, "update-ref", release_fleet.OFFICIAL_RELEASE_REF, commit)
+    release = release_fleet.discover_distribution_releases(repo)[0]
+    vault = release_fleet._create_fixture_vault(repo, release, tmp_path / "fleet")
+    environment = release_fleet._case_environment(vault, tmp_path / "runtime")
+    official_commit, official_tree = release_fleet._prepare_installer_release_remote(
+        repo, vault, release, environment
+    )
+
+    archive = vault / ".dex" / "pre-split-archive.git"
+    archive.parent.mkdir()
+    (vault / ".git").rename(archive)
+    _git(vault, "init", "--quiet")
+    _git(vault, "config", "user.name", "Dex Fleet Fixture")
+    _git(vault, "config", "user.email", "fleet@example.com")
+    (vault / ".git/dex-vault-v2").write_text(
+        json.dumps({"schemaVersion": 1, "role": "vault"}) + "\n",
+        encoding="utf-8",
+    )
+    (vault / "vault-note.md").write_text("fixture vault history\n", encoding="utf-8")
+    _git(vault, "add", "vault-note.md")
+    _git(vault, "commit", "--quiet", "-m", "installer-created vault history")
+
+    brain = vault / ".dex" / "brain.git"
+    subprocess.run(["git", "init", "--bare", "--quiet", str(brain)], check=True)
+    subprocess.run(
+        [
+            "git",
+            f"--git-dir={brain}",
+            "fetch",
+            "--quiet",
+            str(repo),
+            f"+{official_commit}:refs/dex/installed",
+        ],
+        check=True,
+    )
+    (brain / "dex-brain-v2").write_text(
+        json.dumps(
+            {"schemaVersion": 1, "role": "brain", "installed": official_commit}
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    topology = vault / "System/.dex/topology.json"
+    topology.parent.mkdir(parents=True)
+    topology.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "topology": "brain-vault-split",
+                "vaultGitDir": ".git",
+                "brainGitDir": ".dex/brain.git",
+                "archiveGitDir": ".dex/pre-split-archive.git",
+                "installedRelease": official_commit,
+                "environment": {"DEX_VAULT": str(vault)},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    release_fleet._prove_installed_release_identity(
+        vault,
+        release,
+        environment,
+        official_release_commit=official_commit,
+        official_release_tree=official_tree,
+    )
+    assert (
+        release_fleet._git_directory(
+            archive, "rev-parse", "HEAD^{tree}", environment=environment
+        )
+        == tree
+    )
+
+    _git(repo, "commit", "--allow-empty", "--quiet", "-m", "unrelated")
+    wrong = _git(repo, "rev-parse", "HEAD")
+    subprocess.run(
+        [
+            "git",
+            f"--git-dir={archive}",
+            "fetch",
+            "--quiet",
+            str(repo),
+            f"+{wrong}:refs/heads/wrong",
+        ],
+        check=True,
+    )
+    subprocess.run(
+        ["git", f"--git-dir={archive}", "update-ref", "HEAD", wrong],
+        check=True,
+    )
+    with pytest.raises(release_fleet.FleetError, match="pre-split archive"):
+        release_fleet._prove_installed_release_identity(
+            vault,
+            release,
+            environment,
+            official_release_commit=official_commit,
+            official_release_tree=official_tree,
+        )
+
+
+@pytest.mark.parametrize(
+    "detail",
+    (
+        "installed catalog release does not match the designated bridge release",
+        "ModuleNotFoundError: No module named 'yaml'",
+    ),
+)
+def test_known_post_topology_adoption_stops_are_narrowly_accepted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, detail: str
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    installer = vault / "install.sh"
+    installer.write_text("#!/bin/sh\n", encoding="utf-8")
+    environment = {key: "fixture" for key in release_fleet.SEALED_INSTALLER_ENVIRONMENT_KEYS}
+    release = release_fleet.DistributionRelease(
+        tag="dist/release/v1.67.0-27ecbb3",
+        version="1.67.0",
+        commit="a" * 40,
+        tree="b" * 40,
+    )
+    proved: list[bool] = []
+    monkeypatch.setattr(
+        release_fleet,
+        "_run_bounded_process_group",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["bash", "install.sh"],
+            1,
+            "",
+            detail,
+        ),
+    )
+    monkeypatch.setattr(
+        release_fleet,
+        "_prove_installed_release_identity",
+        lambda *_args, **_kwargs: proved.append(True),
+    )
+    monkeypatch.setattr(release_fleet, "_disable_fixture_remotes", lambda *_args: None)
+
+    outcome = release_fleet._run_historic_installer(
+        vault,
+        release,
+        environment,
+        official_release_commit="c" * 40,
+        official_release_tree="d" * 40,
+    )
+
+    assert outcome == "installer-complete-after-known-post-topology-stop"
+    assert proved == [True]
+
+
+def test_v175_transition_repair_uses_its_own_publisher_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = tmp_path / "vault"
+    transition = vault / "System/.local-only-preservation-transition.json"
+    transition.parent.mkdir(parents=True)
+    transition.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "phase": "untrack-v1",
+                "release_version": "1.74.0",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (vault / "package.json").write_text(
+        json.dumps({"version": "1.75.0"}) + "\n",
+        encoding="utf-8",
+    )
+    commands: list[list[str]] = []
+
+    def stamp(command, **_kwargs):
+        commands.append(list(command))
+        transition.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "phase": "untrack-v1",
+                    "release_version": "1.75.0",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(release_fleet, "_run_bounded_process_group", stamp)
+
+    release_fleet._stamp_v175_transition(
+        vault,
+        {key: "fixture" for key in release_fleet.SEALED_INSTALLER_ENVIRONMENT_KEYS},
+        timeout_seconds=10,
+    )
+
+    assert commands == [
+        [
+            str(vault / ".venv/bin/python"),
+            "-m",
+            "core.migrations.preserve_local_only_paths",
+            "stamp-transition",
+            "--repo",
+            str(vault),
+        ]
+    ]
+
+
+def test_v175_installer_uses_its_explicit_disposable_sync_folder_override(
+    tmp_path: Path,
+) -> None:
+    installer = tmp_path / "install.sh"
+    installer.write_text(
+        'for INSTALL_ARGUMENT in "$@"; do\n'
+        '  if [ "$INSTALL_ARGUMENT" = "--allow-synced-folder" ]; then :; fi\n'
+        "done\n",
+        encoding="utf-8",
+    )
+
+    release = release_fleet.DistributionRelease(
+        tag="v1.75.0",
+        version="1.75.0",
+        commit="a" * 40,
+        tree="b" * 40,
+    )
+
+    assert release_fleet._historic_installer_command(installer, release) == [
+        "bash",
+        "install.sh",
+        "--allow-synced-folder",
+    ]
 
 
 def test_build_fixture_does_not_preload_future_release_tags(tmp_path: Path) -> None:
@@ -313,6 +626,12 @@ def test_revision_switching_installer_is_rejected_before_doctor(
     )
     installer.chmod(0o755)
     tag = _tag_release(repo, "1.61.0", "release")
+    _git(
+        repo,
+        "update-ref",
+        release_fleet.OFFICIAL_RELEASE_REF,
+        _git(repo, "rev-parse", f"{tag}^{{commit}}"),
+    )
     release = next(
         candidate
         for candidate in release_fleet.discover_distribution_releases(repo)
@@ -569,7 +888,13 @@ def test_discovery_sweep_uses_disposable_fixtures_and_never_reports_acceptance(
 ) -> None:
     repo = _repository(tmp_path)
     (repo / "install.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    _tag_release(repo, "1.61.0", "historic")
+    tag = _tag_release(repo, "1.61.0", "historic")
+    _git(
+        repo,
+        "update-ref",
+        release_fleet.OFFICIAL_RELEASE_REF,
+        _git(repo, "rev-parse", f"{tag}^{{commit}}"),
+    )
     releases = release_fleet.discover_distribution_releases(repo)
     output = tmp_path / "survey"
     runtime = release_fleet.NodeRuntime(
@@ -695,7 +1020,9 @@ def _tag_protocol_control_release(
     )
     document["historic_to_foundation"]["foundation"] = foundation.identity()
     protocol_path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
-    (repo / "System/.release-catalog.json").write_text(
+    catalog = repo / "System/.release-catalog.json"
+    catalog.parent.mkdir(parents=True, exist_ok=True)
+    catalog.write_text(
         json.dumps(
             {
                 "catalog_version": 1,
@@ -1005,6 +1332,7 @@ def test_case_environment_is_allowlisted_and_has_an_isolated_home(tmp_path: Path
         "HOME",
         "TMPDIR",
         "PATH",
+        "PIP_CACHE_DIR",
         "LANG",
         "LC_ALL",
         "PYTHONNOUSERSITE",
@@ -1014,8 +1342,80 @@ def test_case_environment_is_allowlisted_and_has_an_isolated_home(tmp_path: Path
         "VAULT_PATH",
     }
     assert Path(environment["HOME"]).is_dir()
+    assert Path(environment["PIP_CACHE_DIR"]).is_dir()
+    assert stat.S_IMODE(Path(environment["PIP_CACHE_DIR"]).stat().st_mode) == 0o700
     assert environment["HOME"] != str(Path.home())
     assert environment["VAULT_PATH"] == str(tmp_path / "vault")
+
+
+def test_case_environment_reuses_only_a_private_controller_pip_cache(
+    tmp_path: Path,
+) -> None:
+    shared_cache = tmp_path / "controller-cache" / "pip"
+    controller_root = tmp_path / "controller-cache"
+    first = release_fleet._case_environment(
+        tmp_path / "first-vault",
+        tmp_path / "first-runtime",
+        pip_cache_dir=shared_cache,
+        controller_root=controller_root,
+    )
+    second = release_fleet._case_environment(
+        tmp_path / "second-vault",
+        tmp_path / "second-runtime",
+        pip_cache_dir=shared_cache,
+        controller_root=controller_root,
+    )
+
+    assert first["PIP_CACHE_DIR"] == str(shared_cache)
+    assert second["PIP_CACHE_DIR"] == str(shared_cache)
+    assert stat.S_IMODE(shared_cache.stat().st_mode) == 0o700
+
+
+@pytest.mark.parametrize("unsafe_kind", ("symlink", "permissive"))
+def test_case_environment_rejects_unsafe_shared_pip_cache(
+    tmp_path: Path,
+    unsafe_kind: str,
+) -> None:
+    shared_cache = tmp_path / "shared-cache"
+    if unsafe_kind == "symlink":
+        target = tmp_path / "target"
+        target.mkdir(mode=0o700)
+        shared_cache.symlink_to(target, target_is_directory=True)
+    else:
+        shared_cache.mkdir(mode=0o755)
+        shared_cache.chmod(0o755)
+
+    with pytest.raises(release_fleet.FleetError, match="pip cache"):
+        release_fleet._case_environment(
+            tmp_path / "vault",
+            tmp_path / "runtime",
+            pip_cache_dir=shared_cache,
+            controller_root=tmp_path,
+        )
+
+
+def test_case_environment_rejects_pip_cache_outside_controller_or_inside_vault(
+    tmp_path: Path,
+) -> None:
+    controller_root = tmp_path / "controller"
+    controller_root.mkdir(mode=0o700)
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    with pytest.raises(release_fleet.FleetError, match="controller root"):
+        release_fleet._case_environment(
+            vault,
+            tmp_path / "outside-runtime",
+            pip_cache_dir=tmp_path / "outside-cache",
+            controller_root=controller_root,
+        )
+    with pytest.raises(release_fleet.FleetError, match="outside the vault"):
+        release_fleet._case_environment(
+            vault,
+            tmp_path / "inside-runtime",
+            pip_cache_dir=vault / "cache",
+            controller_root=tmp_path,
+        )
 
 
 def test_trusted_node_runtime_ignores_hostile_path_and_is_explicitly_injected(
@@ -1270,9 +1670,11 @@ def test_journey_refuses_an_undeclared_host_platform(
         )
 
 
+@pytest.mark.parametrize("split_topology", [False, True])
 def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    split_topology: bool,
 ) -> None:
     from core.update.journey_protocol import load_update_journey_protocol
     from scripts import release_fleet_executor
@@ -1303,6 +1705,8 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     )
     source_commit = "f" * 40
     captured: dict[str, object] = {}
+    environment_kwargs: dict[str, object] = {}
+    remote_events: list[str] = []
 
     class Run:
         case = {"starting_tag": start.tag}
@@ -1359,24 +1763,86 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     )
     monkeypatch.setattr(release_fleet, "resolve_trusted_node_runtime", object)
     monkeypatch.setattr(release_fleet, "resolve_trusted_python_runtime", object)
-    monkeypatch.setattr(
-        release_fleet,
-        "_case_environment",
-        lambda *_args, **_kwargs: {},
-    )
+    def case_environment(*_args, **kwargs):
+        environment_kwargs.update(kwargs)
+        return {}
 
-    def build_case(_repo, release, output, *, environment):
+    monkeypatch.setattr(release_fleet, "_case_environment", case_environment)
+
+    def build_case(
+        _repo,
+        release,
+        output,
+        *,
+        environment,
+        keep_official_fetch,
+    ):
         assert environment == {}
+        assert keep_official_fetch is True
         vault = output / release_fleet.safe_case_name(release)
         vault.mkdir(parents=True)
+        if split_topology:
+            (vault / "System/.dex").mkdir(parents=True)
+            (vault / ".git").mkdir()
+            (vault / ".dex/brain.git").mkdir(parents=True)
+            (vault / ".dex/pre-split-archive.git").mkdir()
+            (vault / "System/.dex/topology.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "topology": "brain-vault-split",
+                        "vaultGitDir": ".git",
+                        "brainGitDir": ".dex/brain.git",
+                        "archiveGitDir": ".dex/pre-split-archive.git",
+                        "installedRelease": start.commit,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (vault / ".git/dex-vault-v2").write_text(
+                json.dumps({"schemaVersion": 1, "role": "vault"}) + "\n",
+                encoding="utf-8",
+            )
+            (vault / ".dex/brain.git/dex-brain-v2").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "role": "brain",
+                        "installed": start.commit,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            remote_events.append("split-official-read-retained")
         return release_fleet.FleetCase(release, vault, {"00-Inbox/keep.md": "0" * 64})
 
     def execute(**kwargs):
+        assert remote_events == (
+            ["split-official-read-retained"]
+            if split_topology
+            else ["official-read-open"]
+        )
+        remote_events.append("execute")
         captured.update(kwargs)
         return Run()
 
     monkeypatch.setattr(release_fleet, "build_installed_fixture", build_case)
     monkeypatch.setattr(release_fleet, "resolve_fixture_python", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(
+        release_fleet,
+        "_prepare_installer_release_remote",
+        lambda _repo, _vault, release, _environment: (
+            remote_events.append("official-read-open")
+            or (release.commit, release.tree)
+        ),
+    )
+    monkeypatch.setattr(
+        release_fleet,
+        "_disable_all_fixture_remotes",
+        lambda *_args, **_kwargs: remote_events.append("remote-closed"),
+    )
     monkeypatch.setattr(release_fleet_executor, "execute_journey", execute)
 
     run = release_fleet.run_journey(
@@ -1392,6 +1858,17 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     assert captured["foundation_release"] == foundation.identity()
     assert captured["follow_up_release"] == follow_up.identity()
     assert captured["user_owned_paths"] == tuple(release_fleet.USER_FIXTURES)
+    assert environment_kwargs["pip_cache_dir"] == (
+        tmp_path / "output/.fixture-controller/pip"
+    )
+    assert environment_kwargs["controller_root"] == (
+        tmp_path / "output/.fixture-controller"
+    )
+    assert remote_events == (
+        ["split-official-read-retained", "execute", "remote-closed"]
+        if split_topology
+        else ["official-read-open", "execute", "remote-closed"]
+    )
     assert not (tmp_path / "output" / release_fleet.safe_case_name(start)).exists()
 
 
@@ -1423,6 +1900,7 @@ def test_shipped_update_surface_requires_and_exposes_the_released_executor(
         (release_fleet.PROJECT_ROOT / release_fleet.UPDATE_JOURNEY_RELATIVE).read_bytes()
     )
     catalog = repo / "System/.release-catalog.json"
+    catalog.parent.mkdir(parents=True, exist_ok=True)
     catalog.write_text(
         json.dumps(
             {

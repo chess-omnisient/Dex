@@ -9,6 +9,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import venv
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -2000,6 +2001,17 @@ def test_customization_skills_are_ok_when_every_frontmatter_is_valid(context):
     assert "1 user customization" in result.detail
 
 
+def test_customization_skills_ignore_empty_retired_skill_directories(context):
+    _write_skill(context, "daily-plan")
+    retired = context.vault_root / ".claude" / "skills" / "retired-shipped-skill"
+    retired.mkdir(parents=True)
+
+    result = doctor._probe_customization_skills(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "Validated 0 user customizations and 1 shipped skill"
+
+
 def test_customization_skill_containers_are_not_validated_or_counted_as_skills(context):
     _write_skill(context, "daily-plan")
     assert {"_available", "integrations"} <= doctor.KNOWN_SKILL_CONTAINER_DIRECTORIES
@@ -2230,6 +2242,116 @@ def test_core_drift_is_ok_for_a_clean_release_checkout(tmp_path):
     drift_context = _drift_context(tmp_path)
 
     assert doctor._probe_core_drift(drift_context).verdict == "OK"
+
+
+def test_post_split_core_drift_accepts_only_installer_normalized_package_metadata(
+    context,
+) -> None:
+    brain = _write_split_topology(context)
+    baseline_package = {
+        "name": "dex-pkm",
+        "version": "1.80.5",
+        "scripts": {"meeting-sync": "node sync.cjs"},
+        "dependencies": {"js-yaml": "^4.1.0"},
+    }
+    baseline_lock = {
+        "name": "dex-pkm",
+        "version": "1.75.0",
+        "lockfileVersion": 3,
+        "requires": True,
+        "packages": {
+            "": {
+                "name": "dex-pkm",
+                "version": "1.75.0",
+                "dependencies": {"js-yaml": "^4.1.0"},
+            }
+        },
+    }
+    (context.vault_root / "package.json").write_text(
+        json.dumps(baseline_package, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (context.vault_root / "package-lock.json").write_text(
+        json.dumps(baseline_lock, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (context.vault_root / "System/.installed-files.manifest").write_text(
+        "package-lock.json\npackage.json\n",
+        encoding="utf-8",
+    )
+    _git(
+        context.vault_root,
+        "add",
+        "package.json",
+        "package-lock.json",
+        "System/.installed-files.manifest",
+    )
+    _git(context.vault_root, "commit", "-m", "foundation package metadata")
+    installed = _git(context.vault_root, "rev-parse", "HEAD").stdout.strip()
+    subprocess.run(
+        [
+            "git",
+            f"--git-dir={brain}",
+            "fetch",
+            "--quiet",
+            str(context.vault_root),
+            f"+{installed}:refs/dex/installed",
+        ],
+        check=True,
+    )
+    current_package = {
+        **baseline_package,
+        "scripts": {
+            **baseline_package["scripts"],
+            "test:hooks": "node --test .claude/hooks/tests/*.test.cjs",
+            "check:connections-contract": (
+                "node scripts/check-connections-contract.mjs && "
+                "node scripts/build-connections-engine-manifest.mjs --check"
+            ),
+        },
+    }
+    current_lock = {
+        **baseline_lock,
+        "version": "1.80.5",
+        "packages": {
+            "": {
+                **baseline_lock["packages"][""],
+                "version": "1.80.5",
+            }
+        },
+    }
+    (context.vault_root / "package.json").write_text(
+        json.dumps(current_package, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (context.vault_root / "package-lock.json").write_text(
+        json.dumps(current_lock, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    result = doctor._probe_core_drift(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "No shipped brain files differ from refs/dex/installed"
+
+    current_package["scripts"]["test:exfiltrate"] = "curl https://example.test"
+    (context.vault_root / "package.json").write_text(
+        json.dumps(current_package, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    result = doctor._probe_core_drift(context)
+    assert result.verdict == "UNKNOWN"
+    assert "package.json" in result.detail
+
+    del current_package["scripts"]["test:exfiltrate"]
+    current_package["dependencies"]["js-yaml"] = "*"
+    (context.vault_root / "package.json").write_text(
+        json.dumps(current_package, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    result = doctor._probe_core_drift(context)
+    assert result.verdict == "UNKNOWN"
+    assert "package.json" in result.detail
 
 
 def test_repository_credential_named_release_files_match_head_without_python_reads(
@@ -2518,6 +2640,43 @@ def test_smoke_journeys_roll_up_unknown_and_use_the_same_interpreter(monkeypatch
     ]
     assert observed["kwargs"]["env"]["VAULT_PATH"] == str(context.vault_root)
     assert observed["kwargs"]["cwd"] == context.vault_root
+
+
+def test_smoke_journeys_use_vault_venv_where_yaml_is_actually_installed(
+    tmp_path,
+):
+    vault = tmp_path / "vault"
+    smoke_path = vault / "core" / "utils" / "smoke.py"
+    smoke_path.parent.mkdir(parents=True)
+    (vault / "System").mkdir()
+    venv.create(vault / ".venv", with_pip=False)
+    python = vault / ".venv" / "bin" / "python"
+    version = f"python{sys.version_info.major}.{sys.version_info.minor}"
+    site_packages = vault / ".venv" / "lib" / version / "site-packages"
+    site_packages.mkdir(parents=True, exist_ok=True)
+    (site_packages / "yaml.py").write_text("SAFE_SENTINEL = True\n", encoding="utf-8")
+    smoke_path.write_text(
+        "import json, yaml\n"
+        "assert yaml.SAFE_SENTINEL is True\n"
+        "print(json.dumps({"
+        "'schema_version': 1,"
+        "'journeys': [{'id': 'configs', 'verdict': 'OK', "
+        "'detail': 'configs parse', 'duration_ms': 1}],"
+        "'summary': {'ok': 1, 'broken': 0, 'unknown': 0, 'off': 0}"
+        "}))\n",
+        encoding="utf-8",
+    )
+    context = doctor.DoctorContext(
+        vault_root=vault,
+        repo_root=vault,
+        home=tmp_path / "home",
+        now=NOW,
+    )
+
+    result = doctor._probe_smoke_journeys(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "configs [OK]: configs parse"
 
 
 def test_smoke_journeys_roll_up_broken_from_exit_one(monkeypatch, context):
