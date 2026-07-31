@@ -802,6 +802,12 @@ class _FoundationLifecycleService:
                 approved_token,
             )
 
+    def deliver_latest_release(
+        self,
+        vault_root: str | Path,
+    ) -> Mapping[str, Any]:
+        return self._service.deliver_latest_release(vault_root)
+
     def build_and_preview_delivered_release(
         self,
         vault_root: str | Path,
@@ -842,6 +848,7 @@ def _load_lifecycle_service(source: Path) -> LifecycleService:
     required = (
         "build_and_preview_topology_migration",
         "execute_approved_topology_migration",
+        "deliver_latest_release",
         "build_and_preview_delivered_release",
         "execute_approved_delivered_release",
     )
@@ -872,7 +879,12 @@ def _approved_preview(prompt: str, preview: Mapping[str, Any], approval_token: o
 
 
 def _fetch_foundation_into_brain(vault_root: Path, pin: ReleasePin) -> None:
-    """Fetch one pinned release into the private brain; no vault file is written."""
+    """Fetch one pinned release into the private brain; no vault file is written.
+
+    The public release branch is allowed to advance after the foundation ships.
+    Only the closed immutable tag identifies the first hop.  Once verified, its
+    exact commit becomes the private release ref consumed by lifecycle.
+    """
     brain = vault_root / ".dex" / "brain.git"
     if brain.is_symlink() or not brain.is_dir():
         raise BridgeError("topology conversion did not create a safe Dex brain store")
@@ -885,13 +897,18 @@ def _fetch_foundation_into_brain(vault_root: Path, pin: ReleasePin) -> None:
         "--no-recurse-submodules",
         OFFICIAL_REMOTE,
         f"refs/tags/{pin.tag}:refs/tags/{pin.tag}",
-        "+refs/heads/release:refs/remotes/upstream/release",
     )
     _verify_pin(brain, pin)
+    _run_git(
+        brain,
+        "update-ref",
+        "refs/remotes/upstream/release",
+        pin.commit,
+    )
     _assert_equal(
         _run_git(brain, "rev-parse", "--verify", "refs/remotes/upstream/release^{commit}"),
         pin.commit,
-        "stable release-channel target",
+        "private foundation release ref",
     )
 
 

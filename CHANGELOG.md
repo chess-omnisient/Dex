@@ -7,6 +7,27 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.2] — 🔗 The update bridge stays valid when a newer release goes live (2026-07-31)
+
+The first public journey from Amit's 1.77.2 release found that the bridge still
+compared its exact 1.81.0 foundation with the moving public release pointer.
+Once 1.81.1 went live, that extra comparison stopped the journey even though the
+verified foundation package itself was unchanged.
+
+**What this fixes for you:**
+
+* **A newer release no longer breaks the first hop.** Dex now verifies the exact
+  immutable foundation package and gives that verified commit to the protected
+  update lifecycle, without requiring the public “latest” pointer to stay frozen.
+* **The bridge can continue to the second hop.** Its compatibility adapter now
+  exposes the foundation's verified “fetch the next release” operation instead
+  of stopping after the first healthy install.
+* **The safety boundary is unchanged.** The tag object, commit, and tree must all
+  match the declared foundation before Dex creates the private update pointer.
+* **Failures still stop before your files are changed.** The public journey that
+  exposed this issue failed closed; this patch changes only how the already
+  verified foundation is handed into the lifecycle.
+
 ## [1.81.1] — ✅ The update bridge proves it can deliver its own follow-up (2026-07-31)
 
 Dex 1.81.0 gave recent older installations a safe bridge back onto the protected
