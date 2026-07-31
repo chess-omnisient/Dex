@@ -28,7 +28,7 @@ from core.update.journey_protocol import (
 from scripts import release_fleet
 from scripts.dex_update_bridge import FOUNDATION
 
-EXPECTED_HISTORIC_CASES = 168
+EXPECTED_HISTORIC_CASES = 170
 COHORT_SCHEMA_VERSION = 1
 PLATFORM_MANIFEST_SCHEMA_VERSION = 1
 ACCEPTANCE_SOURCE = "scripts/release_fleet_acceptance.py"
@@ -293,7 +293,7 @@ def load_fleet_inputs(
     foundation = release_fleet.resolve_immutable_release(repo, foundation_tag)
     follow_up = release_fleet.resolve_immutable_release(repo, follow_up_tag)
     if foundation.identity() != FOUNDATION.identity():
-        raise release_fleet.FleetError("fleet acceptance foundation is not the pinned v1.80.5 identity")
+        raise release_fleet.FleetError("fleet acceptance foundation is not the pinned bridge identity")
     if foundation.tag == follow_up.tag or foundation.commit == follow_up.commit:
         raise release_fleet.FleetError("foundation and follow-up must be different immutable releases")
     try:
@@ -736,7 +736,9 @@ def _platform_receipt_boundary():
         ):
             raise release_fleet.FleetError("live platform execution is not bound to the immutable releases")
         if len(execution.report.cases) != EXPECTED_HISTORIC_CASES:
-            raise release_fleet.FleetError("live platform execution does not have exactly 168 final starts")
+            raise release_fleet.FleetError(
+                f"live platform execution does not have exactly {EXPECTED_HISTORIC_CASES} final starts"
+            )
         cases: list[dict[str, object]] = [
             {field: getattr(case, field) for field in sorted(release_fleet.CASE_RESULT_KEYS)}
             for case in execution.report.cases

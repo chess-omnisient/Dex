@@ -101,8 +101,8 @@ Markdown `/dex-update` instructions into an API.
 ```bash
 python3 scripts/release_fleet.py journey --repo . --output "$fleet_root" \
   --starting-tag dist/release/v1.74.0-EXACTSTART \
-  --foundation-tag dist/release/v1.80.0-EXACTFOUNDATION \
-  --follow-up-tag dist/release/v1.80.5-EXACTFOLLOWUP
+  --foundation-tag dist/release/v1.81.0-EXACTFOUNDATION \
+  --follow-up-tag dist/release/v1.81.1-EXACTFOLLOWUP
 ```
 
 The repository has the canonical protocol source at
@@ -138,10 +138,10 @@ constructing the same documents cannot unlock acceptance. The resulting
 content-addressed manifest records the exact executor identity, release
 identities, ordered operations, and artifact hashes.
 
-The protocol and executor are currently LOCAL. Public v1.80.5 contains neither,
-so its surface remains `machine_executable: false`. Publishing both is one
-prerequisite, not fleet acceptance: the real follow-up release must exist and
-every historic case must still run on every declared platform.
+The protocol and executor were published with the v1.81.0 foundation. That
+publication is one prerequisite, not fleet acceptance: the real follow-up
+release must exist and every historic case must still complete the two-hop
+journey on macOS.
 
 ## Validate the finished evidence
 
