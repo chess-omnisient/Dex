@@ -802,6 +802,12 @@ class _FoundationLifecycleService:
                 approved_token,
             )
 
+    def deliver_latest_release(
+        self,
+        vault_root: str | Path,
+    ) -> Mapping[str, Any]:
+        return self._service.deliver_latest_release(vault_root)
+
     def build_and_preview_delivered_release(
         self,
         vault_root: str | Path,
@@ -842,6 +848,7 @@ def _load_lifecycle_service(source: Path) -> LifecycleService:
     required = (
         "build_and_preview_topology_migration",
         "execute_approved_topology_migration",
+        "deliver_latest_release",
         "build_and_preview_delivered_release",
         "execute_approved_delivered_release",
     )

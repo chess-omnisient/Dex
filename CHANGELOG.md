@@ -19,6 +19,9 @@ verified foundation package itself was unchanged.
 * **A newer release no longer breaks the first hop.** Dex now verifies the exact
   immutable foundation package and gives that verified commit to the protected
   update lifecycle, without requiring the public “latest” pointer to stay frozen.
+* **The bridge can continue to the second hop.** Its compatibility adapter now
+  exposes the foundation's verified “fetch the next release” operation instead
+  of stopping after the first healthy install.
 * **The safety boundary is unchanged.** The tag object, commit, and tree must all
   match the declared foundation before Dex creates the private update pointer.
 * **Failures still stop before your files are changed.** The public journey that

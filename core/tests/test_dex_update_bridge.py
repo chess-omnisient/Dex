@@ -135,6 +135,9 @@ def _foundation_topology_adapter(
         def build_and_preview_delivered_release(self, vault_root: Path, release):
             return {"vault": str(vault_root), "release": release}
 
+        def deliver_latest_release(self, vault_root: Path):
+            return {"status": "delivered", "vault": str(vault_root)}
+
         def execute_approved_delivered_release(
             self,
             vault_root: Path,
@@ -467,6 +470,15 @@ def test_foundation_service_refuses_compatibility_preload_changed_after_verifica
 
     with pytest.raises(bridge.BridgeError, match="preload changed after verification"):
         service.build_and_preview_topology_migration(vault)
+
+
+def test_foundation_service_exposes_release_delivery(tmp_path: Path) -> None:
+    service, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+
+    assert service.deliver_latest_release(vault) == {
+        "status": "delivered",
+        "vault": str(vault),
+    }
 
 
 def test_foundation_service_reports_missing_engine_path_as_bridge_error(
