@@ -171,6 +171,55 @@ def test_foundation_pin_is_closed_and_uses_only_the_release_channel() -> None:
     }
 
 
+def test_foundation_fetch_survives_public_release_channel_advancing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The immutable first hop must still work after its follow-up is public."""
+
+    vault = _vault(tmp_path)
+    pin = bridge.FOUNDATION
+    follow_up_commit = "b17ef028ce3fa8ec3ea3973688b9d392e4166a17"
+    calls: list[tuple[str, ...]] = []
+    private_release_ref = follow_up_commit
+
+    def run_git(_directory: Path, *arguments: str) -> str:
+        nonlocal private_release_ref
+        calls.append(arguments)
+        if arguments == (
+            "update-ref",
+            "refs/remotes/upstream/release",
+            pin.commit,
+        ):
+            private_release_ref = pin.commit
+            return ""
+        if arguments == ("rev-parse", "--verify", f"refs/tags/{pin.tag}"):
+            return pin.tag_object
+        if arguments == ("rev-parse", "--verify", f"{pin.tag}^{{commit}}"):
+            return pin.commit
+        if arguments == ("rev-parse", "--verify", f"{pin.tag}^{{tree}}"):
+            return pin.tree
+        if arguments == (
+            "rev-parse",
+            "--verify",
+            "refs/remotes/upstream/release^{commit}",
+        ):
+            return private_release_ref
+        return ""
+
+    monkeypatch.setattr(bridge, "_run_git", run_git)
+
+    bridge._fetch_foundation_into_brain(vault, pin)
+
+    fetch = next(arguments for arguments in calls if arguments[0] == "fetch")
+    assert "+refs/heads/release:refs/remotes/upstream/release" not in fetch
+    assert (
+        "update-ref",
+        "refs/remotes/upstream/release",
+        pin.commit,
+    ) in calls
+
+
 def test_legacy_topology_pin_is_closed_to_exact_v1201_release() -> None:
     assert bridge.LEGACY_TOPOLOGY_FOUNDATION == bridge.LegacyTopologyPin(
         tag="v1.20.1",
