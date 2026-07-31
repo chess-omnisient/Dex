@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.4] — 🏷️ Historic installs no longer need every old tag label (2026-07-31)
+
+The first formal fleet run passed the oldest supported Dex release, then found
+that later historic installers retained the trusted code history but not the
+old `v1.20.1` tag label. The bridge stopped safely before changing the fixture.
+
+**What this fixes for you:**
+
+* **Later historic Dex versions can reach the bridge.** The updater can prove
+  the exact trusted foundation from its commit and tree even when the old label
+  was pruned by the installer.
+* **The safety boundary remains exact.** A different commit, tree, object type,
+  or unrelated history is still refused before personal files change.
+* **The full Mac fleet can continue.** The fix addresses the shared blocker
+  exposed by 1.49.0 without widening support to unknown repository layouts.
+
 ## [1.81.3] — 🧭 The oldest supported Dex can cross its local-history bridge (2026-07-31)
 
 The full historic Mac journey reached the oldest published starting package,

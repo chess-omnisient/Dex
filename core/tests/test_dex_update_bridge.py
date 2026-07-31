@@ -267,8 +267,12 @@ def test_legacy_topology_requires_exact_tag_commit_tree_and_current_ancestry(
     vault = _vault(tmp_path)
     pin = bridge.LEGACY_TOPOLOGY_FOUNDATION
     values = {
-        ("cat-file", "-t", pin.tag): "tag",
-        ("rev-parse", "--verify", f"refs/tags/{pin.tag}"): pin.tag_object,
+        (
+            "for-each-ref",
+            "--format=%(objectname)",
+            f"refs/tags/{pin.tag}",
+        ): pin.tag_object,
+        ("cat-file", "-t", pin.tag_object): "tag",
         ("rev-parse", "--verify", f"{pin.tag}^{{commit}}"): pin.commit,
         ("rev-parse", "--verify", f"{pin.tag}^{{tree}}"): pin.tree,
         ("rev-parse", "--verify", "HEAD^{commit}"): "f" * 40,
@@ -283,6 +287,37 @@ def test_legacy_topology_requires_exact_tag_commit_tree_and_current_ancestry(
     assert bridge._supported_legacy_topology(vault) is True
 
     values[("rev-parse", "--verify", f"{pin.tag}^{{tree}}")] = "0" * 40
+    assert bridge._supported_legacy_topology(vault) is False
+
+
+def test_legacy_topology_accepts_exact_pinned_commit_when_old_tag_was_pruned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _vault(tmp_path)
+    pin = bridge.LEGACY_TOPOLOGY_FOUNDATION
+    head = "f" * 40
+    values = {
+        (
+            "for-each-ref",
+            "--format=%(objectname)",
+            f"refs/tags/{pin.tag}",
+        ): "",
+        ("cat-file", "-t", pin.commit): "commit",
+        ("rev-parse", "--verify", f"{pin.commit}^{{commit}}"): pin.commit,
+        ("rev-parse", "--verify", f"{pin.commit}^{{tree}}"): pin.tree,
+        ("rev-parse", "--verify", "HEAD^{commit}"): head,
+        ("merge-base", "--is-ancestor", pin.commit, head): "",
+    }
+    monkeypatch.setattr(
+        bridge,
+        "_run_git",
+        lambda _root, *arguments: values[arguments],
+    )
+
+    assert bridge._supported_legacy_topology(vault) is True
+
+    values[("rev-parse", "--verify", f"{pin.commit}^{{tree}}")] = "0" * 40
     assert bridge._supported_legacy_topology(vault) is False
 
 
