@@ -65,6 +65,23 @@ def test_protocol_rejects_an_arbitrary_command_adapter() -> None:
         load_update_journey_protocol(json.dumps(document).encode())
 
 
+def test_protocol_reader_keeps_the_published_two_approval_bridge_compatible() -> None:
+    document = json.loads(PROTOCOL_PATH.read_text(encoding="utf-8"))
+    document["historic_to_foundation"]["approval"]["count"] = 2
+
+    protocol = load_update_journey_protocol(json.dumps(document).encode())
+
+    assert protocol.bridge.approval_count == 2
+
+
+def test_protocol_rejects_an_unreviewed_bridge_approval_count() -> None:
+    document = json.loads(PROTOCOL_PATH.read_text(encoding="utf-8"))
+    document["historic_to_foundation"]["approval"]["count"] = 4
+
+    with pytest.raises(JourneyProtocolError, match="reviewed approval boundary"):
+        load_update_journey_protocol(json.dumps(document).encode())
+
+
 def test_generator_reproduces_the_committed_root_protocol(tmp_path: Path) -> None:
     generated = tmp_path / "update-journey.json"
 

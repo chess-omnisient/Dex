@@ -148,13 +148,22 @@ def _artifact(value: object, *, source_path: str, context: str) -> ProtocolArtif
 def _approval(
     value: object,
     *,
-    expected_count: int,
+    expected_count: int | tuple[int, ...],
     context: str,
 ) -> tuple[str, int]:
     document = _object(value, _APPROVAL_FIELDS, context)
-    if document != {"word": "APPLY", "count": expected_count}:
+    expected_counts = (
+        (expected_count,) if isinstance(expected_count, int) else expected_count
+    )
+    count = document.get("count")
+    if (
+        document.get("word") != "APPLY"
+        or not isinstance(count, int)
+        or isinstance(count, bool)
+        or count not in expected_counts
+    ):
         raise JourneyProtocolError(f"{context} is not the reviewed approval boundary")
-    return "APPLY", expected_count
+    return "APPLY", count
 
 
 def _foundation_identity(value: object) -> dict[str, str]:
@@ -225,7 +234,7 @@ def load_update_journey_protocol(source: bytes | str) -> UpdateJourneyProtocol:
         raise JourneyProtocolError("journey protocol historic hop uses an unsupported adapter")
     bridge_word, bridge_count = _approval(
         bridge_document["approval"],
-        expected_count=3,
+        expected_count=(2, 3),
         context="journey protocol historic approval",
     )
     bridge = BridgeHop(
