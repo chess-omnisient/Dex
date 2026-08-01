@@ -1464,6 +1464,28 @@ def _installer_created_split_topology(vault: Path) -> bool:
     )
 
 
+def _initial_install_evidence(
+    vault: Path, environment: Mapping[str, str]
+) -> dict[str, object]:
+    """Prove a package-created split brain has never-fetched ref shape."""
+
+    if not _installer_created_split_topology(vault):
+        return {"topology": "legacy-monolithic", "brain_refs": []}
+    refs_output = _git_directory(
+        vault / ".dex/brain.git",
+        "for-each-ref",
+        "--format=%(refname)",
+        environment=environment,
+    )
+    refs = sorted(line for line in refs_output.splitlines() if line)
+    allowed = {"refs/dex/installed", "refs/heads/release"}
+    if "refs/dex/installed" not in refs or any(ref not in allowed for ref in refs):
+        raise FleetError(
+            "clean split package fixture must begin without tags or remote-tracking refs"
+        )
+    return {"topology": "brain-vault-split", "brain_refs": refs}
+
+
 def _run_historic_installer(
     vault: Path,
     release: DistributionRelease,
@@ -1992,6 +2014,44 @@ def run_discovery_sweep(
     }
 
 
+def _verify_standalone_bridge_asset(
+    repo: Path,
+    *,
+    source_commit: str,
+    follow_up: ImmutableRelease,
+    protocol: UpdateJourneyProtocol,
+    bridge_asset: Path | None,
+    bridge_checksum: Path | None,
+) -> dict[str, str]:
+    """Bind acceptance to the separately distributable release bridge."""
+
+    if bridge_asset is None or bridge_checksum is None:
+        raise FleetError("standalone released bridge asset is required")
+    expected_asset_name = f"dex-update-bridge-v{follow_up.version}.py"
+    expected_checksum_name = f"{expected_asset_name}.sha256"
+    if bridge_asset.name != expected_asset_name or bridge_checksum.name != expected_checksum_name:
+        raise FleetError("standalone released bridge asset names do not match follow-up release")
+    for label, path in (("bridge asset", bridge_asset), ("bridge checksum", bridge_checksum)):
+        if path.is_symlink() or not path.is_file():
+            raise FleetError(f"standalone released {label} is missing or unsafe")
+    bridge_bytes = bridge_asset.read_bytes()
+    bridge_digest = hashlib.sha256(bridge_bytes).hexdigest()
+    checksum_bytes = bridge_checksum.read_bytes()
+    expected_checksum = f"{bridge_digest}  {expected_asset_name}\n".encode("utf-8")
+    if checksum_bytes != expected_checksum:
+        raise FleetError("standalone released bridge checksum is invalid")
+    released_bridge = _tag_file(repo, source_commit, protocol.bridge.artifact.source_path)
+    if bridge_digest != protocol.bridge.artifact.sha256 or bridge_bytes != released_bridge:
+        raise FleetError("standalone released bridge does not match released journey source")
+    return {
+        "name": expected_asset_name,
+        "sha256": bridge_digest,
+        "checksum_name": expected_checksum_name,
+        "checksum_sha256": hashlib.sha256(checksum_bytes).hexdigest(),
+        "source": "released-standalone-asset",
+    }
+
+
 def run_journey(
     repo: Path,
     *,
@@ -1999,6 +2059,8 @@ def run_journey(
     starting_tag: str,
     foundation_tag: str,
     follow_up_tag: str,
+    bridge_asset: Path | None = None,
+    bridge_checksum: Path | None = None,
 ) -> object:
     """Build one fixture and delegate the closed journey to its released executor."""
 
@@ -2026,17 +2088,21 @@ def run_journey(
     if protocol.foundation != foundation.identity():
         raise FleetError("released journey protocol names a different foundation")
     source_commit = _verify_released_protocol_artifacts(repo, follow_up, protocol)
+    bridge_asset_evidence = _verify_standalone_bridge_asset(
+        repo,
+        source_commit=source_commit,
+        follow_up=follow_up,
+        protocol=protocol,
+        bridge_asset=bridge_asset,
+        bridge_checksum=bridge_checksum,
+    )
+    assert bridge_asset is not None
     for label, artifact, running_path in (
         ("fleet runner", protocol.runner, Path(__file__).resolve()),
         (
             "journey executor",
             protocol.executor,
             PROJECT_ROOT / protocol.executor.source_path,
-        ),
-        (
-            "foundation bridge",
-            protocol.bridge.artifact,
-            PROJECT_ROOT / protocol.bridge.artifact.source_path,
         ),
     ):
         running = running_path.read_bytes()
@@ -2079,6 +2145,7 @@ def run_journey(
             keep_official_fetch=True,
         )
         resolve_fixture_python(case.vault, trusted_python=python_runtime)
+        initial_install_evidence = _initial_install_evidence(case.vault, environment)
         from scripts import release_fleet_executor
 
         try:
@@ -2102,6 +2169,9 @@ def run_journey(
                 foundation_surface=foundation_surface,
                 user_owned_paths=tuple(USER_FIXTURES),
                 platform=journey_platform,
+                bridge_asset_evidence=bridge_asset_evidence,
+                bridge_asset_path=bridge_asset.resolve(strict=True),
+                initial_install_evidence=initial_install_evidence,
             )
         finally:
             _disable_all_fixture_remotes(case.vault, environment)
@@ -2301,6 +2371,17 @@ def assert_evidence_bound(
         if event_ids != required_order:
             raise FleetError(f"{case.starting_tag}: evidence manifest has an invalid event order")
         events = {str(event["id"]): event for event in manifest["events"]}
+        bridge_asset_name = f"dex-update-bridge-v{follow_up.version}.py"
+        bridge_checksum_bytes = (
+            f"{protocol.bridge.artifact.sha256}  {bridge_asset_name}\n".encode("utf-8")
+        )
+        expected_bridge_asset = {
+            "name": bridge_asset_name,
+            "sha256": protocol.bridge.artifact.sha256,
+            "checksum_name": f"{bridge_asset_name}.sha256",
+            "checksum_sha256": hashlib.sha256(bridge_checksum_bytes).hexdigest(),
+            "source": "released-standalone-asset",
+        }
         if any(
             not isinstance(event.get("command"), list)
             or not event["command"]
@@ -2319,9 +2400,23 @@ def assert_evidence_bound(
             or events["historic-route-refusal"].get("release") != expected_historic_surface["release"]
             or events["historic-route-refusal"].get("command")
             != [protocol.executor.source_path, "classify-historic-route"]
+            or events["historic-route-refusal"].get("initial_install")
+            not in (
+                {"topology": "legacy-monolithic", "brain_refs": []},
+                {
+                    "topology": "brain-vault-split",
+                    "brain_refs": ["refs/dex/installed"],
+                },
+                {
+                    "topology": "brain-vault-split",
+                    "brain_refs": ["refs/dex/installed", "refs/heads/release"],
+                },
+            )
             or events["bridge-foundation"].get("release") != foundation.identity()
             or events["bridge-foundation"].get("command")
             != [protocol.executor.source_path, protocol.bridge.adapter]
+            or events["bridge-foundation"].get("bridge_asset")
+            != expected_bridge_asset
             or events["foundation-update-surface"].get("release") != foundation.identity()
             or events["foundation-update-surface"].get("command")
             != ["git", "show", f"{foundation.tag}:{UPDATE_SKILL_RELATIVE}"]
@@ -2642,6 +2737,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     journey.add_argument("--starting-tag", required=True)
     journey.add_argument("--foundation-tag", required=True)
     journey.add_argument("--follow-up-tag", required=True)
+    journey.add_argument("--bridge-asset", type=Path, required=True)
+    journey.add_argument("--bridge-checksum", type=Path, required=True)
     args = parser.parse_args(argv)
 
     if args.command == "manifest":
@@ -2678,6 +2775,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             starting_tag=args.starting_tag,
             foundation_tag=args.foundation_tag,
             follow_up_tag=args.follow_up_tag,
+            bridge_asset=args.bridge_asset,
+            bridge_checksum=args.bridge_checksum,
         )
         print(
             json.dumps(

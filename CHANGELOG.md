@@ -7,6 +7,24 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.6] — 🛟 Stranded older installs can obtain the update bridge (2026-08-01)
+
+Jim's clean 1.79.0 package correctly detected the newest release, but its private
+Dex history contained only the installed version. The protected updater could
+verify new release bytes only after another component supplied them, while the
+one-time bridge existed solely inside the release it was meant to help install.
+
+**What this fixes for you:**
+
+* **The one-time bridge is now a real download.** Every release publishes the
+  reviewed compatibility bridge as its own versioned asset beside an exact
+  SHA-256 checksum, rather than hiding it inside the full Dex bundle.
+* **The rescue instructions are complete.** They name the immutable release
+  URLs, verify the downloaded bytes, and only then run the pinned bridge.
+* **Clean package installs are a required acceptance case.** A test controller
+  may no longer count a journey that silently lends the old install unreleased
+  updater code. Personal files remain outside the bridge's write boundary.
+
 ## [1.81.5] — 🧾 Historic installs receive matching migration metadata (2026-07-31)
 
 The public 1.49.0 journey crossed the repaired history proof, then found that

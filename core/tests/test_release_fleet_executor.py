@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
@@ -194,7 +195,11 @@ def test_production_runtime_exposes_only_installed_qmd_not_ambient_path(
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("PATH", f"{tmp_path / 'ambient'}:/usr/bin")
 
-    runtime = executor._ProductionRuntime()
+    bridge = REPO_ROOT / "scripts/dex_update_bridge.py"
+    runtime = executor._ProductionRuntime(
+        bridge_asset=bridge,
+        bridge_sha256=hashlib.sha256(bridge.read_bytes()).hexdigest(),
+    )
     try:
         environment = runtime._runtime_environment(tmp_path)
         runtime_tools = Path(environment["PATH"].split(os.pathsep)[0])
@@ -355,6 +360,9 @@ def test_executor_owns_the_closed_two_hop_journey_and_returned_evidence(
         foundation_surface={"release": protocol.foundation, "machine_executable": False},
         user_owned_paths=user_files,
         platform="darwin",
+        bridge_asset_evidence=_bridge_asset_evidence(protocol, follow_up),
+        bridge_asset_path=REPO_ROOT / protocol.bridge.artifact.source_path,
+        initial_install_evidence={"topology": "legacy-monolithic", "brain_refs": []},
         input_fn=lambda _prompt: "APPLY",
         output_fn=rendered.append,
         _runtime=runtime,
@@ -425,10 +433,51 @@ def _execute(
         foundation_surface={"release": protocol.foundation, "machine_executable": False},
         user_owned_paths=user_files,
         platform="darwin",
+        bridge_asset_evidence=_bridge_asset_evidence(protocol, runtime.follow_up),
+        bridge_asset_path=REPO_ROOT / protocol.bridge.artifact.source_path,
+        initial_install_evidence={"topology": "legacy-monolithic", "brain_refs": []},
         input_fn=input_fn,
         output_fn=lambda _line: None,
         _runtime=runtime,
     )
+
+
+def _bridge_asset_evidence(protocol, follow_up: dict[str, str]) -> dict[str, str]:
+    name = f"dex-update-bridge-v{follow_up['version']}.py"
+    checksum = f"{protocol.bridge.artifact.sha256}  {name}\n".encode()
+    return {
+        "name": name,
+        "sha256": protocol.bridge.artifact.sha256,
+        "checksum_name": f"{name}.sha256",
+        "checksum_sha256": hashlib.sha256(checksum).hexdigest(),
+        "source": "released-standalone-asset",
+    }
+
+
+def test_runtime_loads_the_verified_asset_instead_of_the_controller_module(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asset = tmp_path / "dex-update-bridge-v1.81.6.py"
+    asset.write_bytes(b"MARKER = 'verified'\n")
+    digest = hashlib.sha256(asset.read_bytes()).hexdigest()
+    original_read_bytes = Path.read_bytes
+
+    def replace_after_read(path: Path) -> bytes:
+        content = original_read_bytes(path)
+        if path == asset:
+            asset.write_bytes(b"MARKER = 'substituted'\n")
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", replace_after_read)
+
+    loaded = executor._load_released_bridge(asset, digest)
+
+    assert loaded is not executor.dex_update_bridge
+    assert Path(loaded.__file__).resolve() == asset.resolve()
+    assert loaded.MARKER == "verified"
+    with pytest.raises(executor.ExecutorError, match="changed before execution"):
+        executor._load_released_bridge(asset, digest)
 
 
 def test_executor_accepts_an_exact_legacy_starting_tag_without_widening_targets(
@@ -832,6 +881,11 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
         lambda _source: Service(),
     )
     monkeypatch.setattr(executor.dex_update_bridge, "run_bridge", run_bridge)
+    monkeypatch.setattr(
+        executor,
+        "_load_released_bridge",
+        lambda _asset, _digest: executor.dex_update_bridge,
+    )
     request_stream = io.StringIO(
         "\n".join(
             (
@@ -848,9 +902,13 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
     monkeypatch.setattr(executor.sys, "stdout", response_stream)
 
     assert (
-        executor._runtime_server(
-            tmp_path / "vault",
-            foundation_cache=(tmp_path / "unused-cache" if use_cache else None),
+            executor._runtime_server(
+                tmp_path / "vault",
+                bridge_asset=REPO_ROOT / "scripts/dex_update_bridge.py",
+                bridge_sha256=hashlib.sha256(
+                    (REPO_ROOT / "scripts/dex_update_bridge.py").read_bytes()
+                ).hexdigest(),
+                foundation_cache=(tmp_path / "unused-cache" if use_cache else None),
         )
         == 0
     )

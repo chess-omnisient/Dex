@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import stat
 import subprocess
@@ -389,6 +390,61 @@ def test_installer_created_split_topology_preserves_the_exact_starting_release(
             official_release_commit=official_commit,
             official_release_tree=official_tree,
         )
+
+
+def test_clean_split_package_evidence_has_no_tags_or_remote_tracking_refs(
+    tmp_path: Path,
+) -> None:
+    source = _repository(tmp_path)
+    tag = _tag_release(source, "1.79.0", "clean package")
+    commit = _git(source, "rev-parse", f"{tag}^{{commit}}")
+    vault = tmp_path / "vault"
+    brain = vault / ".dex/brain.git"
+    archive = vault / ".dex/pre-split-archive.git"
+    (vault / ".git").mkdir(parents=True)
+    archive.mkdir(parents=True)
+    subprocess.run(["git", "init", "--bare", "--quiet", str(brain)], check=True)
+    subprocess.run(
+        ["git", f"--git-dir={brain}", "fetch", "--quiet", "--no-tags", str(source), f"+{commit}:refs/dex/installed"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", f"--git-dir={brain}", "update-ref", "refs/heads/release", commit],
+        check=True,
+    )
+    (vault / ".git/dex-vault-v2").write_text(
+        json.dumps({"schemaVersion": 1, "role": "vault"}) + "\n"
+    )
+    (brain / "dex-brain-v2").write_text(
+        json.dumps({"schemaVersion": 1, "role": "brain", "installed": commit}) + "\n"
+    )
+    topology = vault / "System/.dex/topology.json"
+    topology.parent.mkdir(parents=True)
+    topology.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "topology": "brain-vault-split",
+                "vaultGitDir": ".git",
+                "brainGitDir": ".dex/brain.git",
+                "archiveGitDir": ".dex/pre-split-archive.git",
+                "installedRelease": commit,
+            }
+        )
+        + "\n"
+    )
+
+    assert release_fleet._initial_install_evidence(vault, {}) == {
+        "topology": "brain-vault-split",
+        "brain_refs": ["refs/dex/installed", "refs/heads/release"],
+    }
+
+    subprocess.run(
+        ["git", f"--git-dir={brain}", "update-ref", "refs/remotes/origin/release", commit],
+        check=True,
+    )
+    with pytest.raises(release_fleet.FleetError, match="without tags or remote-tracking refs"):
+        release_fleet._initial_install_evidence(vault, {})
 
 
 @pytest.mark.parametrize(
@@ -1711,6 +1767,110 @@ def test_journey_refuses_an_undeclared_host_platform(
         )
 
 
+def test_journey_refuses_controller_bridge_without_released_asset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A checkout copy cannot stand in for the bridge a user can download."""
+
+    from core.update.journey_protocol import load_update_journey_protocol
+
+    protocol_bytes = (
+        release_fleet.PROJECT_ROOT / release_fleet.UPDATE_JOURNEY_RELATIVE
+    ).read_bytes()
+    protocol = load_update_journey_protocol(protocol_bytes)
+    start = release_fleet.DistributionRelease(
+        tag="dist/release/v1.79.0-aaaaaaa",
+        version="1.79.0",
+        commit="a" * 40,
+        tree="e" * 40,
+    )
+    foundation = release_fleet.ImmutableRelease(
+        tag=protocol.foundation["tag"],
+        tag_object=protocol.foundation["tag_object"],
+        commit=protocol.foundation["commit"],
+        tree=protocol.foundation["tree"],
+        version=protocol.foundation["version"],
+    )
+    follow_up = release_fleet.ImmutableRelease(
+        tag="dist/release/v1.81.6-bbbbbbb",
+        tag_object="c" * 40,
+        commit="b" * 40,
+        tree="d" * 40,
+        version="1.81.6",
+    )
+    monkeypatch.setattr(release_fleet.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        release_fleet, "discover_distribution_releases", lambda _repo: (start,)
+    )
+    monkeypatch.setattr(
+        release_fleet,
+        "resolve_immutable_release",
+        lambda _repo, tag: foundation if tag == foundation.tag else follow_up,
+    )
+    monkeypatch.setattr(
+        release_fleet,
+        "_optional_tag_file",
+        lambda _repo, _tag, relative: (
+            protocol_bytes
+            if relative == release_fleet.UPDATE_JOURNEY_RELATIVE
+            else None
+        ),
+    )
+    monkeypatch.setattr(
+        release_fleet,
+        "_verify_released_protocol_artifacts",
+        lambda _repo, _release, _protocol: "f" * 40,
+    )
+
+    with pytest.raises(
+        release_fleet.FleetError,
+        match="standalone released bridge asset is required",
+    ):
+        release_fleet.run_journey(
+            tmp_path,
+            output=tmp_path / "output",
+            starting_tag=start.tag,
+            foundation_tag=foundation.tag,
+            follow_up_tag=follow_up.tag,
+        )
+
+    assert not (tmp_path / "output").exists()
+
+
+def test_standalone_bridge_asset_refuses_a_checksum_not_shipped_for_its_bytes(
+    tmp_path: Path,
+) -> None:
+    from core.update.journey_protocol import load_update_journey_protocol
+
+    protocol = load_update_journey_protocol(
+        (release_fleet.PROJECT_ROOT / release_fleet.UPDATE_JOURNEY_RELATIVE).read_bytes()
+    )
+    follow_up = release_fleet.ImmutableRelease(
+        tag="dist/release/v1.81.6-bbbbbbb",
+        tag_object="c" * 40,
+        commit="b" * 40,
+        tree="d" * 40,
+        version="1.81.6",
+    )
+    asset = tmp_path / "dex-update-bridge-v1.81.6.py"
+    asset.write_bytes(
+        (release_fleet.PROJECT_ROOT / protocol.bridge.artifact.source_path).read_bytes()
+    )
+    checksum = tmp_path / "dex-update-bridge-v1.81.6.py.sha256"
+    checksum.write_text(f"{'0' * 64}  {asset.name}\n", encoding="utf-8")
+
+    with pytest.raises(release_fleet.FleetError, match="checksum is invalid"):
+        release_fleet._verify_standalone_bridge_asset(
+            tmp_path,
+            source_commit="f" * 40,
+            follow_up=follow_up,
+            protocol=protocol,
+            bridge_asset=asset,
+            bridge_checksum=checksum,
+        )
+
+
 @pytest.mark.parametrize("split_topology", [False, True])
 def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     tmp_path: Path,
@@ -1745,6 +1905,16 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
         tree="e" * 40,
     )
     source_commit = "f" * 40
+    bridge_bytes = (
+        release_fleet.PROJECT_ROOT / protocol.bridge.artifact.source_path
+    ).read_bytes()
+    bridge_asset = tmp_path / f"dex-update-bridge-v{follow_up.version}.py"
+    bridge_asset.write_bytes(bridge_bytes)
+    bridge_checksum = tmp_path / f"{bridge_asset.name}.sha256"
+    bridge_checksum.write_text(
+        f"{hashlib.sha256(bridge_bytes).hexdigest()}  {bridge_asset.name}\n",
+        encoding="utf-8",
+    )
     captured: dict[str, object] = {}
     environment_kwargs: dict[str, object] = {}
     remote_events: list[str] = []
@@ -1809,6 +1979,18 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
         return {}
 
     monkeypatch.setattr(release_fleet, "_case_environment", case_environment)
+    monkeypatch.setattr(
+        release_fleet,
+        "_initial_install_evidence",
+        lambda _vault, _environment: (
+            {
+                "topology": "brain-vault-split",
+                "brain_refs": ["refs/dex/installed", "refs/heads/release"],
+            }
+            if split_topology
+            else {"topology": "legacy-monolithic", "brain_refs": []}
+        ),
+    )
 
     def build_case(
         _repo,
@@ -1892,6 +2074,8 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
         starting_tag=start.tag,
         foundation_tag=foundation.tag,
         follow_up_tag=follow_up.tag,
+        bridge_asset=bridge_asset,
+        bridge_checksum=bridge_checksum,
     )
 
     assert run.case == {"starting_tag": start.tag}
@@ -1899,6 +2083,10 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     assert captured["foundation_release"] == foundation.identity()
     assert captured["follow_up_release"] == follow_up.identity()
     assert captured["user_owned_paths"] == tuple(release_fleet.USER_FIXTURES)
+    assert captured["bridge_asset_evidence"]["source"] == "released-standalone-asset"
+    assert captured["initial_install_evidence"]["topology"] == (
+        "brain-vault-split" if split_topology else "legacy-monolithic"
+    )
     assert environment_kwargs["pip_cache_dir"] == (
         tmp_path / "output/.fixture-controller/pip"
     )

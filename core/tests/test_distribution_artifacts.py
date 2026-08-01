@@ -731,6 +731,32 @@ def test_raw_vault_bundle_has_package_profile_manifest_agreement(tmp_path: Path)
     assert set(manifest) == shipped
 
 
+def test_raw_vault_bundle_publishes_standalone_verified_bridge(tmp_path: Path) -> None:
+    """A stranded historic install can obtain the reviewed bridge directly."""
+
+    clone = _clone_repo(tmp_path, "raw-vault-bundle-bridge-asset")
+    _commit_release_inputs_if_changed(clone)
+    output = tmp_path / "bridge-asset-output"
+    subprocess.run(
+        ["bash", "scripts/build-vault-bundle.sh", str(output)],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=240,
+    )
+
+    version = json.loads((clone / "package.json").read_text(encoding="utf-8"))["version"]
+    bridge = output / f"dex-update-bridge-v{version}.py"
+    checksum = output / f"dex-update-bridge-v{version}.py.sha256"
+    expected = (clone / "scripts/dex_update_bridge.py").read_bytes()
+
+    assert bridge.read_bytes() == expected
+    assert checksum.read_text(encoding="utf-8") == (
+        f"{hashlib.sha256(expected).hexdigest()}  {bridge.name}\n"
+    )
+
+
 def test_raw_vault_bundle_rejects_dirty_protocol_inputs_not_in_source_commit(
     tmp_path: Path,
 ) -> None:
@@ -1211,6 +1237,36 @@ def test_beta_release_ci_publishes_vault_bundle_only_as_prerelease() -> None:
     stable_commands = "\n".join(step.get("run", "") for step in stable_job["steps"])
     assert "gh release create" in stable_commands
     assert "--prerelease" not in stable_commands
+
+
+def test_release_ci_uploads_standalone_bridge_and_checksum() -> None:
+    """Stable and beta releases expose the bridge outside the full vault bundle."""
+
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    for job_name in ("build-release", "build-release-beta"):
+        commands = "\n".join(
+            step.get("run", "") for step in workflow["jobs"][job_name]["steps"]
+        )
+        assert 'dist/dex-update-bridge-v$VERSION.py"' in commands
+        assert 'dist/dex-update-bridge-v$VERSION.py.sha256"' in commands
+
+
+def test_update_rescue_acquires_verifies_then_runs_released_bridge() -> None:
+    """The user-facing rescue page names a complete, ordered public route."""
+
+    version = json.loads((REPO_ROOT / "package.json").read_text(encoding="utf-8"))["version"]
+    bridge_name = f"dex-update-bridge-v{version}.py"
+    rescue = (REPO_ROOT / "docs/UPDATE-RESCUE.md").read_text(encoding="utf-8")
+    release_url = (
+        f"https://github.com/davekilleen/Dex/releases/download/v{version}/{bridge_name}"
+    )
+
+    download_at = rescue.index(release_url)
+    verify_at = rescue.index(f'shasum -a 256 -c "{bridge_name}.sha256"')
+    run_at = rescue.index(
+        f'python3 "$BRIDGE_DIR/{bridge_name}" --vault "$PWD"'
+    )
+    assert download_at < verify_at < run_at
 
 
 def test_distribution_check_rejects_enabled_integration_templates(tmp_path: Path) -> None:

@@ -102,8 +102,15 @@ Markdown `/dex-update` instructions into an API.
 python3 scripts/release_fleet.py journey --repo . --output "$fleet_root" \
   --starting-tag dist/release/v1.74.0-EXACTSTART \
   --foundation-tag dist/release/v1.81.0-EXACTFOUNDATION \
-  --follow-up-tag dist/release/v1.81.5-EXACTFOLLOWUP
+  --follow-up-tag dist/release/v1.81.6-EXACTFOLLOWUP \
+  --bridge-asset /path/to/dex-update-bridge-v1.81.6.py \
+  --bridge-checksum /path/to/dex-update-bridge-v1.81.6.py.sha256
 ```
+
+The bridge paths must be the separately downloaded GitHub Release asset and
+its checksum. The runner verifies their exact names, checksum, protocol digest,
+and released source bytes before it creates the fixture. A bridge available
+only in the controller checkout cannot satisfy this gate.
 
 The repository has the canonical protocol source at
 `core/update/journey-protocol-v1.json`, with a strict parser in
