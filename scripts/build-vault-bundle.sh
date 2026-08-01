@@ -21,6 +21,8 @@ mkdir -p "$OUTPUT_DIR"
 OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 TARBALL="$OUTPUT_DIR/dex-vault-bundle-v$VERSION.tar.gz"
 CHECKSUM="$TARBALL.sha256"
+BRIDGE_ASSET="$OUTPUT_DIR/dex-update-bridge-v$VERSION.py"
+BRIDGE_CHECKSUM="$BRIDGE_ASSET.sha256"
 STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dex-vault-bundle.XXXXXX")"
 ALL_FILES="$(mktemp "${TMPDIR:-/tmp}/dex-vault-all.XXXXXX")"
 EXCLUDED_FILES="$(mktemp "${TMPDIR:-/tmp}/dex-vault-excluded.XXXXXX")"
@@ -129,7 +131,7 @@ python3 "$REPO_ROOT/scripts/check-tau-removal.py" --tree "$STAGING_DIR"
 # distribution contract.
 rm -rf "$STAGING_DIR/node_modules/.bin"
 
-rm -f "$TARBALL" "$CHECKSUM"
+rm -f "$TARBALL" "$CHECKSUM" "$BRIDGE_ASSET" "$BRIDGE_CHECKSUM"
 (
   cd "$STAGING_DIR"
   # COPYFILE_DISABLE=1 stops macOS bsdtar from synthesizing AppleDouble ._*
@@ -144,5 +146,21 @@ python3 "$REPO_ROOT/scripts/check-tau-removal.py" --archive "$TARBALL"
   shasum -a 256 "$(basename "$TARBALL")" > "$(basename "$CHECKSUM")"
 )
 
+# Historic package installs cannot discover this bridge from their own frozen
+# update code. Publish the exact reviewed bridge as a first-class release asset
+# so the documented one-time rescue route has something real to acquire.
+if [ ! -f "$REPO_ROOT/scripts/dex_update_bridge.py" ] || [ -L "$REPO_ROOT/scripts/dex_update_bridge.py" ]; then
+  echo "Error: update bridge source is not a regular file." >&2
+  exit 1
+fi
+cp "$REPO_ROOT/scripts/dex_update_bridge.py" "$BRIDGE_ASSET"
+chmod 0644 "$BRIDGE_ASSET"
+(
+  cd "$OUTPUT_DIR"
+  shasum -a 256 "$(basename "$BRIDGE_ASSET")" > "$(basename "$BRIDGE_CHECKSUM")"
+)
+
 echo "Built $TARBALL"
 echo "Checksum $CHECKSUM"
+echo "Bridge $BRIDGE_ASSET"
+echo "Bridge checksum $BRIDGE_CHECKSUM"

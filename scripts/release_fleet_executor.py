@@ -20,6 +20,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from types import ModuleType
 from typing import Callable, Mapping, Protocol, Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -258,7 +259,13 @@ class JourneyRuntime(Protocol):
 class _ProductionRuntime:
     """Closed parent adapter over a fixture-venv lifecycle runtime."""
 
-    def __init__(self, *, foundation_cache: Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        bridge_asset: Path,
+        bridge_sha256: str,
+        foundation_cache: Path | None = None,
+    ) -> None:
         self._runtime_home = tempfile.TemporaryDirectory(
             prefix="dex-release-journey-runtime-"
         )
@@ -274,6 +281,8 @@ class _ProductionRuntime:
             if foundation_cache is not None
             else None
         )
+        self._bridge_asset = bridge_asset.resolve(strict=True)
+        self._bridge_sha256 = bridge_sha256
 
     def _link_optional_qmd(self) -> None:
         """Expose only a real controller QMD binary to installed health checks.
@@ -403,6 +412,10 @@ class _ProductionRuntime:
             "_runtime-server",
             "--vault",
             str(root),
+            "--bridge-asset",
+            str(self._bridge_asset),
+            "--bridge-sha256",
+            self._bridge_sha256,
         ]
         if self._foundation_cache is not None:
             command.extend(
@@ -687,12 +700,35 @@ def _runtime_server_answer(prompt: str) -> str:
     return response["answer"]
 
 
+def _load_released_bridge(bridge_asset: Path, bridge_sha256: str):
+    """Load only the standalone bridge bytes already bound to the release."""
+
+    if bridge_asset.is_symlink() or not bridge_asset.is_file():
+        raise ExecutorError("standalone released bridge asset is missing or unsafe")
+    bridge_bytes = bridge_asset.read_bytes()
+    if hashlib.sha256(bridge_bytes).hexdigest() != bridge_sha256:
+        raise ExecutorError("standalone released bridge asset changed before execution")
+    module_name = "dex_released_update_bridge"
+    released_bridge = ModuleType(module_name)
+    released_bridge.__file__ = str(bridge_asset)
+    released_bridge.__package__ = ""
+    sys.modules[module_name] = released_bridge
+    code = compile(bridge_bytes, str(bridge_asset), "exec", dont_inherit=True)
+    exec(code, released_bridge.__dict__)
+    return released_bridge
+
+
 def _runtime_server(
     vault: Path,
     *,
+    bridge_asset: Path,
+    bridge_sha256: str,
     foundation_cache: Path | None = None,
 ) -> int:
     """Serve the fixed lifecycle vocabulary from the fixture virtualenv."""
+
+    global dex_update_bridge
+    dex_update_bridge = _load_released_bridge(bridge_asset, bridge_sha256)
 
     root = dex_update_bridge._validate_vault(vault)
     temporary: tempfile.TemporaryDirectory[str] | None = None
@@ -868,6 +904,7 @@ def _verify_released_executor(
     source_commit: str,
     protocol: UpdateJourneyProtocol,
     foundation: Mapping[str, str],
+    bridge_asset: Path,
 ) -> dict[str, object]:
     if _HEX_40.fullmatch(source_commit) is None:
         raise ExecutorError("released executor source commit is malformed")
@@ -883,7 +920,7 @@ def _verify_released_executor(
         (
             "foundation bridge",
             protocol.bridge.artifact,
-            Path(dex_update_bridge.__file__).resolve(),
+            bridge_asset,
         ),
     )
     evidence: dict[str, object] = {"source_commit": source_commit}
@@ -1266,6 +1303,9 @@ def _execute_journey_with_runtime(
     foundation_surface: Mapping[str, object],
     user_owned_paths: Sequence[str],
     platform: str,
+    bridge_asset_evidence: Mapping[str, str],
+    bridge_asset_path: Path,
+    initial_install_evidence: Mapping[str, object],
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], None] = print,
     _runtime: JourneyRuntime,
@@ -1284,7 +1324,41 @@ def _execute_journey_with_runtime(
         source_commit,
         protocol,
         foundation,
+        bridge_asset_path,
     )
+    expected_asset_name = f"dex-update-bridge-v{follow_up['version']}.py"
+    expected_bridge_evidence = {
+        "name": expected_asset_name,
+        "sha256": protocol.bridge.artifact.sha256,
+        "checksum_name": f"{expected_asset_name}.sha256",
+        "checksum_sha256": bridge_asset_evidence.get("checksum_sha256", ""),
+        "source": "released-standalone-asset",
+    }
+    if (
+        dict(bridge_asset_evidence) != expected_bridge_evidence
+        or re.fullmatch(r"[0-9a-f]{64}", expected_bridge_evidence["checksum_sha256"])
+        is None
+    ):
+        raise ExecutorError("standalone released bridge evidence is invalid")
+    topology = initial_install_evidence.get("topology")
+    brain_refs = initial_install_evidence.get("brain_refs")
+    if (
+        topology not in {"legacy-monolithic", "brain-vault-split"}
+        or not isinstance(brain_refs, list)
+        or any(not isinstance(ref, str) for ref in brain_refs)
+        or (topology == "legacy-monolithic" and brain_refs)
+        or (
+            topology == "brain-vault-split"
+            and (
+                "refs/dex/installed" not in brain_refs
+                or any(
+                    ref not in {"refs/dex/installed", "refs/heads/release"}
+                    for ref in brain_refs
+                )
+            )
+        )
+    ):
+        raise ExecutorError("initial clean package ref evidence is invalid")
     if evidence_root.exists():
         raise ExecutorError("journey evidence directory must be empty")
     evidence_root.mkdir(parents=True, mode=0o700)
@@ -1457,11 +1531,13 @@ def _execute_journey_with_runtime(
             "command": [protocol.executor.source_path, "classify-historic-route"],
             "release": start,
             "machine_executable": historic_surface.get("machine_executable"),
+            "initial_install": dict(initial_install_evidence),
         },
         {
             "id": "bridge-foundation",
             "command": [protocol.executor.source_path, protocol.bridge.adapter],
             "release": foundation,
+            "bridge_asset": dict(bridge_asset_evidence),
             "approval_count": len(bridge_approvals),
             "approvals": bridge_approvals,
         },
@@ -1587,6 +1663,9 @@ def _executor_boundary():
         foundation_surface: Mapping[str, object],
         user_owned_paths: Sequence[str],
         platform: str,
+        bridge_asset_evidence: Mapping[str, str],
+        bridge_asset_path: Path,
+        initial_install_evidence: Mapping[str, object],
         input_fn: Callable[[str], str] = input,
         output_fn: Callable[[str], None] = print,
         _runtime: JourneyRuntime | None = None,
@@ -1594,7 +1673,14 @@ def _executor_boundary():
         """Execute one released journey and retain production authority here."""
 
         production_owned = _runtime is None
-        runtime = production_runtime_type() if production_owned else _runtime
+        runtime = (
+            production_runtime_type(
+                bridge_asset=bridge_asset_path,
+                bridge_sha256=protocol.bridge.artifact.sha256,
+            )
+            if production_owned
+            else _runtime
+        )
         assert runtime is not None
         try:
             case = execute_with_runtime(
@@ -1610,6 +1696,9 @@ def _executor_boundary():
                 foundation_surface=foundation_surface,
                 user_owned_paths=user_owned_paths,
                 platform=platform,
+                bridge_asset_evidence=bridge_asset_evidence,
+                bridge_asset_path=bridge_asset_path,
+                initial_install_evidence=initial_install_evidence,
                 input_fn=input_fn,
                 output_fn=output_fn,
                 _runtime=runtime,
@@ -1673,12 +1762,11 @@ __all__ = [
 
 if __name__ == "__main__":
     valid = (
-        len(sys.argv) == 4
+        len(sys.argv) in {8, 10}
         and sys.argv[1:3] == ["_runtime-server", "--vault"]
-    ) or (
-        len(sys.argv) == 6
-        and sys.argv[1:3] == ["_runtime-server", "--vault"]
-        and sys.argv[4] == "--foundation-cache"
+        and sys.argv[4] == "--bridge-asset"
+        and sys.argv[6] == "--bridge-sha256"
+        and (len(sys.argv) == 8 or sys.argv[8] == "--foundation-cache")
     )
     if not valid:
         raise SystemExit("released journey executor has no standalone interface")
@@ -1686,8 +1774,10 @@ if __name__ == "__main__":
         raise SystemExit(
             _runtime_server(
                 Path(sys.argv[3]),
+                bridge_asset=Path(sys.argv[5]),
+                bridge_sha256=sys.argv[7],
                 foundation_cache=(
-                    Path(sys.argv[5]) if len(sys.argv) == 6 else None
+                    Path(sys.argv[9]) if len(sys.argv) == 10 else None
                 ),
             )
         )

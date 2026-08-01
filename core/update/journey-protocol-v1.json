@@ -13,7 +13,7 @@
     "follow-up-smoke"
   ],
   "executor": {
-    "sha256": "f93d0079dfea67db17f86a6ab24694b16d81d5e72adeef6e70885cfba050d9f4",
+    "sha256": "f874eb2fc5211d698208281adf5ef5ae21c43365dfdf8ae83cca30694a2ee396",
     "source_path": "scripts/release_fleet_executor.py"
   },
   "foundation_to_follow_up": {
@@ -51,7 +51,7 @@
     "darwin"
   ],
   "runner": {
-    "sha256": "f67ff3cc8f35f14750479085982e73c7ea27b45a001ac93689ce8e8d46767f74",
+    "sha256": "1ee86c46c6d626241f51c4e071b7aa7af4eaf043a13b67cc9375c2d190d10ace",
     "source_path": "scripts/release_fleet.py"
   },
   "schema_version": 1

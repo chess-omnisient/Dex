@@ -95,10 +95,23 @@ identity. A newer source commit, a mutable branch, or a similarly named tag is
 not equivalent, and an older bridge must refuse rather than silently
 substituting a newer release.
 
-# This is the released-artifact invocation, not an instruction to run a
-# similarly named file copied from a repository checkout.
+Download the versioned bridge and its checksum from the public v1.81.7 release,
+verify the bytes, then run that exact artifact. Run this block from the vault
+root. It keeps the downloaded files in a temporary folder outside the vault.
+
 ```bash
-python3 dex_update_bridge.py --vault "$PWD"
+BRIDGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dex-update-bridge.XXXXXX")"
+curl -fL \
+  "https://github.com/davekilleen/Dex/releases/download/v1.81.7/dex-update-bridge-v1.81.7.py" \
+  -o "$BRIDGE_DIR/dex-update-bridge-v1.81.7.py"
+curl -fL \
+  "https://github.com/davekilleen/Dex/releases/download/v1.81.7/dex-update-bridge-v1.81.7.py.sha256" \
+  -o "$BRIDGE_DIR/dex-update-bridge-v1.81.7.py.sha256"
+(
+  cd "$BRIDGE_DIR"
+  shasum -a 256 -c "dex-update-bridge-v1.81.7.py.sha256"
+)
+python3 "$BRIDGE_DIR/dex-update-bridge-v1.81.7.py" --vault "$PWD"
 ```
 
 It shows two independent previews and requires `APPLY` for each: first the
