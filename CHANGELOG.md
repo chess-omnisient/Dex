@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.81.6] — 🛟 Stranded older installs can obtain the update bridge (2026-08-01)
+## [1.81.7] — 🛟 Stranded older installs can obtain the update bridge (2026-08-01)
 
 Jim's clean 1.79.0 package correctly detected the newest release, but its private
 Dex history contained only the installed version. The protected updater could
@@ -24,6 +24,25 @@ one-time bridge existed solely inside the release it was meant to help install.
 * **Clean package installs are a required acceptance case.** A test controller
   may no longer count a journey that silently lends the old install unreleased
   updater code. Personal files remain outside the bridge's write boundary.
+
+## [1.81.6] — 🪜 Historic Mac upgrades recognise every known release shape (2026-07-31)
+
+The full historic sweep found eight exact older Mac release shapes where the
+updater stopped safely. This release teaches the bridge those verified layouts
+without turning unknown installations into guesses.
+
+**What this fixes for you:**
+
+* **The eight known historic layouts have a supported route forward.** Dex
+  recognises their exact release identities and can move them onto the protected
+  two-step update path.
+* **Unknown layouts still stop before personal files change.** Compatibility is
+  granted only to the old release shapes proven by the fleet evidence.
+* **The release safety gate keeps a recovery slot available.** It now blocks the
+  release history one step before an older updater would run out of room to
+  discover its bridge.
+* **Fleet acceptance remains evidence-led.** The published journeys must still
+  pass before Dex claims these repairs are live for every historic starting point.
 
 ## [1.81.5] — 🧾 Historic installs receive matching migration metadata (2026-07-31)
 

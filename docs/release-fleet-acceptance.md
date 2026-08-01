@@ -102,9 +102,9 @@ Markdown `/dex-update` instructions into an API.
 python3 scripts/release_fleet.py journey --repo . --output "$fleet_root" \
   --starting-tag dist/release/v1.74.0-EXACTSTART \
   --foundation-tag dist/release/v1.81.0-EXACTFOUNDATION \
-  --follow-up-tag dist/release/v1.81.6-EXACTFOLLOWUP \
-  --bridge-asset /path/to/dex-update-bridge-v1.81.6.py \
-  --bridge-checksum /path/to/dex-update-bridge-v1.81.6.py.sha256
+  --follow-up-tag dist/release/v1.81.7-EXACTFOLLOWUP \
+  --bridge-asset /path/to/dex-update-bridge-v1.81.7.py \
+  --bridge-checksum /path/to/dex-update-bridge-v1.81.7.py.sha256
 ```
 
 The bridge paths must be the separately downloaded GitHub Release asset and

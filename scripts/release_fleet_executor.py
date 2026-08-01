@@ -569,6 +569,10 @@ class _ProductionRuntime:
         vault: Path,
         module: str,
         *arguments: str,
+        timeout_seconds: int = 600,
+        timeout_attempts: int = 1,
+        attempt_number: int = 1,
+        retain_attempt_count: bool = False,
     ) -> Mapping[str, object]:
         root = dex_update_bridge._validate_vault(vault)
         interpreter = dex_update_bridge._installed_python(root)
@@ -585,13 +589,23 @@ class _ProductionRuntime:
             start_new_session=True,
         )
         try:
-            stdout, stderr = process.communicate(timeout=600)
+            stdout, stderr = process.communicate(timeout=timeout_seconds)
         except subprocess.TimeoutExpired as error:
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
             process.communicate()
+            if timeout_attempts > 1:
+                return self._installed_json(
+                    vault,
+                    module,
+                    *arguments,
+                    timeout_seconds=timeout_seconds,
+                    timeout_attempts=timeout_attempts - 1,
+                    attempt_number=attempt_number + 1,
+                    retain_attempt_count=retain_attempt_count,
+                )
             raise ExecutorError(f"installed {module} timed out") from error
         if len(stdout) > 16 * 1024 * 1024 or len(stderr) > 1024 * 1024:
             raise ExecutorError(f"installed {module} output exceeded its bound")
@@ -604,10 +618,25 @@ class _ProductionRuntime:
             raise ExecutorError(f"installed {module} returned malformed JSON") from error
         if not isinstance(report, Mapping):
             raise ExecutorError(f"installed {module} returned malformed JSON")
+        if retain_attempt_count:
+            if "journey_transport" in report:
+                raise ExecutorError(
+                    f"installed {module} returned reserved journey transport evidence"
+                )
+            return {
+                **report,
+                "journey_transport": {"attempt_count": attempt_number},
+            }
         return report
 
     def doctor(self, vault: Path) -> Mapping[str, object]:
-        return self._installed_json(vault, "core.utils.doctor")
+        return self._installed_json(
+            vault,
+            "core.utils.doctor",
+            timeout_seconds=60,
+            timeout_attempts=2,
+            retain_attempt_count=True,
+        )
 
     def deliver_latest_release(self, vault: Path) -> Mapping[str, object]:
         return self._server_call(vault, "deliver_latest_release")
@@ -962,6 +991,210 @@ def _doctor_healthy(report: Mapping[str, object]) -> bool:
     )
 
 
+_FAILURE_DIAGNOSTIC_FILES = frozenset(
+    {
+        "foundation-doctor-failure.diagnostic.json",
+        "follow-up-delivery-failure.diagnostic.json",
+        "follow-up-doctor-failure.diagnostic.json",
+    }
+)
+_FAILURE_DIAGNOSTIC_MAX_FILE_BYTES = 1024 * 1024
+_DOCTOR_DIAGNOSTIC_ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,127}$")
+_DOCTOR_DIAGNOSTIC_VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
+
+
+def _safe_file_metadata(vault: Path, relative: str) -> dict[str, object]:
+    """Return non-content metadata for one fixed Dex-owned runtime file."""
+
+    candidate = vault / relative
+    try:
+        status = candidate.lstat()
+    except FileNotFoundError:
+        return {"state": "missing"}
+    if stat.S_ISLNK(status.st_mode):
+        return {"state": "symlink"}
+    if not stat.S_ISREG(status.st_mode):
+        return {"state": "not-regular"}
+    if status.st_size > _FAILURE_DIAGNOSTIC_MAX_FILE_BYTES:
+        return {"state": "too-large", "byte_size": status.st_size}
+    try:
+        descriptor = os.open(
+            candidate,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except FileNotFoundError:
+        return {"state": "missing"}
+    except OSError:
+        # Do not include operating-system errors: they can embed user paths.
+        return {"state": "unreadable"}
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            return {"state": "not-regular"}
+        if (opened.st_dev, opened.st_ino) != (status.st_dev, status.st_ino):
+            return {"state": "changed"}
+        if opened.st_size > _FAILURE_DIAGNOSTIC_MAX_FILE_BYTES:
+            return {"state": "too-large", "byte_size": opened.st_size}
+        digest = hashlib.sha256()
+        byte_size = 0
+        while True:
+            chunk = os.read(descriptor, min(64 * 1024, _FAILURE_DIAGNOSTIC_MAX_FILE_BYTES + 1 - byte_size))
+            if not chunk:
+                break
+            byte_size += len(chunk)
+            if byte_size > _FAILURE_DIAGNOSTIC_MAX_FILE_BYTES:
+                return {"state": "too-large", "byte_size": byte_size}
+            digest.update(chunk)
+        return {
+            "state": "regular",
+            "byte_size": byte_size,
+            "sha256": digest.hexdigest(),
+        }
+    finally:
+        os.close(descriptor)
+
+
+def _sanitized_doctor_report(report: Mapping[str, object]) -> dict[str, object]:
+    """Keep Doctor verdicts while deliberately excluding free-form details."""
+
+    checks = report.get("checks")
+    if not isinstance(checks, list):
+        return {"checks_state": "malformed"}
+    sanitized: list[dict[str, str]] = []
+    for check in checks[:200]:
+        if not isinstance(check, Mapping):
+            sanitized.append({"id": "<malformed>", "verdict": "<malformed>"})
+            continue
+        identifier = check.get("id")
+        verdict = check.get("verdict")
+        sanitized.append(
+            {
+                "id": (
+                    identifier
+                    if isinstance(identifier, str)
+                    and _DOCTOR_DIAGNOSTIC_ID.fullmatch(identifier)
+                    else "<redacted>"
+                ),
+                "verdict": (
+                    verdict
+                    if isinstance(verdict, str) and verdict in _DOCTOR_DIAGNOSTIC_VERDICTS
+                    else "<redacted>"
+                ),
+            }
+        )
+    return {
+        "checks": sanitized,
+        "check_count": len(checks),
+        "details": "redacted",
+    }
+
+
+def _write_failure_diagnostic(
+    evidence_root: Path,
+    name: str,
+    value: Mapping[str, object],
+) -> Path:
+    """Atomically retain one private, non-acceptance failure diagnostic.
+
+    The success evidence bundle deliberately remains all-or-nothing.  These
+    diagnostics are a separate, local-only seam for a failed journey and are
+    neither indexed nor referenced by a journey result or evidence manifest.
+    """
+
+    if name not in _FAILURE_DIAGNOSTIC_FILES:
+        raise ExecutorError("failure diagnostic name is not declared")
+    try:
+        root_status = evidence_root.lstat()
+    except FileNotFoundError as error:
+        raise ExecutorError("failure diagnostic root is missing") from error
+    if not stat.S_ISDIR(root_status.st_mode) or stat.S_ISLNK(root_status.st_mode):
+        raise ExecutorError("failure diagnostic root is unsafe")
+    if stat.S_IMODE(root_status.st_mode) != 0o700:
+        raise ExecutorError("failure diagnostic root must have mode 0700")
+
+    destination = evidence_root / name
+    if destination.parent != evidence_root:
+        raise ExecutorError("failure diagnostic path is unsafe")
+    content = (
+        json.dumps(value, ensure_ascii=False, allow_nan=False, indent=2, sort_keys=True)
+        + "\n"
+    ).encode("utf-8")
+    temporary = evidence_root / f".{name}.{os.getpid()}.{time.time_ns()}.tmp"
+    created = False
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        created = True
+        try:
+            view = memoryview(content)
+            while view:
+                view = view[os.write(descriptor, view) :]
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        # link(2) is atomic and fails rather than replacing a pre-existing path.
+        os.link(temporary, destination, follow_symlinks=False)
+        directory = os.open(evidence_root, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    except OSError as error:
+        raise ExecutorError("failure diagnostic could not be retained safely") from error
+    finally:
+        if created:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+    return destination
+
+
+def _failure_runtime_metadata(vault: Path) -> dict[str, dict[str, object]]:
+    """Digest only fixed Dex-owned files; never serialize their contents."""
+
+    return {
+        relative: _safe_file_metadata(vault, relative)
+        for relative in (
+            "System/.release-catalog.json",
+            "System/.installed-files.manifest",
+        )
+    }
+
+
+def _failure_diagnostic(
+    *,
+    phase: str,
+    vault: Path,
+    foundation: Mapping[str, str],
+    follow_up: Mapping[str, str],
+    doctor: Mapping[str, object] | None = None,
+    delivery: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    document: dict[str, object] = {
+        "acceptance": False,
+        "kind": "local-failure-diagnostic",
+        "phase": phase,
+        "schema_version": 1,
+        "expected_foundation": dict(foundation),
+        "expected_follow_up": dict(follow_up),
+        "runtime_metadata": _failure_runtime_metadata(vault),
+    }
+    if doctor is not None:
+        document["doctor"] = _sanitized_doctor_report(doctor)
+    if delivery is not None:
+        document["delivery"] = {
+            "status": (
+                "delivered" if delivery.get("status") == "delivered" else "not-delivered"
+            ),
+            "release_matches_expected": delivery.get("release") == dict(follow_up),
+        }
+    return document
+
+
 def _smoke_healthy(report: Mapping[str, object]) -> bool:
     journeys = report.get("journeys")
     summary = report.get("summary")
@@ -1170,6 +1403,17 @@ def _execute_journey_with_runtime(
         raise ExecutorError("user-owned content changed during foundation delivery")
     foundation_doctor = dict(_runtime.doctor(vault))
     if not _doctor_healthy(foundation_doctor):
+        _write_failure_diagnostic(
+            evidence_root,
+            "foundation-doctor-failure.diagnostic.json",
+            _failure_diagnostic(
+                phase="foundation-doctor",
+                vault=vault,
+                foundation=foundation,
+                follow_up=follow_up,
+                doctor=foundation_doctor,
+            ),
+        )
         raise ExecutorError("foundation Doctor is unhealthy or incomplete")
     after_foundation = _hash_user_owned(vault, user_owned_paths)
     if after_foundation != before:
@@ -1180,6 +1424,17 @@ def _execute_journey_with_runtime(
         delivered.get("status") != "delivered"
         or delivered.get("release") != follow_up
     ):
+        _write_failure_diagnostic(
+            evidence_root,
+            "follow-up-delivery-failure.diagnostic.json",
+            _failure_diagnostic(
+                phase="follow-up-delivery",
+                vault=vault,
+                foundation=foundation,
+                follow_up=follow_up,
+                delivery=delivered,
+            ),
+        )
         raise ExecutorError("lifecycle delivery did not prove the requested follow-up release")
     preview_response = dict(
         _runtime.build_and_preview_delivered_release(vault, follow_up)
@@ -1216,6 +1471,17 @@ def _execute_journey_with_runtime(
         raise ExecutorError("user-owned content changed during follow-up delivery")
     follow_doctor = dict(_runtime.doctor(vault))
     if not _doctor_healthy(follow_doctor):
+        _write_failure_diagnostic(
+            evidence_root,
+            "follow-up-doctor-failure.diagnostic.json",
+            _failure_diagnostic(
+                phase="follow-up-doctor",
+                vault=vault,
+                foundation=foundation,
+                follow_up=follow_up,
+                doctor=follow_doctor,
+            ),
+        )
         raise ExecutorError("follow-up Doctor is unhealthy or incomplete")
     smoke_report = dict(_runtime.smoke(vault))
     if not _smoke_healthy(smoke_report):

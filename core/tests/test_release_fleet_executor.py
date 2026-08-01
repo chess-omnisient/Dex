@@ -19,6 +19,14 @@ from scripts import release_fleet_executor as executor
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _production_runtime() -> executor._ProductionRuntime:
+    bridge = REPO_ROOT / "scripts/dex_update_bridge.py"
+    return executor._ProductionRuntime(
+        bridge_asset=bridge,
+        bridge_sha256=hashlib.sha256(bridge.read_bytes()).hexdigest(),
+    )
+
+
 def _identity(version: str, fill: str) -> dict[str, str]:
     commit = fill * 40
     return {
@@ -209,6 +217,237 @@ def test_production_runtime_exposes_only_installed_qmd_not_ambient_path(
         assert str(tmp_path / "ambient") not in environment["PATH"]
     finally:
         runtime.close()
+
+
+def test_production_runtime_retries_exact_installed_doctor_after_transport_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    interpreter = tmp_path / "python"
+    interpreter.touch()
+    report = {
+        "summary": {"broken": 0, "unknown": 0},
+        "checks": [{"id": "core.drift", "verdict": "OK"}],
+    }
+    processes = []
+    killed_process_groups: list[int] = []
+
+    class FakeProcess:
+        returncode = 0
+
+        def __init__(self, *, times_out: bool) -> None:
+            self.pid = 41000 + len(processes)
+            self.times_out = times_out
+            self.commands: list[float | int | None] = []
+
+        def communicate(self, timeout=None):
+            self.commands.append(timeout)
+            if self.times_out and timeout is not None:
+                raise subprocess.TimeoutExpired("doctor", timeout)
+            if timeout is None:
+                return b"", b""
+            return json.dumps(report).encode("utf-8"), b""
+
+    def popen(command, **kwargs):
+        process = FakeProcess(times_out=not processes)
+        process.command = command
+        process.kwargs = kwargs
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(executor.dex_update_bridge, "_validate_vault", lambda root: root)
+    monkeypatch.setattr(
+        executor.dex_update_bridge,
+        "_installed_python",
+        lambda _root: interpreter,
+    )
+    monkeypatch.setattr(executor.subprocess, "Popen", popen)
+    monkeypatch.setattr(
+        executor.os,
+        "killpg",
+        lambda pid, _signal: killed_process_groups.append(pid),
+    )
+
+    runtime = _production_runtime()
+    try:
+        assert runtime.doctor(vault) == {
+            **report,
+            "journey_transport": {"attempt_count": 2},
+        }
+    finally:
+        runtime.close()
+
+    assert len(processes) == 2
+    assert all(
+        process.command == [str(interpreter), "-m", "core.utils.doctor"]
+        for process in processes
+    )
+    assert processes[0].commands == [60, None]
+    assert processes[1].commands == [60]
+    assert killed_process_groups == [processes[0].pid]
+    assert all(process.kwargs["start_new_session"] is True for process in processes)
+
+
+def test_production_runtime_fails_after_two_doctor_transport_timeouts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    interpreter = tmp_path / "python"
+    interpreter.touch()
+    processes = []
+    killed_process_groups: list[int] = []
+
+    class TimedOutProcess:
+        returncode = 0
+
+        def __init__(self) -> None:
+            self.pid = 44000 + len(processes)
+            self.commands: list[float | int | None] = []
+
+        def communicate(self, timeout=None):
+            self.commands.append(timeout)
+            if timeout is not None:
+                raise subprocess.TimeoutExpired("doctor", timeout)
+            return b"", b""
+
+    def popen(_command, **kwargs):
+        process = TimedOutProcess()
+        process.kwargs = kwargs
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(executor.dex_update_bridge, "_validate_vault", lambda root: root)
+    monkeypatch.setattr(
+        executor.dex_update_bridge,
+        "_installed_python",
+        lambda _root: interpreter,
+    )
+    monkeypatch.setattr(executor.subprocess, "Popen", popen)
+    monkeypatch.setattr(
+        executor.os,
+        "killpg",
+        lambda pid, _signal: killed_process_groups.append(pid),
+    )
+
+    runtime = _production_runtime()
+    try:
+        with pytest.raises(
+            executor.ExecutorError,
+            match="installed core.utils.doctor timed out",
+        ):
+            runtime.doctor(vault)
+    finally:
+        runtime.close()
+
+    assert len(processes) == 2
+    assert killed_process_groups == [process.pid for process in processes]
+    assert all(process.commands == [60, None] for process in processes)
+    assert all(process.kwargs["start_new_session"] is True for process in processes)
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr", "returncode", "error"),
+    (
+        (b"{}", b"doctor failed", 1, "doctor failed"),
+        (b"not-json", b"", 0, "malformed JSON"),
+    ),
+)
+def test_production_runtime_does_not_retry_non_timeout_doctor_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stdout: bytes,
+    stderr: bytes,
+    returncode: int,
+    error: str,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    interpreter = tmp_path / "python"
+    interpreter.touch()
+    processes = []
+
+    class FakeProcess:
+        pid = 42000
+
+        def __init__(self) -> None:
+            self.returncode = returncode
+
+        def communicate(self, timeout=None):
+            return stdout, stderr
+
+    def popen(_command, **_kwargs):
+        process = FakeProcess()
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(executor.dex_update_bridge, "_validate_vault", lambda root: root)
+    monkeypatch.setattr(
+        executor.dex_update_bridge,
+        "_installed_python",
+        lambda _root: interpreter,
+    )
+    monkeypatch.setattr(executor.subprocess, "Popen", popen)
+
+    runtime = _production_runtime()
+    try:
+        with pytest.raises(executor.ExecutorError, match=error):
+            runtime.doctor(vault)
+    finally:
+        runtime.close()
+
+    assert len(processes) == 1
+
+
+def test_production_runtime_does_not_retry_an_unhealthy_doctor_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    interpreter = tmp_path / "python"
+    interpreter.touch()
+    report = {
+        "summary": {"broken": 1, "unknown": 0},
+        "checks": [{"id": "core.drift", "verdict": "BROKEN"}],
+    }
+    processes = []
+
+    class FakeProcess:
+        pid = 43000
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return json.dumps(report).encode("utf-8"), b""
+
+    def popen(_command, **_kwargs):
+        process = FakeProcess()
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(executor.dex_update_bridge, "_validate_vault", lambda root: root)
+    monkeypatch.setattr(
+        executor.dex_update_bridge,
+        "_installed_python",
+        lambda _root: interpreter,
+    )
+    monkeypatch.setattr(executor.subprocess, "Popen", popen)
+
+    runtime = _production_runtime()
+    try:
+        observed = runtime.doctor(vault)
+    finally:
+        runtime.close()
+
+    assert observed == {
+        **report,
+        "journey_transport": {"attempt_count": 1},
+    }
+    assert executor._doctor_healthy(observed) is False
+    assert len(processes) == 1
 
 
 def _commit_executor_tamper(repo: Path) -> str:

@@ -328,7 +328,17 @@ def test_foundation_service_uses_verified_migrator_for_exact_legacy_topology_onl
     service, engine, vault, migrator = _foundation_topology_adapter(tmp_path)
     original_state = engine.topology_state
     original_command = engine._migrator_command
-    monkeypatch.setattr(bridge, "_supported_legacy_topology", lambda _root: True)
+    authorization = bridge.LegacyTopologyAuthorization(
+        "absent-inputs",
+        bridge.LEGACY_TOPOLOGY_FOUNDATION,
+        None,
+        "absent",
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_legacy_topology_authorization",
+        lambda _root: authorization,
+    )
     monkeypatch.setattr(
         bridge,
         "_trusted_executable",
@@ -345,7 +355,7 @@ def test_foundation_service_uses_verified_migrator_for_exact_legacy_topology_onl
     command_prefix = [
         "/trusted/node",
         "--require",
-        str(service._preload),
+        str(service._preload_for_authorization(authorization)),
         str(migrator),
     ]
     assert preview == {
@@ -419,7 +429,17 @@ if (
             return engine._run_topology_migrator(vault_root, "--dry-run")
 
     service._service = RunningService()
-    monkeypatch.setattr(bridge, "_supported_legacy_topology", lambda _root: True)
+    authorization = bridge.LegacyTopologyAuthorization(
+        "absent-inputs",
+        bridge.LEGACY_TOPOLOGY_FOUNDATION,
+        None,
+        "absent",
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_legacy_topology_authorization",
+        lambda _root: authorization,
+    )
     monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "https")
     parent_environment = bridge._bridge_environment()
     parent_attempt = subprocess.run(
@@ -455,7 +475,7 @@ def test_foundation_service_keeps_unknown_or_ambiguous_topology_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
-    monkeypatch.setattr(bridge, "_supported_legacy_topology", lambda _root: False)
+    monkeypatch.setattr(bridge, "_legacy_topology_authorization", lambda _root: None)
     monkeypatch.setattr(
         bridge,
         "_trusted_executable",
@@ -476,7 +496,11 @@ def test_foundation_service_does_not_bypass_an_unsafe_vault_migrator(
     candidate = vault / bridge._TOPOLOGY_MIGRATOR_RELATIVE
     candidate.parent.mkdir(parents=True)
     candidate.symlink_to(migrator)
-    monkeypatch.setattr(bridge, "_supported_legacy_topology", lambda _root: True)
+    monkeypatch.setattr(
+        bridge,
+        "_legacy_topology_authorization",
+        lambda _root: pytest.fail("unsafe migrator must be rejected before authorization"),
+    )
 
     assert service.build_and_preview_topology_migration(vault) == {
         "topology": "invalid-combined",
@@ -711,9 +735,13 @@ def test_legacy_delivery_reader_accepts_only_the_pinned_pre_manifest_tree(
     TreeEntry = namedtuple("TreeEntry", ("path", "mode", "object_id"))
     classified_oid = "1" * 40
     retired_oid = "2" * 40
+    omission_a_oid = "3" * 40
+    omission_b_oid = "4" * 40
     records = (
         f"100644 blob {classified_oid}\tCLAUDE.md\0"
         f"100644 blob {retired_oid}\tretired-release-path.txt\0"
+        f"100644 blob {omission_a_oid}\tclosed-omission-a\0"
+        f"100644 blob {omission_b_oid}\tclosed-omission-b\0"
         f"120000 blob {bridge._LEGACY_SHIPPED_SYMLINK_BLOB}\t"
         f"{bridge._LEGACY_SHIPPED_SYMLINK_RELATIVE.as_posix()}\0"
     ).encode()
@@ -735,6 +763,20 @@ def test_legacy_delivery_reader_accepts_only_the_pinned_pre_manifest_tree(
     apply_update.portable_contract.resolve = resolve
     apply_update.TreeEntry = TreeEntry
     apply_update._brain_output = brain_output
+    original_omission_identity = bridge._manifestless_omission_identity
+    omission_identities = {
+        "closed-omission-a": "af78f3d480b78b5bb558d873b98638c91d532de98f84f8f50e73448a1404b37d",
+        "closed-omission-b": "50a3e65dc2d65e6f6b28b30b630e06656d95ddd82f4a68a7152017119b110f90",
+    }
+
+    def omission_identity(relative: str, raw_mode: str, object_id: str) -> str:
+        if relative in omission_identities:
+            assert raw_mode == "100644"
+            assert object_id in {omission_a_oid, omission_b_oid}
+            return omission_identities[relative]
+        return original_omission_identity(relative, raw_mode, object_id)
+
+    monkeypatch.setattr(bridge, "_manifestless_omission_identity", omission_identity)
 
     def original_tree_entries(*_arguments):
         pytest.fail("exact legacy commit should use the compatibility reader")
