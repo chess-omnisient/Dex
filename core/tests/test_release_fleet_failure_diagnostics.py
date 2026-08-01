@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import stat
 import subprocess
@@ -164,6 +165,8 @@ def _run_failure(
     )
     starting = _identity("1.65.0", "a")
     follow_up = _identity("1.81.5", "b")
+    bridge_name = f"dex-update-bridge-v{follow_up['version']}.py"
+    checksum = f"{protocol.bridge.artifact.sha256}  {bridge_name}\n".encode()
     with pytest.raises(executor.ExecutorError) as error:
         executor.execute_journey(
             repo_root=source,
@@ -181,6 +184,18 @@ def _run_failure(
             },
             user_owned_paths=user_paths,
             platform="darwin",
+            bridge_asset_evidence={
+                "name": bridge_name,
+                "sha256": protocol.bridge.artifact.sha256,
+                "checksum_name": f"{bridge_name}.sha256",
+                "checksum_sha256": hashlib.sha256(checksum).hexdigest(),
+                "source": "released-standalone-asset",
+            },
+            bridge_asset_path=REPO_ROOT / protocol.bridge.artifact.source_path,
+            initial_install_evidence={
+                "topology": "legacy-monolithic",
+                "brain_refs": [],
+            },
             input_fn=lambda _prompt: "APPLY",
             output_fn=lambda _line: None,
             _runtime=_Runtime(follow_up, failure=failure),
