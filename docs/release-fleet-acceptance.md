@@ -122,6 +122,22 @@ for the same version. It downloads the published bridge and checksum from that
 release and compares both byte-for-byte to the submitted pair. Neither a local
 tag nor a controller copy of the bridge can stand in for it.
 
+The first-party `historic-fleet-darwin` GitHub Actions workflow is the release
+operator for this gate. Its formal job is manual: after the updater change is
+merged and the follow-up GitHub Release is public, provide the exact immutable
+foundation and follow-up tags. The job refreshes the public tags, freezes the
+cohort, downloads and verifies the public bridge pair, and runs all starts
+sequentially on macOS. It retains the evidence and exact
+discovered/started/completed/passed/failed counts on both success and failure.
+The job is time-bounded to six hours and monitors a 50 GiB working-set limit.
+
+Pull requests that touch the updater route get a separate non-publishing
+macOS canary. It builds a local release-shaped candidate and runs real journeys
+from `dist/release/v1.61.0-dc7d332`, semantic `v1.62.0`, and an archived
+v1.65.0 start. Those three journeys can catch packaging and compatibility
+regressions before merge, but they are explicitly non-acceptance evidence and
+cannot weaken or replace the manual freshly generated public fleet gate.
+
 ```bash
 python3 scripts/release_fleet_acceptance.py platform --repo . \
   --cohort historic-cohort.json \
