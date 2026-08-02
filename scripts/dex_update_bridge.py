@@ -869,6 +869,7 @@ def _legacy_preload_bytes(
     """Build the closed preload for absent or exact defective legacy inputs."""
 
     policy = base64.b64encode(_LEGACY_TRACKED_IGNORE_POLICY).decode("ascii")
+    replace_legacy_policy = authorization is not None and authorization.inputs == _INPUT_A_STALE_BOOTSTRAP
     if authorization is None:
         allowed_pins = MISSING_MIGRATOR_RELEASES
         expected_package_version = None
@@ -933,6 +934,7 @@ const allowedExisting = new Set({allowed_existing}.map((values) => values.join('
 const expectedPackageVersion = {json.dumps(expected_package_version)};
 const expectedPackageDigest = {json.dumps(expected_package_sha256)};
 const expectedPackageState = {json.dumps(expected_package_state)};
+const replaceLegacyPolicy = {json.dumps(replace_legacy_policy)};
 const originalReadFileSync = fs.readFileSync.bind(fs);
 const originalReaddirSync = fs.readdirSync.bind(fs);
 
@@ -1036,7 +1038,10 @@ function compatibilityInputs() {{
   const virtualTransition = transitionJson.release_version === packageJson.version
     ? transitionBytes
     : legacyTransition();
-  return {{policy: policyBytes, transition: virtualTransition}};
+  return {{
+    policy: replaceLegacyPolicy ? suppliedPolicy : policyBytes,
+    transition: virtualTransition,
+  }};
 }}
 
 let hideShippedLink = false;
