@@ -8,6 +8,7 @@ CANONICAL_PUBLIC_REMOTE="https://github.com/davekilleen/Dex.git"
 PINNED_FOUNDATION_TAG="dist/release/v1.81.0-6bc490e"
 MAX_DISK_KIB=$((50 * 1024 * 1024))
 CANARY_STARTS=(
+  "v1.51.0"
   "dist/release/v1.61.0-dc7d332"
   "v1.62.0"
   "dist/archive/v1.65.0-c5ec161"

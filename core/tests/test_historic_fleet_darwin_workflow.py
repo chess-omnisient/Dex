@@ -49,16 +49,21 @@ def test_formal_workflow_is_manual_read_only_and_pinned() -> None:
     assert upload["with"]["if-no-files-found"] == "warn"
 
 
-def test_pr_canary_is_separate_release_shaped_and_cannot_publish() -> None:
+def test_four_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
     workflow = _workflow()
     canary = workflow["jobs"]["historic-fleet-darwin-pr-canary"]
     assert canary["if"] == "github.event_name == 'pull_request'"
+    assert any(
+        step.get("name") == "Run four release-shaped macOS journeys"
+        for step in canary["steps"]
+    )
     assert any(
         step.get("run") == "bash scripts/run-historic-fleet-darwin.sh canary"
         for step in canary["steps"]
     )
     source = RUNNER_PATH.read_text(encoding="utf-8")
     for start in (
+        "v1.51.0",
         "dist/release/v1.61.0-dc7d332",
         "v1.62.0",
         "dist/archive/v1.65.0-c5ec161",
@@ -69,6 +74,7 @@ def test_pr_canary_is_separate_release_shaped_and_cannot_publish() -> None:
     assert "git push" not in source
     assert "gh release" not in source
     assert "GH_TOKEN" not in WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert source.count('  "v1.51.0"') == 1
 
 
 def test_formal_runner_freezes_public_cohort_and_retains_exact_counts() -> None:

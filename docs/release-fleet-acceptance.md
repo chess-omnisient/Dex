@@ -133,10 +133,10 @@ The job is time-bounded to six hours and monitors a 50 GiB working-set limit.
 
 Pull requests that touch the updater route get a separate non-publishing
 macOS canary. It builds a local release-shaped candidate and runs real journeys
-from `dist/release/v1.61.0-dc7d332`, semantic `v1.62.0`, and an archived
-v1.65.0 start. Those three journeys can catch packaging and compatibility
-regressions before merge, but they are explicitly non-acceptance evidence and
-cannot weaken or replace the manual freshly generated public fleet gate.
+from semantic `v1.51.0`, `dist/release/v1.61.0-dc7d332`, semantic `v1.62.0`,
+and an archived v1.65.0 start. Those four journeys catch the old dependency
+fixture, topology, and archive paths before merge, but remain explicitly
+non-acceptance evidence and cannot replace the freshly generated public fleet.
 
 ```bash
 python3 scripts/release_fleet_acceptance.py platform --repo . \
