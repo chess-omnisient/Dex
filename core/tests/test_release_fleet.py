@@ -1730,6 +1730,51 @@ def test_fixture_python_proves_real_venv_and_local_dependencies_before_doctor(
     assert not marker.exists()
 
 
+def test_fixture_python_pre_bridge_proof_does_not_require_modern_mcp(
+    tmp_path: Path,
+) -> None:
+    runtime = _current_base_python_runtime()
+    vault = tmp_path / "vault"
+    fixture_root = vault / ".venv"
+    fixture_bin = fixture_root / "bin"
+    fixture_bin.mkdir(parents=True)
+    (fixture_bin / "python").symlink_to(runtime.resolved_python)
+    (fixture_root / "pyvenv.cfg").write_text(
+        "\n".join(
+            (
+                f"home = {runtime.resolved_python.parent}",
+                "include-system-site-packages = false",
+                f"version = {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    site_packages = (
+        fixture_root
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+    )
+    yaml_package = site_packages / "yaml"
+    yaml_package.mkdir(parents=True)
+    yaml_origin = yaml_package / "__init__.py"
+    yaml_origin.write_text("# fixture-local PyYAML\n", encoding="utf-8")
+
+    fixture_python = release_fleet.resolve_fixture_python(
+        vault,
+        trusted_python=runtime,
+        required_dependencies=release_fleet.PRE_BRIDGE_REQUIRED_PYTHON_DEPENDENCIES,
+    )
+
+    assert fixture_python.dependency_origins == (("yaml", str(yaml_origin)),)
+    with pytest.raises(
+        release_fleet.FleetError,
+        match="fixture venv dependency is unavailable: mcp",
+    ):
+        release_fleet.resolve_fixture_python(vault, trusted_python=runtime)
+
+
 def test_journey_fails_closed_before_building_when_release_has_no_executor(
     tmp_path: Path,
 ) -> None:
@@ -1973,7 +2018,11 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
         },
     )
     monkeypatch.setattr(release_fleet, "resolve_trusted_node_runtime", object)
-    monkeypatch.setattr(release_fleet, "resolve_trusted_python_runtime", object)
+    trusted_python = object()
+    monkeypatch.setattr(
+        release_fleet, "resolve_trusted_python_runtime", lambda: trusted_python
+    )
+
     def case_environment(*_args, **kwargs):
         environment_kwargs.update(kwargs)
         return {}
@@ -2052,7 +2101,13 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
         return Run()
 
     monkeypatch.setattr(release_fleet, "build_installed_fixture", build_case)
-    monkeypatch.setattr(release_fleet, "resolve_fixture_python", lambda *_args, **_kwargs: object())
+    fixture_python_calls: list[dict[str, object]] = []
+
+    def resolve_fixture(*_args, **kwargs):
+        fixture_python_calls.append(kwargs)
+        return object()
+
+    monkeypatch.setattr(release_fleet, "resolve_fixture_python", resolve_fixture)
     monkeypatch.setattr(
         release_fleet,
         "_prepare_installer_release_remote",
@@ -2093,6 +2148,12 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     assert environment_kwargs["controller_root"] == (
         tmp_path / "output/.fixture-controller"
     )
+    assert fixture_python_calls == [
+        {
+            "trusted_python": trusted_python,
+            "required_dependencies": release_fleet.PRE_BRIDGE_REQUIRED_PYTHON_DEPENDENCIES,
+        }
+    ]
     assert remote_events == (
         ["split-official-read-retained", "execute", "remote-closed"]
         if split_topology

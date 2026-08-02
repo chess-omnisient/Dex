@@ -121,6 +121,7 @@ TRUSTED_PYTHON_ROOTS = (Path("/opt/homebrew"),)
 MINIMUM_SUPPORTED_PYTHON = (3, 10)
 PROCESS_GROUP_TERMINATION_GRACE_SECONDS = 1.0
 FIXTURE_REQUIRED_PYTHON_DEPENDENCIES = ("mcp", "yaml")
+PRE_BRIDGE_REQUIRED_PYTHON_DEPENDENCIES = ("yaml",)
 SEALED_INSTALLER_ENVIRONMENT_KEYS = frozenset(
     {
         "HOME",
@@ -672,8 +673,13 @@ def resolve_trusted_python_runtime() -> PythonRuntime:
     raise FleetError("no trusted supported Python runtime is available: " + "; ".join(errors))
 
 
-def resolve_fixture_python(vault: Path, *, trusted_python: PythonRuntime) -> FixturePython:
-    """Prove Doctor's interpreter and dependencies belong to one real fixture venv."""
+def resolve_fixture_python(
+    vault: Path,
+    *,
+    trusted_python: PythonRuntime,
+    required_dependencies: Sequence[str] = FIXTURE_REQUIRED_PYTHON_DEPENDENCIES,
+) -> FixturePython:
+    """Prove a fixture interpreter and the phase-required dependencies are local."""
 
     venv_root = vault / ".venv"
     requested_python = venv_root / "bin" / "python"
@@ -739,7 +745,7 @@ def resolve_fixture_python(vault: Path, *, trusted_python: PythonRuntime) -> Fix
     if not isinstance(raw_dependencies, Mapping):
         raise FleetError("fixture venv dependency provenance was malformed")
     dependency_origins: list[tuple[str, str]] = []
-    for dependency in FIXTURE_REQUIRED_PYTHON_DEPENDENCIES:
+    for dependency in required_dependencies:
         origin = raw_dependencies.get(dependency)
         if not isinstance(origin, str) or not origin:
             raise FleetError(f"fixture venv dependency is unavailable: {dependency}")
@@ -2152,7 +2158,11 @@ def run_journey(
             environment=environment,
             keep_official_fetch=True,
         )
-        resolve_fixture_python(case.vault, trusted_python=python_runtime)
+        resolve_fixture_python(
+            case.vault,
+            trusted_python=python_runtime,
+            required_dependencies=PRE_BRIDGE_REQUIRED_PYTHON_DEPENDENCIES,
+        )
         initial_install_evidence = _initial_install_evidence(case.vault, environment)
         from scripts import release_fleet_executor
 
