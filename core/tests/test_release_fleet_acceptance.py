@@ -675,6 +675,17 @@ def _case_document(case: release_fleet.CaseResult) -> dict[str, object]:
     return {field.name: getattr(case, field.name) for field in fields(case)}
 
 
+def _bridge_pair(root: Path) -> tuple[Path, Path]:
+    asset = root / "dex-update-bridge-v1.81.1.py"
+    checksum = root / f"{asset.name}.sha256"
+    asset.write_bytes(b"released bridge bytes\n")
+    checksum.write_text(
+        f"{hashlib.sha256(asset.read_bytes()).hexdigest()}  {asset.name}\n",
+        encoding="utf-8",
+    )
+    return asset, checksum
+
+
 def test_platform_collector_retains_every_live_run_and_exact_counts(
     tmp_path: Path,
 ) -> None:
@@ -684,6 +695,7 @@ def test_platform_collector_retains_every_live_run_and_exact_counts(
         _release("dist/release/v1.80.5-2222222", "1.80.5", "2"),
     )
     created: list[object] = []
+    asset_path, checksum_path = _bridge_pair(tmp_path)
 
     def journey_runner(
         _repo: Path,
@@ -692,10 +704,14 @@ def test_platform_collector_retains_every_live_run_and_exact_counts(
         starting_tag: str,
         foundation_tag: str,
         follow_up_tag: str,
+        bridge_asset: Path,
+        bridge_checksum: Path,
     ) -> object:
         assert output == tmp_path
         assert foundation_tag == FOUNDATION.tag
         assert follow_up_tag == "dist/release/v1.81.1-3333333"
+        assert bridge_asset == asset_path
+        assert bridge_checksum == checksum_path
         run = SimpleNamespace(case=_case_document(_case(starting_tag, "darwin")))
         created.append(run)
         return run
@@ -707,6 +723,8 @@ def test_platform_collector_retains_every_live_run_and_exact_counts(
         foundation_tag=FOUNDATION.tag,
         follow_up_tag="dist/release/v1.81.1-3333333",
         running_platform="darwin",
+        bridge_asset=asset_path,
+        bridge_checksum=checksum_path,
         journey_runner=journey_runner,
     )
 
@@ -730,6 +748,7 @@ def test_platform_collector_stops_on_first_failure_with_honest_counts(
         _release("v1.20.1", "1.20.1", "1"),
         _release("dist/release/v1.80.5-2222222", "1.80.5", "2"),
     )
+    bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
 
     def journey_runner(
         _repo: Path,
@@ -738,8 +757,10 @@ def test_platform_collector_stops_on_first_failure_with_honest_counts(
         starting_tag: str,
         foundation_tag: str,
         follow_up_tag: str,
+        bridge_asset: Path,
+        bridge_checksum: Path,
     ) -> object:
-        del output, foundation_tag, follow_up_tag
+        del output, foundation_tag, follow_up_tag, bridge_asset, bridge_checksum
         if starting_tag == releases[1].tag:
             raise release_fleet.FleetError("synthetic journey failed")
         return SimpleNamespace(case=_case_document(_case(starting_tag, "darwin")))
@@ -752,6 +773,8 @@ def test_platform_collector_stops_on_first_failure_with_honest_counts(
             foundation_tag=FOUNDATION.tag,
             follow_up_tag="dist/release/v1.81.1-3333333",
             running_platform="darwin",
+            bridge_asset=bridge_asset,
+            bridge_checksum=bridge_checksum,
             journey_runner=journey_runner,
         )
 
@@ -791,6 +814,7 @@ def test_forged_executor_runs_cannot_mint_a_platform_receipt(
     acceptance = _acceptance()
     key, session, inputs = _signed_session(acceptance)
     running_platform = acceptance._running_platform()
+    bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
     execution = acceptance.collect_platform_runs(
         tmp_path,
         output=tmp_path,
@@ -798,6 +822,8 @@ def test_forged_executor_runs_cannot_mint_a_platform_receipt(
         foundation_tag=FOUNDATION.tag,
         follow_up_tag="dist/release/v1.81.1-3333333",
         running_platform=running_platform,
+        bridge_asset=bridge_asset,
+        bridge_checksum=bridge_checksum,
         journey_runner=lambda _repo, **kwargs: SimpleNamespace(
             case=_case_document(_case(str(kwargs["starting_tag"]), running_platform))
         ),
@@ -836,6 +862,7 @@ def test_changed_evidence_validator_cannot_mint_a_platform_receipt(
     acceptance = _acceptance()
     key, session, inputs = _signed_session(acceptance)
     running_platform = acceptance._running_platform()
+    bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
     releases = (
         _release("v1.20.1", "1.20.1", "1"),
         _release("dist/release/v1.80.5-2222222", "1.80.5", "2"),
@@ -847,6 +874,8 @@ def test_changed_evidence_validator_cannot_mint_a_platform_receipt(
         foundation_tag=FOUNDATION.tag,
         follow_up_tag="dist/release/v1.81.1-3333333",
         running_platform=running_platform,
+        bridge_asset=bridge_asset,
+        bridge_checksum=bridge_checksum,
         journey_runner=lambda _repo, **kwargs: SimpleNamespace(
             case=_case_document(_case(str(kwargs["starting_tag"]), running_platform))
         ),
@@ -920,6 +949,363 @@ def test_platform_controller_creates_one_private_non_resumable_run_root(
     unsafe_parent.symlink_to(real_parent, target_is_directory=True)
     with pytest.raises(release_fleet.FleetError, match="parent is unsafe"):
         acceptance._create_private_run_root(unsafe_parent / "run")
+
+
+def _platform_cli_arguments(
+    root: Path,
+    *,
+    foundation: release_fleet.ImmutableRelease,
+    follow_up: release_fleet.ImmutableRelease,
+    session_path: Path,
+    key_path: Path,
+    output: Path,
+) -> list[str]:
+    return [
+        "platform",
+        "--repo",
+        str(root),
+        "--cohort",
+        str(root / "cohort.json"),
+        "--foundation-tag",
+        foundation.tag,
+        "--follow-up-tag",
+        follow_up.tag,
+        "--session",
+        str(session_path),
+        "--key",
+        str(key_path),
+        "--output",
+        str(output),
+    ]
+
+
+def _write_platform_session(
+    root: Path,
+    *,
+    acceptance,
+) -> tuple[Path, Path, object]:
+    key, session, inputs = _signed_session(acceptance)
+    session_path = root / "session.json"
+    key_path = root / "session.key"
+    session_path.write_bytes(acceptance._json_bytes(session))
+    key_path.write_bytes(key)
+    key_path.chmod(0o600)
+    return session_path, key_path, inputs
+
+
+def test_platform_cli_requires_a_bridge_asset_and_checksum(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    acceptance = _acceptance()
+    session_path, key_path, inputs = _write_platform_session(tmp_path, acceptance=acceptance)
+    monkeypatch.setattr(acceptance, "load_fleet_inputs", lambda *args, **kwargs: inputs)
+
+    with pytest.raises(SystemExit):
+        acceptance.main(
+            _platform_cli_arguments(
+                tmp_path,
+                foundation=inputs.foundation,
+                follow_up=inputs.follow_up,
+                session_path=session_path,
+                key_path=key_path,
+                output=tmp_path / "run",
+            )
+        )
+
+
+def test_platform_cli_rejects_a_tampered_bridge_pair_before_starting_a_journey(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    acceptance = _acceptance()
+    session_path, key_path, inputs = _write_platform_session(tmp_path, acceptance=acceptance)
+    bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
+    run_root = tmp_path / "run"
+    monkeypatch.setattr(acceptance, "load_fleet_inputs", lambda *args, **kwargs: inputs)
+    monkeypatch.setattr(acceptance, "_running_platform", lambda: "darwin")
+    monkeypatch.setattr(acceptance, "_verify_public_follow_up_release", lambda _release: None, raising=False)
+    monkeypatch.setattr(
+        release_fleet,
+        "_verify_standalone_bridge_asset",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            release_fleet.FleetError("standalone released bridge checksum is invalid")
+        ),
+    )
+    monkeypatch.setattr(
+        acceptance,
+        "collect_platform_runs",
+        lambda *args, **kwargs: pytest.fail("journey collector must not start"),
+    )
+
+    with pytest.raises(release_fleet.FleetError, match="checksum is invalid"):
+        acceptance.main(
+            _platform_cli_arguments(
+                tmp_path,
+                foundation=inputs.foundation,
+                follow_up=inputs.follow_up,
+                session_path=session_path,
+                key_path=key_path,
+                output=run_root,
+            )
+            + [
+                "--bridge-asset",
+                str(bridge_asset),
+                "--bridge-checksum",
+                str(bridge_checksum),
+            ]
+        )
+
+    assert not run_root.exists()
+
+
+def test_platform_cli_rejects_a_follow_up_not_advertised_by_the_public_remote(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    acceptance = _acceptance()
+    session_path, key_path, inputs = _write_platform_session(tmp_path, acceptance=acceptance)
+    bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
+    monkeypatch.setattr(acceptance, "load_fleet_inputs", lambda *args, **kwargs: inputs)
+    monkeypatch.setattr(acceptance, "_running_platform", lambda: "darwin")
+    monkeypatch.setattr(release_fleet, "_verify_standalone_bridge_asset", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        acceptance,
+        "_verify_public_follow_up_release",
+        lambda _release: (_ for _ in ()).throw(
+            release_fleet.FleetError("follow-up release is not advertised by the public stable remote")
+        ),
+        raising=False,
+    )
+
+    with pytest.raises(release_fleet.FleetError, match="not advertised"):
+        acceptance.main(
+            _platform_cli_arguments(
+                tmp_path,
+                foundation=inputs.foundation,
+                follow_up=inputs.follow_up,
+                session_path=session_path,
+                key_path=key_path,
+                output=tmp_path / "run",
+            )
+            + ["--bridge-asset", str(bridge_asset), "--bridge-checksum", str(bridge_checksum)]
+        )
+    assert not (tmp_path / "run").exists()
+
+
+def test_platform_cli_rejects_a_bridge_pair_not_matching_the_public_release(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    acceptance = _acceptance()
+    session_path, key_path, inputs = _write_platform_session(tmp_path, acceptance=acceptance)
+    bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
+    run_root = tmp_path / "run"
+    monkeypatch.setattr(acceptance, "load_fleet_inputs", lambda *args, **kwargs: inputs)
+    monkeypatch.setattr(acceptance, "_running_platform", lambda: "darwin")
+    monkeypatch.setattr(acceptance, "_verify_public_follow_up_release", lambda _release: None, raising=False)
+    monkeypatch.setattr(release_fleet, "_verify_standalone_bridge_asset", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        acceptance,
+        "_verify_public_bridge_release_asset",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            release_fleet.FleetError("bridge asset does not match the public GitHub release")
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        acceptance,
+        "collect_platform_runs",
+        lambda *args, **kwargs: pytest.fail("journey collector must not start"),
+    )
+
+    with pytest.raises(release_fleet.FleetError, match="public GitHub release"):
+        acceptance.main(
+            _platform_cli_arguments(
+                tmp_path,
+                foundation=inputs.foundation,
+                follow_up=inputs.follow_up,
+                session_path=session_path,
+                key_path=key_path,
+                output=run_root,
+            )
+            + ["--bridge-asset", str(bridge_asset), "--bridge-checksum", str(bridge_checksum)]
+        )
+
+    assert not run_root.exists()
+
+
+def test_public_follow_up_release_requires_the_exact_canonical_remote_tag_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    acceptance = _acceptance()
+    release = _immutable_follow_up()
+    calls: list[list[str]] = []
+
+    def advertised(arguments, **_kwargs):
+        calls.append(arguments)
+        return SimpleNamespace(
+            returncode=0,
+            stdout=f"{release.tag_object}\trefs/tags/{release.tag}\n",
+        )
+
+    monkeypatch.setattr(acceptance.subprocess, "run", advertised)
+    acceptance._verify_public_follow_up_release(release)
+
+    assert calls == [
+        [
+            "git",
+            "-c",
+            "credential.helper=",
+            "-c",
+            "protocol.file.allow=never",
+            "ls-remote",
+            "--refs",
+            "--tags",
+            acceptance.CANONICAL_PUBLIC_REMOTE,
+            f"refs/tags/{release.tag}",
+        ]
+    ]
+
+    monkeypatch.setattr(
+        acceptance.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout=f"{'0' * 40}\trefs/tags/{release.tag}\n"),
+    )
+    with pytest.raises(release_fleet.FleetError, match="not advertised"):
+        acceptance._verify_public_follow_up_release(release)
+
+
+def test_public_bridge_assets_must_match_the_public_stable_release_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    acceptance = _acceptance()
+    release = _immutable_follow_up()
+    bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
+    public_metadata = {"tag_name": "v1.81.1", "draft": False, "prerelease": False}
+    public_assets = {
+        bridge_asset.name: bridge_asset.read_bytes(),
+        bridge_checksum.name: bridge_checksum.read_bytes(),
+    }
+
+    def public_bytes(url: str, **_kwargs) -> bytes:
+        if url == acceptance.CANONICAL_PUBLIC_RELEASE_API.format(version=release.version):
+            return json.dumps(public_metadata).encode("utf-8")
+        for name, content in public_assets.items():
+            if url.endswith(name):
+                return content
+        pytest.fail(f"unexpected public URL: {url}")
+
+    monkeypatch.setattr(acceptance, "_read_public_bytes", public_bytes)
+    acceptance._verify_public_bridge_release_asset(
+        release,
+        bridge_asset=bridge_asset,
+        bridge_checksum=bridge_checksum,
+    )
+
+    bridge_asset.write_bytes(b"tampered controller copy\n")
+    with pytest.raises(release_fleet.FleetError, match="public GitHub release"):
+        acceptance._verify_public_bridge_release_asset(
+            release,
+            bridge_asset=bridge_asset,
+            bridge_checksum=bridge_checksum,
+        )
+
+    bridge_asset.write_bytes(public_assets[bridge_asset.name])
+    public_metadata["draft"] = True
+    with pytest.raises(release_fleet.FleetError, match="public stable GitHub release"):
+        acceptance._verify_public_bridge_release_asset(
+            release,
+            bridge_asset=bridge_asset,
+            bridge_checksum=bridge_checksum,
+        )
+
+    public_metadata["draft"] = False
+    public_metadata["prerelease"] = True
+    with pytest.raises(release_fleet.FleetError, match="public stable GitHub release"):
+        acceptance._verify_public_bridge_release_asset(
+            release,
+            bridge_asset=bridge_asset,
+            bridge_checksum=bridge_checksum,
+        )
+
+
+def test_platform_cli_preverifies_and_passes_the_bridge_pair_to_every_journey(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    acceptance = _acceptance()
+    session_path, key_path, inputs = _write_platform_session(tmp_path, acceptance=acceptance)
+    bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(acceptance, "load_fleet_inputs", lambda *args, **kwargs: inputs)
+    monkeypatch.setattr(acceptance, "_running_platform", lambda: "darwin")
+    monkeypatch.setattr(acceptance, "_verify_public_follow_up_release", lambda _release: None, raising=False)
+    monkeypatch.setattr(
+        acceptance,
+        "_verify_public_bridge_release_asset",
+        lambda *_args, **_kwargs: None,
+        raising=False,
+    )
+
+    def verify_asset(*args, **kwargs):
+        captured["verified"] = (args, kwargs)
+        return {"source": "released-standalone-asset"}
+
+    def collect(*args, **kwargs):
+        captured["collect"] = (args, kwargs)
+        return SimpleNamespace(
+            report=SimpleNamespace(platforms=("darwin",)),
+            counts={
+                "discovered": 170,
+                "started": 170,
+                "completed": 170,
+                "passed": 170,
+                "failed": 0,
+            },
+        )
+
+    monkeypatch.setattr(release_fleet, "_verify_standalone_bridge_asset", verify_asset)
+    monkeypatch.setattr(acceptance, "collect_platform_runs", collect)
+    monkeypatch.setattr(
+        acceptance,
+        "finalize_live_platform_execution",
+        lambda *_args, **_kwargs: {
+            "manifest_output": "platform-manifest.json",
+            "receipt_output": "platform-receipt.json",
+            "manifest_sha256": "a" * 64,
+        },
+    )
+
+    assert (
+        acceptance.main(
+            _platform_cli_arguments(
+                tmp_path,
+                foundation=inputs.foundation,
+                follow_up=inputs.follow_up,
+                session_path=session_path,
+                key_path=key_path,
+                output=tmp_path / "run",
+            )
+            + [
+                "--bridge-asset",
+                str(bridge_asset),
+                "--bridge-checksum",
+                str(bridge_checksum),
+            ]
+        )
+        == 0
+    )
+    assert captured["verified"][1] == {
+        "source_commit": inputs.source_commit,
+        "follow_up": inputs.follow_up,
+        "protocol": inputs.protocol,
+        "bridge_asset": bridge_asset,
+        "bridge_checksum": bridge_checksum,
+    }
+    assert captured["collect"][1]["bridge_asset"] == bridge_asset
+    assert captured["collect"][1]["bridge_checksum"] == bridge_checksum
 
 
 def test_session_key_file_is_private_and_rejects_symlinks(tmp_path: Path) -> None:
@@ -1068,6 +1454,7 @@ def test_full_command_surface_aggregates_evidence_without_minting_acceptance(
     )
     session = json.loads(session_path.read_text(encoding="utf-8"))
     capsys.readouterr()
+    bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
 
     def collect(*args, running_platform: str, **kwargs):
         del args, kwargs
@@ -1115,6 +1502,18 @@ def test_full_command_surface_aggregates_evidence_without_minting_acceptance(
 
     monkeypatch.setattr(acceptance, "collect_platform_runs", collect)
     monkeypatch.setattr(acceptance, "finalize_live_platform_execution", finalize)
+    monkeypatch.setattr(
+        release_fleet,
+        "_verify_standalone_bridge_asset",
+        lambda *args, **kwargs: {"source": "released-standalone-asset"},
+    )
+    monkeypatch.setattr(acceptance, "_verify_public_follow_up_release", lambda _release: None, raising=False)
+    monkeypatch.setattr(
+        acceptance,
+        "_verify_public_bridge_release_asset",
+        lambda *_args, **_kwargs: None,
+        raising=False,
+    )
     receipt_paths: list[Path] = []
     manifest_paths: list[Path] = []
     for platform in ("darwin",):
@@ -1140,6 +1539,10 @@ def test_full_command_surface_aggregates_evidence_without_minting_acceptance(
                     str(session_path),
                     "--key",
                     str(key_path),
+                    "--bridge-asset",
+                    str(bridge_asset),
+                    "--bridge-checksum",
+                    str(bridge_checksum),
                     "--output",
                     str(platform_root),
                 ]

@@ -112,6 +112,27 @@ its checksum. The runner verifies their exact names, checksum, protocol digest,
 and released source bytes before it creates the fixture. A bridge available
 only in the controller checkout cannot satisfy this gate.
 
+The formal macOS fleet controller takes that same asset pair explicitly and
+re-proves it against the immutable follow-up protocol before it creates its
+private run directory or starts a journey. The follow-up tag must be the exact
+public stable `dist/release/v*` tag that the foundation updater will deliver;
+the controller proves that the canonical public remote advertises that exact
+annotated tag object, then requires a non-draft, non-prerelease GitHub Release
+for the same version. It downloads the published bridge and checksum from that
+release and compares both byte-for-byte to the submitted pair. Neither a local
+tag nor a controller copy of the bridge can stand in for it.
+
+```bash
+python3 scripts/release_fleet_acceptance.py platform --repo . \
+  --cohort historic-cohort.json \
+  --foundation-tag dist/release/v1.81.0-EXACTFOUNDATION \
+  --follow-up-tag dist/release/vNEXT-EXACTFOLLOWUP \
+  --session acceptance-session.json --key acceptance.key \
+  --bridge-asset /path/to/dex-update-bridge-vNEXT.py \
+  --bridge-checksum /path/to/dex-update-bridge-vNEXT.py.sha256 \
+  --output "$fleet_root/darwin"
+```
+
 The repository has the canonical protocol source at
 `core/update/journey-protocol-v1.json`, with a strict parser in
 `core/update/journey_protocol.py`. It is a closed operation vocabulary, not a

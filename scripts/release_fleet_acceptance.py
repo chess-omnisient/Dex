@@ -11,7 +11,10 @@ import os
 import re
 import secrets
 import stat
+import subprocess
 import sys
+import urllib.error
+import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,8 +39,15 @@ FIRST_PARTY_PLATFORM_JOBS = {
     "darwin": "historic-fleet-darwin",
 }
 MAX_PLATFORM_MANIFEST_BYTES = 16 * 1024 * 1024
+MAX_PUBLIC_RELEASE_METADATA_BYTES = 1024 * 1024
+MAX_PUBLIC_RELEASE_ASSET_BYTES = 16 * 1024 * 1024
 PLATFORM_MANIFEST_NAME = "platform-manifest.json"
 PLATFORM_RECEIPT_NAME = "platform-receipt.json"
+CANONICAL_PUBLIC_REMOTE = "https://github.com/davekilleen/Dex.git"
+CANONICAL_PUBLIC_RELEASE_API = "https://api.github.com/repos/davekilleen/Dex/releases/tags/v{version}"
+CANONICAL_PUBLIC_RELEASE_DOWNLOAD = (
+    "https://github.com/davekilleen/Dex/releases/download/v{version}/{name}"
+)
 _COHORT_FIELDS = frozenset({"schema_version", "foundation", "case_count", "cases"})
 _RELEASE_FIELDS = frozenset({"tag", "version", "commit", "tree"})
 _SEMVER = re.compile(
@@ -608,6 +618,8 @@ def collect_platform_runs(
     foundation_tag: str,
     follow_up_tag: str,
     running_platform: str,
+    bridge_asset: Path,
+    bridge_checksum: Path,
     journey_runner: Callable[..., object] = release_fleet.run_journey,
 ) -> PlatformExecution:
     """Run one platform sequentially and retain every live executor result."""
@@ -630,6 +642,8 @@ def collect_platform_runs(
                 starting_tag=release.tag,
                 foundation_tag=foundation_tag,
                 follow_up_tag=follow_up_tag,
+                bridge_asset=bridge_asset,
+                bridge_checksum=bridge_checksum,
             )
             case = getattr(run, "case", None)
             if not isinstance(case, Mapping):
@@ -941,6 +955,92 @@ def _running_platform() -> str:
     raise release_fleet.FleetError("historic fleet acceptance supports macOS only")
 
 
+def _read_public_bytes(url: str, *, limit: int, context: str) -> bytes:
+    """Read one bounded canonical GitHub response or fail the acceptance closed."""
+
+    request = urllib.request.Request(url, headers={"User-Agent": "dex-release-fleet-acceptance"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            content = response.read(limit + 1)
+    except (OSError, urllib.error.URLError) as error:
+        raise release_fleet.FleetError(f"public {context} is unavailable") from error
+    if len(content) > limit:
+        raise release_fleet.FleetError(f"public {context} is too large")
+    return content
+
+
+def _verify_public_follow_up_release(release: release_fleet.ImmutableRelease) -> None:
+    """Prove the immutable release tag is advertised by the canonical remote."""
+
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-c",
+                "credential.helper=",
+                "-c",
+                "protocol.file.allow=never",
+                "ls-remote",
+                "--refs",
+                "--tags",
+                CANONICAL_PUBLIC_REMOTE,
+                f"refs/tags/{release.tag}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise release_fleet.FleetError(
+            "follow-up release cannot be verified against the public stable remote"
+        ) from error
+    expected = f"{release.tag_object}\trefs/tags/{release.tag}"
+    if result.returncode != 0 or result.stdout.strip() != expected:
+        raise release_fleet.FleetError(
+            "follow-up release is not advertised by the public stable remote"
+        )
+
+
+def _verify_public_bridge_release_asset(
+    release: release_fleet.ImmutableRelease,
+    *,
+    bridge_asset: Path,
+    bridge_checksum: Path,
+) -> None:
+    """Require the submitted pair to be byte-identical public stable release assets."""
+
+    metadata_bytes = _read_public_bytes(
+        CANONICAL_PUBLIC_RELEASE_API.format(version=release.version),
+        limit=MAX_PUBLIC_RELEASE_METADATA_BYTES,
+        context="stable GitHub release metadata",
+    )
+    try:
+        metadata = json.loads(metadata_bytes)
+    except json.JSONDecodeError as error:
+        raise release_fleet.FleetError("public stable GitHub release metadata is invalid") from error
+    if (
+        not isinstance(metadata, Mapping)
+        or metadata.get("tag_name") != f"v{release.version}"
+        or metadata.get("draft") is not False
+        or metadata.get("prerelease") is not False
+    ):
+        raise release_fleet.FleetError("follow-up is not a public stable GitHub release")
+
+    for path in (bridge_asset, bridge_checksum):
+        public_bytes = _read_public_bytes(
+            CANONICAL_PUBLIC_RELEASE_DOWNLOAD.format(version=release.version, name=path.name),
+            limit=MAX_PUBLIC_RELEASE_ASSET_BYTES,
+            context="stable GitHub release bridge asset",
+        )
+        try:
+            supplied_bytes = path.read_bytes()
+        except OSError as error:
+            raise release_fleet.FleetError("submitted bridge asset is unavailable") from error
+        if public_bytes != supplied_bytes:
+            raise release_fleet.FleetError("bridge asset does not match the public GitHub release")
+
+
 def _add_bound_input_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--cohort", type=Path, required=True)
@@ -973,6 +1073,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     _add_bound_input_arguments(platform)
     platform.add_argument("--session", type=Path, required=True)
     platform.add_argument("--key", type=Path, required=True)
+    platform.add_argument("--bridge-asset", type=Path, required=True)
+    platform.add_argument("--bridge-checksum", type=Path, required=True)
     platform.add_argument("--output", type=Path, required=True)
     aggregate = subcommands.add_parser(
         "aggregate",
@@ -1069,6 +1171,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     _assert_session_matches_inputs(signed_session, key=key, inputs=inputs)
 
     if args.command == "platform":
+        _verify_public_follow_up_release(inputs.follow_up)
+        release_fleet._verify_standalone_bridge_asset(
+            args.repo,
+            source_commit=inputs.source_commit,
+            follow_up=inputs.follow_up,
+            protocol=inputs.protocol,
+            bridge_asset=args.bridge_asset,
+            bridge_checksum=args.bridge_checksum,
+        )
+        _verify_public_bridge_release_asset(
+            inputs.follow_up,
+            bridge_asset=args.bridge_asset,
+            bridge_checksum=args.bridge_checksum,
+        )
         _create_private_run_root(args.output)
         running_platform = _running_platform()
         execution = collect_platform_runs(
@@ -1078,6 +1194,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             foundation_tag=inputs.foundation.tag,
             follow_up_tag=inputs.follow_up.tag,
             running_platform=running_platform,
+            bridge_asset=args.bridge_asset,
+            bridge_checksum=args.bridge_checksum,
         )
         finalized = finalize_live_platform_execution(
             execution,
