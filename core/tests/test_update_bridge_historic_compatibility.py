@@ -546,8 +546,19 @@ def _topology_command_adapter(
         """'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
-fs.readFileSync(path.join(process.cwd(), 'core/migrations/tracked-ignored-policy.yaml'));
+const crypto = require('node:crypto');
+const policy = fs.readFileSync(
+  path.join(process.cwd(), 'core/migrations/tracked-ignored-policy.yaml'),
+  'utf8',
+);
+if (
+  !/^schema_version:\\s*\\d+\\s*$/m.test(policy)
+  || !/^active_baseline_version:\\s*\\d+\\s*$/m.test(policy)
+) {
+  throw new Error('Tracked-ignore policy is missing schema or active baseline.');
+}
 fs.readFileSync(path.join(process.cwd(), 'System/.local-only-preservation-transition.json'));
+console.log(crypto.createHash('sha256').update(policy).digest('hex'));
 """,
         encoding="utf-8",
     )
@@ -1001,12 +1012,24 @@ def test_runtime_legacy_topology_refuses_a_wrong_object_at_a_pruned_pin_label(
     assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
 
 
-def test_runtime_legacy_command_reproves_unchanged_existing_input_tuple(
+@pytest.mark.parametrize(
+    "release_tag",
+    (
+        "dist/release/v1.61.0-dc7d332",
+        "v1.62.0",
+    ),
+)
+def test_runtime_schema_v1_policy_uses_read_only_foundation_compatibility(
     tmp_path: Path,
+    release_tag: str,
 ) -> None:
-    pin = bridge.MISSING_MIGRATOR_RELEASES[3]
+    pin = next(pin for pin in bridge.MISSING_MIGRATOR_RELEASES if pin.release.tag == release_tag)
     repository = _historic_checkout(tmp_path, pin.release)
     adapter, engine = _topology_command_adapter(tmp_path)
+    policy_path = repository / bridge._TRACKED_IGNORE_POLICY_RELATIVE
+    transition_path = repository / bridge._PRESERVATION_TRANSITION_RELATIVE
+    original_policy = policy_path.read_bytes()
+    original_transition = transition_path.read_bytes()
 
     with adapter._topology_source():
         assert engine.topology_state(repository) == "combined"
@@ -1022,6 +1045,36 @@ def test_runtime_legacy_command_reproves_unchanged_existing_input_tuple(
         env=bridge._bridge_environment(),
     )
     assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == bridge._LEGACY_TRACKED_IGNORE_POLICY_SHA256
+    assert policy_path.read_bytes() == original_policy
+    assert transition_path.read_bytes() == original_transition
+
+
+def test_runtime_schema_v2_policy_remains_the_exact_existing_input(
+    tmp_path: Path,
+) -> None:
+    pin = next(
+        pin
+        for pin in bridge.MISSING_MIGRATOR_RELEASES
+        if pin.release.tag == "dist/release/v1.62.0-d5bd522"
+    )
+    repository = _historic_checkout(tmp_path, pin.release)
+    adapter, engine = _topology_command_adapter(tmp_path)
+
+    with adapter._topology_source():
+        assert engine.topology_state(repository) == "combined"
+        command = engine._migrator_command(repository, "--dry-run")
+
+    completed = subprocess.run(
+        command,
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=bridge._bridge_environment(),
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == pin.inputs.policy_sha256
 
 
 @pytest.mark.parametrize("mode", ("--dry-run", "--auto"))
