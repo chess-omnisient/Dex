@@ -62,18 +62,44 @@ def test_frozen_cohort_excludes_later_control_and_follow_up_releases() -> None:
     manifest = acceptance.frozen_cohort_manifest(
         historic + later,
         foundation=_foundation(),
-        expected_count=2,
     )
     parsed = acceptance.releases_from_frozen_cohort(
         json.dumps(manifest),
         current_releases=historic + later,
         foundation=_foundation(),
-        expected_count=2,
     )
 
     assert parsed == historic
     assert manifest["case_count"] == 2
     assert manifest["foundation"] == _foundation()
+
+
+def test_frozen_cohort_derives_and_binds_its_current_public_case_count() -> None:
+    acceptance = _acceptance()
+    historic = (
+        _release("v1.20.1", "1.20.1", "1"),
+        _foundation_release(),
+    )
+
+    manifest = acceptance.frozen_cohort_manifest(historic)
+    parsed = acceptance.releases_from_frozen_cohort(
+        json.dumps(manifest),
+        current_releases=historic,
+    )
+    session = acceptance.create_acceptance_session(
+        cohort_sha256="a" * 64,
+        foundation=_foundation(),
+        follow_up_tag="dist/release/v1.81.7-3333333",
+        source_commit="c" * 40,
+        acceptance_source_sha256="d" * 64,
+        protocol_platforms=("darwin",),
+        case_count=len(parsed),
+        key=bytes(range(32)),
+        session_id="e" * 64,
+    )
+
+    assert manifest["case_count"] == session["payload"]["case_count"] == 2
+    assert session["payload"]["journey_count"] == 2
 
 
 def test_frozen_cohort_rejects_a_new_release_at_or_before_the_foundation() -> None:
@@ -85,7 +111,6 @@ def test_frozen_cohort_rejects_a_new_release_at_or_before_the_foundation() -> No
     manifest = acceptance.frozen_cohort_manifest(
         historic,
         foundation=_foundation(),
-        expected_count=2,
     )
     unexpected = _release("dist/release/v1.79.0-5555555", "1.79.0", "5")
 
@@ -94,7 +119,37 @@ def test_frozen_cohort_rejects_a_new_release_at_or_before_the_foundation() -> No
             json.dumps(manifest),
             current_releases=historic + (unexpected,),
             foundation=_foundation(),
-            expected_count=2,
+        )
+
+
+def test_frozen_cohort_rejects_missing_duplicate_and_miscounted_starts() -> None:
+    acceptance = _acceptance()
+    historic = (
+        _release("v1.20.1", "1.20.1", "1"),
+        _foundation_release(),
+    )
+    manifest = acceptance.frozen_cohort_manifest(historic)
+
+    with pytest.raises(release_fleet.FleetError, match="identity drift"):
+        acceptance.releases_from_frozen_cohort(
+            json.dumps(manifest),
+            current_releases=historic[1:],
+        )
+
+    duplicate = release_fleet.DistributionRelease(
+        tag=historic[0].tag,
+        version=historic[0].version,
+        commit="9" * 40,
+        tree="8" * 40,
+    )
+    with pytest.raises(release_fleet.FleetError, match="repeats a release tag"):
+        acceptance.frozen_cohort_manifest(historic + (duplicate,))
+
+    miscounted = dict(manifest, case_count=3)
+    with pytest.raises(release_fleet.FleetError, match="invalid case count"):
+        acceptance.releases_from_frozen_cohort(
+            json.dumps(miscounted),
+            current_releases=historic,
         )
 
 
@@ -107,7 +162,6 @@ def test_frozen_cohort_rejects_identity_drift_and_wrong_foundation() -> None:
     manifest = acceptance.frozen_cohort_manifest(
         historic,
         foundation=_foundation(),
-        expected_count=2,
     )
     changed = release_fleet.DistributionRelease(
         tag=historic[0].tag,
@@ -121,7 +175,6 @@ def test_frozen_cohort_rejects_identity_drift_and_wrong_foundation() -> None:
             json.dumps(manifest),
             current_releases=(changed, historic[1]),
             foundation=_foundation(),
-            expected_count=2,
         )
 
     other_foundation = dict(_foundation(), tree="e" * 40)
@@ -130,7 +183,6 @@ def test_frozen_cohort_rejects_identity_drift_and_wrong_foundation() -> None:
             json.dumps(manifest),
             current_releases=historic,
             foundation=other_foundation,
-            expected_count=2,
         )
 
 
@@ -145,18 +197,22 @@ def test_frozen_cohort_requires_the_exact_foundation_release() -> None:
         acceptance.frozen_cohort_manifest(
             without_foundation,
             foundation=_foundation(),
-            expected_count=2,
         )
 
 
-def test_real_repository_freezes_exactly_170_historic_trees() -> None:
+def test_real_repository_derives_the_current_historic_tree_count() -> None:
     acceptance = _acceptance()
     repository = Path(__file__).resolve().parents[2]
     current = release_fleet.discover_distribution_releases(repository)
 
     manifest = acceptance.frozen_cohort_manifest(current)
+    parsed = acceptance.releases_from_frozen_cohort(
+        json.dumps(manifest),
+        current_releases=current,
+    )
 
-    assert manifest["case_count"] == acceptance.EXPECTED_HISTORIC_CASES == 170
+    assert manifest["case_count"] == len(manifest["cases"]) == len(parsed)
+    assert manifest["case_count"] > 0
     assert manifest["foundation"]["tag"] == "dist/release/v1.81.0-6bc490e"
 
 
@@ -243,11 +299,11 @@ def test_platform_report_rejects_a_protocol_platform_superset() -> None:
 
 
 def _fleet_inputs() -> tuple[object, tuple[release_fleet.DistributionRelease, ...]]:
-    acceptance = _acceptance()
     releases = tuple(
         _release(f"v1.0.{index}", f"1.0.{index}", f"{index % 10}")
-        for index in range(1, acceptance.EXPECTED_HISTORIC_CASES + 1)
+        for index in range(1, 4)
     )
+    acceptance = _acceptance()
     return (
         acceptance.FleetInputs(
             releases=releases,
@@ -272,6 +328,7 @@ def _signed_session(acceptance):
         source_commit=inputs.source_commit,
         acceptance_source_sha256=inputs.acceptance_source_sha256,
         protocol_platforms=inputs.protocol.platforms,
+        case_count=len(inputs.releases),
         key=key,
         session_id="e" * 64,
     )
@@ -367,18 +424,19 @@ def test_serialized_platform_evidence_is_never_an_acceptance_authority(
         key=key,
         inputs=inputs,
     )
+    case_count = len(inputs.releases)
 
     assert result == {
         "outcome": "HISTORIC_FLEET_EVIDENCE_AGGREGATED",
         "acceptance": False,
         "authority_complete": False,
         "platforms": ["darwin"],
-        "case_count": 170,
-        "journey_count": 170,
-        "discovered": 170,
-        "started": 170,
-        "completed": 170,
-        "passed": 170,
+        "case_count": case_count,
+        "journey_count": case_count,
+        "discovered": case_count,
+        "started": case_count,
+        "completed": case_count,
+        "passed": case_count,
         "failed": 0,
         "session_id": "e" * 64,
         "required_job_conclusions": {
@@ -524,8 +582,8 @@ def test_aggregation_reopens_and_hashes_the_immutable_manifest(
         )
 
 
-@pytest.mark.parametrize("mutation", ("169", "171", "substitution", "duplicate"))
-def test_aggregation_requires_exactly_170_unique_final_starts_per_platform(
+@pytest.mark.parametrize("mutation", ("missing", "extra", "substitution", "duplicate"))
+def test_aggregation_requires_the_frozen_unique_final_starts_per_platform(
     mutation: str,
     tmp_path: Path,
 ) -> None:
@@ -534,9 +592,9 @@ def test_aggregation_requires_exactly_170_unique_final_starts_per_platform(
     darwin = _manifest_document(inputs=inputs, platform="darwin")
     cases = darwin["report"]["cases"]
     assert isinstance(cases, list)
-    if mutation == "169":
+    if mutation == "missing":
         cases.pop()
-    elif mutation == "171":
+    elif mutation == "extra":
         cases.append(_case_document(_case("v9.9.9", "darwin")))
     elif mutation == "substitution":
         cases[0] = _case_document(_case("v9.9.9", "darwin"))
@@ -910,10 +968,10 @@ def test_live_finalization_rejects_a_spoofed_host_platform(
         ),
         (),
         {
-            "discovered": 170,
-            "started": 170,
-            "completed": 170,
-            "passed": 170,
+            "discovered": len(inputs.releases),
+            "started": len(inputs.releases),
+            "completed": len(inputs.releases),
+            "passed": len(inputs.releases),
             "failed": 0,
         },
     )
@@ -1255,13 +1313,14 @@ def test_platform_cli_preverifies_and_passes_the_bridge_pair_to_every_journey(
 
     def collect(*args, **kwargs):
         captured["collect"] = (args, kwargs)
+        case_count = len(inputs.releases)
         return SimpleNamespace(
             report=SimpleNamespace(platforms=("darwin",)),
             counts={
-                "discovered": 170,
-                "started": 170,
-                "completed": 170,
-                "passed": 170,
+                "discovered": case_count,
+                "started": case_count,
+                "completed": case_count,
+                "passed": case_count,
                 "failed": 0,
             },
         )
@@ -1328,7 +1387,7 @@ def test_session_key_file_is_private_and_rejects_symlinks(tmp_path: Path) -> Non
         acceptance.read_session_key(key_path)
 
 
-def test_cohort_cli_writes_the_exact_170_tree_manifest(
+def test_cohort_cli_writes_the_current_public_tree_manifest(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -1340,15 +1399,16 @@ def test_cohort_cli_writes_the_exact_170_tree_manifest(
 
     result = json.loads(capsys.readouterr().out)
     manifest = json.loads(output.read_text(encoding="utf-8"))
+    case_count = len(manifest["cases"])
     assert exit_code == 0
     assert result == {
         "acceptance": False,
-        "case_count": 170,
+        "case_count": case_count,
         "foundation_tag": FOUNDATION.tag,
         "outcome": "HISTORIC_COHORT_FROZEN",
         "output": str(output),
     }
-    assert manifest["case_count"] == 170
+    assert manifest["case_count"] == case_count
 
 
 def test_acceptance_source_is_bound_to_exact_publisher_commit_bytes(
@@ -1414,7 +1474,7 @@ def test_full_command_surface_aggregates_evidence_without_minting_acceptance(
     acceptance = _acceptance()
     releases = tuple(
         _release(f"v1.0.{index}", f"1.0.{index}", f"{index % 10}")
-        for index in range(1, acceptance.EXPECTED_HISTORIC_CASES + 1)
+        for index in range(1, 4)
     )
     foundation = _immutable_foundation()
     follow_up = _immutable_follow_up()
@@ -1458,13 +1518,14 @@ def test_full_command_surface_aggregates_evidence_without_minting_acceptance(
 
     def collect(*args, running_platform: str, **kwargs):
         del args, kwargs
+        case_count = len(inputs.releases)
         return SimpleNamespace(
             report=SimpleNamespace(platforms=(running_platform,)),
             counts={
-                "discovered": 170,
-                "started": 170,
-                "completed": 170,
-                "passed": 170,
+                "discovered": case_count,
+                "started": case_count,
+                "completed": case_count,
+                "passed": case_count,
                 "failed": 0,
             },
         )
@@ -1579,20 +1640,21 @@ def test_full_command_surface_aggregates_evidence_without_minting_acceptance(
         == 0
     )
     result = json.loads(aggregate_path.read_text(encoding="utf-8"))
+    case_count = len(inputs.releases)
     assert result == {
         "acceptance": False,
         "authority_complete": False,
-        "case_count": 170,
-        "completed": 170,
-        "discovered": 170,
+        "case_count": case_count,
+        "completed": case_count,
+        "discovered": case_count,
         "failed": 0,
-        "journey_count": 170,
+        "journey_count": case_count,
         "outcome": "HISTORIC_FLEET_EVIDENCE_AGGREGATED",
-        "passed": 170,
+        "passed": case_count,
         "platforms": ["darwin"],
         "required_job_conclusions": {
             "darwin": "historic-fleet-darwin",
         },
         "session_id": session["payload"]["session_id"],
-        "started": 170,
+        "started": case_count,
     }

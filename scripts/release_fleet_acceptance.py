@@ -31,7 +31,6 @@ from core.update.journey_protocol import (
 from scripts import release_fleet
 from scripts.dex_update_bridge import FOUNDATION
 
-EXPECTED_HISTORIC_CASES = 170
 COHORT_SCHEMA_VERSION = 1
 PLATFORM_MANIFEST_SCHEMA_VERSION = 1
 ACCEPTANCE_SOURCE = "scripts/release_fleet_acceptance.py"
@@ -127,6 +126,15 @@ class PlatformFleetFailure(release_fleet.FleetError):
         self.counts = dict(counts)
 
 
+def _fleet_case_count(inputs: FleetInputs) -> int:
+    """Return the frozen cohort count only when every starting tag is unique."""
+
+    count = len(inputs.releases)
+    if count < 1 or len({release.tag for release in inputs.releases}) != count:
+        raise release_fleet.FleetError("fleet inputs do not contain the exact historic cohort")
+    return count
+
+
 def _version_tuple(value: str) -> tuple[int, int, int]:
     match = _SEMVER.fullmatch(value)
     if match is None:
@@ -168,14 +176,13 @@ def frozen_cohort_manifest(
     releases: Sequence[release_fleet.DistributionRelease],
     *,
     foundation: Mapping[str, str] | None = None,
-    expected_count: int = EXPECTED_HISTORIC_CASES,
 ) -> dict[str, object]:
     """Freeze the accepted historic trees through the immutable foundation."""
 
     foundation_identity = _foundation_document(foundation)
     historic = _historic_releases(releases, foundation=foundation_identity)
-    if len(historic) != expected_count:
-        raise release_fleet.FleetError(f"historic cohort has {len(historic)} trees; expected {expected_count}")
+    if len({release.tag for release in historic}) != len(historic):
+        raise release_fleet.FleetError("historic cohort repeats a release tag")
     return {
         "schema_version": COHORT_SCHEMA_VERSION,
         "foundation": foundation_identity,
@@ -189,7 +196,6 @@ def releases_from_frozen_cohort(
     *,
     current_releases: Sequence[release_fleet.DistributionRelease],
     foundation: Mapping[str, str] | None = None,
-    expected_count: int = EXPECTED_HISTORIC_CASES,
 ) -> tuple[release_fleet.DistributionRelease, ...]:
     """Validate a frozen cohort while allowing only post-foundation releases."""
 
@@ -207,7 +213,13 @@ def releases_from_frozen_cohort(
         raise release_fleet.FleetError("historic cohort manifest has an invalid foundation identity or shape")
     cases = document.get("cases")
     count = document.get("case_count")
-    if not isinstance(cases, list) or not isinstance(count, int) or count != expected_count or count != len(cases):
+    if (
+        not isinstance(cases, list)
+        or not isinstance(count, int)
+        or isinstance(count, bool)
+        or count < 1
+        or count != len(cases)
+    ):
         raise release_fleet.FleetError("historic cohort manifest has an invalid case count")
 
     parsed: list[release_fleet.DistributionRelease] = []
@@ -399,6 +411,7 @@ def create_acceptance_session(
     source_commit: str,
     acceptance_source_sha256: str,
     protocol_platforms: Sequence[str],
+    case_count: int,
     key: bytes,
     session_id: str,
 ) -> dict[str, object]:
@@ -412,6 +425,9 @@ def create_acceptance_session(
         or _HEX_64.fullmatch(session_id) is None
         or _HEX_40.fullmatch(source_commit) is None
         or release_fleet.RELEASE_TAG.fullmatch(follow_up_tag) is None
+        or not isinstance(case_count, int)
+        or isinstance(case_count, bool)
+        or case_count < 1
     ):
         raise release_fleet.FleetError("fleet acceptance session identity is invalid")
     return _sign(
@@ -424,8 +440,8 @@ def create_acceptance_session(
             "source_commit": source_commit,
             "acceptance_source_sha256": acceptance_source_sha256,
             "platforms": list(platforms),
-            "case_count": EXPECTED_HISTORIC_CASES,
-            "journey_count": EXPECTED_HISTORIC_CASES * len(platforms),
+            "case_count": case_count,
+            "journey_count": case_count * len(platforms),
         },
         key,
     )
@@ -531,9 +547,8 @@ def aggregate_platform_evidence(
         key=key,
         inputs=inputs,
     )
+    case_count = _fleet_case_count(inputs)
     expected_tags = {release.tag for release in inputs.releases}
-    if len(inputs.releases) != EXPECTED_HISTORIC_CASES or len(expected_tags) != EXPECTED_HISTORIC_CASES:
-        raise release_fleet.FleetError("fleet inputs do not contain the exact historic cohort")
 
     receipts_by_platform: dict[str, dict[str, object]] = {}
     for signed in receipts:
@@ -589,18 +604,18 @@ def aggregate_platform_evidence(
             running_platform=platform,
             expected_start_tags=expected_tags,
         )
-        if len(report.cases) != EXPECTED_HISTORIC_CASES:
+        if len(report.cases) != case_count:
             raise release_fleet.FleetError(f"{platform}: platform manifest has an invalid case count")
 
-    total = EXPECTED_HISTORIC_CASES * len(platforms)
+    total = case_count * len(platforms)
     return {
         "outcome": "HISTORIC_FLEET_EVIDENCE_AGGREGATED",
         "acceptance": False,
         "authority_complete": False,
         "platforms": list(platforms),
-        "case_count": EXPECTED_HISTORIC_CASES,
+        "case_count": case_count,
         "journey_count": total,
-        "discovered": EXPECTED_HISTORIC_CASES,
+        "discovered": case_count,
         "started": total,
         "completed": total,
         "passed": total,
@@ -709,12 +724,8 @@ def _platform_receipt_boundary():
             or globals().get("assert_platform_report_bound") is not platform_validator
         ):
             raise release_fleet.FleetError("fleet acceptance validator changed during the live process")
+        case_count = _fleet_case_count(inputs)
         expected_start_tags = {release.tag for release in inputs.releases}
-        if (
-            len(inputs.releases) != EXPECTED_HISTORIC_CASES
-            or len(expected_start_tags) != EXPECTED_HISTORIC_CASES
-        ):
-            raise release_fleet.FleetError("fleet inputs do not contain the exact historic cohort")
         platform_validator(
             execution.report,
             protocol=inputs.protocol,
@@ -732,10 +743,10 @@ def _platform_receipt_boundary():
 
         counts = execution.counts
         if counts != {
-            "discovered": EXPECTED_HISTORIC_CASES,
-            "started": EXPECTED_HISTORIC_CASES,
-            "completed": EXPECTED_HISTORIC_CASES,
-            "passed": EXPECTED_HISTORIC_CASES,
+            "discovered": case_count,
+            "started": case_count,
+            "completed": case_count,
+            "passed": case_count,
             "failed": 0,
         }:
             raise release_fleet.FleetError("live platform execution is incomplete or failed")
@@ -749,9 +760,9 @@ def _platform_receipt_boundary():
             or execution.report.follow_up_tag != inputs.follow_up.tag
         ):
             raise release_fleet.FleetError("live platform execution is not bound to the immutable releases")
-        if len(execution.report.cases) != EXPECTED_HISTORIC_CASES:
+        if len(execution.report.cases) != case_count:
             raise release_fleet.FleetError(
-                f"live platform execution does not have exactly {EXPECTED_HISTORIC_CASES} final starts"
+                f"live platform execution does not have exactly {case_count} final starts"
             )
         cases: list[dict[str, object]] = [
             {field: getattr(case, field) for field in sorted(release_fleet.CASE_RESULT_KEYS)}
@@ -924,6 +935,7 @@ def _assert_session_matches_inputs(
     key: bytes,
     inputs: FleetInputs,
 ) -> dict[str, object]:
+    case_count = _fleet_case_count(inputs)
     payload = _verified_payload(
         session,
         key=key,
@@ -938,8 +950,8 @@ def _assert_session_matches_inputs(
         "source_commit": inputs.source_commit,
         "acceptance_source_sha256": inputs.acceptance_source_sha256,
         "platforms": list(_require_protocol_platforms(inputs.protocol.platforms)),
-        "case_count": EXPECTED_HISTORIC_CASES,
-        "journey_count": EXPECTED_HISTORIC_CASES * len(SUPPORTED_PLATFORMS),
+        "case_count": case_count,
+        "journey_count": case_count * len(SUPPORTED_PLATFORMS),
     }
     if any(payload.get(field) != value for field, value in expected.items()):
         raise release_fleet.FleetError("fleet acceptance session does not match the immutable fleet inputs")
@@ -1136,6 +1148,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             source_commit=inputs.source_commit,
             acceptance_source_sha256=inputs.acceptance_source_sha256,
             protocol_platforms=inputs.protocol.platforms,
+            case_count=_fleet_case_count(inputs),
             key=key,
             session_id=secrets.token_hex(32),
         )
