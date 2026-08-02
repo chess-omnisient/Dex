@@ -1219,21 +1219,36 @@ def _regular_sha256(path: Path) -> str | None:
 
 
 def _matches_historic_release(vault_root: Path, pin: HistoricReleasePin) -> bool:
-    """Prove an exact tagged base plus its unchanged working package."""
+    """Prove an exact historic base plus its unchanged working package."""
 
     root = Path(vault_root)
     try:
+        tag_object = _run_git(
+            root,
+            "for-each-ref",
+            "--format=%(objectname)",
+            f"refs/tags/{pin.tag}",
+        )
+        if tag_object:
+            if (
+                tag_object != pin.tag_object
+                or _run_git(root, "cat-file", "-t", pin.tag_object)
+                != pin.tag_object_type
+            ):
+                return False
+            identity = pin.tag
+        else:
+            # Historic installations can retain the exact pinned commit while
+            # their own old label is pruned. A present but different label is
+            # refused above; without one, the closed commit is the identity.
+            if _run_git(root, "cat-file", "-t", pin.commit) != "commit":
+                return False
+            identity = pin.commit
         if (
-            _run_git(
-                root,
-                "for-each-ref",
-                "--format=%(objectname)",
-                f"refs/tags/{pin.tag}",
-            )
-            != pin.tag_object
-            or _run_git(root, "cat-file", "-t", pin.tag_object) != pin.tag_object_type
-            or _run_git(root, "rev-parse", "--verify", f"{pin.tag}^{{commit}}") != pin.commit
-            or _run_git(root, "rev-parse", "--verify", f"{pin.tag}^{{tree}}") != pin.tree
+            _run_git(root, "rev-parse", "--verify", f"{identity}^{{commit}}")
+            != pin.commit
+            or _run_git(root, "rev-parse", "--verify", f"{identity}^{{tree}}")
+            != pin.tree
             or _run_git(
                 root,
                 "rev-parse",

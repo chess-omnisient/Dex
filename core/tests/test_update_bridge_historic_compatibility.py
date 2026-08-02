@@ -952,6 +952,55 @@ def test_runtime_legacy_topology_refuses_cross_borrowed_existing_inputs(
     assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
 
 
+@pytest.mark.parametrize(
+    "pin",
+    (
+        bridge.MISSING_MIGRATOR_RELEASES[2],
+        bridge.MISSING_MIGRATOR_RELEASES[-2],
+    ),
+    ids=("dist-v1.61.0-dc7d332", "semantic-v1.62.0"),
+)
+def test_runtime_legacy_topology_accepts_an_exact_pin_after_its_label_is_pruned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pin: bridge.MissingMigratorPin,
+) -> None:
+    repository = _historic_checkout(tmp_path, pin.release)
+    impossible_fallback = replace(
+        bridge.LEGACY_TOPOLOGY_FOUNDATION,
+        tag="v9.9.9",
+        commit="0" * 40,
+        tree="0" * 40,
+    )
+    monkeypatch.setattr(bridge, "MANIFESTLESS_SEMANTIC_RELEASES", ())
+    monkeypatch.setattr(bridge, "MISSING_MIGRATOR_RELEASES", (pin,))
+
+    _git(repository, "update-ref", "-d", f"refs/tags/{pin.release.tag}")
+
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is True
+
+
+def test_runtime_legacy_topology_refuses_a_wrong_object_at_a_pruned_pin_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pin = bridge.MISSING_MIGRATOR_RELEASES[2]
+    nearby = bridge.MISSING_MIGRATOR_RELEASES[1]
+    repository = _historic_checkout(tmp_path, pin.release)
+    impossible_fallback = replace(
+        bridge.LEGACY_TOPOLOGY_FOUNDATION,
+        tag="v9.9.9",
+        commit="0" * 40,
+        tree="0" * 40,
+    )
+    monkeypatch.setattr(bridge, "MANIFESTLESS_SEMANTIC_RELEASES", ())
+    monkeypatch.setattr(bridge, "MISSING_MIGRATOR_RELEASES", (pin,))
+
+    _git(repository, "update-ref", f"refs/tags/{pin.release.tag}", nearby.release.commit)
+
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+
 def test_runtime_legacy_command_reproves_unchanged_existing_input_tuple(
     tmp_path: Path,
 ) -> None:

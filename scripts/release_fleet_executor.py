@@ -39,6 +39,10 @@ _RELEASE_TAG = re.compile(
     r"^dist/release/v(?P<version>(?:0|[1-9][0-9]*)\."
     r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))-(?P<short>[0-9a-f]{7,40})$"
 )
+_ARCHIVE_RELEASE_TAG = re.compile(
+    r"^dist/archive/v(?P<version>(?:0|[1-9][0-9]*)\."
+    r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))-(?P<short>[0-9a-f]{7})$"
+)
 _LEGACY_RELEASE_TAG = re.compile(
     r"^v(?P<version>(?:0|[1-9][0-9]*)\."
     r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$"
@@ -841,6 +845,7 @@ def _strict_identity(
     value: Mapping[str, object],
     context: str,
     *,
+    allow_archive: bool = False,
     allow_legacy: bool = False,
 ) -> dict[str, str]:
     if set(value) != _IDENTITY_FIELDS or not all(
@@ -849,12 +854,16 @@ def _strict_identity(
         raise ExecutorError(f"{context} release identity is malformed")
     identity = {field: str(value[field]) for field in _IDENTITY_FIELDS}
     tag_match = _RELEASE_TAG.fullmatch(identity["tag"])
+    archive_match = (
+        _ARCHIVE_RELEASE_TAG.fullmatch(identity["tag"]) if allow_archive else None
+    )
     legacy_match = (
         _LEGACY_RELEASE_TAG.fullmatch(identity["tag"]) if allow_legacy else None
     )
+    immutable_match = tag_match if tag_match is not None else archive_match
     version = (
-        tag_match.group("version")
-        if tag_match is not None
+        immutable_match.group("version")
+        if immutable_match is not None
         else legacy_match.group("version") if legacy_match is not None else None
     )
     if (
@@ -862,8 +871,8 @@ def _strict_identity(
         or version is None
         or version != identity["version"]
         or (
-            tag_match is not None
-            and not identity["commit"].startswith(tag_match.group("short"))
+            immutable_match is not None
+            and not identity["commit"].startswith(immutable_match.group("short"))
         )
         or identity["channel"] != "stable"
     ):
@@ -1314,7 +1323,12 @@ def _execute_journey_with_runtime(
 
     if platform not in protocol.platforms:
         raise ExecutorError(f"journey platform is not declared by the protocol: {platform}")
-    start = _strict_identity(starting_release, "starting", allow_legacy=True)
+    start = _strict_identity(
+        starting_release,
+        "starting",
+        allow_archive=True,
+        allow_legacy=True,
+    )
     foundation = _strict_identity(foundation_release, "foundation")
     follow_up = _strict_identity(follow_up_release, "follow-up")
     if foundation == follow_up:

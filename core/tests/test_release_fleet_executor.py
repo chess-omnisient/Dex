@@ -45,6 +45,12 @@ def _legacy_identity(version: str, fill: str) -> dict[str, str]:
     return identity
 
 
+def _archive_identity(version: str, fill: str) -> dict[str, str]:
+    identity = _identity(version, fill)
+    identity["tag"] = identity["tag"].replace("dist/release/", "dist/archive/", 1)
+    return identity
+
+
 def _executor_source_commit(tmp_path: Path) -> tuple[Path, str]:
     repo = tmp_path / "source"
     repo.mkdir()
@@ -738,6 +744,25 @@ def test_executor_accepts_an_exact_legacy_starting_tag_without_widening_targets(
     assert executor.is_authoritative_executor_run(run) is False
 
 
+def test_executor_accepts_an_exact_archive_start_without_widening_targets(
+    tmp_path: Path,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+    runtime = _Runtime(_identity("1.81.0", "b"))
+    starting = _archive_identity("1.65.0", "a")
+
+    run = _execute(
+        tmp_path,
+        runtime,
+        source_repo=source_repo,
+        source_commit=source_commit,
+        starting=starting,
+    )
+
+    assert run.case["starting_tag"] == "dist/archive/v1.65.0-aaaaaaa"
+    assert executor.is_authoritative_executor_run(run) is False
+
+
 @pytest.mark.parametrize(
     "tag",
     (
@@ -745,6 +770,9 @@ def test_executor_accepts_an_exact_legacy_starting_tag_without_widening_targets(
         "v01.20.1",
         "v1.20",
         "legacy/v1.20.1",
+        "dist/archive/v1.20.1-not-a-commit",
+        "dist/archive/v1.20.1-aaaaaaaa",
+        "dist/archives/v1.20.1-aaaaaaa",
     ),
 )
 def test_executor_rejects_malformed_or_arbitrary_starting_refs(
