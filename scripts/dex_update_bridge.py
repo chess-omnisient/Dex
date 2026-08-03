@@ -2076,7 +2076,20 @@ class _FoundationLifecycleService:
     def deliver_latest_release(
         self,
         vault_root: str | Path,
+        *,
+        remote_url: str | None = None,
+        allow_test_transport: bool = False,
     ) -> Mapping[str, Any]:
+        if remote_url is not None or allow_test_transport:
+            if remote_url is None or not allow_test_transport:
+                raise BridgeError(
+                    "test release transport requires an explicit local cache"
+                )
+            return self._apply_update.deliver_latest_release(
+                Path(vault_root),
+                remote_url=remote_url,
+                allow_test_transport=True,
+            )
         return self._service.deliver_latest_release(vault_root)
 
     def build_and_preview_delivered_release(

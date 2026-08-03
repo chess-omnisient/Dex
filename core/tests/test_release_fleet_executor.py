@@ -150,6 +150,17 @@ def _foundation_cache(
     return cache, pin
 
 
+def _follow_up_cache(
+    tmp_path: Path,
+) -> tuple[Path, executor.dex_update_bridge.ReleasePin]:
+    cache, pin = _foundation_cache(tmp_path)
+    subprocess.run(
+        ["git", "--git-dir", str(cache), "update-ref", "-d", "refs/heads/main"],
+        check=True,
+    )
+    return cache, pin
+
+
 def test_private_foundation_cache_preserves_exact_official_identity(
     tmp_path: Path,
 ) -> None:
@@ -196,6 +207,79 @@ def test_foundation_cache_rejects_wrong_channel_or_unsafe_permissions(
     cache.chmod(0o755)
     with pytest.raises(executor.ExecutorError, match="mode 0700"):
         executor._validate_foundation_cache(cache, pin)
+
+
+def test_private_follow_up_cache_is_exact_and_rejects_ref_tampering(
+    tmp_path: Path,
+) -> None:
+    cache, pin = _follow_up_cache(tmp_path)
+    release = pin.identity()
+
+    assert executor._validate_follow_up_cache(cache, release) == cache.resolve()
+
+    subprocess.run(
+        ["git", "--git-dir", str(cache), "update-ref", "-d", "refs/heads/release"],
+        check=True,
+    )
+    with pytest.raises(executor.ExecutorError, match="follow-up cache"):
+        executor._validate_follow_up_cache(cache, release)
+
+    cache, pin = _follow_up_cache(tmp_path / "extra-ref")
+    subprocess.run(
+        [
+            "git",
+            "--git-dir",
+            str(cache),
+            "update-ref",
+            "refs/heads/unreviewed",
+            pin.commit,
+        ],
+        check=True,
+    )
+    with pytest.raises(executor.ExecutorError, match="outside the requested"):
+        executor._validate_follow_up_cache(cache, pin.identity())
+
+    cache, pin = _follow_up_cache(tmp_path / "alternates")
+    alternates = cache / "objects/info/alternates"
+    alternates.write_text(str(tmp_path / "other-objects") + "\n", encoding="utf-8")
+    with pytest.raises(executor.ExecutorError, match="alternate object stores"):
+        executor._validate_follow_up_cache(cache, pin.identity())
+
+
+def test_only_canonical_public_transport_is_eligible_for_executor_authority(
+    tmp_path: Path,
+) -> None:
+    runtime = _production_runtime()
+    methods = {
+        name: getattr(executor._ProductionRuntime, name)
+        for name in (
+            "bridge_to_foundation",
+            "installed_release",
+            "doctor",
+            "deliver_latest_release",
+            "build_and_preview_delivered_release",
+            "execute_approved_delivered_release",
+            "smoke",
+            "close",
+        )
+    }
+    try:
+        assert executor._production_authority_intact(
+            runtime,
+            production_owned=True,
+            follow_up_cache=None,
+            production_runtime_type=executor._ProductionRuntime,
+            production_methods=methods,
+        )
+        assert not executor._production_authority_intact(
+            runtime,
+            production_owned=True,
+            follow_up_cache=tmp_path / "candidate-release.git",
+            production_runtime_type=executor._ProductionRuntime,
+            production_methods=methods,
+        )
+    finally:
+        runtime.close()
 
 
 def test_production_runtime_exposes_only_installed_qmd_not_ambient_path(
@@ -659,6 +743,7 @@ def _execute(
     source_commit: str,
     input_fn=lambda _prompt: "APPLY",
     starting: dict[str, str] | None = None,
+    follow_up_cache: Path | None = None,
 ) -> executor.ExecutorRun:
     protocol = load_update_journey_protocol(
         (REPO_ROOT / "core/update/journey-protocol-v1.json").read_bytes()
@@ -681,10 +766,59 @@ def _execute(
         bridge_asset_evidence=_bridge_asset_evidence(protocol, runtime.follow_up),
         bridge_asset_path=REPO_ROOT / protocol.bridge.artifact.source_path,
         initial_install_evidence={"topology": "legacy-monolithic", "brain_refs": []},
+        follow_up_cache=follow_up_cache,
         input_fn=input_fn,
         output_fn=lambda _line: None,
         _runtime=runtime,
     )
+
+
+def test_cache_backed_run_cannot_satisfy_formal_acceptance_authority(
+    tmp_path: Path,
+) -> None:
+    protocol = load_update_journey_protocol(
+        (REPO_ROOT / "core/update/journey-protocol-v1.json").read_bytes()
+    )
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+    follow_up = _identity("1.81.8", "b")
+    run = _execute(
+        tmp_path,
+        _Runtime(follow_up),
+        source_repo=source_repo,
+        source_commit=source_commit,
+        follow_up_cache=tmp_path / "candidate-release.git",
+    )
+    report = release_fleet.AcceptanceReport(
+        foundation_tag=protocol.foundation["tag"],
+        follow_up_tag=follow_up["tag"],
+        cases=(release_fleet.CaseResult(**run.case),),
+        platforms=("darwin",),
+    )
+    foundation = release_fleet.ImmutableRelease(
+        tag=protocol.foundation["tag"],
+        tag_object=protocol.foundation["tag_object"],
+        commit=protocol.foundation["commit"],
+        tree=protocol.foundation["tree"],
+        version=protocol.foundation["version"],
+    )
+    target = release_fleet.ImmutableRelease(
+        tag=follow_up["tag"],
+        tag_object=follow_up["tag_object"],
+        commit=follow_up["commit"],
+        tree=follow_up["tree"],
+        version=follow_up["version"],
+    )
+
+    assert executor.is_authoritative_executor_run(run) is False
+    with pytest.raises(release_fleet.FleetError, match="executor authority"):
+        release_fleet.assert_evidence_bound(
+            report,
+            repo=tmp_path,
+            evidence_root=tmp_path / "case.evidence",
+            foundation=foundation,
+            follow_up=target,
+            executor_runs=(run,),
+        )
 
 
 def _bridge_asset_evidence(protocol, follow_up: dict[str, str]) -> dict[str, str]:
@@ -1119,17 +1253,28 @@ def test_production_runtime_refuses_undeclared_lifecycle_operation() -> None:
 
 
 @pytest.mark.parametrize(
-    ("foundation_installed", "use_cache", "expected_cleaned"),
-    ((False, False, [True]), (True, True, [])),
+    (
+        "foundation_installed",
+        "use_foundation_cache",
+        "use_follow_up_cache",
+        "expected_cleaned",
+    ),
+    (
+        (False, False, False, [True]),
+        (True, True, False, []),
+        (True, False, True, []),
+    ),
 )
 def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     foundation_installed: bool,
-    use_cache: bool,
+    use_foundation_cache: bool,
+    use_follow_up_cache: bool,
     expected_cleaned: list[bool],
 ) -> None:
     cleaned: list[bool] = []
+    delivery_arguments: list[dict[str, object]] = []
 
     class Temporary:
         def cleanup(self) -> None:
@@ -1137,7 +1282,11 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
 
     class Service:
         @staticmethod
-        def deliver_latest_release(vault: Path) -> dict[str, object]:
+        def deliver_latest_release(
+            vault: Path,
+            **kwargs: object,
+        ) -> dict[str, object]:
+            delivery_arguments.append(kwargs)
             return {"status": "delivered", "vault": str(vault)}
 
     def run_bridge(vault, service, *, pin, input_fn, output_fn):
@@ -1180,6 +1329,11 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
         "_load_released_bridge",
         lambda _asset, _digest: executor.dex_update_bridge,
     )
+    monkeypatch.setattr(
+        executor,
+        "_validate_follow_up_cache",
+        lambda cache, _release: cache.resolve(),
+    )
     request_stream = io.StringIO(
         "\n".join(
             (
@@ -1202,7 +1356,19 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
                 bridge_sha256=hashlib.sha256(
                     (REPO_ROOT / "scripts/dex_update_bridge.py").read_bytes()
                 ).hexdigest(),
-                foundation_cache=(tmp_path / "unused-cache" if use_cache else None),
+                foundation_cache=(
+                    tmp_path / "unused-cache"
+                    if use_foundation_cache
+                    else None
+                ),
+                follow_up_cache=(
+                    tmp_path / "candidate-release.git"
+                    if use_follow_up_cache
+                    else None
+                ),
+                follow_up_release=(
+                    _identity("1.81.8", "b") if use_follow_up_cache else None
+                ),
         )
         == 0
     )
@@ -1221,4 +1387,16 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
     assert messages[1]["text"] == "exact topology preview"
     assert messages[2]["prompt"] == "exact topology prompt"
     assert messages[4]["value"]["status"] == "delivered"
+    assert delivery_arguments == (
+        [
+            {
+                "remote_url": str(
+                    (tmp_path / "candidate-release.git").resolve()
+                ),
+                "allow_test_transport": True,
+            }
+        ]
+        if use_follow_up_cache
+        else [{}]
+    )
     assert cleaned == expected_cleaned

@@ -72,6 +72,8 @@ def test_four_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
     assert "build-release.sh --source candidate --target release" in source
     assert "build-vault-bundle.sh" in source
     assert source.count("--controlled-approvals") == 1
+    assert source.count("--follow-up-cache") == 1
+    assert "--follow-up-cache" not in source.split("run_canary()", 1)[0]
     assert "git push" not in source
     assert "gh release" not in source
     assert "GH_TOKEN" not in WORKFLOW_PATH.read_text(encoding="utf-8")

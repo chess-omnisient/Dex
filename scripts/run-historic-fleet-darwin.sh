@@ -380,6 +380,13 @@ run_canary() {
     return 1
   fi
   CANDIDATE_TAG="${candidate_tags[0]}"
+  FOLLOW_UP_CACHE="$WORK_ROOT/candidate-release.git"
+  git init --bare --quiet "$FOLLOW_UP_CACHE"
+  chmod 700 "$FOLLOW_UP_CACHE"
+  git -c credential.helper= -c protocol.file.allow=always \
+    --git-dir="$FOLLOW_UP_CACHE" fetch --quiet --no-tags . \
+    "refs/tags/$CANDIDATE_TAG:refs/tags/$CANDIDATE_TAG" \
+    "+refs/heads/release:refs/heads/release"
   CANDIDATE_VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
   ASSET_ROOT="$WORK_ROOT/candidate-assets"
   mkdir -m 700 "$ASSET_ROOT"
@@ -401,6 +408,7 @@ run_canary() {
       --follow-up-tag "$CANDIDATE_TAG" \
       --bridge-asset "$BRIDGE_ASSET" \
       --bridge-checksum "$BRIDGE_CHECKSUM" \
+      --follow-up-cache "$FOLLOW_UP_CACHE" \
       --controlled-approvals
     then
       journey_status=0

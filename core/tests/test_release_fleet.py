@@ -2134,12 +2134,14 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
         bridge_asset=bridge_asset,
         bridge_checksum=bridge_checksum,
         controlled_approvals=controlled_approvals,
+        follow_up_cache=tmp_path / "candidate-release.git",
     )
 
     assert run.case == {"starting_tag": start.tag}
     assert captured["source_commit"] == source_commit
     assert captured["foundation_release"] == foundation.identity()
     assert captured["follow_up_release"] == follow_up.identity()
+    assert captured["follow_up_cache"] == tmp_path / "candidate-release.git"
     assert captured["user_owned_paths"] == tuple(release_fleet.USER_FIXTURES)
     assert captured["bridge_asset_evidence"]["source"] == "released-standalone-asset"
     assert captured["initial_install_evidence"]["topology"] == (

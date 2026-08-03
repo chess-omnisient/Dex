@@ -2076,6 +2076,7 @@ def run_journey(
     bridge_asset: Path | None = None,
     bridge_checksum: Path | None = None,
     controlled_approvals: bool = False,
+    follow_up_cache: Path | None = None,
 ) -> object:
     """Build one fixture and delegate the closed journey to its released executor."""
 
@@ -2204,6 +2205,7 @@ def run_journey(
                 bridge_asset_evidence=bridge_asset_evidence,
                 bridge_asset_path=bridge_asset.resolve(strict=True),
                 initial_install_evidence=initial_install_evidence,
+                follow_up_cache=follow_up_cache,
                 **({"input_fn": approval_input} if approval_input is not None else {}),
             )
         finally:
@@ -2772,6 +2774,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     journey.add_argument("--follow-up-tag", required=True)
     journey.add_argument("--bridge-asset", type=Path, required=True)
     journey.add_argument("--bridge-checksum", type=Path, required=True)
+    journey.add_argument("--follow-up-cache", type=Path)
     journey.add_argument(
         "--controlled-approvals",
         action="store_true",
@@ -2816,6 +2819,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             bridge_asset=args.bridge_asset,
             bridge_checksum=args.bridge_checksum,
             controlled_approvals=args.controlled_approvals,
+            follow_up_cache=args.follow_up_cache,
         )
         print(
             json.dumps(

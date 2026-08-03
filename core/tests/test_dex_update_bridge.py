@@ -700,6 +700,37 @@ def test_foundation_service_exposes_release_delivery(tmp_path: Path) -> None:
     }
 
 
+def test_foundation_service_routes_only_explicit_test_delivery_to_local_cache(
+    tmp_path: Path,
+) -> None:
+    service, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    calls: list[tuple[Path, dict[str, object]]] = []
+
+    def deliver(vault_root: Path, **kwargs: object) -> dict[str, object]:
+        calls.append((vault_root, kwargs))
+        return {"status": "delivered-from-cache"}
+
+    service._apply_update.deliver_latest_release = deliver
+    cache = tmp_path / "candidate-release.git"
+
+    assert service.deliver_latest_release(
+        vault,
+        remote_url=str(cache),
+        allow_test_transport=True,
+    ) == {"status": "delivered-from-cache"}
+    assert calls == [
+        (
+            vault,
+            {
+                "remote_url": str(cache),
+                "allow_test_transport": True,
+            },
+        )
+    ]
+    with pytest.raises(bridge.BridgeError, match="explicit local cache"):
+        service.deliver_latest_release(vault, remote_url=str(cache))
+
+
 def test_foundation_service_reports_missing_engine_path_as_bridge_error(
     tmp_path: Path,
 ) -> None:

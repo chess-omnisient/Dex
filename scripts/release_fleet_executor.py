@@ -149,6 +149,51 @@ def _validate_foundation_cache(
     return resolved
 
 
+def _validate_follow_up_cache(
+    cache: Path,
+    release: Mapping[str, object],
+) -> Path:
+    """Prove a closed private cache contains the requested canary identity."""
+
+    identity = _strict_identity(release, "follow-up")
+    if cache.is_symlink() or not cache.is_dir():
+        raise ExecutorError("follow-up cache must be a private bare repository")
+    status = cache.stat()
+    if status.st_uid != os.getuid() or stat.S_IMODE(status.st_mode) != 0o700:
+        raise ExecutorError("follow-up cache must be controller-owned with mode 0700")
+    resolved = cache.resolve(strict=True)
+    if _cached_git(resolved, "rev-parse", "--is-bare-repository") != "true":
+        raise ExecutorError("follow-up cache must be a private bare repository")
+    alternates = resolved / "objects" / "info" / "alternates"
+    if alternates.is_symlink() or alternates.exists():
+        raise ExecutorError("follow-up cache must not use alternate object stores")
+    expected = {
+        f"refs/tags/{identity['tag']}": identity["tag_object"],
+        f"{identity['tag']}^{{commit}}": identity["commit"],
+        f"{identity['tag']}^{{tree}}": identity["tree"],
+        "refs/heads/release^{commit}": identity["commit"],
+    }
+    for revision, expected_object in expected.items():
+        try:
+            actual = _cached_git(resolved, "rev-parse", "--verify", revision)
+        except ExecutorError as error:
+            raise ExecutorError(
+                "follow-up cache does not match the requested canary release"
+            ) from error
+        if actual != expected_object:
+            raise ExecutorError(
+                "follow-up cache does not match the requested canary release"
+            )
+    refs = set(
+        _cached_git(resolved, "for-each-ref", "--format=%(refname)").splitlines()
+    )
+    if refs != {f"refs/tags/{identity['tag']}", "refs/heads/release"}:
+        raise ExecutorError(
+            "follow-up cache contains refs outside the requested canary release"
+        )
+    return resolved
+
+
 def _acquire_cached_foundation_source(
     cache: Path,
     pin: dex_update_bridge.ReleasePin = dex_update_bridge.FOUNDATION,
@@ -269,6 +314,8 @@ class _ProductionRuntime:
         bridge_asset: Path,
         bridge_sha256: str,
         foundation_cache: Path | None = None,
+        follow_up_cache: Path | None = None,
+        follow_up_release: Mapping[str, object] | None = None,
     ) -> None:
         self._runtime_home = tempfile.TemporaryDirectory(
             prefix="dex-release-journey-runtime-"
@@ -283,6 +330,20 @@ class _ProductionRuntime:
         self._foundation_cache = (
             _validate_foundation_cache(foundation_cache)
             if foundation_cache is not None
+            else None
+        )
+        if (follow_up_cache is None) != (follow_up_release is None):
+            raise ExecutorError(
+                "follow-up cache and release identity must be supplied together"
+            )
+        self._follow_up_release = (
+            _strict_identity(follow_up_release, "follow-up")
+            if follow_up_release is not None
+            else None
+        )
+        self._follow_up_cache = (
+            _validate_follow_up_cache(follow_up_cache, self._follow_up_release)
+            if follow_up_cache is not None and self._follow_up_release is not None
             else None
         )
         self._bridge_asset = bridge_asset.resolve(strict=True)
@@ -425,6 +486,20 @@ class _ProductionRuntime:
             command.extend(
                 ["--foundation-cache", str(self._foundation_cache)]
             )
+        if self._follow_up_cache is not None:
+            assert self._follow_up_release is not None
+            command.extend(
+                [
+                    "--follow-up-cache",
+                    str(self._follow_up_cache),
+                    "--follow-up-release",
+                    json.dumps(
+                        self._follow_up_release,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                ]
+            )
         process = subprocess.Popen(
             command,
             cwd=PROJECT_ROOT,
@@ -521,6 +596,29 @@ class _ProductionRuntime:
         if not isinstance(response, Mapping):
             raise ExecutorError(
                 f"released foundation lifecycle operation {operation} "
+                "returned malformed evidence"
+            )
+        return response
+
+    @staticmethod
+    def _test_delivery_call(
+        service: object,
+        vault: Path,
+        follow_up_cache: Path,
+    ) -> Mapping[str, object]:
+        function = getattr(service, "deliver_latest_release", None)
+        if not callable(function):
+            raise ExecutorError(
+                "released foundation lifecycle service lacks deliver_latest_release"
+            )
+        response = function(
+            vault,
+            remote_url=str(follow_up_cache),
+            allow_test_transport=True,
+        )
+        if not isinstance(response, Mapping):
+            raise ExecutorError(
+                "released foundation lifecycle operation deliver_latest_release "
                 "returned malformed evidence"
             )
         return response
@@ -728,11 +826,23 @@ def _runtime_server(
     bridge_asset: Path,
     bridge_sha256: str,
     foundation_cache: Path | None = None,
+    follow_up_cache: Path | None = None,
+    follow_up_release: Mapping[str, object] | None = None,
 ) -> int:
     """Serve the fixed lifecycle vocabulary from the fixture virtualenv."""
 
     global dex_update_bridge
     dex_update_bridge = _load_released_bridge(bridge_asset, bridge_sha256)
+
+    if (follow_up_cache is None) != (follow_up_release is None):
+        raise ExecutorError(
+            "follow-up cache and release identity must be supplied together"
+        )
+    verified_follow_up_cache = (
+        _validate_follow_up_cache(follow_up_cache, follow_up_release)
+        if follow_up_cache is not None and follow_up_release is not None
+        else None
+    )
 
     root = dex_update_bridge._validate_vault(vault)
     temporary: tempfile.TemporaryDirectory[str] | None = None
@@ -791,11 +901,18 @@ def _runtime_server(
                 elif operation == "deliver_latest_release" and set(request) == {
                     "operation"
                 }:
-                    result = _ProductionRuntime._service_call(
-                        service,
-                        operation,
-                        root,
-                    )
+                    if verified_follow_up_cache is None:
+                        result = _ProductionRuntime._service_call(
+                            service,
+                            operation,
+                            root,
+                        )
+                    else:
+                        result = _ProductionRuntime._test_delivery_call(
+                            service,
+                            root,
+                            verified_follow_up_cache,
+                        )
                 elif operation == "build_and_preview_delivered_release":
                     payload = request.get("payload")
                     if (
@@ -1643,6 +1760,27 @@ def _execute_journey_with_runtime(
     return case
 
 
+def _production_authority_intact(
+    runtime: object,
+    *,
+    production_owned: bool,
+    follow_up_cache: Path | None,
+    production_runtime_type: type,
+    production_methods: Mapping[str, object],
+) -> bool:
+    """Keep acceptance authority on the canonical public transport only."""
+
+    return (
+        production_owned
+        and follow_up_cache is None
+        and type(runtime) is production_runtime_type
+        and all(
+            getattr(production_runtime_type, name) is function
+            for name, function in production_methods.items()
+        )
+    )
+
+
 def _executor_boundary():
     """Create the sole production entrypoint without exporting a proof mint."""
 
@@ -1680,6 +1818,7 @@ def _executor_boundary():
         bridge_asset_evidence: Mapping[str, str],
         bridge_asset_path: Path,
         initial_install_evidence: Mapping[str, object],
+        follow_up_cache: Path | None = None,
         input_fn: Callable[[str], str] = input,
         output_fn: Callable[[str], None] = print,
         _runtime: JourneyRuntime | None = None,
@@ -1691,6 +1830,8 @@ def _executor_boundary():
             production_runtime_type(
                 bridge_asset=bridge_asset_path,
                 bridge_sha256=protocol.bridge.artifact.sha256,
+                follow_up_cache=follow_up_cache,
+                follow_up_release=follow_up_release if follow_up_cache is not None else None,
             )
             if production_owned
             else _runtime
@@ -1727,13 +1868,12 @@ def _executor_boundary():
         ).encode("utf-8")
         run = object.__new__(ExecutorRun)
         object.__setattr__(run, "_case_json", case_json)
-        production_intact = (
-            production_owned
-            and type(runtime) is production_runtime_type
-            and all(
-                getattr(production_runtime_type, name) is function
-                for name, function in production_methods.items()
-            )
+        production_intact = _production_authority_intact(
+            runtime,
+            production_owned=production_owned,
+            follow_up_cache=follow_up_cache,
+            production_runtime_type=production_runtime_type,
+            production_methods=production_methods,
         )
         seal = (
             (authority, hashlib.sha256(case_json).digest())
@@ -1776,23 +1916,60 @@ __all__ = [
 
 if __name__ == "__main__":
     valid = (
-        len(sys.argv) in {8, 10}
+        len(sys.argv) >= 8
+        and len(sys.argv) % 2 == 0
         and sys.argv[1:3] == ["_runtime-server", "--vault"]
         and sys.argv[4] == "--bridge-asset"
         and sys.argv[6] == "--bridge-sha256"
-        and (len(sys.argv) == 8 or sys.argv[8] == "--foundation-cache")
     )
+    extra_arguments: dict[str, str] = {}
+    if valid:
+        for index in range(8, len(sys.argv), 2):
+            option = sys.argv[index]
+            if (
+                option not in {
+                    "--foundation-cache",
+                    "--follow-up-cache",
+                    "--follow-up-release",
+                }
+                or option in extra_arguments
+            ):
+                valid = False
+                break
+            extra_arguments[option] = sys.argv[index + 1]
+    if (
+        ("--follow-up-cache" in extra_arguments)
+        != ("--follow-up-release" in extra_arguments)
+    ):
+        valid = False
     if not valid:
         raise SystemExit("released journey executor has no standalone interface")
     try:
+        follow_up_release = (
+            json.loads(extra_arguments["--follow-up-release"])
+            if "--follow-up-release" in extra_arguments
+            else None
+        )
+        if follow_up_release is not None and not isinstance(
+            follow_up_release, Mapping
+        ):
+            raise ExecutorError("follow-up release identity is malformed")
         raise SystemExit(
             _runtime_server(
                 Path(sys.argv[3]),
                 bridge_asset=Path(sys.argv[5]),
                 bridge_sha256=sys.argv[7],
                 foundation_cache=(
-                    Path(sys.argv[9]) if len(sys.argv) == 10 else None
+                    Path(extra_arguments["--foundation-cache"])
+                    if "--foundation-cache" in extra_arguments
+                    else None
                 ),
+                follow_up_cache=(
+                    Path(extra_arguments["--follow-up-cache"])
+                    if "--follow-up-cache" in extra_arguments
+                    else None
+                ),
+                follow_up_release=follow_up_release,
             )
         )
     except Exception as error:  # noqa: BLE001
