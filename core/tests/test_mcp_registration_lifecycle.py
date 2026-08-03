@@ -79,6 +79,21 @@ def test_mcp_registration_contract_allows_only_the_explicit_user_approved_file()
     ).allowed
 
 
+def test_legacy_qmd_reconciliation_contract_is_a_separate_single_file_exception() -> None:
+    verdict = portable_contract.update_write_verdict(
+        ".mcp.json",
+        exists=True,
+        operation="legacy-qmd-reconciliation",
+    )
+    assert verdict.allowed
+    assert verdict.action == "write-explicitly-approved-legacy-qmd-reconciliation"
+    assert not portable_contract.update_write_verdict(
+        "System/user-profile.yaml",
+        exists=True,
+        operation="legacy-qmd-reconciliation",
+    ).allowed
+
+
 def test_mcp_registration_refuses_if_user_configuration_changes_after_preview(
     tmp_path: Path,
 ) -> None:

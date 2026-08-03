@@ -14,6 +14,7 @@ from types import ModuleType
 import pytest
 
 from core.lifecycle import service as lifecycle_service
+from core.transaction.engine import PlanRejected
 from scripts import dex_update_bridge as bridge
 
 
@@ -261,6 +262,25 @@ def test_legacy_topology_pin_is_closed_to_exact_v1201_release() -> None:
     )
 
 
+def _write_v1201_archive_marker(
+    archive: Path,
+    pin: bridge.LegacyTopologyPin,
+    head: str,
+) -> None:
+    (archive / bridge._PRE_SPLIT_ARCHIVE_MARKER).write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "migrationId": "2026-08-03T00:00:00.000Z",
+                "preSplitHead": head,
+                "releaseCommit": pin.commit,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def test_completed_split_proves_v1201_only_from_exact_archive(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -270,6 +290,7 @@ def test_completed_split_proves_v1201_only_from_exact_archive(
     archive.mkdir()
     pin = bridge.LEGACY_TOPOLOGY_FOUNDATION
     head = "f" * 40
+    _write_v1201_archive_marker(archive, pin, head)
     values = {
         (
             "for-each-ref",
@@ -282,19 +303,75 @@ def test_completed_split_proves_v1201_only_from_exact_archive(
         ("rev-parse", "--verify", "HEAD^{commit}"): head,
         ("merge-base", "--is-ancestor", pin.commit, head): "",
     }
-    monkeypatch.setattr(
-        bridge,
-        "_run_git",
-        lambda root, *arguments: (
-            values[arguments]
-            if root == archive
-            else pytest.fail("only the verified archive may be inspected")
-        ),
-    )
+    ancestry_ok = True
+
+    def run_git(root: Path, *arguments: str) -> str:
+        if root != archive:
+            pytest.fail("only the verified archive may be inspected")
+        if arguments[0] == "merge-base" and not ancestry_ok:
+            raise bridge.BridgeError("not an ancestor")
+        return values[arguments]
+
+    monkeypatch.setattr(bridge, "_run_git", run_git)
 
     assert bridge._archive_has_exact_v1201_origin(vault) is True
 
     values[("rev-parse", "--verify", f"{pin.tag}^{{tree}}")] = "0" * 40
+    assert bridge._archive_has_exact_v1201_origin(vault) is False
+
+
+def test_completed_split_accepts_exact_pinned_commit_when_archive_tag_was_pruned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _vault(tmp_path)
+    archive = vault / ".dex" / "pre-split-archive.git"
+    archive.mkdir()
+    pin = bridge.LEGACY_TOPOLOGY_FOUNDATION
+    head = "f" * 40
+    _write_v1201_archive_marker(archive, pin, head)
+    values = {
+        (
+            "for-each-ref",
+            "--format=%(objectname)",
+            f"refs/tags/{pin.tag}",
+        ): "",
+        ("cat-file", "-t", pin.commit): "commit",
+        ("rev-parse", "--verify", f"{pin.commit}^{{commit}}"): pin.commit,
+        ("rev-parse", "--verify", f"{pin.commit}^{{tree}}"): pin.tree,
+        ("rev-parse", "--verify", "HEAD^{commit}"): head,
+        ("merge-base", "--is-ancestor", pin.commit, head): "",
+    }
+    ancestry_ok = True
+
+    def run_git(root: Path, *arguments: str) -> str:
+        if root != archive:
+            pytest.fail("only the verified archive may be inspected")
+        if arguments[0] == "merge-base" and not ancestry_ok:
+            raise bridge.BridgeError("not an ancestor")
+        return values[arguments]
+
+    monkeypatch.setattr(bridge, "_run_git", run_git)
+
+    assert bridge._archive_has_exact_v1201_origin(vault) is True
+
+    values[("rev-parse", "--verify", f"{pin.commit}^{{tree}}")] = "0" * 40
+    assert bridge._archive_has_exact_v1201_origin(vault) is False
+    values[("rev-parse", "--verify", f"{pin.commit}^{{tree}}")] = pin.tree
+    values[("cat-file", "-t", pin.commit)] = "blob"
+    assert bridge._archive_has_exact_v1201_origin(vault) is False
+    values[("cat-file", "-t", pin.commit)] = "commit"
+    ancestry_ok = False
+    assert bridge._archive_has_exact_v1201_origin(vault) is False
+
+    marker = json.loads(
+        (archive / bridge._PRE_SPLIT_ARCHIVE_MARKER).read_text(encoding="utf-8")
+    )
+    marker["releaseCommit"] = "0" * 40
+    (archive / bridge._PRE_SPLIT_ARCHIVE_MARKER).write_text(
+        json.dumps(marker) + "\n",
+        encoding="utf-8",
+    )
     assert bridge._archive_has_exact_v1201_origin(vault) is False
 
 
@@ -350,6 +427,7 @@ def test_exact_v1201_bridge_reconciles_dormant_qmd_in_approved_mcp_transaction(
     assert registration["preview"]["registration"]["action"] == (
         "add-current-and-remove-dormant-qmd"
     )
+    assert registration["preview"]["purpose"] == "legacy-qmd-reconciliation"
     assert registration["preview"]["compatibility"] == {
         "action": "remove-dormant-legacy-registration",
         "server_name": "qmd",
@@ -359,12 +437,171 @@ def test_exact_v1201_bridge_reconciles_dormant_qmd_in_approved_mcp_transaction(
         registration["preview"],
         registration["approval_token"],
     )
-    assert receipt["receipt"]["purpose"] == "mcp-registration"
+    assert receipt["receipt"]["purpose"] == "legacy-qmd-reconciliation"
     updated = json.loads((vault / ".mcp.json").read_text(encoding="utf-8"))
     assert "qmd" not in updated["mcpServers"]
     assert "customization-migration-mcp" in updated["mcpServers"]
     assert updated["mcpServers"]["user-server"] == original["mcpServers"]["user-server"]
     assert updated["userSetting"] == original["userSetting"]
+
+
+def _configured_v1201_compatibility_adapter(
+    tmp_path: Path,
+) -> tuple[bridge._FoundationLifecycleService, Path, dict[str, object]]:
+    adapter, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    adapter._service = lifecycle_service
+    subprocess.run(["git", "init", "--quiet"], cwd=vault, check=True)
+    subprocess.run(["git", "config", "user.name", "Dex Tests"], cwd=vault, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "tests@example.com"],
+        cwd=vault,
+        check=True,
+    )
+    original: dict[str, object] = {
+        "mcpServers": {
+            "qmd": {"command": "qmd", "args": ["mcp"]},
+            "user-server": {"type": "http", "url": "https://example.com/mcp"},
+        },
+        "userSetting": {"preserve": True},
+    }
+    (vault / ".mcp.json").write_text(
+        json.dumps(original, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", ".mcp.json"], cwd=vault, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "legacy MCP config"],
+        cwd=vault,
+        check=True,
+    )
+    return adapter, vault, original
+
+
+def test_completed_split_archive_proof_builds_v1201_compatibility_preview(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, vault, _original = _configured_v1201_compatibility_adapter(tmp_path)
+    archive = vault / ".dex" / "pre-split-archive.git"
+    archive.mkdir()
+    pin = bridge.LEGACY_TOPOLOGY_FOUNDATION
+    head = "f" * 40
+    _write_v1201_archive_marker(archive, pin, head)
+    values = {
+        (
+            "for-each-ref",
+            "--format=%(objectname)",
+            f"refs/tags/{pin.tag}",
+        ): "",
+        ("cat-file", "-t", pin.commit): "commit",
+        ("rev-parse", "--verify", f"{pin.commit}^{{commit}}"): pin.commit,
+        ("rev-parse", "--verify", f"{pin.commit}^{{tree}}"): pin.tree,
+        ("rev-parse", "--verify", "HEAD^{commit}"): head,
+        ("merge-base", "--is-ancestor", pin.commit, head): "",
+    }
+    monkeypatch.setattr(bridge, "_legacy_topology_authorization", lambda _root: None)
+    monkeypatch.setattr(
+        bridge,
+        "_run_git",
+        lambda root, *arguments: (
+            values[arguments]
+            if root == archive
+            else pytest.fail("only the verified archive may be inspected")
+        ),
+    )
+    monkeypatch.setattr(bridge, "_optional_qmd_executable", lambda: None)
+
+    registration = adapter.build_and_preview_mcp_registration(vault)
+
+    assert registration["needed"] is True
+    assert registration["preview"]["registration"]["action"] == (
+        "add-current-and-remove-dormant-qmd"
+    )
+    assert registration["preview"]["compatibility"]["action"] == (
+        "remove-dormant-legacy-registration"
+    )
+
+
+@pytest.mark.parametrize("mutation", ["unrelated", "qmd-changed", "qmd-removed"])
+def test_v1201_compatibility_refuses_configuration_changed_after_preview(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    adapter, vault, _original = _configured_v1201_compatibility_adapter(tmp_path)
+    monkeypatch.setattr(adapter, "_v1201_origin_is_proven", lambda _root: True)
+    monkeypatch.setattr(bridge, "_optional_qmd_executable", lambda: None)
+    registration = adapter.build_and_preview_mcp_registration(vault)
+    config = vault / ".mcp.json"
+    changed = json.loads(config.read_text(encoding="utf-8"))
+    if mutation == "unrelated":
+        changed["userSetting"]["changed_after_preview"] = True
+    elif mutation == "qmd-changed":
+        changed["mcpServers"]["qmd"]["args"] = ["serve"]
+    else:
+        del changed["mcpServers"]["qmd"]
+    config.write_text(json.dumps(changed, indent=2) + "\n", encoding="utf-8")
+    changed_bytes = config.read_bytes()
+
+    with pytest.raises(
+        (bridge.BridgeError, PlanRejected),
+        match="approval does not match",
+    ):
+        adapter.execute_approved_mcp_registration(
+            vault,
+            registration["preview"],
+            registration["approval_token"],
+        )
+
+    assert config.read_bytes() == changed_bytes
+
+
+@pytest.mark.parametrize("tamper", ["compatibility", "writes", "token"])
+def test_v1201_compatibility_refuses_tampered_approval(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    adapter, vault, _original = _configured_v1201_compatibility_adapter(tmp_path)
+    monkeypatch.setattr(adapter, "_v1201_origin_is_proven", lambda _root: True)
+    monkeypatch.setattr(bridge, "_optional_qmd_executable", lambda: None)
+    registration = adapter.build_and_preview_mcp_registration(vault)
+    preview = json.loads(json.dumps(registration["preview"]))
+    token = registration["approval_token"]
+    if tamper == "compatibility":
+        preview["compatibility"]["action"] = "keep-registration"
+    elif tamper == "writes":
+        preview["writes"][0]["sha256"] = "0" * 64
+    else:
+        token = "0" * 64
+    config = vault / ".mcp.json"
+    before = config.read_bytes()
+
+    with pytest.raises(bridge.BridgeError, match="approval does not match"):
+        adapter.execute_approved_mcp_registration(vault, preview, token)
+
+    assert config.read_bytes() == before
+
+
+def test_v1201_compatibility_refuses_changed_private_foundation_signature(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, vault, _original = _configured_v1201_compatibility_adapter(tmp_path)
+    monkeypatch.setattr(adapter, "_v1201_origin_is_proven", lambda _root: True)
+    monkeypatch.setattr(bridge, "_optional_qmd_executable", lambda: None)
+    monkeypatch.setattr(
+        lifecycle_service,
+        "_canonical",
+        lambda value, unexpected=None: b"changed private signature",
+    )
+    config = vault / ".mcp.json"
+    before = config.read_bytes()
+
+    with pytest.raises(bridge.BridgeError, match="transaction API changed"):
+        adapter.build_and_preview_mcp_registration(vault)
+
+    assert config.read_bytes() == before
 
 
 def test_v1201_bridge_keeps_changed_qmd_registration_fail_closed(

@@ -53,7 +53,15 @@ path traversal. (From #141 ownership.cjs deny set + Vault_Contract §3 secrets r
   it; release updates and migration engines never rewrite it). The one narrow
   exception is the later-ratified lifecycle registration repair: after showing
   the exact preview and receiving explicit approval, it may add Dex's own missing
-  Customization Migration entry. It cannot replace or remove any user entry.
+  Customization Migration entry. The normal public lifecycle service remains
+  add-only and cannot replace or remove any user entry. There is one bridge-only
+  legacy exception: an exact v1.20-compatible install may remove only the exact
+  dormant `qmd` registration (`{"command":"qmd","args":["mcp"]}`) when no real
+  `qmd` executable exists, the removal is shown in the exact preview, and the user
+  explicitly approves it. The immutable v1.81.0 transaction engine carries that
+  write under its older `mcp-registration` path gate, but the logical transaction
+  and receipt purpose is `legacy-qmd-reconciliation`; all other MCP configuration
+  remains user-owned and unchanged.
 - Raw secret authority = vault-root `.env` (hard-deny).
 
 ## Capability registry (Decision C, Option 2)

@@ -14,6 +14,7 @@ import base64
 import hashlib
 import hmac
 import importlib
+import inspect
 import json
 import os
 import re
@@ -34,6 +35,8 @@ _APPROVAL_WORD = "APPLY"
 _CLEAN_RUNTIME_MARKER = "DEX_UPDATE_BRIDGE_CLEAN_RUNTIME"
 _TRUSTED_EXECUTABLE_DIRECTORIES = (Path("/usr/bin"), Path("/bin"), Path("/usr/local/bin"), Path("/opt/homebrew/bin"))
 _TOPOLOGY_MIGRATOR_RELATIVE = Path("core/migrations/v1-to-v2-brain-vault-split.cjs")
+_PRE_SPLIT_ARCHIVE_MARKER = "dex-pre-split-v2-archive.json"
+_LEGACY_QMD_RECONCILIATION_PURPOSE = "legacy-qmd-reconciliation"
 _TRACKED_IGNORE_POLICY_RELATIVE = Path("core/migrations/tracked-ignored-policy.yaml")
 _PRESERVATION_TRANSITION_RELATIVE = Path("System/.local-only-preservation-transition.json")
 _LEGACY_SHIPPED_SYMLINK_RELATIVE = Path(".pi/agent/extensions/dex")
@@ -1539,23 +1542,50 @@ def _archive_has_exact_v1201_origin(
     if archive.is_symlink() or not archive.is_dir():
         return False
     try:
+        marker = _regular_json(
+            archive / _PRE_SPLIT_ARCHIVE_MARKER,
+            "pre-split archive marker",
+        )
         if (
-            _run_git(
-                archive,
-                "for-each-ref",
-                "--format=%(objectname)",
-                f"refs/tags/{pin.tag}",
-            )
-            != pin.tag_object
-            or _run_git(archive, "cat-file", "-t", pin.tag_object) != "tag"
-            or _run_git(archive, "rev-parse", "--verify", f"{pin.tag}^{{commit}}")
+            set(marker)
+            != {"schemaVersion", "migrationId", "preSplitHead", "releaseCommit"}
+            or marker.get("schemaVersion") != 1
+            or not isinstance(marker.get("migrationId"), str)
+            or not marker["migrationId"]
+            or marker.get("releaseCommit") != pin.commit
+        ):
+            return False
+        pre_split_head = marker.get("preSplitHead")
+        if not isinstance(pre_split_head, str) or _HEX.fullmatch(pre_split_head) is None:
+            return False
+        tag_object = _run_git(
+            archive,
+            "for-each-ref",
+            "--format=%(objectname)",
+            f"refs/tags/{pin.tag}",
+        )
+        if tag_object:
+            if tag_object != pin.tag_object:
+                return False
+            if _run_git(archive, "cat-file", "-t", pin.tag_object) != "tag":
+                return False
+            identity = pin.tag
+        else:
+            # A completed split may preserve the exact release commit while
+            # pruning its old label. Accept only the same closed object, tree,
+            # and ancestry proof used before the split.
+            if _run_git(archive, "cat-file", "-t", pin.commit) != "commit":
+                return False
+            identity = pin.commit
+        if (
+            _run_git(archive, "rev-parse", "--verify", f"{identity}^{{commit}}")
             != pin.commit
-            or _run_git(archive, "rev-parse", "--verify", f"{pin.tag}^{{tree}}")
+            or _run_git(archive, "rev-parse", "--verify", f"{identity}^{{tree}}")
             != pin.tree
         ):
             return False
         head = _run_git(archive, "rev-parse", "--verify", "HEAD^{commit}")
-        if _HEX.fullmatch(head) is None:
+        if head != pre_split_head:
             return False
         _run_git(archive, "merge-base", "--is-ancestor", pin.commit, head)
     except BridgeError:
@@ -2317,6 +2347,49 @@ class _FoundationLifecycleService:
             raise BridgeError(
                 "pinned foundation MCP compatibility transaction API is incomplete"
             )
+        expected_parameters = {
+            "_mcp_registration_preview": ("vault_root",),
+            "_transaction_preview_document": (
+                "vault_root",
+                "plan",
+                "purpose",
+                "operation",
+            ),
+            "_preview_transaction": (
+                "vault_root",
+                "plan",
+                "purpose",
+                "operation",
+            ),
+            "_execute_approved_transaction": (
+                "vault_root",
+                "plan",
+                "purpose",
+                "approved_token",
+                "operation",
+                "before_commit",
+            ),
+            "_canonical": ("value",),
+            "_envelope": ("values",),
+            "PlanEntry": (
+                "relative",
+                "content",
+                "mode",
+                "expected_current_sha256",
+                "expected_absent",
+            ),
+        }
+        for name, parameters in expected_parameters.items():
+            try:
+                actual = tuple(inspect.signature(getattr(self._service, name)).parameters)
+            except (TypeError, ValueError) as error:
+                raise BridgeError(
+                    "pinned foundation MCP compatibility transaction API is unreadable"
+                ) from error
+            if actual != parameters:
+                raise BridgeError(
+                    "pinned foundation MCP compatibility transaction API changed"
+                )
         normal_preview, normal_plan = self._service._mcp_registration_preview(root)
         if normal_preview is None:
             updated = dict(existing)
@@ -2355,10 +2428,14 @@ class _FoundationLifecycleService:
         transaction = self._service._transaction_preview_document(
             root,
             plan,
-            purpose="mcp-registration",
+            purpose=_LEGACY_QMD_RECONCILIATION_PURPOSE,
+            # Immutable v1.81.0 recognizes only this path-level transport
+            # operation. The narrower logical purpose and bridge eligibility
+            # gates enforce the separately ratified legacy exception.
             operation="mcp-registration",
         )
         preview = {
+            "purpose": _LEGACY_QMD_RECONCILIATION_PURPOSE,
             "registration": {
                 "config_path": ".mcp.json",
                 "server_name": "customization-migration-mcp",
@@ -2420,13 +2497,13 @@ class _FoundationLifecycleService:
             transaction = self._service._preview_transaction(
                 vault_root,
                 plan,
-                purpose="mcp-registration",
+                purpose=_LEGACY_QMD_RECONCILIATION_PURPOSE,
                 operation="mcp-registration",
             )
             executed = self._service._execute_approved_transaction(
                 vault_root,
                 plan,
-                purpose="mcp-registration",
+                purpose=_LEGACY_QMD_RECONCILIATION_PURPOSE,
                 operation="mcp-registration",
                 approved_token=str(transaction["approval_token"]),
             )
@@ -2627,7 +2704,7 @@ def _complete_mcp_registration(
         raise BridgeError("foundation could not produce an MCP registration preview")
     compatibility = registration_preview.get("compatibility")
     prompt = (
-        "Dex will remove the dormant optional qmd entry left by v1.20.1 while keeping the current customization migration server registered."
+        "Dex will remove the dormant optional qmd entry associated with this v1.20-compatible install while keeping the current customization migration server registered."
         if compatibility
         == {
             "server_name": "qmd",
