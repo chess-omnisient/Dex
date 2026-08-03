@@ -391,6 +391,25 @@ def _expected_pins() -> dict[str, dict[str, object]]:
         ),
         "unexpected_nonregular_paths": (),
     }
+    pins["v1.62.0"] = {
+        "kind": "self-omitting-manifest",
+        "role": "installed-source",
+        "tag": "v1.62.0",
+        "tag_object": "4913a778452003fcf8dc71a10222d5275ff28d5c",
+        "commit": "77c4a15a7884080e48b095c8de2c384d01a87883",
+        "tree": "1bf30a86c151890024040f0e4e1a533be17c5686",
+        "version": "1.62.0",
+        "package_blob": "2d7f21a72798d4189f042e955e62ee799e90a90c",
+        "package_sha256": "75bef63d563a7e5062db6ad664ccb65a7581dbfd3d466655d1b3709bbad7ffa5",
+        "manifest_blob": "eb3ac8f377abc98199eaf49c02b638fce5aad69f",
+        "manifest_sha256": "29dd6a9eccd8d358eda08506ac7d6b574cca78c1dec09c64ad24dd0ec359161d",
+        "manifest_path_count": 987,
+        "omitted_paths": ("System/.installed-files.manifest",),
+        "policy_blob": None,
+        "transition_blob": None,
+        "migrator_blob": None,
+        "unexpected_nonregular_paths": (),
+    }
     pins["v1.75.0"] = {
         "kind": "incomplete-manifest",
         "role": "installed-source",
@@ -1293,6 +1312,71 @@ def test_runtime_manifest_omission_adapter_accepts_only_exact_historic_trees(
     changed[next(iter(changed))] = "0" * 40
     monkeypatch.setattr(bridge, "_V175_DEFECTIVE_MANIFEST_OMISSIONS", changed)
     with pytest.raises(apply_update.ReleaseVerificationError, match="omission changed"):
+        adapter.build_and_preview_delivered_release(repository, {})
+
+
+def test_runtime_self_omitting_manifest_adapter_accepts_exact_semantic_v162_tree(
+    tmp_path: Path,
+) -> None:
+    pin = bridge.V162_SELF_OMITTING_MANIFEST_RELEASE
+    repository = _historic_checkout(tmp_path, pin)
+    adapter, service = _delivery_adapter(tmp_path, repository)
+    service.commit = pin.commit
+    _git(repository, "update-ref", "refs/dex/installed", pin.commit)
+
+    entries = adapter.build_and_preview_delivered_release(repository, {})
+
+    assert len(entries) == 988
+    assert "System/.installed-files.manifest" in {entry.path for entry in entries}
+
+
+def test_runtime_self_omitting_manifest_adapter_refuses_an_extra_omission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pin = bridge.V162_SELF_OMITTING_MANIFEST_RELEASE
+    repository = _historic_checkout(tmp_path, pin)
+    manifest = repository / "System/.installed-files.manifest"
+    paths = manifest.read_text(encoding="utf-8").splitlines()
+    paths.remove("CLAUDE.md")
+    manifest.write_text("\n".join(paths) + "\n", encoding="utf-8")
+    _git(repository, "add", "--", "System/.installed-files.manifest")
+    _git(repository, "commit", "--quiet", "-m", "test extra manifest omission")
+    commit = _git(repository, "rev-parse", "HEAD^{commit}")
+    tree = _git(repository, "rev-parse", "HEAD^{tree}")
+    manifest_blob = _git(
+        repository,
+        "rev-parse",
+        "HEAD:System/.installed-files.manifest",
+    )
+    manifest_bytes = manifest.read_bytes()
+    mutated_pin = replace(
+        pin,
+        tag_object=commit,
+        tag_object_type="commit",
+        commit=commit,
+        tree=tree,
+    )
+    monkeypatch.setattr(bridge, "V162_SELF_OMITTING_MANIFEST_RELEASE", mutated_pin)
+    monkeypatch.setattr(bridge, "_V162_SELF_OMITTING_MANIFEST_BLOB", manifest_blob)
+    monkeypatch.setattr(
+        bridge,
+        "_V162_SELF_OMITTING_MANIFEST_SHA256",
+        hashlib.sha256(manifest_bytes).hexdigest(),
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_V162_SELF_OMITTING_MANIFEST_PATH_COUNT",
+        len(paths),
+    )
+    _git(repository, "update-ref", "refs/dex/installed", commit)
+    adapter, service = _delivery_adapter(tmp_path, repository)
+    service.commit = commit
+
+    with pytest.raises(
+        apply_update.ReleaseVerificationError,
+        match="self-omitting manifest identity changed",
+    ):
         adapter.build_and_preview_delivered_release(repository, {})
 
 
