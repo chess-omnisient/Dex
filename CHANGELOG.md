@@ -7,6 +7,28 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.10] — 🛡️ Fleet proof no longer spends GitHub's shared API allowance (2026-08-03)
+
+The formal Mac fleet re-derived all 170 public starting cases, then GitHub refused
+the controller's unauthenticated release-metadata request because the shared public
+API allowance had been exhausted. The bridge and its checksum were already public
+and valid, but the gate correctly stopped before starting any journeys.
+
+**What this fixes for you:**
+
+* **Stable-release proof uses GitHub's public latest-release route.** The controller
+  requires one exact redirect to this version's canonical release page instead of
+  consuming the rate-limited metadata API.
+* **The updater assets remain independently verified.** Dex still downloads the
+  public bridge and checksum anonymously and requires their bytes to match the
+  submitted release artifacts exactly.
+* **Unexpected release routes still stop safely.** A missing redirect, extra hop,
+  different host, different version, query, fragment, or non-success response is
+  rejected before a historic installation starts.
+* **Fleet acceptance is still earned by journeys.** This release removes the
+  controller blocker; the freshly generated 170-case Mac run must still complete
+  before Dex claims historic two-hop acceptance.
+
 ## [1.81.9] — 🧹 Oldest Dex installs clear one dormant search registration (2026-08-03)
 
 The formal Mac fleet began with v1.20.1 and reached the public foundation with
