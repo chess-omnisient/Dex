@@ -400,7 +400,8 @@ run_canary() {
       --foundation-tag "$PINNED_FOUNDATION_TAG" \
       --follow-up-tag "$CANDIDATE_TAG" \
       --bridge-asset "$BRIDGE_ASSET" \
-      --bridge-checksum "$BRIDGE_CHECKSUM"
+      --bridge-checksum "$BRIDGE_CHECKSUM" \
+      --controlled-approvals
     then
       journey_status=0
     else

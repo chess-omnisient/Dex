@@ -891,6 +891,33 @@ def test_executor_records_the_bridge_approval_count_that_actually_occurred(
     ]
 
 
+def test_controlled_fleet_approval_still_rejects_excess_bridge_prompts(
+    tmp_path: Path,
+) -> None:
+    protocol = load_update_journey_protocol(
+        (REPO_ROOT / "core/update/journey-protocol-v1.json").read_bytes()
+    )
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+
+    class ExcessApprovalRuntime(_Runtime):
+        def bridge_to_foundation(
+            self, vault: Path, foundation, *, input_fn, output_fn
+        ):
+            del vault, foundation, output_fn
+            for index in range(protocol.bridge.approval_count + 1):
+                input_fn(f"controlled approval {index + 1}")
+            pytest.fail("the executor must reject an excess controlled approval")
+
+    with pytest.raises(executor.ExecutorError, match="approval was not exact"):
+        _execute(
+            tmp_path,
+            ExcessApprovalRuntime(_identity("1.81.0", "b")),
+            source_repo=source_repo,
+            source_commit=source_commit,
+            input_fn=lambda _prompt: protocol.bridge.approval_word,
+        )
+
+
 def test_already_installed_foundation_executes_and_validates_without_a_fake_transaction(
     tmp_path: Path,
 ) -> None:

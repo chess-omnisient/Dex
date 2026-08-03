@@ -659,6 +659,7 @@ def collect_platform_runs(
                 follow_up_tag=follow_up_tag,
                 bridge_asset=bridge_asset,
                 bridge_checksum=bridge_checksum,
+                controlled_approvals=True,
             )
             case = getattr(run, "case", None)
             if not isinstance(case, Mapping):

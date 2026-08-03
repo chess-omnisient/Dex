@@ -1917,10 +1917,12 @@ def test_standalone_bridge_asset_refuses_a_checksum_not_shipped_for_its_bytes(
 
 
 @pytest.mark.parametrize("split_topology", [False, True])
+@pytest.mark.parametrize("controlled_approvals", [False, True])
 def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     split_topology: bool,
+    controlled_approvals: bool,
 ) -> None:
     from core.update.journey_protocol import load_update_journey_protocol
     from scripts import release_fleet_executor
@@ -2131,6 +2133,7 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
         follow_up_tag=follow_up.tag,
         bridge_asset=bridge_asset,
         bridge_checksum=bridge_checksum,
+        controlled_approvals=controlled_approvals,
     )
 
     assert run.case == {"starting_tag": start.tag}
@@ -2142,6 +2145,12 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     assert captured["initial_install_evidence"]["topology"] == (
         "brain-vault-split" if split_topology else "legacy-monolithic"
     )
+    if controlled_approvals:
+        approval_input = captured["input_fn"]
+        assert callable(approval_input)
+        assert approval_input("exact controlled prompt") == protocol.bridge.approval_word
+    else:
+        assert "input_fn" not in captured
     assert environment_kwargs["pip_cache_dir"] == (
         tmp_path / "output/.fixture-controller/pip"
     )

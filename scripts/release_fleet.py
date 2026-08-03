@@ -18,7 +18,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -2075,6 +2075,7 @@ def run_journey(
     follow_up_tag: str,
     bridge_asset: Path | None = None,
     bridge_checksum: Path | None = None,
+    controlled_approvals: bool = False,
 ) -> object:
     """Build one fixture and delegate the closed journey to its released executor."""
 
@@ -2101,6 +2102,19 @@ def run_journey(
         raise FleetError(f"follow-up released journey protocol is invalid: {error}") from error
     if protocol.foundation != foundation.identity():
         raise FleetError("released journey protocol names a different foundation")
+    approval_input: Callable[[str], str] | None = None
+    if controlled_approvals:
+        bridge_word = protocol.bridge.approval_word
+        follow_up_word = protocol.follow_up.approval_word
+        if bridge_word != follow_up_word:
+            raise FleetError("controlled fleet approvals require one exact protocol word")
+
+        def approve_disposable_fixture(prompt: str) -> str:
+            if not isinstance(prompt, str) or not prompt:
+                raise FleetError("controlled fleet approval prompt is invalid")
+            return bridge_word
+
+        approval_input = approve_disposable_fixture
     source_commit = _verify_released_protocol_artifacts(repo, follow_up, protocol)
     bridge_asset_evidence = _verify_standalone_bridge_asset(
         repo,
@@ -2190,6 +2204,7 @@ def run_journey(
                 bridge_asset_evidence=bridge_asset_evidence,
                 bridge_asset_path=bridge_asset.resolve(strict=True),
                 initial_install_evidence=initial_install_evidence,
+                **({"input_fn": approval_input} if approval_input is not None else {}),
             )
         finally:
             _disable_all_fixture_remotes(case.vault, environment)
@@ -2757,6 +2772,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     journey.add_argument("--follow-up-tag", required=True)
     journey.add_argument("--bridge-asset", type=Path, required=True)
     journey.add_argument("--bridge-checksum", type=Path, required=True)
+    journey.add_argument(
+        "--controlled-approvals",
+        action="store_true",
+        help="approve only the disposable fixture used by a controlled fleet run",
+    )
     args = parser.parse_args(argv)
 
     if args.command == "manifest":
@@ -2795,6 +2815,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             follow_up_tag=args.follow_up_tag,
             bridge_asset=args.bridge_asset,
             bridge_checksum=args.bridge_checksum,
+            controlled_approvals=args.controlled_approvals,
         )
         print(
             json.dumps(

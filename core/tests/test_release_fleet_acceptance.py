@@ -764,12 +764,14 @@ def test_platform_collector_retains_every_live_run_and_exact_counts(
         follow_up_tag: str,
         bridge_asset: Path,
         bridge_checksum: Path,
+        controlled_approvals: bool,
     ) -> object:
         assert output == tmp_path
         assert foundation_tag == FOUNDATION.tag
         assert follow_up_tag == "dist/release/v1.81.1-3333333"
         assert bridge_asset == asset_path
         assert bridge_checksum == checksum_path
+        assert controlled_approvals is True
         run = SimpleNamespace(case=_case_document(_case(starting_tag, "darwin")))
         created.append(run)
         return run
@@ -817,8 +819,10 @@ def test_platform_collector_stops_on_first_failure_with_honest_counts(
         follow_up_tag: str,
         bridge_asset: Path,
         bridge_checksum: Path,
+        controlled_approvals: bool,
     ) -> object:
         del output, foundation_tag, follow_up_tag, bridge_asset, bridge_checksum
+        assert controlled_approvals is True
         if starting_tag == releases[1].tag:
             raise release_fleet.FleetError("synthetic journey failed")
         return SimpleNamespace(case=_case_document(_case(starting_tag, "darwin")))
