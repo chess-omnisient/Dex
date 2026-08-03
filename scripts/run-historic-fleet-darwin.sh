@@ -10,6 +10,7 @@ MAX_DISK_KIB=$((50 * 1024 * 1024))
 CANARY_STARTS=(
   "v1.51.0"
   "dist/release/v1.61.0-dc7d332"
+  "dist/archive/v1.61.0-1ec1387"
   "v1.62.0"
   "dist/archive/v1.65.0-c5ec161"
 )
