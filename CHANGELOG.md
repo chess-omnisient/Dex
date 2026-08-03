@@ -7,6 +7,25 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.13] — 🧷 v1.63 updates keep your saved profile intact (2026-08-03)
+
+The formal historic Mac fleet reached an exact v1.63 installation, then stopped
+because that release's built-in split helper rewrote its saved user profile while
+entering the protected update foundation. Dex's preservation guard caught the
+change and refused to continue, so no unsafe result was accepted.
+
+**What this fixes for you:**
+
+* **Exact affected v1.63 releases use the verified foundation migrator.** The
+  updater replaces only the known faulty helper for four immutable historic
+  release identities; unfamiliar or altered installations still stop safely.
+* **Your profile and other protected content remain byte-for-byte unchanged.** A
+  retained macOS canary proved the saved profile, notes, tasks, and custom skill
+  survive both update hops exactly.
+* **Fleet acceptance still requires the complete public run.** This release fixes
+  the v1.63 blocker, but Dex will not claim every historic release is upgradeable
+  until a fresh retained 170-case Mac run completes with zero failures.
+
 ## [1.81.12] — (2026-08-03)
 
 ## [1.81.11] — (2026-08-03)
