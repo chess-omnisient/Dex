@@ -7,6 +7,28 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.9] — 🧹 Oldest Dex installs clear one dormant search registration (2026-08-03)
+
+The formal Mac fleet began with v1.20.1 and reached the public foundation with
+personal files unchanged. Doctor then found that this oldest release still
+advertised the optional qmd search server even though qmd was not installed, so
+the updater correctly stopped before claiming a healthy result.
+
+**What this fixes for you:**
+
+* **The exact dormant qmd entry is removed during the protected bridge.** A proven
+  v1.20.1 install can replace that obsolete registration while adding Dex's current
+  lifecycle server, using the normal preview, approval, transaction, and receipt.
+* **Your other connections and settings stay untouched.** The compatibility route
+  removes only the exact legacy qmd shape; every unrelated MCP server and top-level
+  setting is preserved.
+* **The exception remains narrowly closed.** Dex requires the exact oldest-release
+  origin, the exact dormant registration, and an absent qmd executable. Any altered
+  or unfamiliar state still stops safely.
+* **Fleet acceptance is still earned by journeys.** This release repairs the first
+  formal failure; the freshly generated public 170-case run must restart and finish
+  before Dex claims universal historic support.
+
 ## [1.81.8] — 🧭 Historic Mac installs enter a verified update route (2026-08-03)
 
 The historic updater sweep found real published Mac installs whose trustworthy
