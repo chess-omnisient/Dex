@@ -634,6 +634,55 @@ console.log(crypto.createHash('sha256').update(policy).digest('hex'));
     )
 
 
+def _native_topology_command_adapter(
+    tmp_path: Path,
+) -> tuple[bridge._FoundationLifecycleService, ModuleType]:
+    """Bind the bridge around the real native and fixed foundation migrators."""
+
+    source = tmp_path / "foundation-native-source"
+    subprocess.run(
+        [
+            "git",
+            "clone",
+            "--quiet",
+            "--shared",
+            "--no-checkout",
+            str(Path(__file__).resolve().parents[2]),
+            str(source),
+        ],
+        check=True,
+    )
+    _git(source, "checkout", "--quiet", "--detach", bridge.FOUNDATION.commit)
+
+    engine = ModuleType("native_topology_engine")
+    engine.TOPOLOGY_MIGRATOR_RELATIVE = bridge._TOPOLOGY_MIGRATOR_RELATIVE
+    engine.topology_state = lambda _root: "combined"
+
+    def native_command(vault_root: Path, mode: str) -> list[str]:
+        node = bridge._trusted_executable("node")
+        assert node is not None
+        return [
+            str(node),
+            str((Path(vault_root) / bridge._TOPOLOGY_MIGRATOR_RELATIVE).resolve()),
+            mode,
+        ]
+
+    engine._migrator_command = native_command
+
+    class TopologyService:
+        pass
+
+    return (
+        bridge._FoundationLifecycleService(
+            TopologyService(),
+            engine,
+            apply_update,
+            source,
+        ),
+        engine,
+    )
+
+
 def _commit_nonregular_variant(repository: Path, base: str, mode: str, name: str) -> tuple[str, str]:
     _git(repository, "checkout", "--quiet", "--detach", "--force", base)
     if mode == "120000":
@@ -1128,6 +1177,41 @@ def test_runtime_schema_v2_policy_remains_the_exact_existing_input(
     )
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == pin.inputs.policy_sha256
+
+
+@pytest.mark.parametrize("release_tag", tuple(_NATIVE_MIGRATOR_TRANSPORT))
+def test_native_transport_preserves_the_exact_customer_profile_bytes(
+    tmp_path: Path,
+    release_tag: str,
+) -> None:
+    pin = next(
+        pin
+        for pin in bridge.NATIVE_MIGRATOR_TRANSPORT_RELEASES
+        if pin.tag == release_tag
+    )
+    repository = _historic_checkout(tmp_path, pin)
+    _git(repository, "update-ref", "refs/heads/release", bridge.FOUNDATION.commit)
+    adapter, engine = _native_topology_command_adapter(tmp_path)
+    profile = repository / "System" / "user-profile.yaml"
+    original_profile = profile.read_bytes()
+    original_sha256 = hashlib.sha256(original_profile).hexdigest()
+
+    with adapter._topology_source():
+        assert engine.topology_state(repository) == "combined"
+        command = engine._migrator_command(repository, "--auto")
+
+    completed = subprocess.run(
+        command,
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=bridge._bridge_environment(),
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert profile.read_bytes() == original_profile
+    assert hashlib.sha256(profile.read_bytes()).hexdigest() == original_sha256
 
 
 @pytest.mark.parametrize("mode", ("--dry-run", "--auto"))
