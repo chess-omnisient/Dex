@@ -391,6 +391,25 @@ def _expected_pins() -> dict[str, dict[str, object]]:
         ),
         "unexpected_nonregular_paths": (),
     }
+    pins["v1.62.0"] = {
+        "kind": "self-omitting-manifest",
+        "role": "installed-source",
+        "tag": "v1.62.0",
+        "tag_object": "4913a778452003fcf8dc71a10222d5275ff28d5c",
+        "commit": "77c4a15a7884080e48b095c8de2c384d01a87883",
+        "tree": "1bf30a86c151890024040f0e4e1a533be17c5686",
+        "version": "1.62.0",
+        "package_blob": "2d7f21a72798d4189f042e955e62ee799e90a90c",
+        "package_sha256": "75bef63d563a7e5062db6ad664ccb65a7581dbfd3d466655d1b3709bbad7ffa5",
+        "manifest_blob": "eb3ac8f377abc98199eaf49c02b638fce5aad69f",
+        "manifest_sha256": "29dd6a9eccd8d358eda08506ac7d6b574cca78c1dec09c64ad24dd0ec359161d",
+        "manifest_path_count": 987,
+        "omitted_paths": ("System/.installed-files.manifest",),
+        "policy_blob": None,
+        "transition_blob": None,
+        "migrator_blob": None,
+        "unexpected_nonregular_paths": (),
+    }
     pins["v1.75.0"] = {
         "kind": "incomplete-manifest",
         "role": "installed-source",
@@ -546,8 +565,19 @@ def _topology_command_adapter(
         """'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
-fs.readFileSync(path.join(process.cwd(), 'core/migrations/tracked-ignored-policy.yaml'));
+const crypto = require('node:crypto');
+const policy = fs.readFileSync(
+  path.join(process.cwd(), 'core/migrations/tracked-ignored-policy.yaml'),
+  'utf8',
+);
+if (
+  !/^schema_version:\\s*\\d+\\s*$/m.test(policy)
+  || !/^active_baseline_version:\\s*\\d+\\s*$/m.test(policy)
+) {
+  throw new Error('Tracked-ignore policy is missing schema or active baseline.');
+}
 fs.readFileSync(path.join(process.cwd(), 'System/.local-only-preservation-transition.json'));
+console.log(crypto.createHash('sha256').update(policy).digest('hex'));
 """,
         encoding="utf-8",
     )
@@ -952,12 +982,73 @@ def test_runtime_legacy_topology_refuses_cross_borrowed_existing_inputs(
     assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
 
 
-def test_runtime_legacy_command_reproves_unchanged_existing_input_tuple(
+@pytest.mark.parametrize(
+    "pin",
+    (
+        bridge.MISSING_MIGRATOR_RELEASES[2],
+        bridge.MISSING_MIGRATOR_RELEASES[-2],
+    ),
+    ids=("dist-v1.61.0-dc7d332", "semantic-v1.62.0"),
+)
+def test_runtime_legacy_topology_accepts_an_exact_pin_after_its_label_is_pruned(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pin: bridge.MissingMigratorPin,
 ) -> None:
-    pin = bridge.MISSING_MIGRATOR_RELEASES[3]
+    repository = _historic_checkout(tmp_path, pin.release)
+    impossible_fallback = replace(
+        bridge.LEGACY_TOPOLOGY_FOUNDATION,
+        tag="v9.9.9",
+        commit="0" * 40,
+        tree="0" * 40,
+    )
+    monkeypatch.setattr(bridge, "MANIFESTLESS_SEMANTIC_RELEASES", ())
+    monkeypatch.setattr(bridge, "MISSING_MIGRATOR_RELEASES", (pin,))
+
+    _git(repository, "update-ref", "-d", f"refs/tags/{pin.release.tag}")
+
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is True
+
+
+def test_runtime_legacy_topology_refuses_a_wrong_object_at_a_pruned_pin_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pin = bridge.MISSING_MIGRATOR_RELEASES[2]
+    nearby = bridge.MISSING_MIGRATOR_RELEASES[1]
+    repository = _historic_checkout(tmp_path, pin.release)
+    impossible_fallback = replace(
+        bridge.LEGACY_TOPOLOGY_FOUNDATION,
+        tag="v9.9.9",
+        commit="0" * 40,
+        tree="0" * 40,
+    )
+    monkeypatch.setattr(bridge, "MANIFESTLESS_SEMANTIC_RELEASES", ())
+    monkeypatch.setattr(bridge, "MISSING_MIGRATOR_RELEASES", (pin,))
+
+    _git(repository, "update-ref", f"refs/tags/{pin.release.tag}", nearby.release.commit)
+
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+
+@pytest.mark.parametrize(
+    "release_tag",
+    (
+        "dist/release/v1.61.0-dc7d332",
+        "v1.62.0",
+    ),
+)
+def test_runtime_schema_v1_policy_uses_read_only_foundation_compatibility(
+    tmp_path: Path,
+    release_tag: str,
+) -> None:
+    pin = next(pin for pin in bridge.MISSING_MIGRATOR_RELEASES if pin.release.tag == release_tag)
     repository = _historic_checkout(tmp_path, pin.release)
     adapter, engine = _topology_command_adapter(tmp_path)
+    policy_path = repository / bridge._TRACKED_IGNORE_POLICY_RELATIVE
+    transition_path = repository / bridge._PRESERVATION_TRANSITION_RELATIVE
+    original_policy = policy_path.read_bytes()
+    original_transition = transition_path.read_bytes()
 
     with adapter._topology_source():
         assert engine.topology_state(repository) == "combined"
@@ -973,6 +1064,36 @@ def test_runtime_legacy_command_reproves_unchanged_existing_input_tuple(
         env=bridge._bridge_environment(),
     )
     assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == bridge._LEGACY_TRACKED_IGNORE_POLICY_SHA256
+    assert policy_path.read_bytes() == original_policy
+    assert transition_path.read_bytes() == original_transition
+
+
+def test_runtime_schema_v2_policy_remains_the_exact_existing_input(
+    tmp_path: Path,
+) -> None:
+    pin = next(
+        pin
+        for pin in bridge.MISSING_MIGRATOR_RELEASES
+        if pin.release.tag == "dist/release/v1.62.0-d5bd522"
+    )
+    repository = _historic_checkout(tmp_path, pin.release)
+    adapter, engine = _topology_command_adapter(tmp_path)
+
+    with adapter._topology_source():
+        assert engine.topology_state(repository) == "combined"
+        command = engine._migrator_command(repository, "--dry-run")
+
+    completed = subprocess.run(
+        command,
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=bridge._bridge_environment(),
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == pin.inputs.policy_sha256
 
 
 @pytest.mark.parametrize("mode", ("--dry-run", "--auto"))
@@ -1191,6 +1312,71 @@ def test_runtime_manifest_omission_adapter_accepts_only_exact_historic_trees(
     changed[next(iter(changed))] = "0" * 40
     monkeypatch.setattr(bridge, "_V175_DEFECTIVE_MANIFEST_OMISSIONS", changed)
     with pytest.raises(apply_update.ReleaseVerificationError, match="omission changed"):
+        adapter.build_and_preview_delivered_release(repository, {})
+
+
+def test_runtime_self_omitting_manifest_adapter_accepts_exact_semantic_v162_tree(
+    tmp_path: Path,
+) -> None:
+    pin = bridge.V162_SELF_OMITTING_MANIFEST_RELEASE
+    repository = _historic_checkout(tmp_path, pin)
+    adapter, service = _delivery_adapter(tmp_path, repository)
+    service.commit = pin.commit
+    _git(repository, "update-ref", "refs/dex/installed", pin.commit)
+
+    entries = adapter.build_and_preview_delivered_release(repository, {})
+
+    assert len(entries) == 988
+    assert "System/.installed-files.manifest" in {entry.path for entry in entries}
+
+
+def test_runtime_self_omitting_manifest_adapter_refuses_an_extra_omission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pin = bridge.V162_SELF_OMITTING_MANIFEST_RELEASE
+    repository = _historic_checkout(tmp_path, pin)
+    manifest = repository / "System/.installed-files.manifest"
+    paths = manifest.read_text(encoding="utf-8").splitlines()
+    paths.remove("CLAUDE.md")
+    manifest.write_text("\n".join(paths) + "\n", encoding="utf-8")
+    _git(repository, "add", "--", "System/.installed-files.manifest")
+    _git(repository, "commit", "--quiet", "-m", "test extra manifest omission")
+    commit = _git(repository, "rev-parse", "HEAD^{commit}")
+    tree = _git(repository, "rev-parse", "HEAD^{tree}")
+    manifest_blob = _git(
+        repository,
+        "rev-parse",
+        "HEAD:System/.installed-files.manifest",
+    )
+    manifest_bytes = manifest.read_bytes()
+    mutated_pin = replace(
+        pin,
+        tag_object=commit,
+        tag_object_type="commit",
+        commit=commit,
+        tree=tree,
+    )
+    monkeypatch.setattr(bridge, "V162_SELF_OMITTING_MANIFEST_RELEASE", mutated_pin)
+    monkeypatch.setattr(bridge, "_V162_SELF_OMITTING_MANIFEST_BLOB", manifest_blob)
+    monkeypatch.setattr(
+        bridge,
+        "_V162_SELF_OMITTING_MANIFEST_SHA256",
+        hashlib.sha256(manifest_bytes).hexdigest(),
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_V162_SELF_OMITTING_MANIFEST_PATH_COUNT",
+        len(paths),
+    )
+    _git(repository, "update-ref", "refs/dex/installed", commit)
+    adapter, service = _delivery_adapter(tmp_path, repository)
+    service.commit = commit
+
+    with pytest.raises(
+        apply_update.ReleaseVerificationError,
+        match="self-omitting manifest identity changed",
+    ):
         adapter.build_and_preview_delivered_release(repository, {})
 
 

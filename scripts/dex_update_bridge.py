@@ -304,6 +304,22 @@ _V161_RETIRED_MANIFEST_BLOB = "feef2bb3dd6756c7c54d76bdfd6128904c87f679"
 _V161_RETIRED_MANIFEST_SHA256 = "edf6e98bc16063c47b362280cfa33fd10f075a5d240d5884d5ded5d894cbcc63"
 _V161_RETIRED_MANIFEST_PATH_COUNT = 768
 
+V162_SELF_OMITTING_MANIFEST_RELEASE = HistoricReleasePin(
+    "v1.62.0",
+    "4913a778452003fcf8dc71a10222d5275ff28d5c",
+    "tag",
+    "77c4a15a7884080e48b095c8de2c384d01a87883",
+    "1bf30a86c151890024040f0e4e1a533be17c5686",
+    "1.62.0",
+    "2d7f21a72798d4189f042e955e62ee799e90a90c",
+    "75bef63d563a7e5062db6ad664ccb65a7581dbfd3d466655d1b3709bbad7ffa5",
+)
+_V162_SELF_OMITTING_MANIFEST_BLOB = "eb3ac8f377abc98199eaf49c02b638fce5aad69f"
+_V162_SELF_OMITTING_MANIFEST_SHA256 = (
+    "29dd6a9eccd8d358eda08506ac7d6b574cca78c1dec09c64ad24dd0ec359161d"
+)
+_V162_SELF_OMITTING_MANIFEST_PATH_COUNT = 987
+
 V175_DEFECTIVE_MANIFEST_RELEASE = HistoricReleasePin(
     "v1.75.0",
     "5e73481519ee9b5fe9a6c3196ee7cabaa0446ee8",
@@ -578,15 +594,7 @@ MISSING_MIGRATOR_RELEASES = (
         _INPUT_B_V163_BOOTSTRAP,
     ),
     MissingMigratorPin(
-        _historic_pin(
-            "v1.62.0",
-            "4913a778452003fcf8dc71a10222d5275ff28d5c",
-            "77c4a15a7884080e48b095c8de2c384d01a87883",
-            "1bf30a86c151890024040f0e4e1a533be17c5686",
-            "1.62.0",
-            "2d7f21a72798d4189f042e955e62ee799e90a90c",
-            "75bef63d563a7e5062db6ad664ccb65a7581dbfd3d466655d1b3709bbad7ffa5",
-        ),
+        V162_SELF_OMITTING_MANIFEST_RELEASE,
         _INPUT_A_STALE_BOOTSTRAP,
     ),
     MissingMigratorPin(
@@ -726,6 +734,26 @@ def historic_compatibility_pins() -> dict[str, dict[str, object]]:
         "transition_blob": None,
         "migrator_blob": None,
         "omission_identities": tuple(sorted(_MANIFESTLESS_OMISSION_IDENTITIES)),
+        "unexpected_nonregular_paths": (),
+    }
+    self_omitting = V162_SELF_OMITTING_MANIFEST_RELEASE
+    pins[self_omitting.tag] = {
+        "kind": "self-omitting-manifest",
+        "role": "installed-source",
+        "tag": self_omitting.tag,
+        "tag_object": self_omitting.tag_object,
+        "commit": self_omitting.commit,
+        "tree": self_omitting.tree,
+        "version": self_omitting.version,
+        "package_blob": self_omitting.package_blob,
+        "package_sha256": self_omitting.package_sha256,
+        "manifest_blob": _V162_SELF_OMITTING_MANIFEST_BLOB,
+        "manifest_sha256": _V162_SELF_OMITTING_MANIFEST_SHA256,
+        "manifest_path_count": _V162_SELF_OMITTING_MANIFEST_PATH_COUNT,
+        "omitted_paths": ("System/.installed-files.manifest",),
+        "policy_blob": None,
+        "transition_blob": None,
+        "migrator_blob": None,
         "unexpected_nonregular_paths": (),
     }
     pins[V175_DEFECTIVE_MANIFEST_RELEASE.tag] = {
@@ -869,6 +897,7 @@ def _legacy_preload_bytes(
     """Build the closed preload for absent or exact defective legacy inputs."""
 
     policy = base64.b64encode(_LEGACY_TRACKED_IGNORE_POLICY).decode("ascii")
+    replace_legacy_policy = authorization is not None and authorization.inputs == _INPUT_A_STALE_BOOTSTRAP
     if authorization is None:
         allowed_pins = MISSING_MIGRATOR_RELEASES
         expected_package_version = None
@@ -933,6 +962,7 @@ const allowedExisting = new Set({allowed_existing}.map((values) => values.join('
 const expectedPackageVersion = {json.dumps(expected_package_version)};
 const expectedPackageDigest = {json.dumps(expected_package_sha256)};
 const expectedPackageState = {json.dumps(expected_package_state)};
+const replaceLegacyPolicy = {json.dumps(replace_legacy_policy)};
 const originalReadFileSync = fs.readFileSync.bind(fs);
 const originalReaddirSync = fs.readdirSync.bind(fs);
 
@@ -1036,7 +1066,10 @@ function compatibilityInputs() {{
   const virtualTransition = transitionJson.release_version === packageJson.version
     ? transitionBytes
     : legacyTransition();
-  return {{policy: policyBytes, transition: virtualTransition}};
+  return {{
+    policy: replaceLegacyPolicy ? suppliedPolicy : policyBytes,
+    transition: virtualTransition,
+  }};
 }}
 
 let hideShippedLink = false;
@@ -1219,21 +1252,36 @@ def _regular_sha256(path: Path) -> str | None:
 
 
 def _matches_historic_release(vault_root: Path, pin: HistoricReleasePin) -> bool:
-    """Prove an exact tagged base plus its unchanged working package."""
+    """Prove an exact historic base plus its unchanged working package."""
 
     root = Path(vault_root)
     try:
+        tag_object = _run_git(
+            root,
+            "for-each-ref",
+            "--format=%(objectname)",
+            f"refs/tags/{pin.tag}",
+        )
+        if tag_object:
+            if (
+                tag_object != pin.tag_object
+                or _run_git(root, "cat-file", "-t", pin.tag_object)
+                != pin.tag_object_type
+            ):
+                return False
+            identity = pin.tag
+        else:
+            # Historic installations can retain the exact pinned commit while
+            # their own old label is pruned. A present but different label is
+            # refused above; without one, the closed commit is the identity.
+            if _run_git(root, "cat-file", "-t", pin.commit) != "commit":
+                return False
+            identity = pin.commit
         if (
-            _run_git(
-                root,
-                "for-each-ref",
-                "--format=%(objectname)",
-                f"refs/tags/{pin.tag}",
-            )
-            != pin.tag_object
-            or _run_git(root, "cat-file", "-t", pin.tag_object) != pin.tag_object_type
-            or _run_git(root, "rev-parse", "--verify", f"{pin.tag}^{{commit}}") != pin.commit
-            or _run_git(root, "rev-parse", "--verify", f"{pin.tag}^{{tree}}") != pin.tree
+            _run_git(root, "rev-parse", "--verify", f"{identity}^{{commit}}")
+            != pin.commit
+            or _run_git(root, "rev-parse", "--verify", f"{identity}^{{tree}}")
+            != pin.tree
             or _run_git(
                 root,
                 "rev-parse",
@@ -1832,7 +1880,12 @@ class _FoundationLifecycleService:
                 if commit == V161_RETIRED_MANIFEST_RELEASE.commit
                 else None
             )
-            pin = manifestless or defective or retired_manifest
+            self_omitting = (
+                V162_SELF_OMITTING_MANIFEST_RELEASE
+                if commit == V162_SELF_OMITTING_MANIFEST_RELEASE.commit
+                else None
+            )
+            pin = manifestless or defective or retired_manifest or self_omitting
             if pin is None:
                 return original_tree_entries(vault_root, brain_git, commit)
             if _run_git(Path(brain_git), "rev-parse", "--verify", f"{commit}^{{tree}}") != pin.tree:
@@ -1867,6 +1920,29 @@ class _FoundationLifecycleService:
                         raise release_error("historic retired-manifest identity changed")
                 except BridgeError as error:
                     raise release_error("historic retired-manifest identity changed") from error
+            if self_omitting is not None:
+                try:
+                    if (
+                        _run_git(
+                            Path(brain_git),
+                            "rev-parse",
+                            "--verify",
+                            "refs/dex/installed^{commit}",
+                        )
+                        != self_omitting.commit
+                        or _run_git(
+                            Path(brain_git),
+                            "rev-parse",
+                            "--verify",
+                            f"{self_omitting.commit}:System/.installed-files.manifest",
+                        )
+                        != _V162_SELF_OMITTING_MANIFEST_BLOB
+                    ):
+                        raise release_error("historic self-omitting manifest identity changed")
+                except BridgeError as error:
+                    raise release_error(
+                        "historic self-omitting manifest identity changed"
+                    ) from error
             raw = self._apply_update._brain_output(
                 vault_root,
                 brain_git,
@@ -1990,6 +2066,38 @@ class _FoundationLifecycleService:
                 ):
                     raise release_error("historic retired-manifest identity changed")
             result = tuple(sorted(entries, key=lambda entry: entry.path))
+            if self_omitting is not None:
+                by_path = {entry.path: entry for entry in result}
+                manifest_entry = by_path.get("System/.installed-files.manifest")
+                if manifest_entry is None:
+                    raise release_error("historic self-omitting manifest identity changed")
+                manifest_bytes = self._apply_update._brain_output(
+                    vault_root,
+                    brain_git,
+                    "cat-file",
+                    "blob",
+                    manifest_entry.object_id,
+                )
+                try:
+                    manifest_text = manifest_bytes.decode("utf-8")
+                except UnicodeDecodeError as error:
+                    raise release_error(
+                        "historic self-omitting manifest identity changed"
+                    ) from error
+                manifest_paths = manifest_text.splitlines()
+                expected_paths = set(by_path) - {"System/.installed-files.manifest"}
+                if (
+                    len(result) != _V162_SELF_OMITTING_MANIFEST_PATH_COUNT + 1
+                    or manifest_entry.object_id != _V162_SELF_OMITTING_MANIFEST_BLOB
+                    or hashlib.sha256(manifest_bytes).hexdigest()
+                    != _V162_SELF_OMITTING_MANIFEST_SHA256
+                    or not manifest_text.endswith("\n")
+                    or "\r" in manifest_text
+                    or manifest_paths != sorted(set(manifest_paths))
+                    or len(manifest_paths) != _V162_SELF_OMITTING_MANIFEST_PATH_COUNT
+                    or set(manifest_paths) != expected_paths
+                ):
+                    raise release_error("historic self-omitting manifest identity changed")
             authorized_legacy_signatures[signature(result)] = (
                 pin.commit,
                 (
@@ -1997,6 +2105,8 @@ class _FoundationLifecycleService:
                     if manifestless is not None
                     else "retired-manifest"
                     if retired_manifest is not None
+                    else "self-omitting-manifest"
+                    if self_omitting is not None
                     else "incomplete-manifest"
                 ),
             )
@@ -2022,7 +2132,11 @@ class _FoundationLifecycleService:
             try:
                 original_verify_manifest(vault_root, brain_git, entries)
             except release_error:
-                if authorization[1] not in {"manifestless", "retired-manifest"}:
+                if authorization[1] not in {
+                    "manifestless",
+                    "retired-manifest",
+                    "self-omitting-manifest",
+                }:
                     raise
 
         self._apply_update._tree_entries = legacy_tree_entries
@@ -2056,7 +2170,20 @@ class _FoundationLifecycleService:
     def deliver_latest_release(
         self,
         vault_root: str | Path,
+        *,
+        remote_url: str | None = None,
+        allow_test_transport: bool = False,
     ) -> Mapping[str, Any]:
+        if remote_url is not None or allow_test_transport:
+            if remote_url is None or not allow_test_transport:
+                raise BridgeError(
+                    "test release transport requires an explicit local cache"
+                )
+            return self._apply_update.deliver_latest_release(
+                Path(vault_root),
+                remote_url=remote_url,
+                allow_test_transport=True,
+            )
         return self._service.deliver_latest_release(vault_root)
 
     def build_and_preview_delivered_release(

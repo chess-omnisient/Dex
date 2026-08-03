@@ -18,7 +18,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -121,6 +121,7 @@ TRUSTED_PYTHON_ROOTS = (Path("/opt/homebrew"),)
 MINIMUM_SUPPORTED_PYTHON = (3, 10)
 PROCESS_GROUP_TERMINATION_GRACE_SECONDS = 1.0
 FIXTURE_REQUIRED_PYTHON_DEPENDENCIES = ("mcp", "yaml")
+PRE_BRIDGE_REQUIRED_PYTHON_DEPENDENCIES = ("yaml",)
 SEALED_INSTALLER_ENVIRONMENT_KEYS = frozenset(
     {
         "HOME",
@@ -672,8 +673,13 @@ def resolve_trusted_python_runtime() -> PythonRuntime:
     raise FleetError("no trusted supported Python runtime is available: " + "; ".join(errors))
 
 
-def resolve_fixture_python(vault: Path, *, trusted_python: PythonRuntime) -> FixturePython:
-    """Prove Doctor's interpreter and dependencies belong to one real fixture venv."""
+def resolve_fixture_python(
+    vault: Path,
+    *,
+    trusted_python: PythonRuntime,
+    required_dependencies: Sequence[str] = FIXTURE_REQUIRED_PYTHON_DEPENDENCIES,
+) -> FixturePython:
+    """Prove a fixture interpreter and the phase-required dependencies are local."""
 
     venv_root = vault / ".venv"
     requested_python = venv_root / "bin" / "python"
@@ -739,7 +745,7 @@ def resolve_fixture_python(vault: Path, *, trusted_python: PythonRuntime) -> Fix
     if not isinstance(raw_dependencies, Mapping):
         raise FleetError("fixture venv dependency provenance was malformed")
     dependency_origins: list[tuple[str, str]] = []
-    for dependency in FIXTURE_REQUIRED_PYTHON_DEPENDENCIES:
+    for dependency in required_dependencies:
         origin = raw_dependencies.get(dependency)
         if not isinstance(origin, str) or not origin:
             raise FleetError(f"fixture venv dependency is unavailable: {dependency}")
@@ -2069,6 +2075,8 @@ def run_journey(
     follow_up_tag: str,
     bridge_asset: Path | None = None,
     bridge_checksum: Path | None = None,
+    controlled_approvals: bool = False,
+    follow_up_cache: Path | None = None,
 ) -> object:
     """Build one fixture and delegate the closed journey to its released executor."""
 
@@ -2095,6 +2103,19 @@ def run_journey(
         raise FleetError(f"follow-up released journey protocol is invalid: {error}") from error
     if protocol.foundation != foundation.identity():
         raise FleetError("released journey protocol names a different foundation")
+    approval_input: Callable[[str], str] | None = None
+    if controlled_approvals:
+        bridge_word = protocol.bridge.approval_word
+        follow_up_word = protocol.follow_up.approval_word
+        if bridge_word != follow_up_word:
+            raise FleetError("controlled fleet approvals require one exact protocol word")
+
+        def approve_disposable_fixture(prompt: str) -> str:
+            if not isinstance(prompt, str) or not prompt:
+                raise FleetError("controlled fleet approval prompt is invalid")
+            return bridge_word
+
+        approval_input = approve_disposable_fixture
     source_commit = _verify_released_protocol_artifacts(repo, follow_up, protocol)
     bridge_asset_evidence = _verify_standalone_bridge_asset(
         repo,
@@ -2152,7 +2173,11 @@ def run_journey(
             environment=environment,
             keep_official_fetch=True,
         )
-        resolve_fixture_python(case.vault, trusted_python=python_runtime)
+        resolve_fixture_python(
+            case.vault,
+            trusted_python=python_runtime,
+            required_dependencies=PRE_BRIDGE_REQUIRED_PYTHON_DEPENDENCIES,
+        )
         initial_install_evidence = _initial_install_evidence(case.vault, environment)
         from scripts import release_fleet_executor
 
@@ -2180,6 +2205,8 @@ def run_journey(
                 bridge_asset_evidence=bridge_asset_evidence,
                 bridge_asset_path=bridge_asset.resolve(strict=True),
                 initial_install_evidence=initial_install_evidence,
+                follow_up_cache=follow_up_cache,
+                **({"input_fn": approval_input} if approval_input is not None else {}),
             )
         finally:
             _disable_all_fixture_remotes(case.vault, environment)
@@ -2747,6 +2774,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     journey.add_argument("--follow-up-tag", required=True)
     journey.add_argument("--bridge-asset", type=Path, required=True)
     journey.add_argument("--bridge-checksum", type=Path, required=True)
+    journey.add_argument("--follow-up-cache", type=Path)
+    journey.add_argument(
+        "--controlled-approvals",
+        action="store_true",
+        help="approve only the disposable fixture used by a controlled fleet run",
+    )
     args = parser.parse_args(argv)
 
     if args.command == "manifest":
@@ -2785,6 +2818,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             follow_up_tag=args.follow_up_tag,
             bridge_asset=args.bridge_asset,
             bridge_checksum=args.bridge_checksum,
+            controlled_approvals=args.controlled_approvals,
+            follow_up_cache=args.follow_up_cache,
         )
         print(
             json.dumps(

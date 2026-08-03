@@ -45,6 +45,12 @@ def _legacy_identity(version: str, fill: str) -> dict[str, str]:
     return identity
 
 
+def _archive_identity(version: str, fill: str) -> dict[str, str]:
+    identity = _identity(version, fill)
+    identity["tag"] = identity["tag"].replace("dist/release/", "dist/archive/", 1)
+    return identity
+
+
 def _executor_source_commit(tmp_path: Path) -> tuple[Path, str]:
     repo = tmp_path / "source"
     repo.mkdir()
@@ -80,7 +86,9 @@ def _foundation_cache(
 ) -> tuple[Path, executor.dex_update_bridge.ReleasePin]:
     source = tmp_path / "foundation-source"
     source.mkdir(parents=True)
-    subprocess.run(["git", "init", "--quiet"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "init", "--quiet", "--initial-branch=main"], cwd=source, check=True
+    )
     subprocess.run(
         ["git", "config", "user.name", "Dex Tests"],
         cwd=source,
@@ -144,6 +152,17 @@ def _foundation_cache(
     return cache, pin
 
 
+def _follow_up_cache(
+    tmp_path: Path,
+) -> tuple[Path, executor.dex_update_bridge.ReleasePin]:
+    cache, pin = _foundation_cache(tmp_path)
+    subprocess.run(
+        ["git", "--git-dir", str(cache), "update-ref", "-d", "refs/heads/main"],
+        check=True,
+    )
+    return cache, pin
+
+
 def test_private_foundation_cache_preserves_exact_official_identity(
     tmp_path: Path,
 ) -> None:
@@ -190,6 +209,48 @@ def test_foundation_cache_rejects_wrong_channel_or_unsafe_permissions(
     cache.chmod(0o755)
     with pytest.raises(executor.ExecutorError, match="mode 0700"):
         executor._validate_foundation_cache(cache, pin)
+
+
+def test_private_follow_up_cache_is_exact_and_rejects_ref_tampering(
+    tmp_path: Path,
+) -> None:
+    cache, pin = _follow_up_cache(tmp_path)
+    release = pin.identity()
+
+    assert executor._validate_follow_up_cache(cache, release) == cache.resolve()
+
+    subprocess.run(
+        ["git", "--git-dir", str(cache), "update-ref", "-d", "refs/heads/release"],
+        check=True,
+    )
+    with pytest.raises(executor.ExecutorError, match="follow-up cache"):
+        executor._validate_follow_up_cache(cache, release)
+
+    cache, pin = _follow_up_cache(tmp_path / "extra-ref")
+    subprocess.run(
+        [
+            "git",
+            "--git-dir",
+            str(cache),
+            "update-ref",
+            "refs/heads/unreviewed",
+            pin.commit,
+        ],
+        check=True,
+    )
+    with pytest.raises(executor.ExecutorError, match="outside the requested"):
+        executor._validate_follow_up_cache(cache, pin.identity())
+
+    cache, pin = _follow_up_cache(tmp_path / "alternates")
+    alternates = cache / "objects/info/alternates"
+    alternates.write_text(str(tmp_path / "other-objects") + "\n", encoding="utf-8")
+    with pytest.raises(executor.ExecutorError, match="alternate object stores"):
+        executor._validate_follow_up_cache(cache, pin.identity())
+
+
+def test_production_authority_predicate_is_sealed_inside_executor_boundary() -> None:
+    assert not hasattr(executor, "_production_authority_intact")
+    assert "_production_authority_intact" not in executor.execute_journey.__code__.co_names
 
 
 def test_production_runtime_exposes_only_installed_qmd_not_ambient_path(
@@ -653,6 +714,7 @@ def _execute(
     source_commit: str,
     input_fn=lambda _prompt: "APPLY",
     starting: dict[str, str] | None = None,
+    follow_up_cache: Path | None = None,
 ) -> executor.ExecutorRun:
     protocol = load_update_journey_protocol(
         (REPO_ROOT / "core/update/journey-protocol-v1.json").read_bytes()
@@ -675,10 +737,66 @@ def _execute(
         bridge_asset_evidence=_bridge_asset_evidence(protocol, runtime.follow_up),
         bridge_asset_path=REPO_ROOT / protocol.bridge.artifact.source_path,
         initial_install_evidence={"topology": "legacy-monolithic", "brain_refs": []},
+        follow_up_cache=follow_up_cache,
         input_fn=input_fn,
         output_fn=lambda _line: None,
         _runtime=runtime,
     )
+
+
+def test_cache_backed_run_cannot_satisfy_formal_acceptance_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    protocol = load_update_journey_protocol(
+        (REPO_ROOT / "core/update/journey-protocol-v1.json").read_bytes()
+    )
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+    follow_up = _identity("1.81.8", "b")
+    monkeypatch.setattr(
+        executor,
+        "_production_authority_intact",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
+    run = _execute(
+        tmp_path,
+        _Runtime(follow_up),
+        source_repo=source_repo,
+        source_commit=source_commit,
+        follow_up_cache=tmp_path / "candidate-release.git",
+    )
+    report = release_fleet.AcceptanceReport(
+        foundation_tag=protocol.foundation["tag"],
+        follow_up_tag=follow_up["tag"],
+        cases=(release_fleet.CaseResult(**run.case),),
+        platforms=("darwin",),
+    )
+    foundation = release_fleet.ImmutableRelease(
+        tag=protocol.foundation["tag"],
+        tag_object=protocol.foundation["tag_object"],
+        commit=protocol.foundation["commit"],
+        tree=protocol.foundation["tree"],
+        version=protocol.foundation["version"],
+    )
+    target = release_fleet.ImmutableRelease(
+        tag=follow_up["tag"],
+        tag_object=follow_up["tag_object"],
+        commit=follow_up["commit"],
+        tree=follow_up["tree"],
+        version=follow_up["version"],
+    )
+
+    assert executor.is_authoritative_executor_run(run) is False
+    with pytest.raises(release_fleet.FleetError, match="executor authority"):
+        release_fleet.assert_evidence_bound(
+            report,
+            repo=tmp_path,
+            evidence_root=tmp_path / "case.evidence",
+            foundation=foundation,
+            follow_up=target,
+            executor_runs=(run,),
+        )
 
 
 def _bridge_asset_evidence(protocol, follow_up: dict[str, str]) -> dict[str, str]:
@@ -738,6 +856,25 @@ def test_executor_accepts_an_exact_legacy_starting_tag_without_widening_targets(
     assert executor.is_authoritative_executor_run(run) is False
 
 
+def test_executor_accepts_an_exact_archive_start_without_widening_targets(
+    tmp_path: Path,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+    runtime = _Runtime(_identity("1.81.0", "b"))
+    starting = _archive_identity("1.65.0", "a")
+
+    run = _execute(
+        tmp_path,
+        runtime,
+        source_repo=source_repo,
+        source_commit=source_commit,
+        starting=starting,
+    )
+
+    assert run.case["starting_tag"] == "dist/archive/v1.65.0-aaaaaaa"
+    assert executor.is_authoritative_executor_run(run) is False
+
+
 @pytest.mark.parametrize(
     "tag",
     (
@@ -745,6 +882,9 @@ def test_executor_accepts_an_exact_legacy_starting_tag_without_widening_targets(
         "v01.20.1",
         "v1.20",
         "legacy/v1.20.1",
+        "dist/archive/v1.20.1-not-a-commit",
+        "dist/archive/v1.20.1-aaaaaaaa",
+        "dist/archives/v1.20.1-aaaaaaa",
     ),
 )
 def test_executor_rejects_malformed_or_arbitrary_starting_refs(
@@ -861,6 +1001,33 @@ def test_executor_records_the_bridge_approval_count_that_actually_occurred(
     assert transcript["events"][2]["approvals"] == [
         {"prompt": "foundation approval", "answer": "APPLY"}
     ]
+
+
+def test_controlled_fleet_approval_still_rejects_excess_bridge_prompts(
+    tmp_path: Path,
+) -> None:
+    protocol = load_update_journey_protocol(
+        (REPO_ROOT / "core/update/journey-protocol-v1.json").read_bytes()
+    )
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+
+    class ExcessApprovalRuntime(_Runtime):
+        def bridge_to_foundation(
+            self, vault: Path, foundation, *, input_fn, output_fn
+        ):
+            del vault, foundation, output_fn
+            for index in range(protocol.bridge.approval_count + 1):
+                input_fn(f"controlled approval {index + 1}")
+            pytest.fail("the executor must reject an excess controlled approval")
+
+    with pytest.raises(executor.ExecutorError, match="approval was not exact"):
+        _execute(
+            tmp_path,
+            ExcessApprovalRuntime(_identity("1.81.0", "b")),
+            source_repo=source_repo,
+            source_commit=source_commit,
+            input_fn=lambda _prompt: protocol.bridge.approval_word,
+        )
 
 
 def test_already_installed_foundation_executes_and_validates_without_a_fake_transaction(
@@ -1064,17 +1231,28 @@ def test_production_runtime_refuses_undeclared_lifecycle_operation() -> None:
 
 
 @pytest.mark.parametrize(
-    ("foundation_installed", "use_cache", "expected_cleaned"),
-    ((False, False, [True]), (True, True, [])),
+    (
+        "foundation_installed",
+        "use_foundation_cache",
+        "use_follow_up_cache",
+        "expected_cleaned",
+    ),
+    (
+        (False, False, False, [True]),
+        (True, True, False, []),
+        (True, False, True, []),
+    ),
 )
 def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     foundation_installed: bool,
-    use_cache: bool,
+    use_foundation_cache: bool,
+    use_follow_up_cache: bool,
     expected_cleaned: list[bool],
 ) -> None:
     cleaned: list[bool] = []
+    delivery_arguments: list[dict[str, object]] = []
 
     class Temporary:
         def cleanup(self) -> None:
@@ -1082,7 +1260,11 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
 
     class Service:
         @staticmethod
-        def deliver_latest_release(vault: Path) -> dict[str, object]:
+        def deliver_latest_release(
+            vault: Path,
+            **kwargs: object,
+        ) -> dict[str, object]:
+            delivery_arguments.append(kwargs)
             return {"status": "delivered", "vault": str(vault)}
 
     def run_bridge(vault, service, *, pin, input_fn, output_fn):
@@ -1125,6 +1307,11 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
         "_load_released_bridge",
         lambda _asset, _digest: executor.dex_update_bridge,
     )
+    monkeypatch.setattr(
+        executor,
+        "_validate_follow_up_cache",
+        lambda cache, _release: cache.resolve(),
+    )
     request_stream = io.StringIO(
         "\n".join(
             (
@@ -1147,7 +1334,19 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
                 bridge_sha256=hashlib.sha256(
                     (REPO_ROOT / "scripts/dex_update_bridge.py").read_bytes()
                 ).hexdigest(),
-                foundation_cache=(tmp_path / "unused-cache" if use_cache else None),
+                foundation_cache=(
+                    tmp_path / "unused-cache"
+                    if use_foundation_cache
+                    else None
+                ),
+                follow_up_cache=(
+                    tmp_path / "candidate-release.git"
+                    if use_follow_up_cache
+                    else None
+                ),
+                follow_up_release=(
+                    _identity("1.81.8", "b") if use_follow_up_cache else None
+                ),
         )
         == 0
     )
@@ -1166,4 +1365,16 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
     assert messages[1]["text"] == "exact topology preview"
     assert messages[2]["prompt"] == "exact topology prompt"
     assert messages[4]["value"]["status"] == "delivered"
+    assert delivery_arguments == (
+        [
+            {
+                "remote_url": str(
+                    (tmp_path / "candidate-release.git").resolve()
+                ),
+                "allow_test_transport": True,
+            }
+        ]
+        if use_follow_up_cache
+        else [{}]
+    )
     assert cleaned == expected_cleaned
