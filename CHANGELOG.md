@@ -7,6 +7,8 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.12] — (2026-08-03)
+
 ## [1.81.11] — (2026-08-03)
 
 ## [1.81.10] — 🛡️ Fleet proof no longer spends GitHub's shared API allowance (2026-08-03)
