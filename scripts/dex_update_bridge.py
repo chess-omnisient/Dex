@@ -12,10 +12,12 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import hmac
 import importlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -125,6 +127,7 @@ LEGACY_TOPOLOGY_FOUNDATION = LegacyTopologyPin(
     tree="b781bb94e417b2873d057a5a417d8c666a360bca",
 )
 _LEGACY_V1201_PACKAGE_SHA256 = "d0f3908ba0f6268d23c182acc1b3ef5b7557b92791635ff315eb6e324529f7ec"
+_LEGACY_DORMANT_QMD_ENTRY = {"command": "qmd", "args": ["mcp"]}
 
 
 @dataclass(frozen=True)
@@ -1149,6 +1152,29 @@ class LifecycleService(Protocol):
     ) -> Mapping[str, Any]: ...
 
 
+def _optional_qmd_executable() -> Path | None:
+    """Return a real optional qmd command without trusting arbitrary locations."""
+
+    discovered = shutil.which("qmd")
+    candidates = (
+        Path(discovered) if discovered else None,
+        Path.home() / ".bun" / "bin" / "qmd",
+        Path.home() / ".local" / "bin" / "qmd",
+        Path("/usr/local/bin/qmd"),
+        Path("/opt/homebrew/bin/qmd"),
+    )
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            continue
+        if resolved.is_file() and os.access(resolved, os.X_OK):
+            return resolved
+    return None
+
+
 def _trusted_executable(name: str) -> Path | None:
     """Find a system-installed executable without consulting caller PATH."""
     for directory in _TRUSTED_EXECUTABLE_DIRECTORIES:
@@ -1501,6 +1527,40 @@ def _supported_legacy_topology(
     """Prove the exact legacy base allowed to borrow the foundation migrator."""
 
     return _legacy_topology_authorization(vault_root, pin) is not None
+
+
+def _archive_has_exact_v1201_origin(
+    vault_root: Path,
+    pin: LegacyTopologyPin = LEGACY_TOPOLOGY_FOUNDATION,
+) -> bool:
+    """Prove a completed split still originated at the exact v1.20.1 tree."""
+
+    archive = Path(vault_root) / ".dex" / "pre-split-archive.git"
+    if archive.is_symlink() or not archive.is_dir():
+        return False
+    try:
+        if (
+            _run_git(
+                archive,
+                "for-each-ref",
+                "--format=%(objectname)",
+                f"refs/tags/{pin.tag}",
+            )
+            != pin.tag_object
+            or _run_git(archive, "cat-file", "-t", pin.tag_object) != "tag"
+            or _run_git(archive, "rev-parse", "--verify", f"{pin.tag}^{{commit}}")
+            != pin.commit
+            or _run_git(archive, "rev-parse", "--verify", f"{pin.tag}^{{tree}}")
+            != pin.tree
+        ):
+            return False
+        head = _run_git(archive, "rev-parse", "--verify", "HEAD^{commit}")
+        if _HEX.fullmatch(head) is None:
+            return False
+        _run_git(archive, "merge-base", "--is-ancestor", pin.commit, head)
+    except BridgeError:
+        return False
+    return True
 
 
 def acquire_foundation_source(pin: ReleasePin = FOUNDATION) -> tuple[tempfile.TemporaryDirectory[str], Path]:
@@ -2210,10 +2270,124 @@ class _FoundationLifecycleService:
                 approved_token,
             )
 
+    def _v1201_origin_is_proven(self, vault_root: Path) -> bool:
+        root = Path(vault_root).resolve()
+        authorization = _legacy_topology_authorization(root)
+        return (
+            authorization is not None
+            and authorization.release == LEGACY_TOPOLOGY_FOUNDATION
+        ) or _archive_has_exact_v1201_origin(root)
+
+    def _compatibility_mcp_registration(
+        self,
+        vault_root: Path,
+    ) -> tuple[Mapping[str, Any], list[Any]] | None:
+        """Build one exact approved transaction for v1.20.1's dormant qmd entry."""
+
+        root = Path(vault_root).resolve()
+        if not self._v1201_origin_is_proven(root) or _optional_qmd_executable() is not None:
+            return None
+        target = root / ".mcp.json"
+        if target.is_symlink() or not target.is_file():
+            return None
+        try:
+            current = target.read_bytes()
+            existing = json.loads(current.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        if not isinstance(existing, dict):
+            return None
+        servers = existing.get("mcpServers")
+        if (
+            not isinstance(servers, dict)
+            or servers.get("qmd") != _LEGACY_DORMANT_QMD_ENTRY
+        ):
+            return None
+
+        required = (
+            "_mcp_registration_preview",
+            "_transaction_preview_document",
+            "_preview_transaction",
+            "_execute_approved_transaction",
+            "_canonical",
+            "_envelope",
+            "PlanEntry",
+        )
+        if any(getattr(self._service, name, None) is None for name in required):
+            raise BridgeError(
+                "pinned foundation MCP compatibility transaction API is incomplete"
+            )
+        normal_preview, normal_plan = self._service._mcp_registration_preview(root)
+        if normal_preview is None:
+            updated = dict(existing)
+            action = "remove-dormant-qmd"
+        else:
+            if len(normal_plan) != 1 or normal_plan[0].content is None:
+                raise BridgeError("pinned foundation MCP registration plan is malformed")
+            try:
+                updated = json.loads(normal_plan[0].content.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise BridgeError(
+                    "pinned foundation MCP registration plan is malformed"
+                ) from error
+            action = "add-current-and-remove-dormant-qmd"
+        updated_servers = updated.get("mcpServers")
+        if (
+            not isinstance(updated_servers, dict)
+            or updated_servers.get("qmd") != _LEGACY_DORMANT_QMD_ENTRY
+        ):
+            raise BridgeError("dormant qmd registration changed during preview")
+        updated_servers = dict(updated_servers)
+        del updated_servers["qmd"]
+        updated = dict(updated)
+        updated["mcpServers"] = updated_servers
+        content = (json.dumps(updated, indent=2, ensure_ascii=False) + "\n").encode(
+            "utf-8"
+        )
+        plan = [
+            self._service.PlanEntry(
+                ".mcp.json",
+                content,
+                mode=target.stat().st_mode & 0o777,
+                expected_current_sha256=hashlib.sha256(current).hexdigest(),
+            )
+        ]
+        transaction = self._service._transaction_preview_document(
+            root,
+            plan,
+            purpose="mcp-registration",
+            operation="mcp-registration",
+        )
+        preview = {
+            "registration": {
+                "config_path": ".mcp.json",
+                "server_name": "customization-migration-mcp",
+                "action": action,
+            },
+            "compatibility": {
+                "server_name": "qmd",
+                "action": "remove-dormant-legacy-registration",
+            },
+            "writes": transaction["writes"],
+        }
+        return (
+            self._service._envelope(
+                needed=True,
+                preview=preview,
+                approval_token=hashlib.sha256(
+                    self._service._canonical(preview)
+                ).hexdigest(),
+            ),
+            plan,
+        )
+
     def build_and_preview_mcp_registration(
         self,
         vault_root: str | Path,
     ) -> Mapping[str, Any]:
+        compatibility = self._compatibility_mcp_registration(Path(vault_root))
+        if compatibility is not None:
+            return compatibility[0]
         return self._service.build_and_preview_mcp_registration(vault_root)
 
     def execute_approved_mcp_registration(
@@ -2222,6 +2396,41 @@ class _FoundationLifecycleService:
         preview: Mapping[str, Any],
         approved_token: str,
     ) -> Mapping[str, Any]:
+        compatibility = self._compatibility_mcp_registration(Path(vault_root))
+        if compatibility is not None:
+            expected, plan = compatibility
+            expected_preview = expected.get("preview")
+            expected_token = expected.get("approval_token")
+            try:
+                supplied = self._service._canonical(dict(preview))
+                canonical_expected = self._service._canonical(expected_preview)
+            except (TypeError, ValueError) as error:
+                raise BridgeError(
+                    "legacy MCP compatibility preview is not canonical JSON"
+                ) from error
+            if (
+                not isinstance(approved_token, str)
+                or not isinstance(expected_token, str)
+                or not hmac.compare_digest(supplied, canonical_expected)
+                or not hmac.compare_digest(approved_token, expected_token)
+            ):
+                raise BridgeError(
+                    "legacy MCP compatibility approval does not match the current exact preview"
+                )
+            transaction = self._service._preview_transaction(
+                vault_root,
+                plan,
+                purpose="mcp-registration",
+                operation="mcp-registration",
+            )
+            executed = self._service._execute_approved_transaction(
+                vault_root,
+                plan,
+                purpose="mcp-registration",
+                operation="mcp-registration",
+                approved_token=str(transaction["approval_token"]),
+            )
+            return self._service._envelope(receipt=executed["receipt"])
         return self._service.execute_approved_mcp_registration(
             vault_root,
             preview,
@@ -2416,8 +2625,18 @@ def _complete_mcp_registration(
         Mapping,
     ):
         raise BridgeError("foundation could not produce an MCP registration preview")
+    compatibility = registration_preview.get("compatibility")
+    prompt = (
+        "Dex will remove the dormant optional qmd entry left by v1.20.1 while keeping the current customization migration server registered."
+        if compatibility
+        == {
+            "server_name": "qmd",
+            "action": "remove-dormant-legacy-registration",
+        }
+        else "Dex will add the current customization migration server to your MCP configuration."
+    )
     registration_preview, registration_token = _approved_preview(
-        "Dex will add the current customization migration server to your MCP configuration.",
+        prompt,
         registration_preview,
         registration.get("approval_token"),
         input_fn=input_fn,

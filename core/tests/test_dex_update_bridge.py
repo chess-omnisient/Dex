@@ -13,6 +13,7 @@ from types import ModuleType
 
 import pytest
 
+from core.lifecycle import service as lifecycle_service
 from scripts import dex_update_bridge as bridge
 
 
@@ -258,6 +259,211 @@ def test_legacy_topology_pin_is_closed_to_exact_v1201_release() -> None:
         commit="9e6f35d3282cb354008a4e7372b1cdb1d469ad3d",
         tree="b781bb94e417b2873d057a5a417d8c666a360bca",
     )
+
+
+def test_completed_split_proves_v1201_only_from_exact_archive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _vault(tmp_path)
+    archive = vault / ".dex" / "pre-split-archive.git"
+    archive.mkdir()
+    pin = bridge.LEGACY_TOPOLOGY_FOUNDATION
+    head = "f" * 40
+    values = {
+        (
+            "for-each-ref",
+            "--format=%(objectname)",
+            f"refs/tags/{pin.tag}",
+        ): pin.tag_object,
+        ("cat-file", "-t", pin.tag_object): "tag",
+        ("rev-parse", "--verify", f"{pin.tag}^{{commit}}"): pin.commit,
+        ("rev-parse", "--verify", f"{pin.tag}^{{tree}}"): pin.tree,
+        ("rev-parse", "--verify", "HEAD^{commit}"): head,
+        ("merge-base", "--is-ancestor", pin.commit, head): "",
+    }
+    monkeypatch.setattr(
+        bridge,
+        "_run_git",
+        lambda root, *arguments: (
+            values[arguments]
+            if root == archive
+            else pytest.fail("only the verified archive may be inspected")
+        ),
+    )
+
+    assert bridge._archive_has_exact_v1201_origin(vault) is True
+
+    values[("rev-parse", "--verify", f"{pin.tag}^{{tree}}")] = "0" * 40
+    assert bridge._archive_has_exact_v1201_origin(vault) is False
+
+
+def test_exact_v1201_bridge_reconciles_dormant_qmd_in_approved_mcp_transaction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    adapter._service = lifecycle_service
+    subprocess.run(["git", "init", "--quiet"], cwd=vault, check=True)
+    subprocess.run(["git", "config", "user.name", "Dex Tests"], cwd=vault, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "tests@example.com"],
+        cwd=vault,
+        check=True,
+    )
+    original = {
+        "mcpServers": {
+            "qmd": {"command": "qmd", "args": ["mcp"]},
+            "user-server": {
+                "type": "http",
+                "url": "https://example.com/mcp",
+            },
+        },
+        "userSetting": {"preserve": True},
+    }
+    (vault / ".mcp.json").write_text(
+        json.dumps(original, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", ".mcp.json"], cwd=vault, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "legacy MCP config"],
+        cwd=vault,
+        check=True,
+    )
+    monkeypatch.setattr(
+        adapter,
+        "_v1201_origin_is_proven",
+        lambda _root: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_optional_qmd_executable",
+        lambda: None,
+        raising=False,
+    )
+
+    registration = adapter.build_and_preview_mcp_registration(vault)
+
+    assert registration["needed"] is True
+    assert registration["preview"]["registration"]["action"] == (
+        "add-current-and-remove-dormant-qmd"
+    )
+    assert registration["preview"]["compatibility"] == {
+        "action": "remove-dormant-legacy-registration",
+        "server_name": "qmd",
+    }
+    receipt = adapter.execute_approved_mcp_registration(
+        vault,
+        registration["preview"],
+        registration["approval_token"],
+    )
+    assert receipt["receipt"]["purpose"] == "mcp-registration"
+    updated = json.loads((vault / ".mcp.json").read_text(encoding="utf-8"))
+    assert "qmd" not in updated["mcpServers"]
+    assert "customization-migration-mcp" in updated["mcpServers"]
+    assert updated["mcpServers"]["user-server"] == original["mcpServers"]["user-server"]
+    assert updated["userSetting"] == original["userSetting"]
+
+
+def test_v1201_bridge_keeps_changed_qmd_registration_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    adapter._service = lifecycle_service
+    subprocess.run(["git", "init", "--quiet"], cwd=vault, check=True)
+    subprocess.run(["git", "config", "user.name", "Dex Tests"], cwd=vault, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "tests@example.com"],
+        cwd=vault,
+        check=True,
+    )
+    changed_qmd = {"command": "qmd", "args": ["serve", "--changed"]}
+    (vault / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"qmd": changed_qmd}}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", ".mcp.json"], cwd=vault, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "changed MCP config"],
+        cwd=vault,
+        check=True,
+    )
+    monkeypatch.setattr(
+        adapter,
+        "_v1201_origin_is_proven",
+        lambda _root: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_optional_qmd_executable",
+        lambda: None,
+        raising=False,
+    )
+
+    registration = adapter.build_and_preview_mcp_registration(vault)
+    assert registration["preview"]["registration"]["action"] == "add-only"
+    assert "compatibility" not in registration["preview"]
+
+    adapter.execute_approved_mcp_registration(
+        vault,
+        registration["preview"],
+        registration["approval_token"],
+    )
+    updated = json.loads((vault / ".mcp.json").read_text(encoding="utf-8"))
+    assert updated["mcpServers"]["qmd"] == changed_qmd
+
+
+def test_v1201_bridge_preserves_exact_qmd_registration_when_qmd_is_installed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    adapter._service = lifecycle_service
+    subprocess.run(["git", "init", "--quiet"], cwd=vault, check=True)
+    subprocess.run(["git", "config", "user.name", "Dex Tests"], cwd=vault, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "tests@example.com"],
+        cwd=vault,
+        check=True,
+    )
+    qmd = tmp_path / "bin" / "qmd"
+    qmd.parent.mkdir()
+    qmd.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    qmd.chmod(0o755)
+    exact_qmd = {"command": "qmd", "args": ["mcp"]}
+    (vault / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"qmd": exact_qmd}}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", ".mcp.json"], cwd=vault, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "working qmd config"],
+        cwd=vault,
+        check=True,
+    )
+    monkeypatch.setattr(
+        adapter,
+        "_v1201_origin_is_proven",
+        lambda _root: True,
+        raising=False,
+    )
+    monkeypatch.setattr(bridge, "_optional_qmd_executable", lambda: qmd)
+
+    registration = adapter.build_and_preview_mcp_registration(vault)
+    assert registration["preview"]["registration"]["action"] == "add-only"
+    assert "compatibility" not in registration["preview"]
+
+    adapter.execute_approved_mcp_registration(
+        vault,
+        registration["preview"],
+        registration["approval_token"],
+    )
+    updated = json.loads((vault / ".mcp.json").read_text(encoding="utf-8"))
+    assert updated["mcpServers"]["qmd"] == exact_qmd
 
 
 def test_legacy_topology_requires_exact_tag_commit_tree_and_current_ancestry(
