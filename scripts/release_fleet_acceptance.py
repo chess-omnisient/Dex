@@ -38,12 +38,12 @@ FIRST_PARTY_PLATFORM_JOBS = {
     "darwin": "historic-fleet-darwin",
 }
 MAX_PLATFORM_MANIFEST_BYTES = 16 * 1024 * 1024
-MAX_PUBLIC_RELEASE_METADATA_BYTES = 1024 * 1024
 MAX_PUBLIC_RELEASE_ASSET_BYTES = 16 * 1024 * 1024
 PLATFORM_MANIFEST_NAME = "platform-manifest.json"
 PLATFORM_RECEIPT_NAME = "platform-receipt.json"
 CANONICAL_PUBLIC_REMOTE = "https://github.com/davekilleen/Dex.git"
-CANONICAL_PUBLIC_RELEASE_API = "https://api.github.com/repos/davekilleen/Dex/releases/tags/v{version}"
+CANONICAL_PUBLIC_LATEST_RELEASE = "https://github.com/davekilleen/Dex/releases/latest"
+CANONICAL_PUBLIC_RELEASE_PAGE = "https://github.com/davekilleen/Dex/releases/tag/v{version}"
 CANONICAL_PUBLIC_RELEASE_DOWNLOAD = (
     "https://github.com/davekilleen/Dex/releases/download/v{version}/{name}"
 )
@@ -1015,6 +1015,57 @@ def _verify_public_follow_up_release(release: release_fleet.ImmutableRelease) ->
         )
 
 
+class _ExactStableReleaseRedirect(urllib.request.HTTPRedirectHandler):
+    """Allow exactly one canonical redirect to the expected stable tag page."""
+
+    def __init__(self, expected_url: str) -> None:
+        super().__init__()
+        self.expected_url = expected_url
+        self.redirects: list[str] = []
+
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        if (
+            request.full_url != CANONICAL_PUBLIC_LATEST_RELEASE
+            or self.redirects
+            or new_url != self.expected_url
+        ):
+            raise release_fleet.FleetError(
+                "follow-up is not the latest public stable GitHub release"
+            )
+        self.redirects.append(new_url)
+        return super().redirect_request(
+            request,
+            file_pointer,
+            code,
+            message,
+            headers,
+            new_url,
+        )
+
+
+def _verify_public_stable_release(release: release_fleet.ImmutableRelease) -> None:
+    """Prove the public latest-stable route resolves to this exact release."""
+
+    expected_url = CANONICAL_PUBLIC_RELEASE_PAGE.format(version=release.version)
+    redirect_handler = _ExactStableReleaseRedirect(expected_url)
+    opener = urllib.request.build_opener(redirect_handler)
+    request = urllib.request.Request(
+        CANONICAL_PUBLIC_LATEST_RELEASE,
+        headers={"User-Agent": "dex-release-fleet-acceptance"},
+    )
+    try:
+        with opener.open(request, timeout=30) as response:
+            final_url = response.geturl()
+            status = response.getcode()
+    except (OSError, urllib.error.URLError) as error:
+        raise release_fleet.FleetError("public stable GitHub release is unavailable") from error
+
+    if redirect_handler.redirects != [expected_url] or final_url != expected_url or status != 200:
+        raise release_fleet.FleetError(
+            "follow-up is not the latest public stable GitHub release"
+        )
+
+
 def _verify_public_bridge_release_asset(
     release: release_fleet.ImmutableRelease,
     *,
@@ -1023,22 +1074,7 @@ def _verify_public_bridge_release_asset(
 ) -> None:
     """Require the submitted pair to be byte-identical public stable release assets."""
 
-    metadata_bytes = _read_public_bytes(
-        CANONICAL_PUBLIC_RELEASE_API.format(version=release.version),
-        limit=MAX_PUBLIC_RELEASE_METADATA_BYTES,
-        context="stable GitHub release metadata",
-    )
-    try:
-        metadata = json.loads(metadata_bytes)
-    except json.JSONDecodeError as error:
-        raise release_fleet.FleetError("public stable GitHub release metadata is invalid") from error
-    if (
-        not isinstance(metadata, Mapping)
-        or metadata.get("tag_name") != f"v{release.version}"
-        or metadata.get("draft") is not False
-        or metadata.get("prerelease") is not False
-    ):
-        raise release_fleet.FleetError("follow-up is not a public stable GitHub release")
+    _verify_public_stable_release(release)
 
     for path in (bridge_asset, bridge_checksum):
         public_bytes = _read_public_bytes(

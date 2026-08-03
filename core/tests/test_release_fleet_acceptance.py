@@ -8,6 +8,7 @@ import inspect
 import json
 import stat
 import subprocess
+import urllib.error
 from dataclasses import fields
 from pathlib import Path
 from types import SimpleNamespace
@@ -1245,20 +1246,19 @@ def test_public_bridge_assets_must_match_the_public_stable_release_bytes(
     acceptance = _acceptance()
     release = _immutable_follow_up()
     bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
-    public_metadata = {"tag_name": "v1.81.1", "draft": False, "prerelease": False}
     public_assets = {
         bridge_asset.name: bridge_asset.read_bytes(),
         bridge_checksum.name: bridge_checksum.read_bytes(),
     }
+    stable_releases: list[release_fleet.ImmutableRelease] = []
 
     def public_bytes(url: str, **_kwargs) -> bytes:
-        if url == acceptance.CANONICAL_PUBLIC_RELEASE_API.format(version=release.version):
-            return json.dumps(public_metadata).encode("utf-8")
         for name, content in public_assets.items():
             if url.endswith(name):
                 return content
         pytest.fail(f"unexpected public URL: {url}")
 
+    monkeypatch.setattr(acceptance, "_verify_public_stable_release", stable_releases.append)
     monkeypatch.setattr(acceptance, "_read_public_bytes", public_bytes)
     acceptance._verify_public_bridge_release_asset(
         release,
@@ -1266,6 +1266,7 @@ def test_public_bridge_assets_must_match_the_public_stable_release_bytes(
         bridge_checksum=bridge_checksum,
     )
 
+    assert stable_releases == [release]
     bridge_asset.write_bytes(b"tampered controller copy\n")
     with pytest.raises(release_fleet.FleetError, match="public GitHub release"):
         acceptance._verify_public_bridge_release_asset(
@@ -1274,23 +1275,225 @@ def test_public_bridge_assets_must_match_the_public_stable_release_bytes(
             bridge_checksum=bridge_checksum,
         )
 
-    bridge_asset.write_bytes(public_assets[bridge_asset.name])
-    public_metadata["draft"] = True
-    with pytest.raises(release_fleet.FleetError, match="public stable GitHub release"):
-        acceptance._verify_public_bridge_release_asset(
-            release,
-            bridge_asset=bridge_asset,
-            bridge_checksum=bridge_checksum,
-        )
 
-    public_metadata["draft"] = False
-    public_metadata["prerelease"] = True
-    with pytest.raises(release_fleet.FleetError, match="public stable GitHub release"):
-        acceptance._verify_public_bridge_release_asset(
-            release,
-            bridge_asset=bridge_asset,
-            bridge_checksum=bridge_checksum,
+
+def test_public_stable_release_requires_the_exact_latest_redirect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    acceptance = _acceptance()
+    release = _immutable_follow_up()
+
+    class PublicResponse:
+        def __init__(self, final_url: str, status: int = 200) -> None:
+            self._final_url = final_url
+            self._status = status
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def geturl(self) -> str:
+            return self._final_url
+
+        def getcode(self) -> int:
+            return self._status
+
+    class PublicOpener:
+        def __init__(
+            self,
+            handler,
+            *,
+            redirects: tuple[str, ...],
+            final_url: str,
+            status: int = 200,
+        ) -> None:
+            self._handler = handler
+            self._redirects = redirects
+            self._final_url = final_url
+            self._status = status
+
+        def open(self, request, **_kwargs):
+            current = request
+            for redirect in self._redirects:
+                current = self._handler.redirect_request(
+                    current,
+                    None,
+                    302,
+                    "Found",
+                    {},
+                    redirect,
+                )
+            return PublicResponse(self._final_url, self._status)
+
+    expected = acceptance.CANONICAL_PUBLIC_RELEASE_PAGE.format(version=release.version)
+    monkeypatch.setattr(
+        acceptance.urllib.request,
+        "build_opener",
+        lambda handler: PublicOpener(handler, redirects=(expected,), final_url=expected),
+    )
+    acceptance._verify_public_stable_release(release)
+
+    hostile_urls = (
+        acceptance.CANONICAL_PUBLIC_LATEST_RELEASE,
+        acceptance.CANONICAL_PUBLIC_RELEASE_PAGE.format(version="1.81.0"),
+        f"https://example.com/davekilleen/Dex/releases/tag/v{release.version}",
+        f"http://github.com/davekilleen/Dex/releases/tag/v{release.version}",
+        f"https://github.com:443/davekilleen/Dex/releases/tag/v{release.version}",
+        f"https://user:@github.com/davekilleen/Dex/releases/tag/v{release.version}",
+        f"https://github.com/DaveKilleen/Dex/releases/tag/v{release.version}",
+        f"https://github.com/davekilleen/dex/releases/tag/v{release.version}",
+        f"https://github.com/davekilleen/Dex/releases/tag/v{release.version}/",
+        f"https://github.com/davekilleen/Dex/releases/tag/v{release.version}?stable=true",
+        f"https://github.com/davekilleen/Dex/releases/tag/v{release.version}#release",
+        "https://github.com/davekilleen/Dex/releases/tag/v%31.81.1",
+        f"https://github.com/davekilleen/Dex/releases/tag/prefix-v{release.version}",
+        f"https://github.com/davekilleen/Dex/releases/tag/v{release.version}-suffix",
+        f"https://github.com/davekilleen/Dex/other/tag/v{release.version}",
+    )
+    for hostile_url in hostile_urls:
+        monkeypatch.setattr(
+            acceptance.urllib.request,
+            "build_opener",
+            lambda handler, _url=hostile_url: PublicOpener(
+                handler,
+                redirects=(_url,),
+                final_url=_url,
+            ),
         )
+        with pytest.raises(release_fleet.FleetError, match="latest public stable"):
+            acceptance._verify_public_stable_release(release)
+
+    monkeypatch.setattr(
+        acceptance.urllib.request,
+        "build_opener",
+        lambda handler: PublicOpener(handler, redirects=(), final_url=expected),
+    )
+    with pytest.raises(release_fleet.FleetError, match="latest public stable"):
+        acceptance._verify_public_stable_release(release)
+
+    monkeypatch.setattr(
+        acceptance.urllib.request,
+        "build_opener",
+        lambda handler: PublicOpener(
+            handler,
+            redirects=(expected, expected),
+            final_url=expected,
+        ),
+    )
+    with pytest.raises(release_fleet.FleetError, match="latest public stable"):
+        acceptance._verify_public_stable_release(release)
+
+    monkeypatch.setattr(
+        acceptance.urllib.request,
+        "build_opener",
+        lambda handler: PublicOpener(
+            handler,
+            redirects=(expected,),
+            final_url=expected,
+            status=204,
+        ),
+    )
+    with pytest.raises(release_fleet.FleetError, match="latest public stable"):
+        acceptance._verify_public_stable_release(release)
+
+    class UnavailableOpener:
+        def open(self, request, **_kwargs):
+            raise urllib.error.HTTPError(
+                request.full_url,
+                403,
+                "forbidden",
+                {},
+                None,
+            )
+
+    monkeypatch.setattr(
+        acceptance.urllib.request,
+        "build_opener",
+        lambda _handler: UnavailableOpener(),
+        )
+    with pytest.raises(release_fleet.FleetError, match="public stable GitHub release is unavailable"):
+        acceptance._verify_public_stable_release(release)
+
+
+def test_public_bridge_verification_does_not_depend_on_rate_limited_release_api(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    acceptance = _acceptance()
+    release = _immutable_follow_up()
+    bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
+    public_assets = {
+        bridge_asset.name: bridge_asset.read_bytes(),
+        bridge_checksum.name: bridge_checksum.read_bytes(),
+    }
+    calls: list[str] = []
+
+    class PublicResponse:
+        def __init__(self, *, url: str, content: bytes = b"") -> None:
+            self._url = url
+            self._content = content
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def geturl(self) -> str:
+            return self._url
+
+        def getcode(self) -> int:
+            return 200
+
+        def read(self, _limit: int) -> bytes:
+            return self._content
+
+    def public_urlopen(request, **_kwargs):
+        url = request.full_url
+        calls.append(url)
+        if url.startswith("https://api.github.com/"):
+            raise urllib.error.HTTPError(url, 403, "rate limit exceeded", {}, None)
+        if url == acceptance.CANONICAL_PUBLIC_LATEST_RELEASE:
+            return PublicResponse(
+                url=f"https://github.com/davekilleen/Dex/releases/tag/v{release.version}"
+            )
+        for name, content in public_assets.items():
+            if url.endswith(name):
+                return PublicResponse(url=url, content=content)
+        pytest.fail(f"unexpected public URL: {url}")
+
+    class PublicOpener:
+        def __init__(self, handler) -> None:
+            self._handler = handler
+
+        def open(self, request, **_kwargs):
+            calls.append(request.full_url)
+            expected = acceptance.CANONICAL_PUBLIC_RELEASE_PAGE.format(version=release.version)
+            self._handler.redirect_request(
+                request,
+                None,
+                302,
+                "Found",
+                {},
+                expected,
+            )
+            return PublicResponse(url=expected)
+
+    monkeypatch.setattr(
+        acceptance.urllib.request,
+        "build_opener",
+        lambda handler: PublicOpener(handler),
+    )
+    monkeypatch.setattr(acceptance.urllib.request, "urlopen", public_urlopen)
+    acceptance._verify_public_bridge_release_asset(
+        release,
+        bridge_asset=bridge_asset,
+        bridge_checksum=bridge_checksum,
+    )
+
+    assert not any(url.startswith("https://api.github.com/") for url in calls)
 
 
 def test_platform_cli_preverifies_and_passes_the_bridge_pair_to_every_journey(
