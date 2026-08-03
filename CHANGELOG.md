@@ -7,6 +7,26 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.8] — 🧭 Historic Mac installs enter a verified update route (2026-08-03)
+
+The historic updater sweep found real published Mac installs whose trustworthy
+release shapes predated today's metadata. Dex correctly stopped rather than
+guessing, but those known installs still needed an exact route into the protected
+two-step updater and a real Mac gate to prove it.
+
+**What this fixes for you:**
+
+* **Known historic releases are recognised by their exact identities.** Dex can
+  accept the verified v1.51, v1.61, v1.62, and archived v1.65 shapes used by the
+  release fleet, while unfamiliar or altered installs still stop safely.
+* **Each update hop is exercised on a real Mac.** The release gate runs the
+  foundation and follow-up updates, checks Doctor and smoke health, and confirms
+  protected personal-file hashes did not change.
+* **Fleet acceptance is counted from public history, never assumed.** The formal
+  controller freshly derives every immutable starting case, retains evidence,
+  and stops on failure. This release enables that public run; it does not claim
+  the full fleet has passed before those journeys complete.
+
 ## [1.81.7] — 🛟 Stranded older installs can obtain the update bridge (2026-08-01)
 
 Jim's clean 1.79.0 package correctly detected the newest release, but its private

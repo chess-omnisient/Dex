@@ -598,6 +598,7 @@
 .github/dependabot.yml
 .github/pull_request_template.md
 .github/workflows/ci.yml
+.github/workflows/historic-fleet-darwin.yml
 .github/workflows/nightly-quality.yml
 .github/workflows/release.yml
 .gitignore
@@ -1043,6 +1044,7 @@ core/tests/test_health_page_scripts.py
 core/tests/test_health_telemetry.py
 core/tests/test_health_telemetry_consent_ux.py
 core/tests/test_health_telemetry_privacy.py
+core/tests/test_historic_fleet_darwin_workflow.py
 core/tests/test_history_hygiene.py
 core/tests/test_initiative_kickoff_skill.py
 core/tests/test_install_adoption_python.py
@@ -1292,6 +1294,7 @@ scripts/release_fleet_acceptance.py
 scripts/release_fleet_executor.py
 scripts/render-health-page.py
 scripts/resolve-distignore-files.sh
+scripts/run-historic-fleet-darwin.sh
 scripts/security-allowlist.txt
 scripts/security-gate.sh
 scripts/security-scan.py
