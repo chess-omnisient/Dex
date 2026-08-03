@@ -801,7 +801,7 @@ def test_raw_vault_bundle_rejects_dirty_protocol_inputs_not_in_source_commit(
     assert not sentinel.exists()
 
 
-def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -> None:
+def test_release_script_synchronizes_all_bumped_version_metadata(tmp_path: Path) -> None:
     clone = _clone_repo(tmp_path, "release-script-profile")
     _sync_release_inputs(clone)
     for relative_path in (
@@ -837,6 +837,7 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
     )
 
     package = _git_json(clone, "HEAD:package.json")
+    package_lock = _git_json(clone, "HEAD:package-lock.json")
     profile = _git_json(clone, "HEAD:System/.release-evidence-profile.json")
     transition = _git_json(clone, "HEAD:System/.local-only-preservation-transition.json")
     changelog = subprocess.run(
@@ -854,6 +855,8 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
         text=True,
     ).stdout
     assert package["version"] == bumped
+    assert package_lock["version"] == bumped
+    assert package_lock["packages"][""]["version"] == bumped
     assert profile == {"profile": "legacy-v1", "release_version": bumped, "schema_version": 1}
     assert transition == {
         "schema_version": 2,
