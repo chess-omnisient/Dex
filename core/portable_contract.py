@@ -311,7 +311,10 @@ RULES: tuple[Rule, ...] = (
     _r("vault-credentials", "System/credentials", "dir", "vault", "secrets; hard-denied"),
     _r("vault-mcp-json", ".mcp.json", "file", "vault",
        "REPORT-ONLY except the explicitly previewed, user-approved, add-only "
-       "mcp-registration lifecycle transaction"),
+       "mcp-registration lifecycle transaction and the sole bridge-only "
+       "legacy-qmd-reconciliation exception for an exact v1.20-compatible "
+       "install, exact dormant qmd entry, absent qmd executable, and explicit "
+       "removal approval"),
     _r("vault-claude-custom", "CLAUDE-custom.md", "file", "vault",
        "the one canonical home for user instructions (Vault_Contract §5)"),
     _r("vault-skills-custom", ".claude/skills-custom", "dir", "vault"),
@@ -417,6 +420,7 @@ def update_write_verdict(
         "customization-migration",
         "capability-state",
         "mcp-registration",
+        "legacy-qmd-reconciliation",
         "onboarding-context",
     ):
         raise ValueError(f"unknown write operation: {operation}")
@@ -501,13 +505,18 @@ def update_write_verdict(
             resolution.rule_id if resolution is not None else None,
         )
 
-    if operation == "mcp-registration":
+    if operation in ("mcp-registration", "legacy-qmd-reconciliation"):
+        outside_reason = (
+            "outside-legacy-qmd-reconciliation"
+            if operation == "legacy-qmd-reconciliation"
+            else "outside-mcp-registration"
+        )
         try:
             denied = is_denied(path)
             candidate = _normalize(path)
             resolution = resolve(candidate)
         except ContractViolation:
-            return WriteVerdict(str(path), False, "outside-mcp-registration", None, None)
+            return WriteVerdict(str(path), False, outside_reason, None, None)
         if denied:
             return WriteVerdict(
                 candidate,
@@ -520,14 +529,18 @@ def update_write_verdict(
             return WriteVerdict(
                 candidate,
                 True,
-                "write-explicitly-approved-registration",
+                (
+                    "write-explicitly-approved-legacy-qmd-reconciliation"
+                    if operation == "legacy-qmd-reconciliation"
+                    else "write-explicitly-approved-registration"
+                ),
                 resolution.ownership,
                 resolution.rule_id,
             )
         return WriteVerdict(
             candidate,
             False,
-            "outside-mcp-registration",
+            outside_reason,
             resolution.ownership,
             resolution.rule_id,
         )

@@ -122,7 +122,7 @@
       "path": ".mcp.json",
       "kind": "file",
       "ownership": "vault",
-      "note": "REPORT-ONLY except the explicitly previewed, user-approved, add-only mcp-registration lifecycle transaction"
+      "note": "REPORT-ONLY except the explicitly previewed, user-approved, add-only mcp-registration lifecycle transaction and the sole bridge-only legacy-qmd-reconciliation exception for an exact v1.20-compatible install, exact dormant qmd entry, absent qmd executable, and explicit removal approval"
     },
     {
       "id": "brain-obsidian",
