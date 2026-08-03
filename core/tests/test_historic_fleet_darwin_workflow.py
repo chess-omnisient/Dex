@@ -49,12 +49,12 @@ def test_formal_workflow_is_manual_read_only_and_pinned() -> None:
     assert upload["with"]["if-no-files-found"] == "warn"
 
 
-def test_five_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
+def test_six_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
     workflow = _workflow()
     canary = workflow["jobs"]["historic-fleet-darwin-pr-canary"]
     assert canary["if"] == "github.event_name == 'pull_request'"
     assert any(
-        step.get("name") == "Run five release-shaped macOS journeys"
+        step.get("name") == "Run six release-shaped macOS journeys"
         for step in canary["steps"]
     )
     assert any(
@@ -62,14 +62,24 @@ def test_five_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
         for step in canary["steps"]
     )
     source = RUNNER_PATH.read_text(encoding="utf-8")
-    for start in (
+    canary_block = re.search(
+        r'^CANARY_STARTS=\(\n(?P<body>(?:  "[^"]+"\n)+)\)$',
+        source,
+        re.MULTILINE,
+    )
+    assert canary_block is not None
+    canary_starts = tuple(
+        re.findall(r'^  "([^"]+)"$', canary_block.group("body"), re.MULTILINE)
+    )
+    assert len(canary_starts) == 6
+    assert canary_starts == (
         "v1.51.0",
         "dist/release/v1.61.0-dc7d332",
         "dist/archive/v1.61.0-1ec1387",
         "v1.62.0",
+        "dist/archive/v1.63.0-08ce719",
         "dist/archive/v1.65.0-c5ec161",
-    ):
-        assert source.count(f'  "{start}"') == 1
+    )
     assert "build-release.sh --source candidate --target release" in source
     assert "build-vault-bundle.sh" in source
     assert source.count("--controlled-approvals") == 1
