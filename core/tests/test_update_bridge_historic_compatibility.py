@@ -164,6 +164,16 @@ _V161_RETIRED_MANIFEST_RELEASE = bridge.HistoricReleasePin(
     "20d095aedcad0a13bd6b25ea183afcd5d367c438adb082b1044c582fb5c2ebf9",
 )
 
+_V161_RETIRED_MANIFEST_NAMES = (
+    "dist/release/v1.61.0-774437a",
+    "dist/release/v1.61.0-1ec1387",
+)
+
+_V161_RETIRED_MANIFEST_PIN_ATTRIBUTES = (
+    "V161_RETIRED_MANIFEST_RELEASE",
+    "V161_EARLY_RETIRED_MANIFEST_RELEASE",
+)
+
 _COMMON_NATIVE_MIGRATOR = {
     "package_blob": "036655ee0687f89a309b6ac18e763996e719695c",
     "policy_blob": "b2dfd209e83ecfed1d1f7fcc90be4e3444f08b2e",
@@ -683,30 +693,31 @@ def _commit_retired_manifest_variant(
     repository: Path,
     base: str,
     mutation: str,
+    tracked_path: str = "extensions/tau-mirror/README-TAU-MIRROR.md",
 ) -> tuple[str, str, str, str]:
     """Create a manifest-consistent real Git near-miss around the retired pair."""
 
-    readme = "extensions/tau-mirror/README-TAU-MIRROR.md"
     unexpected = "extensions/tau-mirror/unexpected.md"
     manifest = repository / "System/.installed-files.manifest"
     _git(repository, "checkout", "--quiet", "--detach", "--force", base)
+    (repository / unexpected).parent.mkdir(parents=True, exist_ok=True)
     paths = manifest.read_text(encoding="utf-8").splitlines()
     if mutation == "missing":
-        _git(repository, "rm", "--quiet", "--", readme)
-        paths.remove(readme)
+        _git(repository, "rm", "--quiet", "--", tracked_path)
+        paths.remove(tracked_path)
     elif mutation == "extra":
         target = repository / unexpected
         target.write_text("unexpected retired content\n", encoding="utf-8")
         _git(repository, "add", "--", unexpected)
         paths.append(unexpected)
     elif mutation == "tampered-blob":
-        (repository / readme).write_text("tampered historic bytes\n", encoding="utf-8")
-        _git(repository, "add", "--", readme)
+        (repository / tracked_path).write_text("tampered historic bytes\n", encoding="utf-8")
+        _git(repository, "add", "--", tracked_path)
     elif mutation == "altered-mode":
-        _git(repository, "update-index", "--chmod=+x", "--", readme)
+        _git(repository, "update-index", "--chmod=+x", "--", tracked_path)
     elif mutation == "renamed-path":
-        _git(repository, "mv", "--", readme, unexpected)
-        paths[paths.index(readme)] = unexpected
+        _git(repository, "mv", "--", tracked_path, unexpected)
+        paths[paths.index(tracked_path)] = unexpected
     else:  # pragma: no cover - the parametrization below is deliberately closed
         raise AssertionError(f"unknown test mutation: {mutation}")
     if mutation in {"missing", "extra", "renamed-path"}:
@@ -822,12 +833,16 @@ def test_cross_pairing_a_real_tree_and_a_real_package_is_not_compatibility() -> 
     assert _authorize(evidence) is None
 
 
+@pytest.mark.parametrize("name", _V161_RETIRED_MANIFEST_NAMES)
 @pytest.mark.parametrize(
     "field",
     tuple(_expected_pins()["dist/release/v1.61.0-774437a"]),
 )
-def test_retired_manifest_one_field_near_miss_is_refused(field: str) -> None:
-    evidence = deepcopy(_expected_pins()["dist/release/v1.61.0-774437a"])
+def test_retired_manifest_one_field_near_miss_is_refused(
+    name: str,
+    field: str,
+) -> None:
+    evidence = deepcopy(_expected_pins()[name])
     actual = evidence[field]
     if isinstance(actual, str):
         evidence[field] = ("0" * len(actual)) if actual else "changed"
@@ -1211,11 +1226,13 @@ def test_bound_legacy_preload_refuses_cross_borrow_after_command_creation(
     assert "refused an unknown legacy compatibility tuple" in completed.stderr
 
 
+@pytest.mark.parametrize("pin_attribute", _V161_RETIRED_MANIFEST_PIN_ATTRIBUTES)
 def test_runtime_retired_manifest_topology_requires_exact_git_and_absent_inputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    pin_attribute: str,
 ) -> None:
-    pin = bridge.V161_RETIRED_MANIFEST_RELEASE
+    pin = getattr(bridge, pin_attribute)
     nearby = bridge.MANIFESTLESS_SEMANTIC_RELEASES[-1]
     repository = _historic_checkout(tmp_path, pin)
     impossible_fallback = replace(
@@ -1238,9 +1255,25 @@ def test_runtime_retired_manifest_topology_requires_exact_git_and_absent_inputs(
         replace(pin, package_sha256="0" * 64),
     )
     for mutation in mutations:
-        monkeypatch.setattr(bridge, "V161_RETIRED_MANIFEST_RELEASE", mutation)
+        monkeypatch.setattr(bridge, pin_attribute, mutation)
         assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
-    monkeypatch.setattr(bridge, "V161_RETIRED_MANIFEST_RELEASE", pin)
+    monkeypatch.setattr(bridge, pin_attribute, pin)
+
+    package = repository / bridge._PACKAGE_RELATIVE
+    package.write_text('{"version":"1.61.0","tampered":true}\n', encoding="utf-8")
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+    _restore_checkout(repository, pin)
+    package.unlink()
+    package.symlink_to("CLAUDE.md")
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+    _restore_checkout(repository, pin)
+    package.unlink()
+    package.mkdir()
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+    _restore_checkout(repository, pin)
 
     absent_inputs = (
         bridge._TRACKED_IGNORE_POLICY_RELATIVE,
@@ -1480,6 +1513,45 @@ def test_runtime_early_retired_manifest_adapter_accepts_exact_public_git_tree(
 
     assert bridge.V161_EARLY_RETIRED_MANIFEST_RELEASE == pin
     assert len(entries) == 765
+
+
+@pytest.mark.parametrize(
+    ("pin_attribute", "tracked_path"),
+    (
+        (
+            "V161_RETIRED_MANIFEST_RELEASE",
+            "extensions/tau-mirror/README-TAU-MIRROR.md",
+        ),
+        ("V161_EARLY_RETIRED_MANIFEST_RELEASE", "CLAUDE.md"),
+    ),
+)
+@pytest.mark.parametrize(
+    "mutation",
+    ("missing", "extra", "tampered-blob", "altered-mode", "renamed-path"),
+)
+def test_runtime_retired_manifest_adapter_binds_real_git_near_misses_to_installed_commit(
+    tmp_path: Path,
+    pin_attribute: str,
+    tracked_path: str,
+    mutation: str,
+) -> None:
+    pin = getattr(bridge, pin_attribute)
+    repository = _historic_checkout(tmp_path, pin)
+    commit, _tree, _manifest_blob, _manifest_sha256 = _commit_retired_manifest_variant(
+        repository,
+        pin.commit,
+        mutation,
+        tracked_path,
+    )
+    adapter, service = _delivery_adapter(tmp_path, repository)
+    service.commit = pin.commit
+    _git(repository, "update-ref", "refs/dex/installed", commit)
+
+    with pytest.raises(
+        apply_update.ReleaseVerificationError,
+        match="historic retired-manifest identity changed",
+    ):
+        adapter.build_and_preview_delivered_release(repository, {})
 
 
 @pytest.mark.parametrize(
