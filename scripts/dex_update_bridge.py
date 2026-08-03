@@ -1771,10 +1771,12 @@ class _FoundationLifecycleService:
     """Bind a verified foundation migrator to one legacy lifecycle call.
 
     The foundation service normally launches the migrator shipped inside the
-    vault. v1.20.1 predates that file. For only that exact immutable base, this
-    adapter lets the same lifecycle preview/approval/execute path launch the
-    migrator from the already-verified disposable foundation checkout. No
-    bridge file is copied into the vault and unknown layouts stay fail-closed.
+    vault. v1.20.1 predates that file, while four exact v1.63 release trees
+    shipped a migrator that rewrites a user-owned profile. For only those exact
+    immutable bases, this adapter lets the same lifecycle
+    preview/approval/execute path launch the migrator from the already-verified
+    disposable foundation checkout. No bridge file is copied into the vault
+    and unknown layouts stay fail-closed.
     """
 
     def __init__(
@@ -1961,7 +1963,7 @@ class _FoundationLifecycleService:
                 command[0],
                 "--require",
                 str(self._transport_preload),
-                command[1],
+                str(self._migrator),
                 command[2],
             ]
 
