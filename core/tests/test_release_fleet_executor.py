@@ -246,40 +246,9 @@ def test_private_follow_up_cache_is_exact_and_rejects_ref_tampering(
         executor._validate_follow_up_cache(cache, pin.identity())
 
 
-def test_only_canonical_public_transport_is_eligible_for_executor_authority(
-    tmp_path: Path,
-) -> None:
-    runtime = _production_runtime()
-    methods = {
-        name: getattr(executor._ProductionRuntime, name)
-        for name in (
-            "bridge_to_foundation",
-            "installed_release",
-            "doctor",
-            "deliver_latest_release",
-            "build_and_preview_delivered_release",
-            "execute_approved_delivered_release",
-            "smoke",
-            "close",
-        )
-    }
-    try:
-        assert executor._production_authority_intact(
-            runtime,
-            production_owned=True,
-            follow_up_cache=None,
-            production_runtime_type=executor._ProductionRuntime,
-            production_methods=methods,
-        )
-        assert not executor._production_authority_intact(
-            runtime,
-            production_owned=True,
-            follow_up_cache=tmp_path / "candidate-release.git",
-            production_runtime_type=executor._ProductionRuntime,
-            production_methods=methods,
-        )
-    finally:
-        runtime.close()
+def test_production_authority_predicate_is_sealed_inside_executor_boundary() -> None:
+    assert not hasattr(executor, "_production_authority_intact")
+    assert "_production_authority_intact" not in executor.execute_journey.__code__.co_names
 
 
 def test_production_runtime_exposes_only_installed_qmd_not_ambient_path(
@@ -775,12 +744,19 @@ def _execute(
 
 def test_cache_backed_run_cannot_satisfy_formal_acceptance_authority(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     protocol = load_update_journey_protocol(
         (REPO_ROOT / "core/update/journey-protocol-v1.json").read_bytes()
     )
     source_repo, source_commit = _executor_source_commit(tmp_path)
     follow_up = _identity("1.81.8", "b")
+    monkeypatch.setattr(
+        executor,
+        "_production_authority_intact",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
     run = _execute(
         tmp_path,
         _Runtime(follow_up),

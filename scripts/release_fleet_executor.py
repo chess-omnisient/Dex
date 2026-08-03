@@ -1760,27 +1760,6 @@ def _execute_journey_with_runtime(
     return case
 
 
-def _production_authority_intact(
-    runtime: object,
-    *,
-    production_owned: bool,
-    follow_up_cache: Path | None,
-    production_runtime_type: type,
-    production_methods: Mapping[str, object],
-) -> bool:
-    """Keep acceptance authority on the canonical public transport only."""
-
-    return (
-        production_owned
-        and follow_up_cache is None
-        and type(runtime) is production_runtime_type
-        and all(
-            getattr(production_runtime_type, name) is function
-            for name, function in production_methods.items()
-        )
-    )
-
-
 def _executor_boundary():
     """Create the sole production entrypoint without exporting a proof mint."""
 
@@ -1800,6 +1779,24 @@ def _executor_boundary():
             "close",
         )
     }
+
+    def production_authority_intact(
+        runtime: object,
+        *,
+        production_owned: bool,
+        follow_up_cache: Path | None,
+    ) -> bool:
+        """Keep acceptance authority on the canonical public transport only."""
+
+        return (
+            production_owned
+            and follow_up_cache is None
+            and type(runtime) is production_runtime_type
+            and all(
+                getattr(production_runtime_type, name) is function
+                for name, function in production_methods.items()
+            )
+        )
 
     def execute_journey(
         *,
@@ -1868,12 +1865,10 @@ def _executor_boundary():
         ).encode("utf-8")
         run = object.__new__(ExecutorRun)
         object.__setattr__(run, "_case_json", case_json)
-        production_intact = _production_authority_intact(
+        production_intact = production_authority_intact(
             runtime,
             production_owned=production_owned,
             follow_up_cache=follow_up_cache,
-            production_runtime_type=production_runtime_type,
-            production_methods=production_methods,
         )
         seal = (
             (authority, hashlib.sha256(case_json).digest())
