@@ -102,8 +102,17 @@ rm -f package.json.bak
 
 # Keep package-lock.json in sync (if it exists)
 if [ -f package-lock.json ]; then
-  sed -i.bak "0,/\"version\": \"${CURRENT_VERSION}\"/s/\"version\": \"${CURRENT_VERSION}\"/\"version\": \"${NEW_VERSION}\"/" package-lock.json
-  rm -f package-lock.json.bak
+  python3 - "$NEW_VERSION" <<'LOCK'
+import json
+from pathlib import Path
+import sys
+
+path = Path("package-lock.json")
+document = json.loads(path.read_text(encoding="utf-8"))
+document["version"] = sys.argv[1]
+document["packages"][""]["version"] = sys.argv[1]
+path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+LOCK
 fi
 
 # --- Insert CHANGELOG header --------------------------------------------------
