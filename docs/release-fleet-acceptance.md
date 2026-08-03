@@ -115,12 +115,19 @@ only in the controller checkout cannot satisfy this gate.
 The formal macOS fleet controller takes that same asset pair explicitly and
 re-proves it against the immutable follow-up protocol before it creates its
 private run directory or starts a journey. The follow-up tag must be the exact
-public stable `dist/release/v*` tag that the foundation updater will deliver;
-the controller proves that the canonical public remote advertises that exact
-annotated tag object, then requires a non-draft, non-prerelease GitHub Release
-for the same version. It downloads the published bridge and checksum from that
-release and compares both byte-for-byte to the submitted pair. Neither a local
-tag nor a controller copy of the bridge can stand in for it.
+public stable `dist/release/v*` tag that the foundation updater will deliver.
+The controller first proves that the canonical public remote advertises that
+exact annotated tag object. It then makes an anonymous GET to GitHub's canonical
+`/davekilleen/Dex/releases/latest` route and accepts exactly one HTTPS redirect
+to the exact canonical `/davekilleen/Dex/releases/tag/v<version>` URL followed
+by HTTP 200. A missing or additional redirect, an off-host or non-HTTPS hop, any
+variation in host, repository, path, case, port, user information, query,
+fragment, encoding, prefix, suffix, or trailing slash, or an unavailable route
+fails closed. This proof uses no API token, local cache, retry-based acceptance,
+or HTML parsing. The controller then downloads the published bridge and
+checksum from that release and compares both byte-for-byte to the submitted
+pair. Neither a local tag nor a controller copy of the bridge can stand in for
+it.
 
 The first-party `historic-fleet-darwin` GitHub Actions workflow is the release
 operator for this gate. Its formal job is manual: after the updater change is
