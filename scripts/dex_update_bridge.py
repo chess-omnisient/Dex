@@ -311,6 +311,51 @@ _V161_RETIRED_MANIFEST_BLOB = "feef2bb3dd6756c7c54d76bdfd6128904c87f679"
 _V161_RETIRED_MANIFEST_SHA256 = "edf6e98bc16063c47b362280cfa33fd10f075a5d240d5884d5ded5d894cbcc63"
 _V161_RETIRED_MANIFEST_PATH_COUNT = 768
 
+# v1.61.0 had two separately published complete-manifest layouts whose
+# topology migrator was subsequently retired.  Both are admitted only by this
+# full immutable identity; sharing the package payload is not sufficient.
+V161_EARLY_RETIRED_MANIFEST_RELEASE = HistoricReleasePin(
+    "dist/release/v1.61.0-1ec1387",
+    "ce1b502ce499081fc0c006ae3cc195c172618e21",
+    "tag",
+    "1ec1387011b7ac1369d84271de26eb91c8a60141",
+    "b63402413852cb3cedea8c83fd19d514e7d22916",
+    "1.61.0",
+    "b5e268bfd8bfe62e3efbe5a141e8dbb020d73609",
+    "20d095aedcad0a13bd6b25ea183afcd5d367c438adb082b1044c582fb5c2ebf9",
+)
+_V161_EARLY_RETIRED_MANIFEST_BLOB = "b7e8e2dc52ea468330c3ba54c0e13441cb65d2e3"
+_V161_EARLY_RETIRED_MANIFEST_SHA256 = (
+    "a8507dbb1fc836dd5882dd7b76ce7c137cef9999ab2e1f7c1b3c980539bced5b"
+)
+_V161_EARLY_RETIRED_MANIFEST_PATH_COUNT = 765
+
+
+def _v161_retired_manifest_releases() -> tuple[
+    tuple[HistoricReleasePin, str, str, int, tuple[str, ...]], ...
+]:
+    """Return the closed v1.61 retired-manifest identity set.
+
+    Kept as a function so tests can prove mutations of each pin are rejected.
+    """
+
+    return (
+        (
+            V161_RETIRED_MANIFEST_RELEASE,
+            _V161_RETIRED_MANIFEST_BLOB,
+            _V161_RETIRED_MANIFEST_SHA256,
+            _V161_RETIRED_MANIFEST_PATH_COUNT,
+            tuple(sorted(_MANIFESTLESS_OMISSION_IDENTITIES)),
+        ),
+        (
+            V161_EARLY_RETIRED_MANIFEST_RELEASE,
+            _V161_EARLY_RETIRED_MANIFEST_BLOB,
+            _V161_EARLY_RETIRED_MANIFEST_SHA256,
+            _V161_EARLY_RETIRED_MANIFEST_PATH_COUNT,
+            (),
+        ),
+    )
+
 V162_SELF_OMITTING_MANIFEST_RELEASE = HistoricReleasePin(
     "v1.62.0",
     "4913a778452003fcf8dc71a10222d5275ff28d5c",
@@ -723,26 +768,28 @@ def historic_compatibility_pins() -> dict[str, dict[str, object]]:
         "blob": _LEGACY_SHIPPED_SYMLINK_BLOB,
         "target": _LEGACY_SHIPPED_SYMLINK_TARGET,
     }
-    retired_manifest = V161_RETIRED_MANIFEST_RELEASE
-    pins[retired_manifest.tag] = {
-        "kind": "complete-manifest-retired-paths",
-        "role": "installed-source",
-        "tag": retired_manifest.tag,
-        "tag_object": retired_manifest.tag_object,
-        "commit": retired_manifest.commit,
-        "tree": retired_manifest.tree,
-        "version": retired_manifest.version,
-        "package_blob": retired_manifest.package_blob,
-        "package_sha256": retired_manifest.package_sha256,
-        "manifest_blob": _V161_RETIRED_MANIFEST_BLOB,
-        "manifest_sha256": _V161_RETIRED_MANIFEST_SHA256,
-        "manifest_path_count": _V161_RETIRED_MANIFEST_PATH_COUNT,
-        "policy_blob": None,
-        "transition_blob": None,
-        "migrator_blob": None,
-        "omission_identities": tuple(sorted(_MANIFESTLESS_OMISSION_IDENTITIES)),
-        "unexpected_nonregular_paths": (),
-    }
+    for retired_manifest, manifest_blob, manifest_sha256, manifest_path_count, omission_identities in (
+        _v161_retired_manifest_releases()
+    ):
+        pins[retired_manifest.tag] = {
+            "kind": "complete-manifest-retired-paths",
+            "role": "installed-source",
+            "tag": retired_manifest.tag,
+            "tag_object": retired_manifest.tag_object,
+            "commit": retired_manifest.commit,
+            "tree": retired_manifest.tree,
+            "version": retired_manifest.version,
+            "package_blob": retired_manifest.package_blob,
+            "package_sha256": retired_manifest.package_sha256,
+            "manifest_blob": manifest_blob,
+            "manifest_sha256": manifest_sha256,
+            "manifest_path_count": manifest_path_count,
+            "policy_blob": None,
+            "transition_blob": None,
+            "migrator_blob": None,
+            "omission_identities": omission_identities,
+            "unexpected_nonregular_paths": (),
+        }
     self_omitting = V162_SELF_OMITTING_MANIFEST_RELEASE
     pins[self_omitting.tag] = {
         "kind": "self-omitting-manifest",
@@ -1461,16 +1508,17 @@ def _legacy_topology_authorization(
                     None,
                     "present",
                 )
-        if _matches_historic_release(root, V161_RETIRED_MANIFEST_RELEASE) and all(
-            not (root / relative).exists() and not (root / relative).is_symlink()
-            for relative in absent_inputs
-        ):
-            return LegacyTopologyAuthorization(
-                "absent-inputs",
-                V161_RETIRED_MANIFEST_RELEASE,
-                None,
-                "present",
-            )
+        for retired_manifest, _blob, _sha256, _path_count, _omissions in _v161_retired_manifest_releases():
+            if _matches_historic_release(root, retired_manifest) and all(
+                not (root / relative).exists() and not (root / relative).is_symlink()
+                for relative in absent_inputs
+            ):
+                return LegacyTopologyAuthorization(
+                    "absent-inputs",
+                    retired_manifest,
+                    None,
+                    "present",
+                )
         for compatibility in MISSING_MIGRATOR_RELEASES:
             if _matches_historic_release(root, compatibility.release) and _matches_existing_inputs(root, compatibility):
                 return LegacyTopologyAuthorization(
@@ -1966,10 +2014,16 @@ class _FoundationLifecycleService:
         ) -> tuple[Any, ...]:
             manifestless = manifestless_by_commit.get(commit)
             defective = V175_DEFECTIVE_MANIFEST_RELEASE if commit == V175_DEFECTIVE_MANIFEST_RELEASE.commit else None
+            retired_manifest_identity = next(
+                (
+                    identity
+                    for identity in _v161_retired_manifest_releases()
+                    if commit == identity[0].commit
+                ),
+                None,
+            )
             retired_manifest = (
-                V161_RETIRED_MANIFEST_RELEASE
-                if commit == V161_RETIRED_MANIFEST_RELEASE.commit
-                else None
+                retired_manifest_identity[0] if retired_manifest_identity is not None else None
             )
             self_omitting = (
                 V162_SELF_OMITTING_MANIFEST_RELEASE
@@ -1981,7 +2035,14 @@ class _FoundationLifecycleService:
                 return original_tree_entries(vault_root, brain_git, commit)
             if _run_git(Path(brain_git), "rev-parse", "--verify", f"{commit}^{{tree}}") != pin.tree:
                 raise BridgeError("installed historic release tree changed before delivery")
-            if retired_manifest is not None:
+            if retired_manifest_identity is not None:
+                (
+                    retired_manifest,
+                    retired_manifest_blob,
+                    retired_manifest_sha256,
+                    retired_manifest_path_count,
+                    retired_manifest_omission_identities,
+                ) = retired_manifest_identity
                 try:
                     if (
                         _run_git(
@@ -2006,7 +2067,7 @@ class _FoundationLifecycleService:
                             "--verify",
                             f"{retired_manifest.commit}:System/.installed-files.manifest",
                         )
-                        != _V161_RETIRED_MANIFEST_BLOB
+                        != retired_manifest_blob
                     ):
                         raise release_error("historic retired-manifest identity changed")
                 except BridgeError as error:
@@ -2084,8 +2145,13 @@ class _FoundationLifecycleService:
                     continue
                 omission_identity = _manifestless_omission_identity(relative, raw_mode, object_id)
                 if (
-                    (manifestless is not None or retired_manifest is not None)
-                    and omission_identity in _MANIFESTLESS_OMISSION_IDENTITIES
+                (
+                    (manifestless is not None and omission_identity in _MANIFESTLESS_OMISSION_IDENTITIES)
+                    or (
+                        retired_manifest_identity is not None
+                        and omission_identity in retired_manifest_omission_identities
+                    )
+                )
                 ):
                     omitted.add(omission_identity)
                     continue
@@ -2133,17 +2199,17 @@ class _FoundationLifecycleService:
                 raise release_error("historic release omission set changed")
             if manifestless is not None and not _manifestless_omission_identities_match(omitted):
                 raise release_error("historic manifestless omission set changed")
-            if retired_manifest is not None:
-                if not _manifestless_omission_identities_match(omitted):
+            if retired_manifest_identity is not None:
+                if omitted != set(retired_manifest_omission_identities):
                     raise release_error("historic retired-manifest omission set changed")
                 complete = original_tree_entries(vault_root, brain_git, commit)
                 original_verify_manifest(vault_root, brain_git, complete)
                 by_path = {entry.path: entry for entry in complete}
                 manifest_entry = by_path.get("System/.installed-files.manifest")
                 if (
-                    len(complete) != _V161_RETIRED_MANIFEST_PATH_COUNT
+                    len(complete) != retired_manifest_path_count
                     or manifest_entry is None
-                    or manifest_entry.object_id != _V161_RETIRED_MANIFEST_BLOB
+                    or manifest_entry.object_id != retired_manifest_blob
                     or hashlib.sha256(
                         self._apply_update._brain_output(
                             vault_root,
@@ -2153,7 +2219,7 @@ class _FoundationLifecycleService:
                             manifest_entry.object_id,
                         )
                     ).hexdigest()
-                    != _V161_RETIRED_MANIFEST_SHA256
+                    != retired_manifest_sha256
                 ):
                     raise release_error("historic retired-manifest identity changed")
             result = tuple(sorted(entries, key=lambda entry: entry.path))

@@ -391,6 +391,25 @@ def _expected_pins() -> dict[str, dict[str, object]]:
         ),
         "unexpected_nonregular_paths": (),
     }
+    pins["dist/release/v1.61.0-1ec1387"] = {
+        "kind": "complete-manifest-retired-paths",
+        "role": "installed-source",
+        "tag": "dist/release/v1.61.0-1ec1387",
+        "tag_object": "ce1b502ce499081fc0c006ae3cc195c172618e21",
+        "commit": "1ec1387011b7ac1369d84271de26eb91c8a60141",
+        "tree": "b63402413852cb3cedea8c83fd19d514e7d22916",
+        "version": "1.61.0",
+        "package_blob": "b5e268bfd8bfe62e3efbe5a141e8dbb020d73609",
+        "package_sha256": "20d095aedcad0a13bd6b25ea183afcd5d367c438adb082b1044c582fb5c2ebf9",
+        "manifest_blob": "b7e8e2dc52ea468330c3ba54c0e13441cb65d2e3",
+        "manifest_sha256": "a8507dbb1fc836dd5882dd7b76ce7c137cef9999ab2e1f7c1b3c980539bced5b",
+        "manifest_path_count": 765,
+        "policy_blob": None,
+        "transition_blob": None,
+        "migrator_blob": None,
+        "omission_identities": (),
+        "unexpected_nonregular_paths": (),
+    }
     pins["v1.62.0"] = {
         "kind": "self-omitting-manifest",
         "role": "installed-source",
@@ -1425,6 +1444,42 @@ def test_runtime_retired_manifest_adapter_accepts_exact_public_git_tree(
     assert {
         relative: (repository / relative).read_bytes() for relative in retired_bytes
     } == retired_bytes
+
+
+def test_runtime_early_retired_manifest_adapter_accepts_exact_public_git_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real early v1.61 archive needs its own complete-manifest proof."""
+
+    pin = bridge.V161_EARLY_RETIRED_MANIFEST_RELEASE
+    repository = _historic_checkout(tmp_path, pin)
+    impossible_fallback = replace(
+        bridge.LEGACY_TOPOLOGY_FOUNDATION,
+        tag="v9.9.9",
+        commit="0" * 40,
+        tree="0" * 40,
+    )
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is True
+
+    # This must remain a closed identity match, not a broad v1.61 exception.
+    monkeypatch.setattr(
+        bridge,
+        "V161_EARLY_RETIRED_MANIFEST_RELEASE",
+        replace(pin, tree="0" * 40),
+    )
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+    monkeypatch.setattr(bridge, "V161_EARLY_RETIRED_MANIFEST_RELEASE", pin)
+
+    _git(repository, "update-ref", "-d", f"refs/tags/{pin.tag}")
+    adapter, service = _delivery_adapter(tmp_path, repository)
+    service.commit = pin.commit
+    _git(repository, "update-ref", "refs/dex/installed", pin.commit)
+
+    entries = adapter.build_and_preview_delivered_release(repository, {})
+
+    assert bridge.V161_EARLY_RETIRED_MANIFEST_RELEASE == pin
+    assert len(entries) == 765
 
 
 @pytest.mark.parametrize(
