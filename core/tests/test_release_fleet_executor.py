@@ -86,7 +86,9 @@ def _foundation_cache(
 ) -> tuple[Path, executor.dex_update_bridge.ReleasePin]:
     source = tmp_path / "foundation-source"
     source.mkdir(parents=True)
-    subprocess.run(["git", "init", "--quiet"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "init", "--quiet", "--initial-branch=main"], cwd=source, check=True
+    )
     subprocess.run(
         ["git", "config", "user.name", "Dex Tests"],
         cwd=source,
