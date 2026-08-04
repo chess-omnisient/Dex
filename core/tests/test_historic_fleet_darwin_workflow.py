@@ -49,12 +49,12 @@ def test_formal_workflow_is_manual_read_only_and_pinned() -> None:
     assert upload["with"]["if-no-files-found"] == "warn"
 
 
-def test_six_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
+def test_seven_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
     workflow = _workflow()
     canary = workflow["jobs"]["historic-fleet-darwin-pr-canary"]
     assert canary["if"] == "github.event_name == 'pull_request'"
     assert any(
-        step.get("name") == "Run six release-shaped macOS journeys"
+        step.get("name") == "Run seven release-shaped macOS journeys"
         for step in canary["steps"]
     )
     assert any(
@@ -71,7 +71,7 @@ def test_six_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
     canary_starts = tuple(
         re.findall(r'^  "([^"]+)"$', canary_block.group("body"), re.MULTILINE)
     )
-    assert len(canary_starts) == 6
+    assert len(canary_starts) == 7
     assert canary_starts == (
         "v1.51.0",
         "dist/release/v1.61.0-dc7d332",
@@ -79,6 +79,7 @@ def test_six_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
         "v1.62.0",
         "dist/archive/v1.63.0-08ce719",
         "dist/archive/v1.65.0-c5ec161",
+        "dist/archive/v1.76.0-d0bb932",
     )
     assert "build-release.sh --source candidate --target release" in source
     assert "build-vault-bundle.sh" in source
