@@ -203,11 +203,11 @@ def _foundation_topology_adapter(
 
 def test_foundation_pin_is_closed_and_uses_only_the_release_channel() -> None:
     assert bridge.FOUNDATION.identity() == {
-        "tag": "dist/release/v1.81.0-6bc490e",
-        "tag_object": "54b1ceef8b1f7ad4f67e4d4d045a134ea443ab53",
-        "commit": "6bc490e7caec22f60f097c6b54bb563382f542b8",
-        "tree": "dad3e43774e772dfc42df698f8a9818956346d78",
-        "version": "1.81.0",
+        "tag": "dist/release/v1.81.15-be0e5f3",
+        "tag_object": "bd3f25cc51e8fc9677239c656286606b4bc0fe71",
+        "commit": "be0e5f3a615d1f4be827006440cbfb003a17521b",
+        "tree": "f1f55abdc7c4e4c54101b3606b162c2cba148f9c",
+        "version": "1.81.15",
         "channel": "stable",
     }
 

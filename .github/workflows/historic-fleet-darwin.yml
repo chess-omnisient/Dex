@@ -7,7 +7,7 @@ on:
         description: Exact public immutable foundation tag
         required: true
         type: string
-        default: dist/release/v1.81.0-6bc490e
+        default: dist/release/v1.81.15-be0e5f3
       follow_up_tag:
         description: Exact public immutable follow-up tag
         required: true

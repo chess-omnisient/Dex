@@ -82,7 +82,7 @@ begin. The bridge is intentionally not a raw Git merge: it fetches only the
 pre-pinned foundation release, proves its annotated tag, commit, and tree, then
 uses that foundation's existing topology and receipt-backed transaction service.
 
-The bridge now pins the exact public v1.81.0 foundation: its annotated
+The bridge now pins the exact public v1.81.15 foundation: its annotated
 distribution tag, tag object, commit, and tree are all closed in the released
 journey contract. That publication is not, by itself, proof that every historic
 route works. Each supported route still needs an installed-fixture rehearsal,
@@ -95,23 +95,23 @@ identity. A newer source commit, a mutable branch, or a similarly named tag is
 not equivalent, and an older bridge must refuse rather than silently
 substituting a newer release.
 
-Download the versioned bridge and its checksum from the public v1.81.15 release,
+Download the versioned bridge and its checksum from the public v1.81.16 release,
 verify the bytes, then run that exact artifact. Run this block from the vault
 root. It keeps the downloaded files in a temporary folder outside the vault.
 
 ```bash
 BRIDGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dex-update-bridge.XXXXXX")"
 curl -fL \
-  "https://github.com/davekilleen/Dex/releases/download/v1.81.15/dex-update-bridge-v1.81.15.py" \
-  -o "$BRIDGE_DIR/dex-update-bridge-v1.81.15.py"
+  "https://github.com/davekilleen/Dex/releases/download/v1.81.16/dex-update-bridge-v1.81.16.py" \
+  -o "$BRIDGE_DIR/dex-update-bridge-v1.81.16.py"
 curl -fL \
-  "https://github.com/davekilleen/Dex/releases/download/v1.81.15/dex-update-bridge-v1.81.15.py.sha256" \
-  -o "$BRIDGE_DIR/dex-update-bridge-v1.81.15.py.sha256"
+  "https://github.com/davekilleen/Dex/releases/download/v1.81.16/dex-update-bridge-v1.81.16.py.sha256" \
+  -o "$BRIDGE_DIR/dex-update-bridge-v1.81.16.py.sha256"
 (
   cd "$BRIDGE_DIR"
-  shasum -a 256 -c "dex-update-bridge-v1.81.15.py.sha256"
+  shasum -a 256 -c "dex-update-bridge-v1.81.16.py.sha256"
 )
-python3 "$BRIDGE_DIR/dex-update-bridge-v1.81.15.py" --vault "$PWD"
+python3 "$BRIDGE_DIR/dex-update-bridge-v1.81.16.py" --vault "$PWD"
 ```
 
 It shows two independent previews and requires `APPLY` for each: first the
