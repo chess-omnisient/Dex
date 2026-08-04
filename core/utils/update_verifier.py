@@ -55,6 +55,10 @@ _OFFLINE_MARKERS = (
     "couldn't connect to server",
     "temporary failure in name resolution",
 )
+_TRANSIENT_HTTP_REJECTION_RE = re.compile(
+    r"(?:\bHTTP(?:/[0-9.]+)?\s+429\b|\brequested URL returned error:\s*429\b)",
+    re.IGNORECASE,
+)
 _FORBIDDEN_GIT_ENV_NAMES = {
     "ALL_PROXY",
     "HTTP_PROXY",
@@ -96,6 +100,15 @@ class EvidenceError(RuntimeError):
 
 class OfflineError(RuntimeError):
     """The bounded canonical network operation could not complete."""
+
+
+class TransientHttpRejectionError(EvidenceError):
+    """The canonical Git endpoint explicitly reported one retryable rejection."""
+
+    classification = "http-429"
+
+    def __init__(self) -> None:
+        super().__init__("canonical Git endpoint returned a transient HTTP rejection")
 
 
 class CancelledError(RuntimeError):
@@ -491,6 +504,8 @@ class GitRunner:
             budget.consume_output(stdout_size + len(stderr))
             if process.returncode != 0:
                 detail = stderr[: 64 * 1024].decode("utf-8", errors="replace").strip()
+                if network and _TRANSIENT_HTTP_REJECTION_RE.search(detail):
+                    raise TransientHttpRejectionError
                 if network and any(marker in detail.lower() for marker in _OFFLINE_MARKERS):
                     raise OfflineError("bounded canonical fetch was unavailable")
                 raise EvidenceError(detail or "Git evidence command failed")
@@ -1061,6 +1076,12 @@ class UpdateVerifier:
                     "latest_version": candidate.version,
                 }
             return self._identity_result(candidate)
+        except TransientHttpRejectionError as error:
+            return {
+                "status": STATUS_UNKNOWN,
+                "reason": "transient-http-rejection",
+                "diagnostic": {"classification": error.classification},
+            }
         except OfflineError:
             return {"status": STATUS_OFFLINE, "reason": "network-unavailable"}
         except (CancelledError, EvidenceError, OSError, UnicodeError, subprocess.SubprocessError) as error:

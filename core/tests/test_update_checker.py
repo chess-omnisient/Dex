@@ -30,9 +30,11 @@ from core.utils.update_verifier import (
     STATUS_UP_TO_DATE,
     CancelledError,
     CompatibilityArtifact,
+    EvidenceError,
     GitRunner,
     OfflineError,
     ReleaseEvidenceProfile,
+    TransientHttpRejectionError,
     UpdateVerifier,
     canonical_profile_bytes,
     legacy_profile_bytes,
@@ -222,6 +224,79 @@ def _verifier(vault: Path, remote: Path, state: Path, **kwargs) -> UpdateVerifie
         now=lambda: datetime(2026, 7, 19, 12, 0, tzinfo=timezone.utc),
         **kwargs,
     )
+
+
+@pytest.mark.parametrize(
+    "detail",
+    (
+        "fatal: unable to access release endpoint: The requested URL returned error: 429 /private/customer/path",
+        "error: RPC failed; HTTP 429 curl 22 release endpoint /private/customer/path",
+    ),
+)
+def test_network_git_classifies_only_explicit_http_429_without_retaining_stderr(
+    tmp_path: Path,
+    detail: str,
+) -> None:
+    fake_git = tmp_path / "git"
+    _write(
+        fake_git,
+        f'#!/bin/sh\necho "{detail}" >&2\nexit 128\n'.encode(),
+    )
+    fake_git.chmod(0o755)
+    runner = GitRunner(git_path=fake_git)
+
+    with pytest.raises(TransientHttpRejectionError) as error_info:
+        runner.run_plain("ls-remote", network=True)
+
+    assert error_info.value.classification == "http-429"
+    assert str(error_info.value) == "canonical Git endpoint returned a transient HTTP rejection"
+    assert "customer" not in str(error_info.value)
+    assert "429" not in str(error_info.value)
+
+
+def test_release_identity_proof_retains_only_sanitized_http_429_classification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+
+    def reject(*_args, **_kwargs):
+        raise TransientHttpRejectionError
+
+    monkeypatch.setattr(UpdateVerifier, "_remote_release_tags", reject)
+
+    assert update_verifier_module.prove_latest_release(
+        vault,
+        "stable",
+        state_root=tmp_path / "state",
+        wall_clock_seconds=10.0,
+    ) == {
+        "status": STATUS_UNKNOWN,
+        "reason": "transient-http-rejection",
+        "diagnostic": {"classification": "http-429"},
+    }
+
+
+@pytest.mark.parametrize(
+    "detail",
+    (
+        "fatal: unable to access release endpoint: The requested URL returned error: 503",
+        "fatal: generic evidence-invalid",
+    ),
+)
+def test_network_git_does_not_classify_other_rejections_as_transient_http(
+    tmp_path: Path,
+    detail: str,
+) -> None:
+    fake_git = tmp_path / "git"
+    _write(fake_git, f'#!/bin/sh\necho "{detail}" >&2\nexit 128\n'.encode())
+    fake_git.chmod(0o755)
+    runner = GitRunner(git_path=fake_git)
+
+    with pytest.raises(EvidenceError) as error_info:
+        runner.run_plain("ls-remote", network=True)
+
+    assert type(error_info.value) is EvidenceError
 
 
 def test_legacy_release_notice_is_readable_and_keeps_technical_evidence_out_of_user_copy(
