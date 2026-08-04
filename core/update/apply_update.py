@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -38,6 +39,8 @@ RELEASE_TAG = re.compile(
     r"^dist/release/v(?P<version>(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\."
     r"(?:0|[1-9][0-9]*))-(?P<short>[0-9a-f]{7,64})$"
 )
+FINAL_FETCH_BUDGET_SECONDS = 10.0
+FINAL_FETCH_RETRY_BACKOFF_SECONDS = 0.1
 START_MARKER = re.compile(
     rb"^## USER_EXTENSIONS_START[^\r\n]*(?:\r?\n|$)",
     re.MULTILINE,
@@ -570,7 +573,9 @@ def deliver_latest_release(
     from core.utils.update_verifier import (
         CANONICAL_REMOTE_URL,
         STATUS_IDENTITY,
+        ExecutionBudget,
         GitRunner,
+        OfflineError,
         prove_latest_release,
     )
 
@@ -601,22 +606,37 @@ def deliver_latest_release(
     branch = release_channel.release_branch(channel)
     if branch is None:
         return {"status": "not-delivered", "evidence": {"status": "UNKNOWN", "reason": "channel-invalid"}}
-    transport = git_runner or GitRunner(
-        allowed_protocol="file" if allow_test_transport else "https"
+    transport = git_runner or GitRunner(allowed_protocol="file" if allow_test_transport else "https")
+    final_fetch_deadline = time.monotonic() + max(
+        0.0,
+        min(wall_clock_seconds, FINAL_FETCH_BUDGET_SECONDS),
     )
-    transport.run(
-        brain_git,
-        "fetch",
-        "--quiet",
-        "--no-tags",
-        "--no-write-fetch-head",
-        "--no-recurse-submodules",
-        effective_remote,
-        f"refs/tags/{tag}:refs/tags/{tag}",
-        f"+refs/heads/{branch}:refs/remotes/upstream/{branch}",
-        network=True,
-        max_output_bytes=1024,
-    )
+    for attempt in (1, 2):
+        transport.use_budget(ExecutionBudget(final_fetch_deadline))
+        try:
+            transport.run(
+                brain_git,
+                "fetch",
+                "--quiet",
+                "--no-tags",
+                "--no-write-fetch-head",
+                "--no-recurse-submodules",
+                effective_remote,
+                f"refs/tags/{tag}:refs/tags/{tag}",
+                f"+refs/heads/{branch}:refs/remotes/upstream/{branch}",
+                network=True,
+                max_output_bytes=1024,
+            )
+            break
+        except OfflineError as error:
+            if attempt == 2:
+                raise OfflineError("final release delivery fetch was unavailable after attempt 2") from error
+            time.sleep(
+                min(
+                    FINAL_FETCH_RETRY_BACKOFF_SECONDS,
+                    max(0.0, final_fetch_deadline - time.monotonic()),
+                )
+            )
     release = verify_release_ref(
         root,
         tag=tag,

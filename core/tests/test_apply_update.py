@@ -178,6 +178,43 @@ def _verified(fixture: dict[str, object]) -> apply_update.VerifiedReleaseRef:
     )
 
 
+class _ScriptedDeliveryFetch:
+    def __init__(self, outcomes: tuple[BaseException | None, ...]) -> None:
+        self.outcomes = outcomes
+        self.calls: list[tuple[Path, tuple[str, ...], dict[str, object]]] = []
+        self.budgets: list[update_verifier.ExecutionBudget] = []
+
+    def use_budget(self, budget: update_verifier.ExecutionBudget) -> None:
+        self.budgets.append(budget)
+
+    def run(self, git_dir: Path, *arguments: str, **kwargs: object) -> bytes:
+        self.calls.append((git_dir, arguments, kwargs))
+        outcome = self.outcomes[len(self.calls) - 1]
+        if outcome is not None:
+            raise outcome
+        return b""
+
+
+def _stub_latest_identity(
+    fixture: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, object]:
+    tag, tag_object, commit, tree = fixture["target"]
+    evidence = {
+        "status": update_verifier.STATUS_IDENTITY,
+        "tag": tag,
+        "tag_object": tag_object,
+        "commit": commit,
+        "tree": tree,
+    }
+    monkeypatch.setattr(
+        update_verifier,
+        "prove_latest_release",
+        lambda *_args, **_kwargs: evidence,
+    )
+    return evidence
+
+
 def _retarget_release(
     fixture: dict[str, object],
     relative: str,
@@ -333,6 +370,113 @@ def test_default_delivery_budget_remains_ten_seconds_and_evidence_failure_is_not
         "evidence": {"status": "UNKNOWN", "reason": "evidence-invalid"},
     }
     assert calls == [10.0]
+
+
+def test_final_delivery_fetch_retries_one_transient_offline_failure_with_fresh_budget(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _stub_latest_identity(split_release_fixture, monkeypatch)
+    runner = _ScriptedDeliveryFetch(
+        (update_verifier.OfflineError("temporary network loss"), None)
+    )
+
+    result = apply_update.deliver_latest_release(
+        split_release_fixture["vault"],
+        state_root=tmp_path / "evidence-state",
+        git_runner=runner,
+    )
+
+    assert result["status"] == "delivered"
+    assert result["release"] == {
+        "tag": evidence["tag"],
+        "tag_object": evidence["tag_object"],
+        "commit": evidence["commit"],
+        "tree": evidence["tree"],
+        "version": "1.64.0",
+        "channel": "stable",
+    }
+    assert len(runner.calls) == 2
+    assert runner.calls[0] == runner.calls[1]
+    assert runner.calls[0][1][-2:] == (
+        f"refs/tags/{evidence['tag']}:refs/tags/{evidence['tag']}",
+        "+refs/heads/release:refs/remotes/upstream/release",
+    )
+    assert runner.calls[0][2] == {"network": True, "max_output_bytes": 1024}
+    assert len(runner.budgets) == 2
+    assert runner.budgets[0] is not runner.budgets[1]
+
+
+def test_final_delivery_fetch_stops_after_two_offline_attempts_without_vault_mutation(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = split_release_fixture["vault"]
+    _stub_latest_identity(split_release_fixture, monkeypatch)
+    protected_paths = (
+        "README.md",
+        "03-Tasks/Tasks.md",
+        "04-Projects/private.md",
+        "System/user-profile.yaml",
+    )
+    before = {relative: (vault / relative).read_bytes() for relative in protected_paths}
+    sleeps: list[float] = []
+    monkeypatch.setattr(apply_update.time, "sleep", sleeps.append)
+    runner = _ScriptedDeliveryFetch(
+        (
+            update_verifier.OfflineError("first untrusted detail"),
+            update_verifier.OfflineError("second untrusted detail"),
+        )
+    )
+
+    with pytest.raises(
+        update_verifier.OfflineError,
+        match="^final release delivery fetch was unavailable after attempt 2$",
+    ):
+        apply_update.deliver_latest_release(
+            vault,
+            state_root=tmp_path / "evidence-state",
+            git_runner=runner,
+            wall_clock_seconds=60.0,
+        )
+
+    assert len(runner.calls) == 2
+    assert runner.calls[0] == runner.calls[1]
+    assert len(runner.budgets) == 2
+    assert runner.budgets[0] is not runner.budgets[1]
+    assert runner.budgets[1].deadline == runner.budgets[0].deadline
+    assert all(
+        0 < budget.deadline - apply_update.time.monotonic() <= apply_update.FINAL_FETCH_BUDGET_SECONDS
+        for budget in runner.budgets
+    )
+    assert sleeps == [apply_update.FINAL_FETCH_RETRY_BACKOFF_SECONDS]
+    assert {relative: (vault / relative).read_bytes() for relative in protected_paths} == before
+
+
+def test_final_delivery_fetch_does_not_retry_evidence_failure(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_latest_identity(split_release_fixture, monkeypatch)
+    sleeps: list[float] = []
+    monkeypatch.setattr(apply_update.time, "sleep", sleeps.append)
+    runner = _ScriptedDeliveryFetch(
+        (update_verifier.EvidenceError("release identity contradicted"),)
+    )
+
+    with pytest.raises(update_verifier.EvidenceError, match="release identity contradicted"):
+        apply_update.deliver_latest_release(
+            split_release_fixture["vault"],
+            state_root=tmp_path / "evidence-state",
+            git_runner=runner,
+        )
+
+    assert len(runner.calls) == 1
+    assert len(runner.budgets) == 1
+    assert sleeps == []
 
 
 def test_delivered_release_refuses_any_preview_drift_before_writing(
