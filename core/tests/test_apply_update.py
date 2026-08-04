@@ -7,7 +7,9 @@ import json
 import os
 import subprocess
 import sys
+import time as real_time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -429,7 +431,7 @@ def test_final_delivery_fetch_stops_after_two_offline_attempts_without_vault_mut
     _stub_latest_identity(split_release_fixture, monkeypatch)
     before = _visible_vault_content(vault)
     sleeps: list[float] = []
-    monkeypatch.setattr(apply_update.time, "sleep", sleeps.append)
+    monkeypatch.setattr(apply_update, "time", SimpleNamespace(sleep=sleeps.append))
     runner = _ScriptedDeliveryFetch(
         (
             update_verifier.OfflineError("first untrusted detail"),
@@ -455,7 +457,7 @@ def test_final_delivery_fetch_stops_after_two_offline_attempts_without_vault_mut
     assert runner.budgets[1].deadline > runner.budgets[0].deadline
     assert all(
         0
-        < budget.deadline - apply_update.time.monotonic()
+        < budget.deadline - real_time.monotonic()
         <= apply_update.FINAL_FETCH_ATTEMPT_BUDGET_SECONDS
         for budget in runner.budgets
     )
@@ -470,7 +472,7 @@ def test_final_delivery_fetch_does_not_retry_evidence_failure(
 ) -> None:
     _stub_latest_identity(split_release_fixture, monkeypatch)
     sleeps: list[float] = []
-    monkeypatch.setattr(apply_update.time, "sleep", sleeps.append)
+    monkeypatch.setattr(apply_update, "time", SimpleNamespace(sleep=sleeps.append))
     runner = _ScriptedDeliveryFetch(
         (update_verifier.EvidenceError("release identity contradicted"),)
     )
@@ -542,7 +544,7 @@ def test_final_delivery_does_not_retry_post_fetch_identity_failure(
     evidence = _stub_latest_identity(split_release_fixture, monkeypatch)
     evidence["tag_object"] = "0" * 40
     sleeps: list[float] = []
-    monkeypatch.setattr(apply_update.time, "sleep", sleeps.append)
+    monkeypatch.setattr(apply_update, "time", SimpleNamespace(sleep=sleeps.append))
     runner = _ScriptedDeliveryFetch((None,))
 
     with pytest.raises(apply_update.ReleaseVerificationError, match="tag object"):
