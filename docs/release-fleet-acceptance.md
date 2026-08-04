@@ -140,10 +140,34 @@ The job is time-bounded to six hours and monitors a 50 GiB working-set limit.
 
 Pull requests that touch the updater route get a separate non-publishing
 macOS canary. It builds a local release-shaped candidate and runs real journeys
-from semantic `v1.51.0`, `dist/release/v1.61.0-dc7d332`, semantic `v1.62.0`,
-and an archived v1.65.0 start. Those four journeys catch the old dependency
-fixture, topology, and archive paths before merge, but remain explicitly
-non-acceptance evidence and cannot replace the freshly generated public fleet.
+from these exact seven starts:
+
+- semantic `v1.51.0`;
+- `dist/release/v1.61.0-dc7d332`;
+- `dist/archive/v1.61.0-1ec1387`;
+- semantic `v1.62.0`;
+- `dist/archive/v1.63.0-08ce719`;
+- `dist/archive/v1.65.0-c5ec161`; and
+- `dist/archive/v1.76.0-d0bb932`.
+
+These journeys cover the old dependency fixture, split-topology and retired
+manifest variants, archived releases, and the recent Mac final-fetch path
+before merge. They remain explicitly non-acceptance evidence and cannot replace
+the freshly generated public fleet.
+
+Within a journey, the foundation updater proves the exact follow-up identity
+before its final fetch into the private brain store. If and only if that final
+fetch raises `OfflineError`, the updater waits for the fixed 100 ms backoff and
+retries once. The sole retry receives a fresh bounded five-second attempt and
+uses the same proved tag and channel refspecs and the same remote URL. After a
+successful fetch, the updater rechecks the fetched tag object, commit, tree,
+channel target, manifest, and package metadata against the proved identity
+before it can return a preview.
+
+Evidence, topology, origin, identity, cancellation, filesystem, and all other
+non-offline failures are not retried. A second `OfflineError` fails closed.
+This is not a retry of the controller's public-route proof above, and this
+bounded transport retry does not make the PR canary acceptance evidence.
 
 ```bash
 python3 scripts/release_fleet_acceptance.py platform --repo . \
