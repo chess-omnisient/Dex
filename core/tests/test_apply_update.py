@@ -8,8 +8,8 @@ import os
 import subprocess
 import sys
 import time as real_time
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
