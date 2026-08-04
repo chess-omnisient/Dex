@@ -215,6 +215,14 @@ def _stub_latest_identity(
     return evidence
 
 
+def _visible_vault_content(root: Path) -> dict[str, bytes]:
+    return {
+        candidate.relative_to(root).as_posix(): candidate.read_bytes()
+        for candidate in root.rglob("*")
+        if candidate.is_file() and candidate.relative_to(root).parts[0] not in {".dex", ".git"}
+    }
+
+
 def _retarget_release(
     fixture: dict[str, object],
     relative: str,
@@ -361,15 +369,19 @@ def test_default_delivery_budget_remains_ten_seconds_and_evidence_failure_is_not
         return {"status": "UNKNOWN", "reason": "evidence-invalid"}
 
     monkeypatch.setattr(update_verifier, "prove_latest_release", prove_latest_release)
+    runner = _ScriptedDeliveryFetch(())
 
     assert apply_update.deliver_latest_release(
         vault,
         state_root=tmp_path / "evidence-state",
+        git_runner=runner,
     ) == {
         "status": "not-delivered",
         "evidence": {"status": "UNKNOWN", "reason": "evidence-invalid"},
     }
     assert calls == [10.0]
+    assert runner.calls == []
+    assert runner.budgets == []
 
 
 def test_final_delivery_fetch_retries_one_transient_offline_failure_with_fresh_budget(
@@ -415,13 +427,7 @@ def test_final_delivery_fetch_stops_after_two_offline_attempts_without_vault_mut
 ) -> None:
     vault = split_release_fixture["vault"]
     _stub_latest_identity(split_release_fixture, monkeypatch)
-    protected_paths = (
-        "README.md",
-        "03-Tasks/Tasks.md",
-        "04-Projects/private.md",
-        "System/user-profile.yaml",
-    )
-    before = {relative: (vault / relative).read_bytes() for relative in protected_paths}
+    before = _visible_vault_content(vault)
     sleeps: list[float] = []
     monkeypatch.setattr(apply_update.time, "sleep", sleeps.append)
     runner = _ScriptedDeliveryFetch(
@@ -446,13 +452,15 @@ def test_final_delivery_fetch_stops_after_two_offline_attempts_without_vault_mut
     assert runner.calls[0] == runner.calls[1]
     assert len(runner.budgets) == 2
     assert runner.budgets[0] is not runner.budgets[1]
-    assert runner.budgets[1].deadline == runner.budgets[0].deadline
+    assert runner.budgets[1].deadline > runner.budgets[0].deadline
     assert all(
-        0 < budget.deadline - apply_update.time.monotonic() <= apply_update.FINAL_FETCH_BUDGET_SECONDS
+        0
+        < budget.deadline - apply_update.time.monotonic()
+        <= apply_update.FINAL_FETCH_ATTEMPT_BUDGET_SECONDS
         for budget in runner.budgets
     )
     assert sleeps == [apply_update.FINAL_FETCH_RETRY_BACKOFF_SECONDS]
-    assert {relative: (vault / relative).read_bytes() for relative in protected_paths} == before
+    assert _visible_vault_content(vault) == before
 
 
 def test_final_delivery_fetch_does_not_retry_evidence_failure(
@@ -468,6 +476,76 @@ def test_final_delivery_fetch_does_not_retry_evidence_failure(
     )
 
     with pytest.raises(update_verifier.EvidenceError, match="release identity contradicted"):
+        apply_update.deliver_latest_release(
+            split_release_fixture["vault"],
+            state_root=tmp_path / "evidence-state",
+            git_runner=runner,
+        )
+
+    assert len(runner.calls) == 1
+    assert len(runner.budgets) == 1
+    assert sleeps == []
+
+
+def test_final_delivery_does_not_fetch_when_origin_verification_fails(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_latest_identity(split_release_fixture, monkeypatch)
+    _git(
+        split_release_fixture["brain"],
+        "remote",
+        "set-url",
+        "origin",
+        "https://example.com/not-dex.git",
+    )
+    runner = _ScriptedDeliveryFetch((None,))
+
+    with pytest.raises(apply_update.ReleaseVerificationError, match="official Dex repository"):
+        apply_update.deliver_latest_release(
+            split_release_fixture["vault"],
+            state_root=tmp_path / "evidence-state",
+            git_runner=runner,
+        )
+
+    assert runner.calls == []
+    assert runner.budgets == []
+
+
+def test_final_delivery_does_not_fetch_when_topology_verification_fails(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = split_release_fixture["vault"]
+    _stub_latest_identity(split_release_fixture, monkeypatch)
+    _write(vault, "System/.dex/topology.json", b"{}\n")
+    runner = _ScriptedDeliveryFetch((None,))
+
+    with pytest.raises(apply_update.UpdateError, match="topology is incomplete"):
+        apply_update.deliver_latest_release(
+            vault,
+            state_root=tmp_path / "evidence-state",
+            git_runner=runner,
+        )
+
+    assert runner.calls == []
+    assert runner.budgets == []
+
+
+def test_final_delivery_does_not_retry_post_fetch_identity_failure(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _stub_latest_identity(split_release_fixture, monkeypatch)
+    evidence["tag_object"] = "0" * 40
+    sleeps: list[float] = []
+    monkeypatch.setattr(apply_update.time, "sleep", sleeps.append)
+    runner = _ScriptedDeliveryFetch((None,))
+
+    with pytest.raises(apply_update.ReleaseVerificationError, match="tag object"):
         apply_update.deliver_latest_release(
             split_release_fixture["vault"],
             state_root=tmp_path / "evidence-state",

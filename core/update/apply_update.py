@@ -39,7 +39,7 @@ RELEASE_TAG = re.compile(
     r"^dist/release/v(?P<version>(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\."
     r"(?:0|[1-9][0-9]*))-(?P<short>[0-9a-f]{7,64})$"
 )
-FINAL_FETCH_BUDGET_SECONDS = 10.0
+FINAL_FETCH_ATTEMPT_BUDGET_SECONDS = 5.0
 FINAL_FETCH_RETRY_BACKOFF_SECONDS = 0.1
 START_MARKER = re.compile(
     rb"^## USER_EXTENSIONS_START[^\r\n]*(?:\r?\n|$)",
@@ -607,12 +607,12 @@ def deliver_latest_release(
     if branch is None:
         return {"status": "not-delivered", "evidence": {"status": "UNKNOWN", "reason": "channel-invalid"}}
     transport = git_runner or GitRunner(allowed_protocol="file" if allow_test_transport else "https")
-    final_fetch_deadline = time.monotonic() + max(
-        0.0,
-        min(wall_clock_seconds, FINAL_FETCH_BUDGET_SECONDS),
-    )
     for attempt in (1, 2):
-        transport.use_budget(ExecutionBudget(final_fetch_deadline))
+        attempt_seconds = min(
+            max(0.0, wall_clock_seconds),
+            FINAL_FETCH_ATTEMPT_BUDGET_SECONDS,
+        )
+        transport.use_budget(ExecutionBudget.start(attempt_seconds))
         try:
             transport.run(
                 brain_git,
@@ -631,12 +631,7 @@ def deliver_latest_release(
         except OfflineError as error:
             if attempt == 2:
                 raise OfflineError("final release delivery fetch was unavailable after attempt 2") from error
-            time.sleep(
-                min(
-                    FINAL_FETCH_RETRY_BACKOFF_SECONDS,
-                    max(0.0, final_fetch_deadline - time.monotonic()),
-                )
-            )
+            time.sleep(FINAL_FETCH_RETRY_BACKOFF_SECONDS)
     release = verify_release_ref(
         root,
         tag=tag,
