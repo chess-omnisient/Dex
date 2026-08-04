@@ -7,6 +7,26 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.15] — 🛡️ Temporary GitHub limits no longer stop a safe update (2026-08-04)
+
+During the formal historic Mac run, one healthy update reached its public
+foundation and then GitHub temporarily refused the second release proof. Dex
+stopped safely before previewing or writing anything, but the route had to be
+run again after the temporary limit cleared.
+
+**What this fixes for you:**
+
+* **One explicit GitHub rate-limit response gets one bounded retry.** Dex uses
+  only the time left inside the existing ten-second proof window; it does not
+  extend or loop the check.
+* **Every safety boundary stays closed.** Wrong release identities, invalid or
+  generic evidence, other HTTP failures, and a final download rejection still
+  stop immediately without previewing or changing your files.
+* **Fleet acceptance still requires the complete public run.** This release
+  hardens the exact transient seam that stopped the previous run, but Dex will
+  not claim historic two-hop support until a fresh retained 170-case Mac run
+  completes with zero failures.
+
 ## [1.81.14] — (2026-08-04)
 
 ## [1.81.13] — 🧷 v1.63 updates keep your saved profile intact (2026-08-03)
