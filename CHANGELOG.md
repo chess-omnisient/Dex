@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.16] — 🧭 Historic updates now aim at the selected public foundation (2026-08-04)
+
+Dex's historic-update bridge previously used the original v1.81.0 foundation,
+even after newer releases had hardened the real two-hop journey. This follow-up
+closes the first hop to the exact public v1.81.15 release instead.
+
+**What this changes for you:**
+
+* **Old installations enter through the selected public foundation.** The bridge
+  verifies the exact annotated tag, commit, and tree before it can preview or
+  change anything.
+* **The second hop stays genuinely separate.** v1.81.16 is the distinct
+  follow-up release used to prove that v1.81.15 can deliver its successor.
+* **Fleet support is not assumed.** Dex will claim historic two-hop support only
+  after the freshly generated public Mac fleet completes with zero failures.
+
 ## [1.81.15] — 🛡️ Temporary GitHub limits no longer stop a safe update (2026-08-04)
 
 During the formal historic Mac run, one healthy update reached its public
