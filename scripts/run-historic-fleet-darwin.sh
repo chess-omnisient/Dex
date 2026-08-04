@@ -14,6 +14,7 @@ CANARY_STARTS=(
   "v1.62.0"
   "dist/archive/v1.63.0-08ce719"
   "dist/archive/v1.65.0-c5ec161"
+  "dist/archive/v1.76.0-d0bb932"
 )
 
 MODE="${1:-}"
