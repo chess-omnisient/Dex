@@ -386,6 +386,187 @@ def test_default_delivery_budget_remains_ten_seconds_and_evidence_failure_is_not
     assert runner.budgets == []
 
 
+def test_pre_delivery_proof_retries_one_sanitized_http_429_within_original_deadline(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = split_release_fixture["vault"]
+    tag, tag_object, commit, tree = split_release_fixture["target"]
+    evidence = {
+        "status": update_verifier.STATUS_IDENTITY,
+        "tag": tag,
+        "tag_object": tag_object,
+        "commit": commit,
+        "tree": tree,
+    }
+    proof_budgets: list[float] = []
+
+    def prove_latest_release(
+        *_args, wall_clock_seconds: float, **_kwargs
+    ) -> dict[str, object]:
+        proof_budgets.append(wall_clock_seconds)
+        if len(proof_budgets) == 1:
+            return {
+                "status": "UNKNOWN",
+                "reason": "transient-http-rejection",
+                "diagnostic": {"classification": "http-429"},
+            }
+        return evidence
+
+    moments = iter((100.0, 100.2, 100.3))
+    monkeypatch.setattr(apply_update, "_monotonic", lambda: next(moments), raising=False)
+    sleeps: list[float] = []
+    monkeypatch.setattr(apply_update, "time", SimpleNamespace(sleep=sleeps.append))
+    monkeypatch.setattr(update_verifier, "prove_latest_release", prove_latest_release)
+    runner = _ScriptedDeliveryFetch((None,))
+
+    result = apply_update.deliver_latest_release(
+        vault,
+        state_root=tmp_path / "evidence-state",
+        git_runner=runner,
+        wall_clock_seconds=10.0,
+    )
+
+    assert result["status"] == "delivered"
+    assert result["release"]["tag_object"] == tag_object
+    assert result["release"]["commit"] == commit
+    assert result["release"]["tree"] == tree
+    assert proof_budgets == [10.0, pytest.approx(9.7)]
+    assert sleeps == [apply_update.PRE_DELIVERY_PROOF_RETRY_BACKOFF_SECONDS]
+    assert len(runner.calls) == 1
+
+
+def test_pre_delivery_proof_does_not_retry_when_429_exhausts_original_deadline(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proof_budgets: list[float] = []
+    transient = {
+        "status": "UNKNOWN",
+        "reason": "transient-http-rejection",
+        "diagnostic": {"classification": "http-429"},
+    }
+
+    def prove_latest_release(
+        *_args, wall_clock_seconds: float, **_kwargs
+    ) -> dict[str, object]:
+        proof_budgets.append(wall_clock_seconds)
+        return transient
+
+    moments = iter((100.0, 109.95))
+    monkeypatch.setattr(apply_update, "_monotonic", lambda: next(moments), raising=False)
+    sleeps: list[float] = []
+    monkeypatch.setattr(apply_update, "time", SimpleNamespace(sleep=sleeps.append))
+    monkeypatch.setattr(update_verifier, "prove_latest_release", prove_latest_release)
+
+    assert apply_update.deliver_latest_release(
+        split_release_fixture["vault"],
+        state_root=tmp_path / "evidence-state",
+        git_runner=_ScriptedDeliveryFetch(()),
+        wall_clock_seconds=10.0,
+    ) == {"status": "not-delivered", "evidence": transient}
+    assert proof_budgets == [10.0]
+    assert sleeps == []
+
+
+def test_pre_delivery_proof_stops_after_two_http_429_results_without_mutation(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = split_release_fixture["vault"]
+    before = _visible_vault_content(vault)
+    state_root = tmp_path / "evidence-state"
+    proof_budgets: list[float] = []
+    transient = {
+        "status": "UNKNOWN",
+        "reason": "transient-http-rejection",
+        "diagnostic": {"classification": "http-429"},
+    }
+
+    def prove_latest_release(
+        *_args, wall_clock_seconds: float, **_kwargs
+    ) -> dict[str, object]:
+        proof_budgets.append(wall_clock_seconds)
+        return transient
+
+    moments = iter((100.0, 100.2, 100.3))
+    monkeypatch.setattr(apply_update, "_monotonic", lambda: next(moments))
+    sleeps: list[float] = []
+    monkeypatch.setattr(apply_update, "time", SimpleNamespace(sleep=sleeps.append))
+    monkeypatch.setattr(update_verifier, "prove_latest_release", prove_latest_release)
+    runner = _ScriptedDeliveryFetch(())
+
+    assert apply_update.deliver_latest_release(
+        vault,
+        state_root=state_root,
+        git_runner=runner,
+        wall_clock_seconds=10.0,
+    ) == {"status": "not-delivered", "evidence": transient}
+    assert proof_budgets == [10.0, pytest.approx(9.7)]
+    assert sleeps == [apply_update.PRE_DELIVERY_PROOF_RETRY_BACKOFF_SECONDS]
+    assert runner.calls == []
+    assert _visible_vault_content(vault) == before
+    assert not state_root.exists()
+
+
+def test_pre_delivery_proof_does_not_retry_unclassified_http_5xx(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[float] = []
+    evidence = {
+        "status": "UNKNOWN",
+        "reason": "evidence-invalid",
+        "diagnostic": {"classification": "http-503"},
+    }
+
+    def prove_latest_release(
+        *_args, wall_clock_seconds: float, **_kwargs
+    ) -> dict[str, object]:
+        calls.append(wall_clock_seconds)
+        return evidence
+
+    monkeypatch.setattr(update_verifier, "prove_latest_release", prove_latest_release)
+
+    assert apply_update.deliver_latest_release(
+        split_release_fixture["vault"],
+        state_root=tmp_path / "evidence-state",
+        git_runner=_ScriptedDeliveryFetch(()),
+    ) == {"status": "not-delivered", "evidence": evidence}
+    assert calls == [10.0]
+
+
+def test_final_delivery_fetch_does_not_retry_http_429_classification(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = split_release_fixture["vault"]
+    _stub_latest_identity(split_release_fixture, monkeypatch)
+    before = _visible_vault_content(vault)
+    sleeps: list[float] = []
+    monkeypatch.setattr(apply_update, "time", SimpleNamespace(sleep=sleeps.append))
+    runner = _ScriptedDeliveryFetch(
+        (update_verifier.TransientHttpRejectionError(),)
+    )
+
+    with pytest.raises(update_verifier.TransientHttpRejectionError):
+        apply_update.deliver_latest_release(
+            vault,
+            state_root=tmp_path / "evidence-state",
+            git_runner=runner,
+        )
+
+    assert len(runner.calls) == 1
+    assert len(runner.budgets) == 1
+    assert sleeps == []
+    assert _visible_vault_content(vault) == before
+
+
 def test_final_delivery_fetch_retries_one_transient_offline_failure_with_fresh_budget(
     split_release_fixture: dict[str, object],
     tmp_path: Path,

@@ -18,6 +18,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic as _monotonic
 from typing import Any, Callable
 
 from core import portable_contract
@@ -41,6 +42,7 @@ RELEASE_TAG = re.compile(
 )
 FINAL_FETCH_ATTEMPT_BUDGET_SECONDS = 5.0
 FINAL_FETCH_RETRY_BACKOFF_SECONDS = 0.1
+PRE_DELIVERY_PROOF_RETRY_BACKOFF_SECONDS = 0.1
 START_MARKER = re.compile(
     rb"^## USER_EXTENSIONS_START[^\r\n]*(?:\r?\n|$)",
     re.MULTILINE,
@@ -553,6 +555,55 @@ def _release_identity(release: VerifiedReleaseRef) -> dict[str, str]:
     }
 
 
+def _is_retryable_public_proof_rejection(evidence: dict[str, object]) -> bool:
+    """Accept only the verifier's closed, sanitized HTTP 429 classification."""
+    return set(evidence) == {"status", "reason", "diagnostic"} and evidence == {
+        "status": "UNKNOWN",
+        "reason": "transient-http-rejection",
+        "diagnostic": {"classification": "http-429"},
+    }
+
+
+def _prove_latest_release_with_bounded_retry(
+    root: Path,
+    channel: str,
+    *,
+    state_root: Path | None,
+    remote_url: str,
+    allow_test_transport: bool,
+    git_runner: Any | None,
+    wall_clock_seconds: float,
+) -> dict[str, object]:
+    """Retry one explicit HTTP 429 without extending the original proof deadline."""
+    from core.utils.update_verifier import prove_latest_release
+
+    initial_budget = max(0.0, wall_clock_seconds)
+    proof_deadline = _monotonic() + initial_budget
+    evidence: dict[str, object]
+    for attempt in (1, 2):
+        remaining = (
+            initial_budget
+            if attempt == 1
+            else max(0.0, proof_deadline - _monotonic())
+        )
+        evidence = prove_latest_release(
+            root,
+            channel,
+            state_root=state_root,
+            remote_url=remote_url,
+            allow_test_transport=allow_test_transport,
+            git_runner=git_runner,
+            wall_clock_seconds=remaining,
+        )
+        if attempt == 2 or not _is_retryable_public_proof_rejection(evidence):
+            return evidence
+        remaining = max(0.0, proof_deadline - _monotonic())
+        if remaining <= PRE_DELIVERY_PROOF_RETRY_BACKOFF_SECONDS:
+            return evidence
+        time.sleep(PRE_DELIVERY_PROOF_RETRY_BACKOFF_SECONDS)
+    raise AssertionError("bounded proof retry loop did not return")
+
+
 def deliver_latest_release(
     vault_root: Path,
     *,
@@ -576,13 +627,12 @@ def deliver_latest_release(
         ExecutionBudget,
         GitRunner,
         OfflineError,
-        prove_latest_release,
     )
 
     root = Path(vault_root).resolve()
     channel = release_channel.read_channel(root)
     effective_remote = remote_url or CANONICAL_REMOTE_URL
-    evidence = prove_latest_release(
+    evidence = _prove_latest_release_with_bounded_retry(
         root,
         channel,
         state_root=state_root,
