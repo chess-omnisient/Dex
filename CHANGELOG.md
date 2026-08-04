@@ -7,6 +7,8 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.14] — (2026-08-04)
+
 ## [1.81.13] — 🧷 v1.63 updates keep your saved profile intact (2026-08-03)
 
 The formal historic Mac fleet reached an exact v1.63 installation, then stopped
