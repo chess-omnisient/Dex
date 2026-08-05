@@ -52,6 +52,14 @@ def test_formal_workflow_is_manual_read_only_and_pinned() -> None:
     assert upload["with"]["if-no-files-found"] == "warn"
 
 
+def test_release_version_bump_triggers_the_pr_canary() -> None:
+    workflow = _workflow()
+    triggers = workflow.get("on", workflow.get(True))
+    pull_request_paths = set(triggers["pull_request"]["paths"])
+
+    assert "package.json" in pull_request_paths
+
+
 def test_ten_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
     workflow = _workflow()
     canary = workflow["jobs"]["historic-fleet-darwin-pr-canary"]

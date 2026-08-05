@@ -15,6 +15,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/historic-fleet-darwin.yml
+      - package.json
       - core/update/journey-protocol-v1.json
       - scripts/build-release.sh
       - scripts/build-vault-bundle.sh
