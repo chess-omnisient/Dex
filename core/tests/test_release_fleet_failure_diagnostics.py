@@ -312,6 +312,37 @@ def test_closed_delivery_mismatch_is_shared_public_route_drift_with_safe_identit
     assert ".mcp.json" not in serialized
 
 
+def test_public_route_drift_identity_returns_only_a_closed_mismatch() -> None:
+    expected = _identity("1.81.5", "b")
+    delivered = _identity("1.81.6", "c")
+
+    assert executor._public_route_drift_identity(
+        {"status": "delivered", "release": delivered},
+        expected,
+    ) == delivered
+    assert (
+        executor._public_route_drift_identity(
+            {"status": "delivered", "release": expected},
+            expected,
+        )
+        is None
+    )
+    assert (
+        executor._public_route_drift_identity(
+            {"status": "delivered", "release": {"unsafe": "value"}},
+            expected,
+        )
+        is None
+    )
+    assert (
+        executor._public_route_drift_identity(
+            {"status": "not-delivered", "release": delivered},
+            expected,
+        )
+        is None
+    )
+
+
 def test_failure_diagnostic_retains_only_allowlisted_delivery_reason(
     tmp_path: Path,
 ) -> None:

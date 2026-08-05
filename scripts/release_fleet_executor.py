@@ -1044,6 +1044,18 @@ def _closed_delivered_release(
         return None
 
 
+def _public_route_drift_identity(
+    delivery: Mapping[str, object],
+    follow_up: Mapping[str, str],
+) -> dict[str, str] | None:
+    """Return the validated delivered identity only when the public route drifted."""
+
+    delivered_release = _closed_delivered_release(delivery)
+    if delivered_release is None or delivered_release == dict(follow_up):
+        return None
+    return delivered_release
+
+
 def _git_show(repo_root: Path, commit: str, relative: str) -> bytes:
     result = subprocess.run(
         [
@@ -1362,12 +1374,8 @@ def _failure_diagnostic(
     if delivery is not None:
         evidence = delivery.get("evidence")
         reason = evidence.get("reason") if isinstance(evidence, Mapping) else None
-        delivered_release = _closed_delivered_release(delivery)
-        route_drift = (
-            delivered_release is not None
-            and delivered_release != dict(follow_up)
-        )
-        if route_drift:
+        route_drift_release = _public_route_drift_identity(delivery, follow_up)
+        if route_drift_release is not None:
             failure_reason = "public-route-drift"
         elif isinstance(reason, str) and reason in _SAFE_DELIVERY_FAILURE_REASONS:
             failure_reason = reason
@@ -1384,8 +1392,8 @@ def _failure_diagnostic(
                 _MAX_FAILURE_DIAGNOSTIC_ELAPSED_MS,
             ),
         }
-        if delivered_release is not None:
-            delivery_diagnostic["delivered_release"] = delivered_release
+        if route_drift_release is not None:
+            delivery_diagnostic["delivered_release"] = route_drift_release
         document["delivery"] = delivery_diagnostic
     return document
 
@@ -1625,12 +1633,8 @@ def _execute_journey_with_runtime(
     delivery_started = time.monotonic_ns()
     delivered = dict(_runtime.deliver_latest_release(vault))
     delivery_elapsed_ms = (time.monotonic_ns() - delivery_started) // 1_000_000
-    delivered_release = _closed_delivered_release(delivered)
-    if (
-        delivered.get("status") == "delivered"
-        and delivered_release is not None
-        and delivered_release != follow_up
-    ):
+    delivered_release = _public_route_drift_identity(delivered, follow_up)
+    if delivered_release is not None:
         _write_failure_diagnostic(
             evidence_root,
             "follow-up-delivery-failure.diagnostic.json",
