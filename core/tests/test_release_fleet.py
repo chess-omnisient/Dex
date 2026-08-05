@@ -1955,6 +1955,36 @@ def test_case_executor_collects_only_failures_after_case_execution_starts() -> N
     ):
         release_fleet.run_case_executor("v1.61.0", integrity_failure)
 
+    expected = {
+        "tag": "dist/release/v1.81.17-aaaaaaa",
+        "tag_object": "b" * 40,
+        "commit": "a" * 40,
+        "tree": "c" * 40,
+        "version": "1.81.17",
+        "channel": "stable",
+    }
+    delivered = {
+        "tag": "dist/release/v1.81.18-ddddddd",
+        "tag_object": "e" * 40,
+        "commit": "d" * 40,
+        "tree": "f" * 40,
+        "version": "1.81.18",
+        "channel": "stable",
+    }
+
+    def public_route_drift(*, _case_started, **_kwargs):
+        _case_started()
+        raise release_fleet_executor.PublicRouteDriftError(expected, delivered)
+
+    with pytest.raises(
+        release_fleet_executor.PublicRouteDriftError,
+        match="public release route drifted",
+    ) as failure:
+        release_fleet.run_case_executor("v1.61.0", public_route_drift)
+
+    assert failure.value.expected_release == expected
+    assert failure.value.delivered_release == delivered
+
 
 @pytest.mark.parametrize("split_topology", [False, True])
 @pytest.mark.parametrize("controlled_approvals", [False, True])
