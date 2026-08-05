@@ -10,6 +10,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_PATH = REPO_ROOT / ".github/workflows/historic-fleet-darwin.yml"
+CI_WORKFLOW_PATH = REPO_ROOT / ".github/workflows/ci.yml"
 RUNNER_PATH = REPO_ROOT / "scripts/run-historic-fleet-darwin.sh"
 PINNED_ACTION = re.compile(r"^[^@]+@[0-9a-f]{40}$")
 
@@ -50,6 +51,20 @@ def test_formal_workflow_is_manual_read_only_and_pinned() -> None:
     upload = formal["steps"][-1]
     assert upload["if"] == "always()"
     assert upload["with"]["if-no-files-found"] == "warn"
+
+
+def test_stable_release_and_formal_fleet_share_non_cancelling_route_lock() -> None:
+    fleet_workflow = _workflow()
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    expected_lock = {
+        "group": "stable-public-route",
+        "cancel-in-progress": False,
+    }
+
+    assert fleet_workflow["jobs"]["historic-fleet-darwin"]["concurrency"] == expected_lock
+    assert ci_workflow["jobs"]["build-release"]["concurrency"] == expected_lock
+    assert "concurrency" not in fleet_workflow["jobs"]["historic-fleet-darwin-pr-canary"]
+    assert "concurrency" not in ci_workflow["jobs"]["build-release-beta"]
 
 
 def test_release_version_bump_triggers_the_pr_canary() -> None:

@@ -297,6 +297,9 @@ jobs:
     needs: [quality, test-results]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: macos-latest
+    concurrency:
+      group: stable-public-route
+      cancel-in-progress: false
     permissions:
       contents: write
     outputs:
