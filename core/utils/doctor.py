@@ -1131,6 +1131,24 @@ def collect(
     return report
 
 
+def collect_reporter(
+    *,
+    refresh_id: str,
+    heal: bool = False,
+    context: DoctorContext | None = None,
+):
+    """Collect the complete Doctor registry through the proactive reporter contract.
+
+    This is an adapter, not a second collector.  The existing Doctor report is
+    still written and remains the authority for detailed evidence and repairs;
+    the returned envelope contains only normalized factual check results.
+    """
+    from core.health.doctor_reporter import from_doctor_report
+
+    report = collect(deep=True, heal=heal, context=context)
+    return from_doctor_report(report, refresh_id=refresh_id)
+
+
 @contextmanager
 def _vault_environment(context: DoctorContext) -> Iterator[None]:
     previous = {name: os.environ.get(name) for name in ("VAULT_PATH", "VAULT_ROOT")}

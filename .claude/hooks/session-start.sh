@@ -397,4 +397,19 @@ com.dex.learning-review|.scripts/logs/learning-review.log|604800|7 days|Learning
 EOF
 } || true
 
+# 22. Proactive health status — read the latest complete snapshot only.
+# No snapshot is the quiet preparing state. Warnings, staleness, recoveries,
+# and repeated critical states do not interrupt the session; only a newly
+# critical latest snapshot receives the attention block.
+if [[ -f "$CLAUDE_DIR/core/utils/health_session.py" ]]; then
+    HEALTH_PYTHON="python3"
+    if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
+        HEALTH_PYTHON="$CLAUDE_DIR/.venv/bin/python"
+    fi
+    (
+        cd "$CLAUDE_DIR" || exit 0
+        "$HEALTH_PYTHON" -m core.utils.health_session --vault "$CLAUDE_DIR"
+    ) 2>/dev/null || true
+fi
+
 echo "=== End Session Context ==="

@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 3852f0d6f0c74d546862f3f89d8b5525cd5dcbcb218bbe8152c2475d63aa93e7 -->
+<!-- Content SHA-256: 4a811ad20b81ca2d04b392f9a4fe8e19739473437058cd3d10faf3ea75da6802 -->
 
 # Architecture Inventory
 
@@ -144,7 +144,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 | --- | ---: | --- |
 | `brain` | 45 | `replace` |
 | `seed` | 38 | `write-if-absent` |
-| `generated` | 8 | `regenerate` |
+| `generated` | 9 | `regenerate` |
 | `vault` | 17 | `never` |
 | `runtime` | 13 | `never` |
 
@@ -241,9 +241,10 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 </details>
 
-<details><summary><code>generated</code> declared paths (8)</summary>
+<details><summary><code>generated</code> declared paths (9)</summary>
 
 - `CLAUDE.md` (file; `generated-claude-md`)
+- `System/.dex/health` (dir; `generated-health-state`)
 - `System/.doctor-last-run.json` (file; `generated-doctor-last-run`)
 - `System/.installed-files.manifest` (file; `generated-manifest`)
 - `System/.local-only-preservation-transition.json` (file; `generated-local-only-transition`)

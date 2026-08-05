@@ -258,6 +258,9 @@ RULES: tuple[Rule, ...] = (
     _r("generated-release-catalog", "System/.release-catalog.json", "file", "generated"),
     _r("generated-evidence-profile", "System/.release-evidence-profile.json", "file",
        "generated"),
+    _r("generated-health-state", "System/.dex/health", "dir", "generated",
+       "vault-local proactive-health snapshots and refresh outcomes; regenerated "
+       "by the health lifecycle and never shipped"),
     _r("generated-doctor-last-run", "System/.doctor-last-run.json", "file", "generated",
        "Doctor's rendered cache; every refresh is transaction-owned"),
     _r("generated-local-only-transition", "System/.local-only-preservation-transition.json",
