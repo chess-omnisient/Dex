@@ -53,11 +53,12 @@ def test_frozen_cohort_excludes_later_control_and_follow_up_releases() -> None:
     acceptance = _acceptance()
     historic = (
         _release("v1.20.1", "1.20.1", "1"),
+        _release("v1.81.16", "1.81.16", "3"),
         _foundation_release(),
     )
     later = (
-        _release("v1.81.16", "1.81.16", "3"),
-        _release("dist/release/v1.81.17-4444444", "1.81.17", "4"),
+        _release("v1.81.17", "1.81.17", "4"),
+        _release("dist/release/v1.81.18-5555555", "1.81.18", "5"),
     )
 
     manifest = acceptance.frozen_cohort_manifest(
@@ -71,7 +72,7 @@ def test_frozen_cohort_excludes_later_control_and_follow_up_releases() -> None:
     )
 
     assert parsed == historic
-    assert manifest["case_count"] == 2
+    assert manifest["case_count"] == 3
     assert manifest["foundation"] == _foundation()
 
 
@@ -214,7 +215,7 @@ def test_real_repository_derives_the_current_historic_tree_count() -> None:
 
     assert manifest["case_count"] == len(manifest["cases"]) == len(parsed)
     assert manifest["case_count"] > 0
-    assert manifest["foundation"]["tag"] == "dist/release/v1.81.15-be0e5f3"
+    assert manifest["foundation"]["tag"] == "dist/release/v1.81.16-281202d"
 
 
 def _case(tag: str, platform: str) -> release_fleet.CaseResult:

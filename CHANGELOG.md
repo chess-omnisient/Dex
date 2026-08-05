@@ -20,6 +20,9 @@ than the customer update path.
   an exact historic release genuinely predates the catalogue, Dex can use its
   verified updater files as evidence instead of requiring a file that never
   existed.
+* **The newest public release joins the historic proof set.** Both v1.81.16
+  identities are tested through the exact immutable v1.81.16 first hop before
+  the distinct v1.81.17 follow-up.
 * **Missing or altered proof still stops safely.** An unreadable or malformed
   catalogue, changed updater files, or a mismatched release identity is still
   rejected before a journey starts.

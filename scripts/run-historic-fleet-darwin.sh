@@ -5,7 +5,7 @@
 set -euo pipefail
 
 CANONICAL_PUBLIC_REMOTE="https://github.com/davekilleen/Dex.git"
-PINNED_FOUNDATION_TAG="dist/release/v1.81.15-be0e5f3"
+PINNED_FOUNDATION_TAG="dist/release/v1.81.16-281202d"
 MAX_DISK_KIB=$((50 * 1024 * 1024))
 CANARY_STARTS=(
   "v1.51.0"

@@ -26,7 +26,7 @@ def test_formal_workflow_is_manual_read_only_and_pinned() -> None:
     inputs = triggers["workflow_dispatch"]["inputs"]
     assert inputs["foundation_tag"]["required"] is True
     assert (
-        inputs["foundation_tag"]["default"] == "dist/release/v1.81.15-be0e5f3"
+        inputs["foundation_tag"]["default"] == "dist/release/v1.81.16-281202d"
     )
     assert inputs["follow_up_tag"]["required"] is True
     assert workflow["permissions"] == {"contents": "read"}
@@ -107,7 +107,7 @@ def test_ten_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
 
 def test_formal_runner_freezes_public_cohort_and_retains_exact_counts() -> None:
     source = RUNNER_PATH.read_text(encoding="utf-8")
-    assert 'PINNED_FOUNDATION_TAG="dist/release/v1.81.15-be0e5f3"' in source
+    assert 'PINNED_FOUNDATION_TAG="dist/release/v1.81.16-281202d"' in source
     assert 'MAX_DISK_KIB=$((50 * 1024 * 1024))' in source
     assert "release_fleet_acceptance.py cohort" in source
     assert "release_fleet_acceptance.py session" in source

@@ -35,16 +35,16 @@
       "word": "APPLY"
     },
     "artifact": {
-      "sha256": "fe76a0e7920443bd263baccf89252a856adab32309ad4e5aec127f037b3e5ce5",
+      "sha256": "2719588befe2f471d11e71d580115200b945527ca9310b247a1ee61c53f4aced",
       "source_path": "scripts/dex_update_bridge.py"
     },
     "foundation": {
       "channel": "stable",
-      "commit": "be0e5f3a615d1f4be827006440cbfb003a17521b",
-      "tag": "dist/release/v1.81.15-be0e5f3",
-      "tag_object": "bd3f25cc51e8fc9677239c656286606b4bc0fe71",
-      "tree": "f1f55abdc7c4e4c54101b3606b162c2cba148f9c",
-      "version": "1.81.15"
+      "commit": "281202dcc10a41540c5f72bd6b47bd7d7dcc776d",
+      "tag": "dist/release/v1.81.16-281202d",
+      "tag_object": "6abd259c87bf88519fd8b0bfa863cb99b959660f",
+      "tree": "6725b11a8756b04ba7d6b26399ab90eb75f43af0",
+      "version": "1.81.16"
     }
   },
   "platforms": [

@@ -101,7 +101,7 @@ Markdown `/dex-update` instructions into an API.
 ```bash
 python3 scripts/release_fleet.py journey --repo . --output "$fleet_root" \
   --starting-tag dist/release/v1.74.0-EXACTSTART \
-  --foundation-tag dist/release/v1.81.15-be0e5f3 \
+  --foundation-tag dist/release/v1.81.16-281202d \
   --follow-up-tag dist/release/v1.81.17-EXACTFOLLOWUP \
   --bridge-asset /path/to/dex-update-bridge-v1.81.17.py \
   --bridge-checksum /path/to/dex-update-bridge-v1.81.17.py.sha256
@@ -184,7 +184,7 @@ bounded transport retry does not make the PR canary acceptance evidence.
 ```bash
 python3 scripts/release_fleet_acceptance.py platform --repo . \
   --cohort historic-cohort.json \
-  --foundation-tag dist/release/v1.81.15-be0e5f3 \
+  --foundation-tag dist/release/v1.81.16-281202d \
   --follow-up-tag dist/release/v1.81.17-EXACTFOLLOWUP \
   --session acceptance-session.json --key acceptance.key \
   --bridge-asset /path/to/dex-update-bridge-v1.81.17.py \
@@ -226,7 +226,7 @@ constructing the same documents cannot unlock acceptance. The resulting
 content-addressed manifest records the exact executor identity, release
 identities, ordered operations, and artifact hashes.
 
-The v1.81.17 protocol and executor pin the exact public v1.81.15 foundation.
+The v1.81.17 protocol and executor pin the exact public v1.81.16 foundation.
 That publication is one prerequisite, not fleet acceptance: the distinct
 follow-up release must exist and every historic case must still complete the
 two-hop journey on macOS.

@@ -82,7 +82,7 @@ begin. The bridge is intentionally not a raw Git merge: it fetches only the
 pre-pinned foundation release, proves its annotated tag, commit, and tree, then
 uses that foundation's existing topology and receipt-backed transaction service.
 
-The bridge now pins the exact public v1.81.15 foundation: its annotated
+The bridge now pins the exact public v1.81.16 foundation: its annotated
 distribution tag, tag object, commit, and tree are all closed in the released
 journey contract. That publication is not, by itself, proof that every historic
 route works. Each supported route still needs an installed-fixture rehearsal,
