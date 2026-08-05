@@ -1,5 +1,15 @@
 """Proactive health contracts and normalization helpers."""
 
+from .doctor_ref import (
+    DOCTOR_REF_CONTRACT,
+    DOCTOR_ROUTE,
+    DoctorHandoff,
+    DoctorReference,
+    EvidenceReference,
+    FreshnessContext,
+    canonical_doctor_reference_bytes,
+    resolve_doctor_reference,
+)
 from .reporter import (
     CONTRACT,
     CONTRACT_NAME,
@@ -48,4 +58,12 @@ __all__ = [
     "IncompleteHealthReport",
     "LatestPointer",
     "SnapshotAlreadyExists",
+    "DOCTOR_REF_CONTRACT",
+    "DOCTOR_ROUTE",
+    "DoctorHandoff",
+    "DoctorReference",
+    "EvidenceReference",
+    "FreshnessContext",
+    "canonical_doctor_reference_bytes",
+    "resolve_doctor_reference",
 ]

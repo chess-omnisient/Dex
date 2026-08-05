@@ -763,6 +763,36 @@ class HealthStore:
             raise HealthStoreCorruption("latest pointer and snapshot identities differ")
         return snapshot
 
+    def read_history(self, *, limit: int = 2) -> tuple[HealthSnapshot, ...]:
+        """Read the newest complete snapshots without changing health state."""
+
+        if type(limit) is not int or limit < 1:
+            raise ValueError("health history limit must be a positive integer")
+        latest = self.read_latest()
+        if latest is None:
+            return ()
+
+        snapshots: dict[str, HealthSnapshot] = {latest.snapshot_id: latest}
+        if self.snapshots_dir.exists():
+            for path in sorted(self.snapshots_dir.glob("*.json")):
+                try:
+                    snapshot = HealthSnapshot.from_mapping(
+                        _read_json(path, kind="health snapshot")
+                    )
+                except (HealthStoreCorruption, OSError):
+                    continue
+                snapshots[snapshot.snapshot_id] = snapshot
+        ordered = sorted(
+            snapshots.values(),
+            key=lambda item: (item.completed_at, item.snapshot_id),
+            reverse=True,
+        )
+        # The pointer is authoritative even if a clock moved backwards between
+        # refreshes; never let an older timestamp displace the current pointer.
+        ordered.remove(latest)
+        ordered.insert(0, latest)
+        return tuple(ordered[:limit])
+
     def read_refresh(self, refresh_id: str) -> HealthRefresh | None:
         relative = self._refresh_relative(refresh_id)
         try:
