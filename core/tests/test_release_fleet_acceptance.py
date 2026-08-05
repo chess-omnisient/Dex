@@ -53,11 +53,12 @@ def test_frozen_cohort_excludes_later_control_and_follow_up_releases() -> None:
     acceptance = _acceptance()
     historic = (
         _release("v1.20.1", "1.20.1", "1"),
+        _release("v1.81.16", "1.81.16", "3"),
         _foundation_release(),
     )
     later = (
-        _release("v1.81.16", "1.81.16", "3"),
-        _release("dist/release/v1.81.17-4444444", "1.81.17", "4"),
+        _release("v1.81.17", "1.81.17", "4"),
+        _release("dist/release/v1.81.18-5555555", "1.81.18", "5"),
     )
 
     manifest = acceptance.frozen_cohort_manifest(
@@ -71,7 +72,7 @@ def test_frozen_cohort_excludes_later_control_and_follow_up_releases() -> None:
     )
 
     assert parsed == historic
-    assert manifest["case_count"] == 2
+    assert manifest["case_count"] == 3
     assert manifest["foundation"] == _foundation()
 
 
@@ -214,7 +215,7 @@ def test_real_repository_derives_the_current_historic_tree_count() -> None:
 
     assert manifest["case_count"] == len(manifest["cases"]) == len(parsed)
     assert manifest["case_count"] > 0
-    assert manifest["foundation"]["tag"] == "dist/release/v1.81.15-be0e5f3"
+    assert manifest["foundation"]["tag"] == "dist/release/v1.81.16-281202d"
 
 
 def _case(tag: str, platform: str) -> release_fleet.CaseResult:
@@ -801,15 +802,17 @@ def test_platform_collector_retains_every_live_run_and_exact_counts(
     }
 
 
-def test_platform_collector_stops_on_first_failure_with_honest_counts(
+def test_platform_collector_collects_every_case_failure_before_failing_closed(
     tmp_path: Path,
 ) -> None:
     acceptance = _acceptance()
     releases = (
         _release("v1.20.1", "1.20.1", "1"),
         _release("dist/release/v1.80.5-2222222", "1.80.5", "2"),
+        _release("v1.81.1", "1.81.1", "3"),
     )
     bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
+    attempted: list[str] = []
 
     def journey_runner(
         _repo: Path,
@@ -824,8 +827,12 @@ def test_platform_collector_stops_on_first_failure_with_honest_counts(
     ) -> object:
         del output, foundation_tag, follow_up_tag, bridge_asset, bridge_checksum
         assert controlled_approvals is True
-        if starting_tag == releases[1].tag:
-            raise release_fleet.FleetError("synthetic journey failed")
+        attempted.append(starting_tag)
+        if starting_tag in {releases[0].tag, releases[2].tag}:
+            raise release_fleet.CaseJourneyFailure(
+                starting_tag,
+                "synthetic journey failed",
+            )
         return SimpleNamespace(case=_case_document(_case(starting_tag, "darwin")))
 
     with pytest.raises(acceptance.PlatformFleetFailure) as failure:
@@ -842,12 +849,74 @@ def test_platform_collector_stops_on_first_failure_with_honest_counts(
         )
 
     assert failure.value.counts == {
-        "discovered": 2,
+        "discovered": 3,
+        "started": 3,
+        "completed": 1,
+        "passed": 1,
+        "failed": 2,
+    }
+    assert attempted == [release.tag for release in releases]
+    assert [item.starting_tag for item in failure.value.failures] == [
+        releases[0].tag,
+        releases[2].tag,
+    ]
+    diagnostic = json.loads((tmp_path / "platform-failures.json").read_text(encoding="utf-8"))
+    assert diagnostic["acceptance"] is False
+    assert diagnostic["counts"] == failure.value.counts
+    assert diagnostic["groups"] == [
+        {
+            "count": 2,
+            "error_type": "CaseJourneyFailure",
+            "signature": failure.value.failures[0].signature,
+            "starting_tags": [releases[0].tag, releases[2].tag],
+        }
+    ]
+
+
+def test_platform_collector_stops_immediately_on_infrastructure_or_integrity_failure(
+    tmp_path: Path,
+) -> None:
+    acceptance = _acceptance()
+    releases = (
+        _release("v1.20.1", "1.20.1", "1"),
+        _release("dist/release/v1.80.5-2222222", "1.80.5", "2"),
+        _release("v1.81.1", "1.81.1", "3"),
+    )
+    bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
+    attempted: list[str] = []
+
+    def journey_runner(_repo: Path, *, starting_tag: str, **_kwargs) -> object:
+        attempted.append(starting_tag)
+        if starting_tag == releases[1].tag:
+            raise release_fleet.FleetError("shared protocol identity changed")
+        return SimpleNamespace(case=_case_document(_case(starting_tag, "darwin")))
+
+    with pytest.raises(
+        acceptance.PlatformFleetFailure,
+        match="infrastructure or integrity failure",
+    ) as failure:
+        acceptance.collect_platform_runs(
+            tmp_path,
+            output=tmp_path,
+            releases=releases,
+            foundation_tag=FOUNDATION.tag,
+            follow_up_tag="dist/release/v1.81.1-3333333",
+            running_platform="darwin",
+            bridge_asset=bridge_asset,
+            bridge_checksum=bridge_checksum,
+            journey_runner=journey_runner,
+        )
+
+    assert attempted == [releases[0].tag, releases[1].tag]
+    assert failure.value.counts == {
+        "discovered": 3,
         "started": 2,
         "completed": 1,
         "passed": 1,
         "failed": 1,
     }
+    assert failure.value.failures == ()
+    assert not (tmp_path / "platform-failures.json").exists()
 
 
 def _immutable_foundation() -> release_fleet.ImmutableRelease:

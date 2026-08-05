@@ -161,6 +161,19 @@ class FleetError(RuntimeError):
     """The historic release fleet could not be built safely."""
 
 
+class CaseJourneyFailure(FleetError):
+    """One isolated historic journey failed after case execution began."""
+
+    def __init__(self, starting_tag: str, detail: str) -> None:
+        if not isinstance(starting_tag, str) or not starting_tag:
+            raise ValueError("case journey failure requires a starting tag")
+        if not isinstance(detail, str) or not detail:
+            raise ValueError("case journey failure requires a detail")
+        super().__init__(f"{starting_tag}: {detail}")
+        self.starting_tag = starting_tag
+        self.detail = detail
+
+
 @dataclass(frozen=True)
 class NodeRuntime:
     """An explicitly selected Node/npm capability for disposable fixtures."""
@@ -2131,6 +2144,30 @@ def _verify_standalone_bridge_asset(
     }
 
 
+def run_case_executor(
+    starting_tag: str,
+    executor: Callable[..., object],
+    /,
+    **kwargs: object,
+) -> object:
+    """Collect only a failure from an executor that crossed the case boundary."""
+
+    from scripts import release_fleet_executor
+
+    case_execution_started = False
+
+    def mark_case_execution_started() -> None:
+        nonlocal case_execution_started
+        case_execution_started = True
+
+    try:
+        return executor(_case_started=mark_case_execution_started, **kwargs)
+    except release_fleet_executor.ExecutorError as error:
+        if not case_execution_started:
+            raise
+        raise CaseJourneyFailure(starting_tag, str(error)) from error
+
+
 def run_journey(
     repo: Path,
     *,
@@ -2254,7 +2291,9 @@ def run_journey(
                     start,
                     environment,
                 )
-            return release_fleet_executor.execute_journey(
+            return run_case_executor(
+                start.tag,
+                release_fleet_executor.execute_journey,
                 repo_root=repo,
                 source_commit=source_commit,
                 vault_root=case.vault,

@@ -1465,6 +1465,7 @@ def _execute_journey_with_runtime(
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], None] = print,
     _runtime: JourneyRuntime,
+    _case_started: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     """Execute and own one closed two-hop journey in the current process."""
 
@@ -1529,6 +1530,8 @@ def _execute_journey_with_runtime(
         raise ExecutorError("historic update surface is not bound to the starting release")
     if foundation_surface.get("release") != foundation:
         raise ExecutorError("foundation update surface is not bound to the foundation release")
+    if _case_started is not None:
+        _case_started()
 
     bridge_approvals: list[dict[str, str]] = []
 
@@ -1852,6 +1855,7 @@ def _executor_boundary():
         input_fn: Callable[[str], str] = input,
         output_fn: Callable[[str], None] = print,
         _runtime: JourneyRuntime | None = None,
+        _case_started: Callable[[], None] | None = None,
     ) -> ExecutorRun:
         """Execute one released journey and retain production authority here."""
 
@@ -1887,6 +1891,7 @@ def _executor_boundary():
                 input_fn=input_fn,
                 output_fn=output_fn,
                 _runtime=runtime,
+                _case_started=_case_started,
             )
         finally:
             if production_owned:

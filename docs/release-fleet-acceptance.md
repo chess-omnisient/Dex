@@ -101,10 +101,10 @@ Markdown `/dex-update` instructions into an API.
 ```bash
 python3 scripts/release_fleet.py journey --repo . --output "$fleet_root" \
   --starting-tag dist/release/v1.74.0-EXACTSTART \
-  --foundation-tag dist/release/v1.81.15-be0e5f3 \
-  --follow-up-tag dist/release/v1.81.16-EXACTFOLLOWUP \
-  --bridge-asset /path/to/dex-update-bridge-v1.81.16.py \
-  --bridge-checksum /path/to/dex-update-bridge-v1.81.16.py.sha256
+  --foundation-tag dist/release/v1.81.16-281202d \
+  --follow-up-tag dist/release/v1.81.17-EXACTFOLLOWUP \
+  --bridge-asset /path/to/dex-update-bridge-v1.81.17.py \
+  --bridge-checksum /path/to/dex-update-bridge-v1.81.17.py.sha256
 ```
 
 Historic semantic `v*` starting tags have a narrower evidence-only rule. Their
@@ -150,6 +150,19 @@ sequentially on macOS. It retains the evidence and exact
 discovered/started/completed/passed/failed counts on both success and failure.
 The job is time-bounded to six hours and monitors a 50 GiB working-set limit.
 
+The formal controller continues after an isolated case has crossed the journey
+execution boundary and then fails. It retains every such failure in
+`platform-failures.json`, groups matching diagnostics by a stable signature, and
+finishes the frozen cohort before returning a non-zero result. This lets one
+exhaustive run expose all version-specific failure families instead of stopping
+at the first one. A shared protocol, released-identity, public-route, evidence,
+runtime, filesystem, disk-budget, or other infrastructure/integrity failure
+still stops the job immediately. A collected failure report is diagnostic
+evidence only: it cannot mint a platform receipt or acceptance result. If the
+exhaustive run has no failures, its ordinary receipt remains valid acceptance
+evidence; otherwise all grouped fixes need targeted proof before one final full
+acceptance run.
+
 Pull requests that touch the updater route get a separate non-publishing
 macOS canary. It builds a local release-shaped candidate and runs real journeys
 from these exact seven starts:
@@ -184,11 +197,11 @@ bounded transport retry does not make the PR canary acceptance evidence.
 ```bash
 python3 scripts/release_fleet_acceptance.py platform --repo . \
   --cohort historic-cohort.json \
-  --foundation-tag dist/release/v1.81.15-be0e5f3 \
-  --follow-up-tag dist/release/v1.81.16-EXACTFOLLOWUP \
+  --foundation-tag dist/release/v1.81.16-281202d \
+  --follow-up-tag dist/release/v1.81.17-EXACTFOLLOWUP \
   --session acceptance-session.json --key acceptance.key \
-  --bridge-asset /path/to/dex-update-bridge-v1.81.16.py \
-  --bridge-checksum /path/to/dex-update-bridge-v1.81.16.py.sha256 \
+  --bridge-asset /path/to/dex-update-bridge-v1.81.17.py \
+  --bridge-checksum /path/to/dex-update-bridge-v1.81.17.py.sha256 \
   --output "$fleet_root/darwin"
 ```
 
@@ -226,7 +239,7 @@ constructing the same documents cannot unlock acceptance. The resulting
 content-addressed manifest records the exact executor identity, release
 identities, ordered operations, and artifact hashes.
 
-The v1.81.16 protocol and executor pin the exact public v1.81.15 foundation.
+The v1.81.17 protocol and executor pin the exact public v1.81.16 foundation.
 That publication is one prerequisite, not fleet acceptance: the distinct
 follow-up release must exist and every historic case must still complete the
 two-hop journey on macOS.

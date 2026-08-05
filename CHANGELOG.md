@@ -7,6 +7,29 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.17] — 🧭 Historic checks now recognise what older releases actually shipped (2026-08-05)
+
+The final public Mac fleet stopped before testing one old semantic release because
+that release predates Dex's release catalogue. The adjacent immutable package
+completed both update hops, showing that the stop was in the fleet proof rather
+than the customer update path.
+
+**What this fixes for you:**
+
+* **Older semantic releases are judged by the files they actually shipped.** When
+  an exact historic release genuinely predates the catalogue, Dex can use its
+  verified updater files as evidence instead of requiring a file that never
+  existed.
+* **The newest public release joins the historic proof set.** Both v1.81.16
+  identities are tested through the exact immutable v1.81.16 first hop before
+  the distinct v1.81.17 follow-up.
+* **Missing or altered proof still stops safely.** An unreadable or malformed
+  catalogue, changed updater files, or a mismatched release identity is still
+  rejected before a journey starts.
+* **Historic support still has to be earned.** This release removes the narrow
+  proof-controller blocker, but Dex will claim support only after the freshly
+  generated public Mac fleet completes with zero failures.
+
 ## [1.81.16] — 🧭 Historic updates now aim at the selected public foundation (2026-08-04)
 
 Dex's historic-update bridge previously used the original v1.81.0 foundation,

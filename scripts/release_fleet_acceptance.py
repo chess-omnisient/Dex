@@ -41,6 +41,7 @@ MAX_PLATFORM_MANIFEST_BYTES = 16 * 1024 * 1024
 MAX_PUBLIC_RELEASE_ASSET_BYTES = 16 * 1024 * 1024
 PLATFORM_MANIFEST_NAME = "platform-manifest.json"
 PLATFORM_RECEIPT_NAME = "platform-receipt.json"
+PLATFORM_FAILURES_NAME = "platform-failures.json"
 CANONICAL_PUBLIC_REMOTE = "https://github.com/davekilleen/Dex.git"
 CANONICAL_PUBLIC_LATEST_RELEASE = "https://github.com/davekilleen/Dex/releases/latest"
 CANONICAL_PUBLIC_RELEASE_PAGE = "https://github.com/davekilleen/Dex/releases/tag/v{version}"
@@ -106,6 +107,24 @@ class PlatformExecution:
 
 
 @dataclass(frozen=True)
+class PlatformCaseFailure:
+    """One case-local failure retained for grouping and targeted repair."""
+
+    starting_tag: str
+    error_type: str
+    detail: str
+    signature: str
+
+    def document(self) -> dict[str, str]:
+        return {
+            "starting_tag": self.starting_tag,
+            "error_type": self.error_type,
+            "detail": self.detail,
+            "signature": self.signature,
+        }
+
+
+@dataclass(frozen=True)
 class FleetInputs:
     """All immutable identities shared by one acceptance session."""
 
@@ -121,9 +140,15 @@ class FleetInputs:
 class PlatformFleetFailure(release_fleet.FleetError):
     """One platform stopped before its complete live verdict."""
 
-    def __init__(self, message: str, counts: Mapping[str, int]) -> None:
+    def __init__(
+        self,
+        message: str,
+        counts: Mapping[str, int],
+        failures: Sequence[PlatformCaseFailure] = (),
+    ) -> None:
         super().__init__(message)
         self.counts = dict(counts)
+        self.failures = tuple(failures)
 
 
 def _fleet_case_count(inputs: FleetInputs) -> int:
@@ -625,6 +650,55 @@ def aggregate_platform_evidence(
     }
 
 
+def _platform_case_failure(
+    release: release_fleet.DistributionRelease,
+    error: release_fleet.CaseJourneyFailure,
+    *,
+    output: Path,
+) -> PlatformCaseFailure:
+    detail = error.detail.replace(str(output), "<fleet-output>")
+    error_type = type(error).__name__
+    signature = hashlib.sha256(f"{error_type}\0{detail}".encode("utf-8")).hexdigest()
+    return PlatformCaseFailure(release.tag, error_type, detail, signature)
+
+
+def _write_platform_failure_summary(
+    output: Path,
+    counts: Mapping[str, int],
+    failures: Sequence[PlatformCaseFailure],
+) -> Path:
+    grouped: dict[tuple[str, str], list[str]] = {}
+    for failure in failures:
+        grouped.setdefault((failure.error_type, failure.signature), []).append(
+            failure.starting_tag
+        )
+    groups = [
+        {
+            "count": len(starting_tags),
+            "error_type": error_type,
+            "signature": signature,
+            "starting_tags": sorted(starting_tags),
+        }
+        for (error_type, signature), starting_tags in sorted(grouped.items())
+    ]
+    path = output / PLATFORM_FAILURES_NAME
+    _write_exclusive(
+        path,
+        _json_bytes(
+            {
+                "schema_version": 1,
+                "outcome": "HISTORIC_FLEET_CASE_FAILURES",
+                "acceptance": False,
+                "counts": dict(counts),
+                "groups": groups,
+                "failures": [failure.document() for failure in failures],
+            }
+        ),
+        mode=0o600,
+    )
+    return path
+
+
 def collect_platform_runs(
     repo: Path,
     *,
@@ -648,6 +722,7 @@ def collect_platform_runs(
     }
     executor_runs: list[object] = []
     case_documents: list[dict[str, object]] = []
+    case_failures: list[PlatformCaseFailure] = []
     for release in releases:
         counts["started"] += 1
         try:
@@ -668,12 +743,34 @@ def collect_platform_runs(
             executor_runs.append(run)
             counts["completed"] += 1
             counts["passed"] += 1
+        except release_fleet.CaseJourneyFailure as error:
+            counts["failed"] += 1
+            failure = _platform_case_failure(release, error, output=output)
+            case_failures.append(failure)
+            print(
+                json.dumps(
+                    {"fleet_case_failure": failure.document()},
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+                flush=True,
+            )
         except Exception as error:
             counts["failed"] += 1
             raise PlatformFleetFailure(
-                f"{release.tag}: platform journey failed: {error}",
+                f"{release.tag}: platform infrastructure or integrity failure: {error}",
                 counts,
+                case_failures,
             ) from error
+
+    if case_failures:
+        summary = _write_platform_failure_summary(output, counts, case_failures)
+        raise PlatformFleetFailure(
+            f"{len(case_failures)} case-local journey failures; summary: {summary}",
+            counts,
+            case_failures,
+        )
 
     try:
         report = release_fleet.acceptance_report_from_json(

@@ -7,7 +7,7 @@ on:
         description: Exact public immutable foundation tag
         required: true
         type: string
-        default: dist/release/v1.81.15-be0e5f3
+        default: dist/release/v1.81.16-281202d
       follow_up_tag:
         description: Exact public immutable follow-up tag
         required: true
@@ -15,6 +15,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/historic-fleet-darwin.yml
+      - package.json
       - core/update/journey-protocol-v1.json
       - scripts/build-release.sh
       - scripts/build-vault-bundle.sh
