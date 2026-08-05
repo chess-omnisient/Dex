@@ -77,6 +77,22 @@ class ExecutorError(RuntimeError):
     """The released journey executor could not prove a safe completed run."""
 
 
+class PublicRouteDriftError(ExecutorError):
+    """The public latest route differs from the session's pinned follow-up."""
+
+    def __init__(
+        self,
+        expected_release: Mapping[str, str],
+        delivered_release: Mapping[str, str],
+    ) -> None:
+        self.expected_release = dict(expected_release)
+        self.delivered_release = dict(delivered_release)
+        super().__init__(
+            "public release route drifted from pinned "
+            f"{self.expected_release['tag']} to {self.delivered_release['tag']}"
+        )
+
+
 class ExecutorRun:
     """One live executor result that cannot be reconstructed from JSON."""
 
@@ -1014,6 +1030,20 @@ def _strict_identity(
     return identity
 
 
+def _closed_delivered_release(
+    delivery: Mapping[str, object],
+) -> dict[str, str] | None:
+    """Return only a complete public release identity safe for diagnostics."""
+
+    release = delivery.get("release")
+    if delivery.get("status") != "delivered" or not isinstance(release, Mapping):
+        return None
+    try:
+        return _strict_identity(release, "delivered")
+    except ExecutorError:
+        return None
+
+
 def _git_show(repo_root: Path, commit: str, relative: str) -> bytes:
     result = subprocess.run(
         [
@@ -1332,22 +1362,31 @@ def _failure_diagnostic(
     if delivery is not None:
         evidence = delivery.get("evidence")
         reason = evidence.get("reason") if isinstance(evidence, Mapping) else None
-        document["delivery"] = {
+        delivered_release = _closed_delivered_release(delivery)
+        route_drift = (
+            delivered_release is not None
+            and delivered_release != dict(follow_up)
+        )
+        if route_drift:
+            failure_reason = "public-route-drift"
+        elif isinstance(reason, str) and reason in _SAFE_DELIVERY_FAILURE_REASONS:
+            failure_reason = reason
+        else:
+            failure_reason = "unclassified"
+        delivery_diagnostic: dict[str, object] = {
             "status": (
                 "delivered" if delivery.get("status") == "delivered" else "not-delivered"
             ),
             "release_matches_expected": delivery.get("release") == dict(follow_up),
-            "failure_reason": (
-                reason
-                if isinstance(reason, str)
-                and reason in _SAFE_DELIVERY_FAILURE_REASONS
-                else "unclassified"
-            ),
+            "failure_reason": failure_reason,
             "elapsed_ms": min(
                 max(delivery_elapsed_ms or 0, 0),
                 _MAX_FAILURE_DIAGNOSTIC_ELAPSED_MS,
             ),
         }
+        if delivered_release is not None:
+            delivery_diagnostic["delivered_release"] = delivered_release
+        document["delivery"] = delivery_diagnostic
     return document
 
 
@@ -1586,6 +1625,25 @@ def _execute_journey_with_runtime(
     delivery_started = time.monotonic_ns()
     delivered = dict(_runtime.deliver_latest_release(vault))
     delivery_elapsed_ms = (time.monotonic_ns() - delivery_started) // 1_000_000
+    delivered_release = _closed_delivered_release(delivered)
+    if (
+        delivered.get("status") == "delivered"
+        and delivered_release is not None
+        and delivered_release != follow_up
+    ):
+        _write_failure_diagnostic(
+            evidence_root,
+            "follow-up-delivery-failure.diagnostic.json",
+            _failure_diagnostic(
+                phase="follow-up-delivery",
+                vault=vault,
+                foundation=foundation,
+                follow_up=follow_up,
+                delivery=delivered,
+                delivery_elapsed_ms=delivery_elapsed_ms,
+            ),
+        )
+        raise PublicRouteDriftError(follow_up, delivered_release)
     if (
         delivered.get("status") != "delivered"
         or delivered.get("release") != follow_up
@@ -1941,6 +1999,7 @@ __all__ = [
     "EXECUTOR_INTERFACE_VERSION",
     "ExecutorError",
     "ExecutorRun",
+    "PublicRouteDriftError",
     "JourneyRuntime",
     "execute_journey",
     "is_authoritative_executor_run",

@@ -2162,6 +2162,8 @@ def run_case_executor(
 
     try:
         return executor(_case_started=mark_case_execution_started, **kwargs)
+    except release_fleet_executor.PublicRouteDriftError:
+        raise
     except release_fleet_executor.ExecutorError as error:
         if not case_execution_started:
             raise

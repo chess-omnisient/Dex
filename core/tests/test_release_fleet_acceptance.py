@@ -919,6 +919,70 @@ def test_platform_collector_stops_immediately_on_infrastructure_or_integrity_fai
     assert not (tmp_path / "platform-failures.json").exists()
 
 
+def test_platform_collector_stops_immediately_on_public_route_drift(
+    tmp_path: Path,
+) -> None:
+    from scripts import release_fleet_executor
+
+    acceptance = _acceptance()
+    releases = (
+        _release("v1.20.1", "1.20.1", "1"),
+        _release("dist/release/v1.80.5-2222222", "1.80.5", "2"),
+        _release("v1.81.1", "1.81.1", "3"),
+    )
+    bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
+    attempted: list[str] = []
+    expected = {
+        "tag": "dist/release/v1.81.17-aaaaaaa",
+        "tag_object": "b" * 40,
+        "commit": "a" * 40,
+        "tree": "c" * 40,
+        "version": "1.81.17",
+        "channel": "stable",
+    }
+    delivered = {
+        "tag": "dist/release/v1.81.18-ddddddd",
+        "tag_object": "e" * 40,
+        "commit": "d" * 40,
+        "tree": "f" * 40,
+        "version": "1.81.18",
+        "channel": "stable",
+    }
+
+    def journey_runner(_repo: Path, *, starting_tag: str, **_kwargs) -> object:
+        attempted.append(starting_tag)
+        if starting_tag == releases[1].tag:
+            raise release_fleet_executor.PublicRouteDriftError(expected, delivered)
+        return SimpleNamespace(case=_case_document(_case(starting_tag, "darwin")))
+
+    with pytest.raises(
+        acceptance.PlatformFleetFailure,
+        match="public release route drifted",
+    ) as failure:
+        acceptance.collect_platform_runs(
+            tmp_path,
+            output=tmp_path,
+            releases=releases,
+            foundation_tag=FOUNDATION.tag,
+            follow_up_tag=expected["tag"],
+            running_platform="darwin",
+            bridge_asset=bridge_asset,
+            bridge_checksum=bridge_checksum,
+            journey_runner=journey_runner,
+        )
+
+    assert attempted == [releases[0].tag, releases[1].tag]
+    assert failure.value.counts == {
+        "discovered": 3,
+        "started": 2,
+        "completed": 1,
+        "passed": 1,
+        "failed": 1,
+    }
+    assert failure.value.failures == ()
+    assert not (tmp_path / "platform-failures.json").exists()
+
+
 def _immutable_foundation() -> release_fleet.ImmutableRelease:
     identity = FOUNDATION.identity()
     return release_fleet.ImmutableRelease(

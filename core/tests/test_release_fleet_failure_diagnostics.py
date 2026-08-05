@@ -128,6 +128,14 @@ class _Runtime:
                     "reason": "TOP-SECRET-NOT-FOR-DIAGNOSTICS",
                 },
             }
+        if self.failure == "public-route-drift":
+            return {
+                "status": "delivered",
+                "release": _identity("1.81.6", "c"),
+                "unsafe": {
+                    "token": "TOP-SECRET-NOT-FOR-DIAGNOSTICS",
+                },
+            }
         return {"status": "delivered", "release": self.follow_up}
 
     def build_and_preview_delivered_release(self, vault, release):
@@ -155,6 +163,8 @@ def _run_failure(
     tmp_path: Path,
     failure: str,
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    expected_error: type[executor.ExecutorError] = executor.ExecutorError,
 ) -> Path:
     source, source_commit = _released_executor_source(tmp_path)
     monkeypatch.setattr(
@@ -170,7 +180,7 @@ def _run_failure(
     follow_up = _identity("1.81.5", "b")
     bridge_name = f"dex-update-bridge-v{follow_up['version']}.py"
     checksum = f"{protocol.bridge.artifact.sha256}  {bridge_name}\n".encode()
-    with pytest.raises(executor.ExecutorError) as error:
+    with pytest.raises(expected_error) as error:
         executor.execute_journey(
             repo_root=source,
             source_commit=source_commit,
@@ -208,6 +218,7 @@ def _run_failure(
         "foundation-doctor": "foundation Doctor is unhealthy",
         "follow-up-delivery": "lifecycle delivery did not prove",
         "follow-up-doctor": "follow-up Doctor is unhealthy",
+        "public-route-drift": "public release route drifted",
     }[failure]
     assert expected in str(error.value)
     return tmp_path / "case.evidence"
@@ -274,6 +285,31 @@ def test_failed_journey_retains_only_private_sanitized_diagnostic(
         }
         assert isinstance(document["delivery"]["elapsed_ms"], int)
         assert 0 <= document["delivery"]["elapsed_ms"] <= 900_000
+
+
+def test_closed_delivery_mismatch_is_shared_public_route_drift_with_safe_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _run_failure(
+        tmp_path,
+        "public-route-drift",
+        monkeypatch,
+        expected_error=executor.PublicRouteDriftError,
+    )
+    diagnostic = evidence / "follow-up-delivery-failure.diagnostic.json"
+    document = json.loads(diagnostic.read_text(encoding="utf-8"))
+
+    assert document["delivery"] == {
+        "delivered_release": _identity("1.81.6", "c"),
+        "elapsed_ms": document["delivery"]["elapsed_ms"],
+        "failure_reason": "public-route-drift",
+        "release_matches_expected": False,
+        "status": "delivered",
+    }
+    serialized = diagnostic.read_text(encoding="utf-8")
+    assert "TOP-SECRET-NOT-FOR-DIAGNOSTICS" not in serialized
+    assert ".mcp.json" not in serialized
 
 
 def test_failure_diagnostic_retains_only_allowlisted_delivery_reason(
