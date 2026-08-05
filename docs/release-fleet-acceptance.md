@@ -107,6 +107,18 @@ python3 scripts/release_fleet.py journey --repo . --output "$fleet_root" \
   --bridge-checksum /path/to/dex-update-bridge-v1.81.16.py.sha256
 ```
 
+Historic semantic `v*` starting tags have a narrower evidence-only rule. Their
+tag object, commit, tree, version, and channel identity remain exact. When Git
+positively confirms that `System/.release-catalog.json` is absent, the runner
+may record a valid journey protocol only after its runner, executor, and bridge
+hashes match the exact semantic source commit. That surface is labelled
+`present-unbound` and `machine_executable: false`; it cannot grant execution
+authority or substitute a similarly versioned distribution package. A catalog
+that exists but is malformed or unreadable fails closed, as does any source
+hash mismatch. Immutable journey targets, including the foundation and
+follow-up, never receive this evidence exception: their release catalogs and
+publisher-source bindings remain mandatory.
+
 The bridge paths must be the separately downloaded GitHub Release asset and
 its checksum. The runner verifies their exact names, checksum, protocol digest,
 and released source bytes before it creates the fixture. A bridge available
