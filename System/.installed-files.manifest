@@ -752,6 +752,11 @@ core/entity_engine/relationships.py
 core/entity_engine/temperature.py
 core/entity_engine/write.py
 core/entity_maintenance.py
+core/health/__init__.py
+core/health/doctor_ref.py
+core/health/doctor_reporter.py
+core/health/reporter.py
+core/health/snapshot.py
 core/integrations/BUILD_TRACKER.md
 core/integrations/__init__.py
 core/integrations/connection-manager/README.md
@@ -1040,7 +1045,12 @@ core/tests/test_fuzz_properties.py
 core/tests/test_golden_journeys.py
 core/tests/test_granola_configuration_truth.py
 core/tests/test_granola_server.py
+core/tests/test_health_compatibility.py
+core/tests/test_health_doctor_ref.py
 core/tests/test_health_page_scripts.py
+core/tests/test_health_reporter.py
+core/tests/test_health_session_surface.py
+core/tests/test_health_snapshot.py
 core/tests/test_health_telemetry.py
 core/tests/test_health_telemetry_consent_ux.py
 core/tests/test_health_telemetry_privacy.py
@@ -1147,6 +1157,7 @@ core/utils/dex_logger.py
 core/utils/doctor.py
 core/utils/entity_pages.py
 core/utils/feature_status.py
+core/utils/health_session.py
 core/utils/health_telemetry.py
 core/utils/history_hygiene.py
 core/utils/integration_credentials.py
