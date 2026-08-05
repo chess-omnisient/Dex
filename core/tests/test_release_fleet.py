@@ -1933,6 +1933,29 @@ def test_standalone_bridge_asset_refuses_a_checksum_not_shipped_for_its_bytes(
         )
 
 
+def test_case_executor_collects_only_failures_after_case_execution_starts() -> None:
+    from scripts import release_fleet_executor
+
+    def case_failure(*, _case_started, **_kwargs):
+        _case_started()
+        raise release_fleet_executor.ExecutorError("foundation Doctor is unhealthy")
+
+    with pytest.raises(
+        release_fleet.CaseJourneyFailure,
+        match="foundation Doctor is unhealthy",
+    ):
+        release_fleet.run_case_executor("v1.61.0", case_failure)
+
+    def integrity_failure(**_kwargs):
+        raise release_fleet_executor.ExecutorError("released executor identity changed")
+
+    with pytest.raises(
+        release_fleet_executor.ExecutorError,
+        match="released executor identity changed",
+    ):
+        release_fleet.run_case_executor("v1.61.0", integrity_failure)
+
+
 @pytest.mark.parametrize("split_topology", [False, True])
 @pytest.mark.parametrize("controlled_approvals", [False, True])
 def test_journey_delegates_only_after_released_source_and_fixture_are_bound(

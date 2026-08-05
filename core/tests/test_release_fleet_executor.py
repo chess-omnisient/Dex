@@ -715,6 +715,8 @@ def _execute(
     input_fn=lambda _prompt: "APPLY",
     starting: dict[str, str] | None = None,
     follow_up_cache: Path | None = None,
+    platform: str = "darwin",
+    case_started=lambda: None,
 ) -> executor.ExecutorRun:
     protocol = load_update_journey_protocol(
         (REPO_ROOT / "core/update/journey-protocol-v1.json").read_bytes()
@@ -733,7 +735,7 @@ def _execute(
         historic_surface={"release": starting, "machine_executable": False},
         foundation_surface={"release": protocol.foundation, "machine_executable": False},
         user_owned_paths=user_files,
-        platform="darwin",
+        platform=platform,
         bridge_asset_evidence=_bridge_asset_evidence(protocol, runtime.follow_up),
         bridge_asset_path=REPO_ROOT / protocol.bridge.artifact.source_path,
         initial_install_evidence={"topology": "legacy-monolithic", "brain_refs": []},
@@ -741,7 +743,36 @@ def _execute(
         input_fn=input_fn,
         output_fn=lambda _line: None,
         _runtime=runtime,
+        _case_started=case_started,
     )
+
+
+def test_executor_marks_case_execution_only_after_shared_integrity_checks(
+    tmp_path: Path,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+    follow_up = _identity("1.81.0", "b")
+    started: list[str] = []
+
+    _execute(
+        tmp_path / "valid",
+        _Runtime(follow_up),
+        source_repo=source_repo,
+        source_commit=source_commit,
+        case_started=lambda: started.append("valid"),
+    )
+
+    with pytest.raises(executor.ExecutorError, match="platform is not declared"):
+        _execute(
+            tmp_path / "invalid",
+            _Runtime(follow_up),
+            source_repo=source_repo,
+            source_commit=source_commit,
+            platform="win32",
+            case_started=lambda: started.append("invalid"),
+        )
+
+    assert started == ["valid"]
 
 
 def test_cache_backed_run_cannot_satisfy_formal_acceptance_authority(

@@ -150,6 +150,19 @@ sequentially on macOS. It retains the evidence and exact
 discovered/started/completed/passed/failed counts on both success and failure.
 The job is time-bounded to six hours and monitors a 50 GiB working-set limit.
 
+The formal controller continues after an isolated case has crossed the journey
+execution boundary and then fails. It retains every such failure in
+`platform-failures.json`, groups matching diagnostics by a stable signature, and
+finishes the frozen cohort before returning a non-zero result. This lets one
+exhaustive run expose all version-specific failure families instead of stopping
+at the first one. A shared protocol, released-identity, public-route, evidence,
+runtime, filesystem, disk-budget, or other infrastructure/integrity failure
+still stops the job immediately. A collected failure report is diagnostic
+evidence only: it cannot mint a platform receipt or acceptance result. If the
+exhaustive run has no failures, its ordinary receipt remains valid acceptance
+evidence; otherwise all grouped fixes need targeted proof before one final full
+acceptance run.
+
 Pull requests that touch the updater route get a separate non-publishing
 macOS canary. It builds a local release-shaped candidate and runs real journeys
 from these exact seven starts:
