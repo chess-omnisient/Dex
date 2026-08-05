@@ -1086,6 +1086,23 @@ def _write_update_surface(repo: Path) -> None:
     rescue.write_text("# Published rescue\n", encoding="utf-8")
 
 
+def _write_current_protocol_source(repo: Path) -> None:
+    _write_update_surface(repo)
+    for relative in (
+        "scripts/dex_update_bridge.py",
+        "scripts/release_fleet.py",
+        "scripts/release_fleet_executor.py",
+    ):
+        source = repo / relative
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes((release_fleet.PROJECT_ROOT / relative).read_bytes())
+    protocol_path = repo / release_fleet.UPDATE_JOURNEY_RELATIVE
+    protocol_path.parent.mkdir(parents=True, exist_ok=True)
+    protocol_path.write_bytes(
+        (release_fleet.PROJECT_ROOT / release_fleet.UPDATE_JOURNEY_RELATIVE).read_bytes()
+    )
+
+
 def _write_starting_manifest(root: Path, releases: tuple[release_fleet.DistributionRelease, ...]) -> Path:
     path = root / "historic-release-manifest.json"
     path.write_text(json.dumps(release_fleet.starting_release_manifest(releases)), encoding="utf-8")
@@ -2235,6 +2252,172 @@ def test_shipped_update_surface_requires_and_exposes_the_released_executor(
     classification = release_fleet.classify_historic_update_surface(repo, distribution)
     assert classification["machine_executable"] is True
     assert classification["route_classification"] == "machine-protocol-released-executor"
+
+
+def test_shipped_update_surface_records_catalogless_semantic_protocol_as_unbound(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _write_current_protocol_source(repo)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "--quiet", "-m", "semantic release source")
+    source_commit = _git(repo, "rev-parse", "HEAD")
+    semantic_tag = "v1.81.1"
+    _git(repo, "tag", semantic_tag)
+    (repo / "release-fix.txt").write_text("packaging fix\n", encoding="utf-8")
+    _git(repo, "add", "release-fix.txt")
+    _git(repo, "commit", "--quiet", "-m", "release-only fix")
+    package_source_commit = _git(repo, "rev-parse", "HEAD")
+
+    catalog = repo / "System/.release-catalog.json"
+    catalog.parent.mkdir(parents=True, exist_ok=True)
+    catalog.write_text(
+        json.dumps(
+            {
+                "catalog_version": 1,
+                "release": {"source_commit": package_source_commit},
+                "items": [],
+                "integrity": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    _tag_release(repo, "1.81.1", "immutable package")
+    semantic_release = next(
+        release
+        for release in release_fleet.discover_distribution_releases(repo)
+        if release.tag == semantic_tag
+    )
+
+    surface = release_fleet.shipped_update_surface(repo, semantic_release)
+
+    assert surface["release"] == {
+        "tag": semantic_tag,
+        "tag_object": source_commit,
+        "commit": source_commit,
+        "tree": _git(repo, "rev-parse", f"{semantic_tag}^{{tree}}"),
+        "version": "1.81.1",
+        "channel": "stable",
+    }
+    assert surface["machine_executable"] is False
+    assert surface["journey_protocol"]["status"] == "present-unbound"
+    assert surface["journey_protocol"]["source_commit"] == source_commit
+    classification = release_fleet.classify_historic_update_surface(
+        repo, semantic_release
+    )
+    assert classification["machine_executable"] is False
+    assert classification["route_classification"] == "protocol-present-unbound-source"
+
+
+def test_shipped_update_surface_keeps_catalog_strict_for_immutable_release(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _write_current_protocol_source(repo)
+    tag = _tag_release(repo, "1.81.1", "catalog-less immutable package")
+    release = release_fleet.resolve_immutable_release(repo, tag)
+
+    with pytest.raises(release_fleet.FleetError, match="release-catalog"):
+        release_fleet.shipped_update_surface(repo, release)
+
+
+def test_shipped_update_surface_rejects_malformed_semantic_catalog(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _write_current_protocol_source(repo)
+    catalog = repo / "System/.release-catalog.json"
+    catalog.parent.mkdir(parents=True, exist_ok=True)
+    catalog.write_text("{}\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "--quiet", "-m", "semantic release with malformed catalog")
+    tag = "v1.81.2"
+    _git(repo, "tag", tag)
+    release = next(
+        item
+        for item in release_fleet.discover_distribution_releases(repo)
+        if item.tag == tag
+    )
+
+    with pytest.raises(
+        release_fleet.FleetError, match="release catalog has an invalid shape"
+    ):
+        release_fleet.shipped_update_surface(repo, release)
+
+
+def test_shipped_update_surface_propagates_semantic_catalog_inspection_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _write_current_protocol_source(repo)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "--quiet", "-m", "semantic release source")
+    tag = "v1.81.2"
+    _git(repo, "tag", tag)
+    release = next(
+        item
+        for item in release_fleet.discover_distribution_releases(repo)
+        if item.tag == tag
+    )
+    real_run = release_fleet.subprocess.run
+
+    def fail_catalog_inspection(command: list[str], *args: object, **kwargs: object):
+        if "ls-tree" in command and command[-1] == "System/.release-catalog.json":
+            return release_fleet.subprocess.CompletedProcess(
+                command,
+                128,
+                stdout=b"",
+                stderr=b"fatal: object database read failure\n",
+            )
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(release_fleet.subprocess, "run", fail_catalog_inspection)
+
+    with pytest.raises(release_fleet.FleetError, match="object database read failure"):
+        release_fleet.shipped_update_surface(repo, release)
+
+
+def test_shipped_update_surface_does_not_generalize_mutated_v1810_pin(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _write_current_protocol_source(repo)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "--quiet", "-m", "different v1.81.0 source")
+    tag = "v1.81.0"
+    _git(repo, "tag", tag)
+    release = next(
+        item
+        for item in release_fleet.discover_distribution_releases(repo)
+        if item.tag == tag
+    )
+
+    with pytest.raises(release_fleet.FleetError, match="release-catalog"):
+        release_fleet.shipped_update_surface(repo, release)
+
+
+def test_shipped_update_surface_rejects_catalogless_semantic_protocol_hash_mismatch(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _write_current_protocol_source(repo)
+    executor = repo / "scripts/release_fleet_executor.py"
+    executor.write_bytes(executor.read_bytes() + b"\n# unexpected mutation\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "--quiet", "-m", "mutated semantic protocol source")
+    tag = "v1.81.2"
+    _git(repo, "tag", tag)
+    release = next(
+        item
+        for item in release_fleet.discover_distribution_releases(repo)
+        if item.tag == tag
+    )
+
+    with pytest.raises(
+        release_fleet.FleetError, match="does not match its protocol hash"
+    ):
+        release_fleet.shipped_update_surface(repo, release)
 
 
 def test_shipped_update_surface_rejects_a_protocol_with_an_unknown_operation(

@@ -380,6 +380,23 @@ def _tag_file(repo: Path, tag: str, relative: str) -> bytes:
     return result.stdout
 
 
+def _tag_file_if_present(repo: Path, tag: str, relative: str) -> bytes | None:
+    """Read one tag path, distinguishing confirmed absence from Git failure."""
+
+    result = subprocess.run(
+        ["git", "-C", str(repo), "ls-tree", "-z", tag, "--", relative],
+        capture_output=True,
+    )
+    if result.returncode:
+        detail = result.stderr.decode("utf-8", "replace").strip()
+        raise FleetError(
+            detail or f"{tag}: could not inspect required publication path {relative}"
+        )
+    if not result.stdout:
+        return None
+    return _tag_file(repo, tag, relative)
+
+
 def _strict_object(source: bytes, context: str, keys: frozenset[str]) -> dict[str, object]:
     try:
         value = json.loads(source)
@@ -415,14 +432,15 @@ def _released_protocol_source_commit(repo: Path, tag: str) -> str:
     return source_commit
 
 
-def _verify_released_protocol_artifacts(
+def _verify_protocol_source_artifacts(
     repo: Path,
-    release: DistributionRelease | ImmutableRelease,
+    *,
+    release_tag: str,
+    source_commit: str,
     protocol: UpdateJourneyProtocol,
-) -> str:
-    """Bind protocol adapters to the exact publisher source commit bytes."""
+) -> None:
+    """Prove protocol adapter hashes against one exact source commit."""
 
-    source_commit = _released_protocol_source_commit(repo, release.tag)
     for label, artifact in (
         ("fleet runner", protocol.runner),
         ("journey executor", protocol.executor),
@@ -432,13 +450,55 @@ def _verify_released_protocol_artifacts(
             source = _tag_file(repo, source_commit, artifact.source_path)
         except FleetError as error:
             raise FleetError(
-                f"{release.tag}: released journey {label} source is unavailable"
+                f"{release_tag}: released journey {label} source is unavailable"
             ) from error
         if hashlib.sha256(source).hexdigest() != artifact.sha256:
             raise FleetError(
-                f"{release.tag}: released journey {label} does not match its protocol hash"
+                f"{release_tag}: released journey {label} does not match its protocol hash"
             )
+
+
+def _verify_released_protocol_artifacts(
+    repo: Path,
+    release: DistributionRelease | ImmutableRelease,
+    protocol: UpdateJourneyProtocol,
+) -> str:
+    """Bind protocol adapters to the exact publisher source commit bytes."""
+
+    source_commit = _released_protocol_source_commit(repo, release.tag)
+    _verify_protocol_source_artifacts(
+        repo,
+        release_tag=release.tag,
+        source_commit=source_commit,
+        protocol=protocol,
+    )
     return source_commit
+
+
+def _unbound_semantic_protocol_source(
+    repo: Path,
+    release: DistributionRelease | ImmutableRelease,
+    protocol: UpdateJourneyProtocol,
+) -> str | None:
+    """Prove catalog-less semantic bytes without granting execution authority."""
+
+    pinned = dex_update_bridge.exact_unbound_journey_source(repo, release.tag)
+    if pinned is not None:
+        return pinned
+    if release.tag == dex_update_bridge.V181_UNBOUND_JOURNEY_SOURCE.release.tag:
+        return None
+    if LEGACY_RELEASE_TAG.fullmatch(release.tag) is None:
+        return None
+    catalog = _tag_file_if_present(repo, release.tag, "System/.release-catalog.json")
+    if catalog is not None:
+        return None
+    _verify_protocol_source_artifacts(
+        repo,
+        release_tag=release.tag,
+        source_commit=release.commit,
+        protocol=protocol,
+    )
+    return release.commit
 
 
 def shipped_update_surface(repo: Path, release: DistributionRelease | ImmutableRelease) -> dict[str, object]:
@@ -484,8 +544,10 @@ def shipped_update_surface(repo: Path, release: DistributionRelease | ImmutableR
             raise FleetError(
                 f"{release.tag}: released journey protocol is invalid: {error}"
             ) from error
-        unbound_source = dex_update_bridge.exact_unbound_journey_source(repo, release.tag)
-        source_commit = unbound_source or _verify_released_protocol_artifacts(repo, release, protocol)
+        unbound_source = _unbound_semantic_protocol_source(repo, release, protocol)
+        source_commit = unbound_source or _verify_released_protocol_artifacts(
+            repo, release, protocol
+        )
         protocol_surface = {
             "path": UPDATE_JOURNEY_RELATIVE,
             "status": "present-unbound" if unbound_source else "present",
@@ -1633,7 +1695,7 @@ def classify_historic_update_surface(repo: Path, release: DistributionRelease) -
         repo, release.tag, "core/lifecycle/catalog/bridge-release.json"
     )
     protocol = _optional_tag_file(repo, release.tag, UPDATE_JOURNEY_RELATIVE)
-    unbound_source = dex_update_bridge.exact_unbound_journey_source(repo, release.tag)
+    unbound_source: str | None = None
     if protocol is not None:
         try:
             parsed_protocol = load_update_journey_protocol(protocol)
@@ -1641,6 +1703,9 @@ def classify_historic_update_surface(repo: Path, release: DistributionRelease) -
             raise FleetError(
                 f"{release.tag}: released journey protocol is invalid: {error}"
             ) from error
+        unbound_source = _unbound_semantic_protocol_source(
+            repo, release, parsed_protocol
+        )
         if unbound_source is None:
             _verify_released_protocol_artifacts(repo, release, parsed_protocol)
             route = "machine-protocol-released-executor"
