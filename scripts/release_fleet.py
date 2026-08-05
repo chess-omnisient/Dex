@@ -2314,10 +2314,6 @@ def run_journey(
             )
         finally:
             _disable_all_fixture_remotes(case.vault, environment)
-    except CaseJourneyFailure:
-        raise
-    except FleetError as error:
-        raise CaseJourneyFailure(start.tag, str(error)) from error
     finally:
         _remove_disposable_fixture(vault, output)
         _remove_disposable_fixture(runtime_root, output)

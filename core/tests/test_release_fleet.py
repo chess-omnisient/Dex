@@ -1958,11 +1958,13 @@ def test_case_executor_collects_only_failures_after_case_execution_starts() -> N
 
 @pytest.mark.parametrize("split_topology", [False, True])
 @pytest.mark.parametrize("controlled_approvals", [False, True])
+@pytest.mark.parametrize("fixture_failure", [False, True])
 def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     split_topology: bool,
     controlled_approvals: bool,
+    fixture_failure: bool,
 ) -> None:
     from core.update.journey_protocol import load_update_journey_protocol
     from scripts import release_fleet_executor
@@ -2091,6 +2093,8 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
         environment,
         keep_official_fetch,
     ):
+        if fixture_failure:
+            raise release_fleet.FleetError("fixture provenance changed")
         assert environment == {}
         assert keep_official_fetch is True
         vault = output / release_fleet.safe_case_name(release)
@@ -2164,6 +2168,23 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
         lambda *_args, **_kwargs: remote_events.append("remote-closed"),
     )
     monkeypatch.setattr(release_fleet_executor, "execute_journey", execute)
+
+    if fixture_failure:
+        with pytest.raises(release_fleet.FleetError) as failure:
+            release_fleet.run_journey(
+                tmp_path,
+                output=tmp_path / "output",
+                starting_tag=start.tag,
+                foundation_tag=foundation.tag,
+                follow_up_tag=follow_up.tag,
+                bridge_asset=bridge_asset,
+                bridge_checksum=bridge_checksum,
+                controlled_approvals=controlled_approvals,
+                follow_up_cache=tmp_path / "candidate-release.git",
+            )
+        assert type(failure.value) is release_fleet.FleetError
+        assert str(failure.value) == "fixture provenance changed"
+        return
 
     run = release_fleet.run_journey(
         tmp_path,
