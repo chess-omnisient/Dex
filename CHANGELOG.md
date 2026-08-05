@@ -7,6 +7,26 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.18] — 🩺 Proactive health summaries (2026-08-05)
+
+Dex used to make it hard to know whether background checks were current without
+asking for a full Doctor run. This release keeps the latest complete health
+summary visible while keeping session starts calm.
+
+**What this changes for you:**
+
+* **Health summaries stay trustworthy.** Reporter results are normalized into
+  immutable snapshots, so an incomplete refresh cannot replace the last known
+  complete status.
+* **Critical problems surface at the right moment.** A newly critical result
+  can interrupt the session; warnings, staleness, and recoveries stay quiet or
+  unobtrusive.
+* **Doctor can resume context safely.** A structured handoff preserves the
+  relevant issue and check identities, while stale or malformed context falls
+  back safely to general Doctor.
+* **Existing installations get it automatically.** The first refresh stays
+  quietly in a preparing state, with no new notification controls to configure.
+
 ## [1.81.17] — 🧭 Historic checks now recognise what older releases actually shipped (2026-08-05)
 
 The final public Mac fleet stopped before testing one old semantic release because
