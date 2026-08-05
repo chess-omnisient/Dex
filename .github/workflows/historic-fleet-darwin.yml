@@ -95,7 +95,7 @@ jobs:
           python3 -m pip install -r requirements-dev.txt
           python3 -m pip install "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil requests
           npm ci
-      - name: Run seven release-shaped macOS journeys
+      - name: Run ten release-shaped macOS journeys
         env:
           FLEET_WORK_ROOT: ${{ runner.temp }}/historic-fleet-darwin-pr-canary
         run: bash scripts/run-historic-fleet-darwin.sh canary
