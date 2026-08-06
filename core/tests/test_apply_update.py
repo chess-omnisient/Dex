@@ -437,6 +437,55 @@ def test_pre_delivery_proof_retries_one_sanitized_http_429_within_original_deadl
     assert len(runner.calls) == 1
 
 
+def test_pre_delivery_proof_retries_one_sanitized_network_failure_within_original_deadline(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = split_release_fixture["vault"]
+    tag, tag_object, commit, tree = split_release_fixture["target"]
+    identity = {
+        "status": update_verifier.STATUS_IDENTITY,
+        "tag": tag,
+        "tag_object": tag_object,
+        "commit": commit,
+        "tree": tree,
+    }
+    offline = {
+        "status": update_verifier.STATUS_OFFLINE,
+        "reason": "network-unavailable",
+    }
+    proof_budgets: list[float] = []
+
+    def prove_latest_release(
+        *_args, wall_clock_seconds: float, **_kwargs
+    ) -> dict[str, object]:
+        proof_budgets.append(wall_clock_seconds)
+        return offline if len(proof_budgets) == 1 else identity
+
+    moments = iter((100.0, 100.2, 100.3))
+    monkeypatch.setattr(apply_update, "_monotonic", lambda: next(moments), raising=False)
+    sleeps: list[float] = []
+    monkeypatch.setattr(apply_update, "time", SimpleNamespace(sleep=sleeps.append))
+    monkeypatch.setattr(update_verifier, "prove_latest_release", prove_latest_release)
+    runner = _ScriptedDeliveryFetch((None,))
+
+    result = apply_update.deliver_latest_release(
+        vault,
+        state_root=tmp_path / "evidence-state",
+        git_runner=runner,
+        wall_clock_seconds=10.0,
+    )
+
+    assert result["status"] == "delivered"
+    assert result["release"]["tag_object"] == tag_object
+    assert result["release"]["commit"] == commit
+    assert result["release"]["tree"] == tree
+    assert proof_budgets == [10.0, pytest.approx(9.7)]
+    assert sleeps == [apply_update.PRE_DELIVERY_PROOF_RETRY_BACKOFF_SECONDS]
+    assert len(runner.calls) == 1
+
+
 def test_pre_delivery_proof_does_not_retry_when_429_exhausts_original_deadline(
     split_release_fixture: dict[str, object],
     tmp_path: Path,
