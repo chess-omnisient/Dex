@@ -556,12 +556,19 @@ def _release_identity(release: VerifiedReleaseRef) -> dict[str, str]:
 
 
 def _is_retryable_public_proof_rejection(evidence: dict[str, object]) -> bool:
-    """Accept only the verifier's closed, sanitized HTTP 429 classification."""
-    return set(evidence) == {"status", "reason", "diagnostic"} and evidence == {
-        "status": "UNKNOWN",
-        "reason": "transient-http-rejection",
-        "diagnostic": {"classification": "http-429"},
-    }
+    """Accept only closed, sanitized transient public-proof classifications."""
+    if set(evidence) == {"status", "reason"}:
+        return evidence == {
+            "status": "offline",
+            "reason": "network-unavailable",
+        }
+    if set(evidence) == {"status", "reason", "diagnostic"}:
+        return evidence == {
+            "status": "UNKNOWN",
+            "reason": "transient-http-rejection",
+            "diagnostic": {"classification": "http-429"},
+        }
+    return False
 
 
 def _prove_latest_release_with_bounded_retry(
@@ -574,7 +581,7 @@ def _prove_latest_release_with_bounded_retry(
     git_runner: Any | None,
     wall_clock_seconds: float,
 ) -> dict[str, object]:
-    """Retry one explicit HTTP 429 without extending the original proof deadline."""
+    """Retry one closed transient rejection without extending the proof deadline."""
     from core.utils.update_verifier import prove_latest_release
 
     initial_budget = max(0.0, wall_clock_seconds)

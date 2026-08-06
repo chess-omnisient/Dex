@@ -224,7 +224,12 @@ def test_foundation_fetch_survives_public_release_channel_advancing(
     calls: list[tuple[str, ...]] = []
     private_release_ref = follow_up_commit
 
-    def run_git(_directory: Path, *arguments: str) -> str:
+    def run_git(
+        _directory: Path,
+        *arguments: str,
+        timeout_seconds: float = 90.0,
+    ) -> str:
+        del timeout_seconds
         nonlocal private_release_ref
         calls.append(arguments)
         if arguments == (
@@ -259,6 +264,174 @@ def test_foundation_fetch_survives_public_release_channel_advancing(
         "refs/remotes/upstream/release",
         pin.commit,
     ) in calls
+
+
+def test_public_foundation_fetch_retries_one_closed_network_failure_then_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outcomes: list[bridge.BridgeError | None] = [
+        bridge.BridgeError(
+            "fatal: unable to access the public release: Could not resolve host: github.com"
+        ),
+        None,
+    ]
+    calls: list[tuple[str, ...]] = []
+    timeouts: list[float] = []
+    sleeps: list[float] = []
+
+    def run_git(
+        _directory: Path,
+        *arguments: str,
+        timeout_seconds: float = 90.0,
+    ) -> str:
+        calls.append(arguments)
+        timeouts.append(timeout_seconds)
+        outcome = outcomes.pop(0)
+        if outcome is not None:
+            raise outcome
+        return ""
+
+    monkeypatch.setattr(bridge, "_run_git", run_git)
+    monkeypatch.setattr(bridge.time, "sleep", sleeps.append)
+
+    bridge._fetch_public_foundation_tag(tmp_path, bridge.FOUNDATION)
+
+    assert len(calls) == 2
+    assert calls[0] == calls[1]
+    assert calls[0][-2:] == (
+        bridge.OFFICIAL_REMOTE,
+        f"refs/tags/{bridge.FOUNDATION.tag}:refs/tags/{bridge.FOUNDATION.tag}",
+    )
+    assert 0 < timeouts[1] <= timeouts[0] <= bridge._PUBLIC_FOUNDATION_FETCH_TOTAL_SECONDS
+    assert sleeps == [bridge._PUBLIC_FOUNDATION_FETCH_RETRY_DELAY_SECONDS]
+
+
+def test_public_foundation_fetch_preserves_transient_error_when_retry_delay_exceeds_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failure = bridge.BridgeError("connection timed out")
+    calls: list[tuple[str, ...]] = []
+    sleeps: list[float] = []
+    monotonic = iter((100.0, 100.0, 189.95, 190.0))
+
+    def run_git(
+        _directory: Path,
+        *arguments: str,
+        timeout_seconds: float = 90.0,
+    ) -> str:
+        del timeout_seconds
+        calls.append(arguments)
+        raise failure
+
+    monkeypatch.setattr(bridge, "_run_git", run_git)
+    monkeypatch.setattr(bridge.time, "monotonic", lambda: next(monotonic))
+    monkeypatch.setattr(bridge.time, "sleep", sleeps.append)
+
+    with pytest.raises(bridge.BridgeError) as raised:
+        bridge._fetch_public_foundation_tag(tmp_path, bridge.FOUNDATION)
+
+    assert raised.value is failure
+    assert len(calls) == 1
+    assert sleeps == []
+
+
+def test_public_foundation_fetch_stops_after_two_closed_network_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outcomes = iter(
+        (
+            bridge.BridgeError("temporary failure in name resolution"),
+            bridge.BridgeError("connection timed out"),
+        )
+    )
+    calls: list[tuple[str, ...]] = []
+    sleeps: list[float] = []
+
+    def run_git(
+        _directory: Path,
+        *arguments: str,
+        timeout_seconds: float = 90.0,
+    ) -> str:
+        del timeout_seconds
+        calls.append(arguments)
+        raise next(outcomes)
+
+    monkeypatch.setattr(bridge, "_run_git", run_git)
+    monkeypatch.setattr(bridge.time, "sleep", sleeps.append)
+
+    with pytest.raises(bridge.BridgeError, match="^connection timed out$"):
+        bridge._fetch_public_foundation_tag(tmp_path, bridge.FOUNDATION)
+
+    assert len(calls) == 2
+    assert sleeps == [bridge._PUBLIC_FOUNDATION_FETCH_RETRY_DELAY_SECONDS]
+
+
+def test_public_foundation_fetch_does_not_retry_non_network_git_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+    sleeps: list[float] = []
+
+    def run_git(
+        _directory: Path,
+        *arguments: str,
+        timeout_seconds: float = 90.0,
+    ) -> str:
+        del timeout_seconds
+        calls.append(arguments)
+        raise bridge.BridgeError("fatal: repository not found")
+
+    monkeypatch.setattr(bridge, "_run_git", run_git)
+    monkeypatch.setattr(bridge.time, "sleep", sleeps.append)
+
+    with pytest.raises(bridge.BridgeError, match="^fatal: repository not found$"):
+        bridge._fetch_public_foundation_tag(tmp_path, bridge.FOUNDATION)
+
+    assert len(calls) == 1
+    assert sleeps == []
+
+
+def test_both_public_foundation_fetch_sites_use_the_bounded_retry_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper_calls: list[tuple[Path, bridge.ReleasePin]] = []
+
+    def fetch_public_foundation_tag(repository: Path, pin: bridge.ReleasePin) -> None:
+        helper_calls.append((repository, pin))
+
+    def run_git(_directory: Path, *arguments: str) -> str:
+        if arguments == ("rev-parse", "--verify", f"refs/tags/{bridge.FOUNDATION.tag}"):
+            return bridge.FOUNDATION.tag_object
+        if arguments == ("rev-parse", "--verify", f"{bridge.FOUNDATION.tag}^{{commit}}"):
+            return bridge.FOUNDATION.commit
+        if arguments == ("rev-parse", "--verify", f"{bridge.FOUNDATION.tag}^{{tree}}"):
+            return bridge.FOUNDATION.tree
+        if arguments == (
+            "rev-parse",
+            "--verify",
+            "refs/remotes/upstream/release^{commit}",
+        ):
+            return bridge.FOUNDATION.commit
+        return ""
+
+    monkeypatch.setattr(bridge, "_fetch_public_foundation_tag", fetch_public_foundation_tag)
+    monkeypatch.setattr(bridge, "_run_git", run_git)
+
+    temporary, _source = bridge.acquire_foundation_source()
+    try:
+        bridge._fetch_foundation_into_brain(_vault(tmp_path), bridge.FOUNDATION)
+    finally:
+        temporary.cleanup()
+
+    assert [(repository.name, pin) for repository, pin in helper_calls] == [
+        ("evidence.git", bridge.FOUNDATION),
+        ("brain.git", bridge.FOUNDATION),
+    ]
 
 
 def test_legacy_topology_pin_is_closed_to_exact_v1201_release() -> None:

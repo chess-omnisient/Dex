@@ -22,6 +22,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +31,18 @@ from typing import Any, Callable, Iterator, Mapping, Protocol
 
 OFFICIAL_REMOTE = "https://github.com/davekilleen/Dex.git"
 _FLEET_FOLLOW_UP_DELIVERY_WALL_CLOCK_SECONDS = 60.0
+_PUBLIC_FOUNDATION_FETCH_ATTEMPTS = 2
+_PUBLIC_FOUNDATION_FETCH_TOTAL_SECONDS = 90.0
+_PUBLIC_FOUNDATION_FETCH_RETRY_DELAY_SECONDS = 0.1
+_PUBLIC_FOUNDATION_FETCH_TRANSIENT_MARKERS = (
+    "could not resolve host",
+    "failed to connect",
+    "network is unreachable",
+    "connection timed out",
+    "connection refused",
+    "couldn't connect to server",
+    "temporary failure in name resolution",
+)
 _HEX = re.compile(r"^[0-9a-f]{40}$")
 _RELEASE_TAG = re.compile(r"^dist/release/v[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{7,40}$")
 _APPROVAL_WORD = "APPLY"
@@ -1274,7 +1287,7 @@ def _bridge_environment() -> dict[str, str]:
     }
 
 
-def _run_git(directory: Path, *arguments: str) -> str:
+def _run_git(directory: Path, *arguments: str, timeout_seconds: float = 90.0) -> str:
     """Run a non-interactive Git operation with hooks and non-HTTPS blocked."""
     completed = subprocess.run(
         [
@@ -1295,7 +1308,7 @@ def _run_git(directory: Path, *arguments: str) -> str:
         check=False,
         capture_output=True,
         env=_bridge_environment(),
-        timeout=90,
+        timeout=timeout_seconds,
     )
     if completed.returncode:
         detail = completed.stderr.decode("utf-8", "replace").strip()
@@ -1304,6 +1317,42 @@ def _run_git(directory: Path, *arguments: str) -> str:
         return completed.stdout.decode("utf-8").strip()
     except UnicodeDecodeError as error:
         raise BridgeError("Git returned non-text release metadata") from error
+
+
+def _fetch_public_foundation_tag(repository: Path, pin: ReleasePin) -> None:
+    """Fetch one immutable tag with one bounded retry for closed network failures."""
+
+    arguments = (
+        "fetch",
+        "--quiet",
+        "--no-tags",
+        "--no-write-fetch-head",
+        "--no-recurse-submodules",
+        OFFICIAL_REMOTE,
+        f"refs/tags/{pin.tag}:refs/tags/{pin.tag}",
+    )
+    deadline = time.monotonic() + _PUBLIC_FOUNDATION_FETCH_TOTAL_SECONDS
+    for attempt in range(1, _PUBLIC_FOUNDATION_FETCH_ATTEMPTS + 1):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise BridgeError("public foundation fetch exceeded its fixed deadline")
+        try:
+            _run_git(repository, *arguments, timeout_seconds=remaining)
+            return
+        except subprocess.TimeoutExpired as error:
+            raise BridgeError("public foundation fetch exceeded its fixed deadline") from error
+        except BridgeError as error:
+            transient = any(
+                marker in str(error).lower()
+                for marker in _PUBLIC_FOUNDATION_FETCH_TRANSIENT_MARKERS
+            )
+            if not transient or attempt == _PUBLIC_FOUNDATION_FETCH_ATTEMPTS:
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= _PUBLIC_FOUNDATION_FETCH_RETRY_DELAY_SECONDS:
+                raise
+            time.sleep(_PUBLIC_FOUNDATION_FETCH_RETRY_DELAY_SECONDS)
+    raise BridgeError("public foundation fetch exhausted its bounded attempts")
 
 
 def _assert_equal(actual: str, expected: str, description: str) -> None:
@@ -1650,16 +1699,7 @@ def acquire_foundation_source(pin: ReleasePin = FOUNDATION) -> tuple[tempfile.Te
     source = root / "foundation"
     try:
         _run_git(root, "init", "--bare", "--quiet", str(bare))
-        _run_git(
-            bare,
-            "fetch",
-            "--quiet",
-            "--no-tags",
-            "--no-write-fetch-head",
-            "--no-recurse-submodules",
-            OFFICIAL_REMOTE,
-            f"refs/tags/{pin.tag}:refs/tags/{pin.tag}",
-        )
+        _fetch_public_foundation_tag(bare, pin)
         _verify_pin(bare, pin)
         # A linked worktree keeps the verified objects in the disposable bare
         # evidence store. It avoids opening the local ``file`` transport, which
@@ -2650,16 +2690,7 @@ def _fetch_foundation_into_brain(vault_root: Path, pin: ReleasePin) -> None:
     brain = vault_root / ".dex" / "brain.git"
     if brain.is_symlink() or not brain.is_dir():
         raise BridgeError("topology conversion did not create a safe Dex brain store")
-    _run_git(
-        brain,
-        "fetch",
-        "--quiet",
-        "--no-tags",
-        "--no-write-fetch-head",
-        "--no-recurse-submodules",
-        OFFICIAL_REMOTE,
-        f"refs/tags/{pin.tag}:refs/tags/{pin.tag}",
-    )
+    _fetch_public_foundation_tag(brain, pin)
     _verify_pin(brain, pin)
     _run_git(
         brain,

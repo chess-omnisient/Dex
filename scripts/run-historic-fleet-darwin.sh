@@ -14,9 +14,11 @@ CANARY_STARTS=(
   "v1.62.0"
   "dist/archive/v1.63.0-08ce719"
   "dist/archive/v1.65.0-c5ec161"
+  "dist/archive/v1.72.0-7d75da9"
   "dist/archive/v1.76.0-d0bb932"
   "v1.81.1"
   "dist/release/v1.81.1-b17ef02"
+  "v1.81.7"
   "v1.81.11"
 )
 
