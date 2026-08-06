@@ -75,12 +75,12 @@ def test_release_version_bump_triggers_the_pr_canary() -> None:
     assert "package.json" in pull_request_paths
 
 
-def test_ten_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
+def test_twelve_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
     workflow = _workflow()
     canary = workflow["jobs"]["historic-fleet-darwin-pr-canary"]
     assert canary["if"] == "github.event_name == 'pull_request'"
     assert any(
-        step.get("name") == "Run ten release-shaped macOS journeys"
+        step.get("name") == "Run twelve release-shaped macOS journeys"
         for step in canary["steps"]
     )
     assert any(
@@ -97,7 +97,7 @@ def test_ten_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
     canary_starts = tuple(
         re.findall(r'^  "([^"]+)"$', canary_block.group("body"), re.MULTILINE)
     )
-    assert len(canary_starts) == 10
+    assert len(canary_starts) == 12
     assert canary_starts == (
         "v1.51.0",
         "dist/release/v1.61.0-dc7d332",
@@ -105,9 +105,11 @@ def test_ten_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
         "v1.62.0",
         "dist/archive/v1.63.0-08ce719",
         "dist/archive/v1.65.0-c5ec161",
+        "dist/archive/v1.72.0-7d75da9",
         "dist/archive/v1.76.0-d0bb932",
         "v1.81.1",
         "dist/release/v1.81.1-b17ef02",
+        "v1.81.7",
         "v1.81.11",
     )
     assert "build-release.sh --source candidate --target release" in source
