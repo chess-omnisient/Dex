@@ -307,6 +307,36 @@ def test_public_foundation_fetch_retries_one_closed_network_failure_then_succeed
     assert sleeps == [bridge._PUBLIC_FOUNDATION_FETCH_RETRY_DELAY_SECONDS]
 
 
+def test_public_foundation_fetch_preserves_transient_error_when_retry_delay_exceeds_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failure = bridge.BridgeError("connection timed out")
+    calls: list[tuple[str, ...]] = []
+    sleeps: list[float] = []
+    monotonic = iter((100.0, 100.0, 189.95, 190.0))
+
+    def run_git(
+        _directory: Path,
+        *arguments: str,
+        timeout_seconds: float = 90.0,
+    ) -> str:
+        del timeout_seconds
+        calls.append(arguments)
+        raise failure
+
+    monkeypatch.setattr(bridge, "_run_git", run_git)
+    monkeypatch.setattr(bridge.time, "monotonic", lambda: next(monotonic))
+    monkeypatch.setattr(bridge.time, "sleep", sleeps.append)
+
+    with pytest.raises(bridge.BridgeError) as raised:
+        bridge._fetch_public_foundation_tag(tmp_path, bridge.FOUNDATION)
+
+    assert raised.value is failure
+    assert len(calls) == 1
+    assert sleeps == []
+
+
 def test_public_foundation_fetch_stops_after_two_closed_network_failures(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

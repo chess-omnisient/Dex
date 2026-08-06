@@ -1349,9 +1349,9 @@ def _fetch_public_foundation_tag(repository: Path, pin: ReleasePin) -> None:
             if not transient or attempt == _PUBLIC_FOUNDATION_FETCH_ATTEMPTS:
                 raise
             remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise BridgeError("public foundation fetch exceeded its fixed deadline") from error
-            time.sleep(min(_PUBLIC_FOUNDATION_FETCH_RETRY_DELAY_SECONDS, remaining))
+            if remaining <= _PUBLIC_FOUNDATION_FETCH_RETRY_DELAY_SECONDS:
+                raise
+            time.sleep(_PUBLIC_FOUNDATION_FETCH_RETRY_DELAY_SECONDS)
     raise BridgeError("public foundation fetch exhausted its bounded attempts")
 
 
