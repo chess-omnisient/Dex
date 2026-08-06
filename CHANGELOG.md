@@ -7,6 +7,27 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.19] — 🌐 Brief network outages no longer end a safe update (2026-08-06)
+
+Two final public Mac fleet attempts stopped safely when GitHub's network briefly
+disappeared during otherwise healthy journeys. Dex now gives those exact
+transport failures one bounded retry without weakening its release proof.
+
+**What this fixes for you:**
+
+* **Older installations retry the exact foundation fetch once.** Temporary DNS
+  or connection failures get a second attempt inside one fixed deadline; the
+  bridge still accepts only the pre-declared immutable release.
+* **Current installations retry a closed offline release proof once.** Dex uses
+  only the time left inside the original proof window, then rechecks the tag,
+  commit, tree, channel, catalogue, and package identity before any preview.
+* **Every other failure still stops safely.** Wrong identities, changed
+  evidence, filesystem problems, and a second network failure are never
+  explained away or turned into an update.
+* **Historic support still has to be earned.** This release establishes the
+  hardened foundation. A distinct public follow-up and one fresh complete Mac
+  fleet must still pass before Dex claims universal two-hop coverage.
+
 ## [1.81.18] — 🩺 Proactive health summaries (2026-08-05)
 
 Dex used to make it hard to know whether background checks were current without
