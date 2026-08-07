@@ -600,7 +600,7 @@ You control what happens next with `entity_creation` in `System/user-profile.yam
 - **`suggest`** — show eligible pages for your approval in `/daily-plan` and `/process-meetings`. This is the safe default when an existing vault has no setting.
 - **`off`** — keep tracking attendees without creating or suggesting pages.
 
-After every sync, Dex checks that each eligible attendee and company has the expected page or suggestion. `/dex-doctor` includes the same entity-engine check when you want to inspect it yourself. In Obsidian mode, meeting notes also link names to the actual person-page paths.
+After every sync, Dex checks that each eligible attendee and company has the expected page or suggestion. `/dex-doctor` includes the same entity-engine check when you want to inspect it yourself. In Obsidian mode, meeting notes also link names to their person pages.
 
 ### `/career-coach` — Auto Evidence Capture
 

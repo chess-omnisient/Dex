@@ -378,7 +378,7 @@ test('accessor CLIs clearly surface presence_required with exit code 1', async (
       '};',
     ].join('\n')
   );
-  const env = { NODE_OPTIONS: `--require=${preload}` };
+  const env = { NODE_OPTIONS: `--require="${preload}"` };
 
   const getToken = await runCli(
     path.join(__dirname, 'get-token.cjs'),
@@ -452,7 +452,7 @@ test('accessor CLIs preserve their contracts while calling the broker client', a
     ].join('\n')
   );
   const env = {
-    NODE_OPTIONS: `--require=${preload}`,
+    NODE_OPTIONS: `--require="${preload}"`,
     BROKER_RECORD_FILE: recordFile,
   };
 
@@ -977,7 +977,7 @@ test('socket (verify outside sandbox): broker gates operations and accessor CLIs
       const result = await runCli(
         path.join(__dirname, 'dex-call.cjs'),
         [linear, 'POST', 'https://api.linear.app/graphql', '--body', '{"query":"{ viewer { id } }"}'],
-        { NODE_OPTIONS: `--require=${preload}` }
+        { NODE_OPTIONS: `--require="${preload}"` }
       );
       assert.equal(result.status, 0, result.stderr);
       assert.deepEqual(JSON.parse(result.stdout), {
