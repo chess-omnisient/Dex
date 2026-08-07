@@ -152,13 +152,21 @@ def run_shell_script(script_name: str, *args) -> tuple[bool, str]:
         return False, f"Script not found: {script_name}"
 
     try:
-        # Run the helper under THIS interpreter (the venv python, which has
-        # pyobjc EventKit) with the repo root on PYTHONPATH so its
-        # `from core.paths import ...` resolves. The script's shebang would
-        # otherwise pick up system python3, which lacks EventKit. (adapted from #63)
         env = {**os.environ, "PYTHONPATH": str(VAULT_PATH)}
+        if script_path.suffix == ".sh":
+            # Shell helpers must run under bash — forcing them through
+            # sys.executable fails with a Python SyntaxError at the first
+            # bash line.
+            command = ["/bin/bash", str(script_path), *args]
+        else:
+            # Run Python helpers under THIS interpreter (the venv python,
+            # which has pyobjc EventKit) with the repo root on PYTHONPATH so
+            # `from core.paths import ...` resolves. The script's shebang would
+            # otherwise pick up system python3, which lacks EventKit.
+            # (adapted from #63)
+            command = [sys.executable, str(script_path), *args]
         result = subprocess.run(
-            [sys.executable, str(script_path), *args],
+            command,
             capture_output=True, text=True, timeout=120, env=env
         )
 
