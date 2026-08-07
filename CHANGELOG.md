@@ -7,6 +7,57 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.19] — 💌 Your feedback, fixed — and updates that shrug off network blips (2026-08-07)
+
+One of Dex's longest-running users spent a day putting her whole setup through
+its paces and sent back a detailed list of everything that fought her. Almost
+all of it turned out to be real for everyone, not just her — so this release
+fixes the lot. Thank you, Michelle. Alongside that, updates now survive brief
+network outages instead of giving up.
+
+**What this fixes for you:**
+
+* **Putting events on your calendar works again.** Dex was accidentally running
+  its calendar helpers the wrong way, so creating or deleting an event failed
+  with a confusing error. Fixed, with a safeguard so it can't quietly come back.
+* **Evening journaling actually starts when you've turned it on.** The end-of-day
+  review used to mention reflection and move straight on. Now it genuinely walks
+  you through your evening journal — and quietly stays out of the way if you've
+  left journaling off.
+* **Ticking a task done finally updates everywhere.** Focus items on your daily
+  plan were written in a format the task tracker couldn't see, so completing
+  them never synced. Plans now carry each task's identity, and completion flows
+  both directions.
+* **Weekly cleanup can't mangle your task list.** Clearing finished tasks used
+  to risk leaving behind orphaned fragments of multi-line tasks. Cleanup now
+  removes each finished task whole, and tells you what it's clearing first.
+* **People's names link properly in your notes.** Every mention of a person now
+  becomes a link (not just the first), and links point to the person's name
+  rather than a long internal location.
+* **Honest guidance when Apple Reminders can't work.** Running Dex inside
+  VS Code means the Mac never offers the Reminders permission — that's now
+  documented plainly, Dex skips those steps quietly, and nobody gets told to
+  reinstall for something reinstalling can't fix.
+* **New installs point you to the right folder.** The install instructions now
+  say exactly which folder to open in your chat app — a small thing that
+  tripped up a lot of first days.
+* **Your health checkup counts adopted improvements correctly.** Dex Doctor
+  was overlooking items you'd already accepted, making your system look less
+  up to date than it really was.
+
+* **Older installations retry the exact foundation fetch once.** Temporary DNS
+  or connection failures get a second attempt inside one fixed deadline; the
+  bridge still accepts only the pre-declared immutable release.
+* **Current installations retry a closed offline release proof once.** Dex uses
+  only the time left inside the original proof window, then rechecks the tag,
+  commit, tree, channel, catalogue, and package identity before any preview.
+* **Every other failure still stops safely.** Wrong identities, changed
+  evidence, filesystem problems, and a second network failure are never
+  explained away or turned into an update.
+* **Historic support still has to be earned.** This release establishes the
+  hardened foundation. A distinct public follow-up and one fresh complete Mac
+  fleet must still pass before Dex claims universal two-hop coverage.
+
 ## [1.81.18] — 🩺 Proactive health summaries (2026-08-05)
 
 Dex used to make it hard to know whether background checks were current without
