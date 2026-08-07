@@ -263,6 +263,8 @@ Check if any tasks were completed on phone since the last plan:
 Use: reminders_list_completed(list_name="Dex Today")
 ```
 
+**If the tool is unavailable or errors** (Apple Reminders sync is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled. Note: Reminders access never works when Claude Code runs inside the VS Code extension (macOS never shows the permission dialog to that process) — see the known limitation in `06-Resources/Dex_System/Calendar_Setup.md`. Do not advise reinstalling or reconfiguring; skip silently.
+
 For each completed item:
 - Match to a Dex task by title
 - Update task status via Work MCP: `update_task_status(task_title="...", status="d")`
@@ -432,6 +434,28 @@ Generate 3 recommended focus items based on:
 > 2. **Reply to Mike** — Commitment due today
 > 3. **Task X from Priority 1** — Keeps momentum on your shipped priority"
 
+**Task IDs are mandatory on focus items (completion sync depends on them):**
+
+Completion sync (Work MCP `update_task_status`, which updates every file the task
+appears in) only finds a line if that single line contains BOTH a `- [ ]` / `- [x]`
+checkbox AND the task's `^task-YYYYMMDD-XXX` anchor. A focus item written without the ID — or with the ID on
+a different line — is invisible to sync: ticking the task done in Tasks.md never
+updates the plan, and marking the plan item done never updates Tasks.md.
+
+So, for each recommended focus item:
+1. **If it maps to an existing Tasks.md task** (search by title/keywords), you MUST
+   write it in the plan as a `- [ ]` checkbox line with that task's `^task-YYYYMMDD-XXX`
+   anchor at the end of the same line. Never omit the ID, never put it on its own line.
+2. **If it's real work with no Tasks.md entry yet**, create the task first via Work MCP
+   `create_task`, then embed the returned task ID the same way.
+3. **Only if it isn't a task at all** (e.g. "protect the 2-4pm free block") may the line
+   omit an ID — and then it gets no checkbox either, so it can't masquerade as a
+   syncable task.
+
+Format notes that matter: use `- [ ]` (dash checkbox), not `1. [ ]` — numbered
+checkboxes do not contain the literal `- [ ]` string the sync matcher looks for, so
+they never sync even with an ID present.
+
 ### Meeting Prep (Enhanced)
 
 For each meeting, show:
@@ -454,6 +478,11 @@ Flag potential issues:
 ## Step 7: Generate Daily Plan
 
 **ALWAYS generate and save a new plan file.** Never skip generation because a plan from a previous day exists in the conversation or vault. Even if context from a prior plan is visible, today is a new day and requires its own plan. If a plan for today's date already exists, overwrite it (the user is requesting a refresh).
+
+**Filling in `{{^task-id}}` in Today's Focus:** replace it with the item's real
+`^task-YYYYMMDD-XXX` anchor per the Task IDs rule in Step 6 (mandatory whenever the
+item maps to a Tasks.md task — create the task first if needed). If the item is not a
+task at all, drop both the placeholder and the `- [ ]` checkbox for that line.
 
 Create `07-Archives/Plans/YYYY-MM-DD.md`:
 
@@ -509,9 +538,9 @@ integrations_used: [calendar, tasks, people, work-intelligence]
 
 **If I only do three things today:**
 
-1. [ ] {{Focus item 1}} — {{Pillar}} *(supports Week Priority #X)*
-2. [ ] {{Focus item 2}} — {{Pillar}} *(supports Week Priority #Y)*
-3. [ ] {{Focus item 3}} — {{Pillar}}
+- [ ] {{Focus item 1}} — {{Pillar}} *(supports Week Priority #X)* {{^task-id}}
+- [ ] {{Focus item 2}} — {{Pillar}} *(supports Week Priority #Y)* {{^task-id}}
+- [ ] {{Focus item 3}} — {{Pillar}} {{^task-id}}
 
 ---
 
@@ -588,7 +617,7 @@ After generating the plan, push today's P0 and P1 focus tasks to Apple Reminders
 3. **Confirm silently:**
    > "📱 Pushed 3 focus tasks to iPhone Reminders (Dex Today)"
 
-**If Reminders MCP unavailable:** Skip silently.
+**If the tool is unavailable or errors:** Skip silently — do not surface an error for a feature the user never enabled. (This includes Claude Code running inside the VS Code extension, where macOS never grants Reminders access — see `06-Resources/Dex_System/Calendar_Setup.md`.)
 
 ---
 
