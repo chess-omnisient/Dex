@@ -23,6 +23,11 @@ DISTRIBUTION_READY.md   export-ignore
 .ao-issue.md            export-ignore
 .distignore             export-ignore
 .gitattributes          export-ignore
+.codex/                 export-ignore
+.obsidianignore         export-ignore
+_import/                export-ignore
+bun.lock                export-ignore
+memory/                 export-ignore
 
 # The historical catalog blob contained a NUL sentinel. Force the one cleanup
 # diff to remain reviewable as text; subsequent blobs are ordinary UTF-8.

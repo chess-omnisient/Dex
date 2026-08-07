@@ -18,7 +18,15 @@ const CONTRACT_PATH = path.join(
 );
 
 function git(root, ...args) {
-  const result = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8' });
+  // -c safe.bareRepository=all: these tests create their own throwaway bare
+  // remote; without the override the helper cannot operate on it when the
+  // developer's git sets the security default safe.bareRepository=explicit.
+  // Scoped to this helper's invocations only — never touches real git config.
+  const result = spawnSync(
+    'git',
+    ['-C', root, '-c', 'safe.bareRepository=all', ...args],
+    { encoding: 'utf8' },
+  );
   assert.equal(result.status, 0, `${args.join(' ')}\n${result.stdout}\n${result.stderr}`);
   return result.stdout.trim();
 }

@@ -41,5 +41,12 @@ scripts/
 # Issue tracking (worktree artifacts)
 .ao-issue.md
 
+# Personal or machine-local files that forks commonly track (never ship)
+.codex/
+.obsidianignore
+_import/
+bun.lock
+memory/
+
 # This file itself
 .distignore
