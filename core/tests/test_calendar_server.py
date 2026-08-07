@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
+import sys
 
 import pytest
 
@@ -10,6 +12,61 @@ from core.mcp import calendar_server
 
 def _decode_tool_result(result):
     return json.loads(result[0].text)
+
+
+def _capture_subprocess_command(monkeypatch):
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return subprocess.CompletedProcess(command, 0, stdout="ok\n", stderr="")
+
+    monkeypatch.setattr(calendar_server.subprocess, "run", fake_run)
+    return captured
+
+
+def test_run_shell_script_dispatches_sh_scripts_to_bash(monkeypatch):
+    captured = _capture_subprocess_command(monkeypatch)
+
+    success, output = calendar_server.run_shell_script(
+        "calendar_create_event.sh", "Work", "Test", "2026-08-08 10:00", "30"
+    )
+
+    assert success
+    assert output == "ok"
+    assert captured["command"][0] == "/bin/bash"
+    assert captured["command"][1].endswith("calendar_create_event.sh")
+    assert captured["command"][2:] == ["Work", "Test", "2026-08-08 10:00", "30"]
+
+
+def test_run_shell_script_dispatches_py_scripts_to_python(monkeypatch):
+    captured = _capture_subprocess_command(monkeypatch)
+
+    success, output = calendar_server.run_shell_script(
+        "calendar_eventkit.py", "list"
+    )
+
+    assert success
+    assert output == "ok"
+    assert captured["command"][0] == sys.executable
+    assert captured["command"][1].endswith("calendar_eventkit.py")
+
+
+def test_allowed_sh_scripts_are_valid_bash():
+    """Guard the helper scripts themselves: every allowed .sh must parse under bash."""
+    for script_name in sorted(calendar_server.ALLOWED_SCRIPTS):
+        if not script_name.endswith(".sh"):
+            continue
+        script_path = calendar_server.SCRIPTS_DIR / script_name
+        assert script_path.exists(), f"Missing allowed script: {script_name}"
+        check = subprocess.run(
+            ["/bin/bash", "-n", str(script_path)],
+            capture_output=True,
+            text=True,
+        )
+        assert check.returncode == 0, (
+            f"{script_name} is not valid bash: {check.stderr.strip()}"
+        )
 
 
 def test_add_missing_calendar_warning_reports_available_calendars(monkeypatch):
