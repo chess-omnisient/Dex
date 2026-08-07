@@ -51,6 +51,19 @@ The first time Cursor tries to read your calendar, macOS may show a popup: **"Cu
 
 ---
 
+## Known limitation: the VS Code extension can't use Apple Reminders
+
+macOS grants calendar and reminders access **per app** — it looks at which app is asking. When Dex runs through the **Claude Code extension inside VS Code** (rather than from a normal terminal window), macOS never shows the permission popup to that process at all, and access granted to Terminal does **not** carry over. The result: Apple Reminders features (phone capture via a "Dex Inbox" list, "Dex Today" sync) are simply unavailable in that setup — not misconfigured, unavailable. Reinstalling or redoing the setup steps will not change this.
+
+What to do instead:
+
+- **Run Dex from a standalone terminal window** (Terminal.app, or another terminal app launched on its own). The permission popup appears there, and access works after you click Allow.
+- **Or keep using the VS Code extension without Reminders features.** Dex skips them silently when access is unavailable — daily planning and reviews work normally without them.
+
+This was verified directly (August 2026): the same check succeeds from Terminal.app, and fails from both VS Code's built-in terminal and the extension's own process — even after access was granted in Terminal.app first.
+
+---
+
 ## Optional: Tell Dex which calendar is "work"
 
 If you have several calendars and want Dex to focus on one (e.g. your work calendar) for faster answers, you can set it in **System/user-profile.yaml** under a `calendar` section with `work_calendar: "your.email@example.com"` (use the exact name as it appears in the Calendar app). You can skip this—Dex will still show your events without it.

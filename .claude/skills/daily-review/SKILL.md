@@ -110,7 +110,7 @@ Check for tasks added from phone during the day that weren't triaged in the morn
 Use: reminders_list_items(list_name="Dex Inbox")
 ```
 
-**If the tool is unavailable or errors** (Apple Reminders phone-capture is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled.
+**If the tool is unavailable or errors** (Apple Reminders phone-capture is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled. Note: Reminders access never works when Claude Code runs inside the VS Code extension (macOS never shows the permission dialog to that process) — see the known limitation in `06-Resources/Dex_System/Calendar_Setup.md`. Do not advise reinstalling or reconfiguring; skip silently.
 
 If items found:
 - Surface them: "📱 **Phone captures not yet triaged** (X items in Dex Inbox)"
@@ -130,6 +130,8 @@ Check if tasks were completed on phone since the morning plan:
 ```
 Use: reminders_list_completed(list_name="Dex Today")
 ```
+
+**If the tool is unavailable or errors** (Apple Reminders sync is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled. Note: Reminders access never works when Claude Code runs inside the VS Code extension (macOS never shows the permission dialog to that process) — see the known limitation in `06-Resources/Dex_System/Calendar_Setup.md`. Do not advise reinstalling or reconfiguring; skip silently.
 
 For each completed item:
 - Match to a Dex task by title
@@ -349,7 +351,25 @@ This only fires if the user has opted into analytics. No action needed if it ret
 
 ## Step 11: Evening Journal (If Enabled)
 
-If `journaling.evening: true`, prompt for evening reflection.
+Check `System/user-profile.yaml` → `journaling.evening`.
+
+**If `journaling.evening: true`, run the actual `/journal evening` flow** from
+`.claude/skills/journal/SKILL.md` — do not just mention reflection and move on, and do
+not substitute a single ad-hoc question. The real flow:
+
+1. Check if today's evening journal exists in `00-Inbox/Journals/`
+   - If yes: acknowledge it ("You already journaled this evening") and skip to Step 12
+   - If no: create it from the template
+2. Pull in this morning's journal intention (if one exists) for reflection
+3. Guide the user through the evening prompts conversationally — one question at a
+   time, per the journal skill's Prompting Style
+4. Save the entry, then continue the review
+
+Offer it plainly: "You have evening journaling enabled — want to do a quick reflection
+before we close the day?" If the user declines, skip without pushing back and continue
+to Step 12.
+
+**If `journaling.evening` is false or missing:** Skip this step silently.
 
 ---
 
