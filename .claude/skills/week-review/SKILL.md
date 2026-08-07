@@ -464,7 +464,17 @@ Add a section to the review:
 
 After synthesis:
 1. Update Tasks.md with new priorities
-2. Archive completed items
+2. Clear completed tasks out of `03-Tasks/Tasks.md` — **remove whole task blocks, never
+   individual lines.** Tasks.md entries can span multiple lines: the `- [x]` checkbox
+   line plus its indented sub-lines (priority, due date, notes) and any continuation
+   paragraphs. A task's block runs from its checkbox line down to (but not including)
+   the next non-indented line — the next task's checkbox, a heading, or a blank line
+   followed by unindented content. When removing a completed task, remove that entire
+   block together so no orphaned sub-lines are left behind. Never do a per-line sweep
+   of `[x]` lines: that strands sub-lines, and it also removes completed sub-checkboxes
+   out from under tasks that are still open (only remove a block whose own top-level
+   checkbox is `[x]`). Before deleting anything, tell the user how many completed tasks
+   you're clearing and confirm.
 3. Update project pages with status changes
 4. Offer to run `/week-plan` for next week
 

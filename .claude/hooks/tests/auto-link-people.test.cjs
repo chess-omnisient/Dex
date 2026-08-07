@@ -100,17 +100,17 @@ test('uses the shared path contract without raw vault paths', () => {
   );
 });
 
-test('links a full name to its person page', () => {
+test('links a full name to its bare page name, never a file path', () => {
   const { autoLinkContent } = loadScript();
   const registry = makeRegistry({
     fullNames: ['Sarah Chen'],
     firstNames: [['Sarah', 'Sarah Chen']],
-    targets: [['Sarah Chen', '05-Areas/People/External/Sarah_Chen']],
+    targets: [['Sarah Chen', 'Sarah_Chen']],
   });
 
   assert.equal(
     autoLinkContent('Met Sarah Chen today.', registry),
-    'Met [[05-Areas/People/External/Sarah_Chen|Sarah Chen]] today.',
+    'Met [[Sarah_Chen|Sarah Chen]] today.',
   );
 });
 
@@ -120,12 +120,12 @@ test('links an unambiguous alias with its visible text preserved', () => {
     fullNames: ['Grace Brown'],
     firstNames: [['Grace', 'Grace Brown']],
     aliases: [['Alex', 'Grace Brown']],
-    targets: [['Grace Brown', '05-Areas/People/External/Grace_Brown']],
+    targets: [['Grace Brown', 'Grace_Brown']],
   });
 
   assert.equal(
     autoLinkContent('Alex raised the risk.', registry),
-    '[[05-Areas/People/External/Grace_Brown|Alex]] raised the risk.',
+    '[[Grace_Brown|Alex]] raised the risk.',
   );
 });
 
@@ -174,7 +174,7 @@ test('does not poison a first name from a known multi-part full name', () => {
 
   assert.equal(
     autoLinkContent('Sarah spoke. Later Sarah Jane Chen joined.', registry),
-    '[[Sarah Jane Chen|Sarah]] spoke. Later Sarah Jane Chen joined.',
+    '[[Sarah Jane Chen|Sarah]] spoke. Later [[Sarah Jane Chen]] joined.',
   );
 });
 
@@ -221,7 +221,7 @@ test('applies the complete stoplist case-sensitively', () => {
   );
 });
 
-test('leaves protected Markdown untouched and links the first prose occurrence', () => {
+test('leaves protected Markdown untouched and links the prose occurrence', () => {
   const { autoLinkContent } = loadScript();
   const registry = makeRegistry({
     fullNames: ['Sarah Chen'],
@@ -250,7 +250,7 @@ test('leaves protected Markdown untouched and links the first prose occurrence',
   assert.equal(autoLinkContent(input, registry), expected);
 });
 
-test('an existing wiki-link is untouched and consumes the person link for the file', () => {
+test('an existing wiki-link is untouched and later plain mentions still get linked', () => {
   const { autoLinkContent } = loadScript();
   const registry = makeRegistry({
     fullNames: ['Sarah Chen'],
@@ -258,28 +258,31 @@ test('an existing wiki-link is untouched and consumes the person link for the fi
   });
   const input = 'Already [[Sarah Chen|Sarah]]. Later Sarah Chen spoke.';
 
-  assert.equal(autoLinkContent(input, registry), input);
+  assert.equal(
+    autoLinkContent(input, registry),
+    'Already [[Sarah Chen|Sarah]]. Later [[Sarah Chen]] spoke.',
+  );
 });
 
-test('uses an Internal person path and consumes existing links by path basename or alias label', () => {
+test('links every mention by bare page name and stays idempotent', () => {
   const { autoLinkContent } = loadScript();
   const registry = makeRegistry({
     fullNames: ['Morgan Reed'],
     firstNames: [['Morgan', 'Morgan Reed']],
     aliases: [['Mo', 'Morgan Reed']],
-    targets: [['Morgan Reed', '05-Areas/People/Internal/Morgan_Reed']],
+    targets: [['Morgan Reed', 'Morgan_Reed']],
   });
   const input = 'Morgan Reed joined. Morgan followed up.';
   const once = autoLinkContent(input, registry);
 
   assert.equal(
     once,
-    '[[05-Areas/People/Internal/Morgan_Reed|Morgan Reed]] joined. Morgan followed up.',
+    '[[Morgan_Reed|Morgan Reed]] joined. [[Morgan_Reed|Morgan]] followed up.',
   );
   assert.equal(autoLinkContent(once, registry), once);
   assert.equal(
     autoLinkContent('Already [[elsewhere/person|mo]]. Later Morgan Reed spoke.', registry),
-    'Already [[elsewhere/person|mo]]. Later Morgan Reed spoke.',
+    'Already [[elsewhere/person|mo]]. Later [[Morgan_Reed|Morgan Reed]] spoke.',
   );
 });
 
@@ -298,7 +301,7 @@ test('never links the owner by full name, first name, or alias', () => {
   );
 });
 
-test('links only the earliest eligible occurrence for a person', () => {
+test('links every eligible occurrence for a person, not just the first', () => {
   const { autoLinkContent } = loadScript();
   const registry = makeRegistry({
     fullNames: ['Sarah Chen'],
@@ -307,7 +310,7 @@ test('links only the earliest eligible occurrence for a person', () => {
 
   assert.equal(
     autoLinkContent('Sarah spoke before Sarah Chen replied.', registry),
-    '[[Sarah Chen|Sarah]] spoke before Sarah Chen replied.',
+    '[[Sarah Chen|Sarah]] spoke before [[Sarah Chen]] replied.',
   );
 });
 
@@ -320,7 +323,7 @@ test('is idempotent and preserves CRLF bytes outside the inserted link', () => {
   const input = 'Sarah Chen spoke.\r\nSarah followed up.\r\n';
   const once = autoLinkContent(input, registry);
 
-  assert.equal(once, '[[Sarah Chen]] spoke.\r\nSarah followed up.\r\n');
+  assert.equal(once, '[[Sarah Chen]] spoke.\r\n[[Sarah Chen|Sarah]] followed up.\r\n');
   assert.equal(autoLinkContent(once, registry), once);
 });
 
@@ -374,10 +377,7 @@ test('buildRegistry scans every nested People directory and rejects ambiguous al
   assert.equal(registry.aliases.get('Lex'), 'Alex Smith');
   assert.equal(registry.aliases.has('Saz'), false);
   assert.equal(registry.ownerName, 'Test User');
-  assert.equal(
-    registry.targetsByFullName.get('Sarah Chen'),
-    '05-Areas/People/Community/Founders/Sarah_Chen',
-  );
+  assert.equal(registry.targetsByFullName.get('Sarah Chen'), 'Sarah_Chen');
 });
 
 test('dry-run prints proposed links and writes nothing', (t) => {
@@ -392,10 +392,8 @@ test('dry-run prints proposed links and writes nothing', (t) => {
   assert.equal(result.status, 0, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
   assert.equal(fs.readFileSync(notePath, 'utf-8'), original);
   assert.match(result.stdout, /\[dry-run\]/);
-  assert.match(
-    result.stdout,
-    /\[\[05-Areas\/People\/Community\/Sarah_Chen\|Sarah Chen\]\]/,
-  );
+  assert.match(result.stdout, /\[\[Sarah_Chen\|Sarah Chen\]\]/);
+  assert.match(result.stdout, /\[\[Sarah_Chen\|Sarah\]\]/);
 });
 
 test('--today processes only notes in today\'s nested meeting folder', (t) => {
@@ -418,7 +416,7 @@ test('--today processes only notes in today\'s nested meeting folder', (t) => {
   assert.equal(result.status, 0, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
   assert.equal(
     fs.readFileSync(todayNote, 'utf-8'),
-    '[[05-Areas/People/Community/Sarah_Chen|Sarah Chen]] joined.\n',
+    '[[Sarah_Chen|Sarah Chen]] joined.\n',
   );
   assert.equal(fs.readFileSync(otherNote, 'utf-8'), 'Sarah Chen joined.\n');
   assert.equal(fs.readFileSync(prefixedButNotToday, 'utf-8'), 'Sarah Chen joined.\n');

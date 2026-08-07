@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 
 from core.lifecycle.catalog import with_catalog_identity
+from core.lifecycle.engine import AdoptionReceipt
+from core.lifecycle.ledger import record_adoption
 from core.tests.lifecycle_test_helpers import SOURCE_COMMIT, write_file, write_manifest
 from core.utils import doctor, release_channel
 
@@ -558,6 +560,39 @@ def test_adoption_plan_probe_summarizes_valid_catalog_in_memory(context):
 
     assert result.verdict == "OK"
     assert result.detail == "1 adoptable / 0 adopted / 0 conflicts"
+    assert _tree_snapshot(context.vault_root) == before
+
+
+def test_adoption_plan_probe_counts_receipt_backed_adoptions(context):
+    _write_release_catalog(context)
+    content = b"release skill\n"
+    transaction_id = "20260807T120000-00000001"
+    receipt = AdoptionReceipt.from_dict(
+        {
+            "receipt_version": 1,
+            "items_adopted": ["fixture-item"],
+            "files_written": [
+                {
+                    "item_id": "fixture-item",
+                    "path": ".claude/skills/fixture-item/SKILL.md",
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                    "byte_size": len(content),
+                }
+            ],
+            "transaction_id": transaction_id,
+            "snapshot_ref": f"System/.dex/tx/{transaction_id}/snapshot",
+            "catalog_sha256": "a" * 64,
+            "inventory_sha256": "b" * 64,
+            "preview_sha256": "c" * 64,
+        }
+    )
+    record_adoption(context.vault_root, receipt, {"fixture-item": "1.0.0"})
+    before = _tree_snapshot(context.vault_root)
+
+    result = doctor._probe_adoption_plan(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "0 adoptable / 1 adopted / 0 conflicts"
     assert _tree_snapshot(context.vault_root) == before
 
 

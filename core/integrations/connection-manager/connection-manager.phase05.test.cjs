@@ -32,7 +32,7 @@ const childEnv = {
   DEX_CM_ALLOW_UNVETTED: '1',
   NODE_OPTIONS: [
     process.env.NODE_OPTIONS,
-    `--require=${path.join(DIR, 'presence-approve-preload.test.cjs')}`,
+    `--require="${path.join(DIR, 'presence-approve-preload.test.cjs')}"`,
   ].filter(Boolean).join(' '),
 };
 
