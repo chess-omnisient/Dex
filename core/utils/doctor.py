@@ -1617,7 +1617,22 @@ def _probe_adoption_plan(context: DoctorContext) -> ProbeResult:
     try:
         catalog = load_catalog(catalog_path, release_root=context.vault_root)
         inventory = build_inventory(context.vault_root, catalog=catalog)
-        plan = build_adoption_plan(catalog, inventory)
+        ledger_state = lifecycle_ledger.project_state(context.vault_root)
+        adopted = ledger_state["adopted"]
+        held_back = ledger_state["held_back"]
+        assert isinstance(adopted, dict)
+        assert isinstance(held_back, list)
+        catalog_ids = {item.id for item in catalog.items}
+        plan = build_adoption_plan(
+            catalog,
+            inventory,
+            adoption_states={
+                item_id: AdoptionState.ADOPTED
+                for item_id in adopted
+                if item_id in catalog_ids
+            },
+            held_back=frozenset(held_back) & catalog_ids,
+        )
         counts = plan.counts
         return ProbeResult(
             "OK",
