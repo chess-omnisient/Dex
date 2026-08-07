@@ -139,12 +139,10 @@ function buildRegistry(pathConfig = loadPaths()) {
     if (!fullName) continue;
 
     fullNames.add(fullName);
-    if (pathConfig.VAULT_ROOT) {
-      const relativePath = path.relative(pathConfig.VAULT_ROOT, filePath)
-        .split(path.sep)
-        .join('/');
-      targetsByFullName.set(fullName, relativePath.slice(0, -path.extname(relativePath).length));
-    }
+    // Link targets are the bare page name (e.g. Jane_Smith), never the file
+    // path: Obsidian resolves bare names, and bare links survive a person
+    // page moving between Internal/ and External/.
+    targetsByFullName.set(fullName, path.basename(filePath, path.extname(filePath)));
     const firstName = fullName.split(/\s+/u)[0];
     addTarget(firstTargets, firstName, fullName);
 
@@ -334,7 +332,6 @@ function findMarkdownLinkEnd(text, labelOpen, labelClose, referenceLabels) {
 
 function findInlineRanges(text, blockRanges) {
   const ranges = [];
-  const wikiRanges = [];
   const referenceLabels = findReferenceLabels(text, blockRanges);
   let index = 0;
 
@@ -348,10 +345,8 @@ function findInlineRanges(text, blockRanges) {
     if (text.startsWith('[[', index)) {
       const close = text.indexOf(']]', index + 2);
       if (close !== -1) {
-        const range = { start: index, end: close + 2, type: 'wiki' };
-        ranges.push(range);
-        wikiRanges.push(range);
-        index = range.end;
+        ranges.push({ start: index, end: close + 2, type: 'wiki' });
+        index = close + 2;
         continue;
       }
     }
@@ -414,7 +409,7 @@ function findInlineRanges(text, blockRanges) {
     index += 1;
   }
 
-  return { ranges, wikiRanges };
+  return ranges;
 }
 
 function mergeRanges(ranges) {
@@ -461,25 +456,6 @@ function boundaryIsSafe(text, start, length) {
     && (!next || !WORD_CONTINUATION.test(next));
 }
 
-function canonicalWikiTarget(text, range) {
-  let target = text.slice(range.start + 2, range.end - 2).split('|', 1)[0].trim();
-  target = target.split('#', 1)[0].trim();
-  target = target.replace(/\\/g, '/');
-  target = path.posix.basename(target);
-  if (target.toLowerCase().endsWith('.md')) target = target.slice(0, -3);
-  return target.replace(/_/g, ' ');
-}
-
-function wikiLinkLabel(text, range) {
-  const body = text.slice(range.start + 2, range.end - 2);
-  const separator = body.indexOf('|');
-  return separator === -1 ? '' : body.slice(separator + 1).trim();
-}
-
-function normalizedPersonName(name) {
-  return fold(name.trim().replace(/\s+/gu, ' '));
-}
-
 function findPoisonedFirstNames(text, registry, protectedRanges) {
   const poisoned = new Set();
   const pattern = /[\p{Lu}][\p{L}\p{M}'’\p{Pd}]*/gu;
@@ -515,25 +491,8 @@ function findPoisonedFirstNames(text, registry, protectedRanges) {
 
 function autoLinkContent(text, registry = buildRegistry()) {
   const blockRanges = findBlockRanges(text);
-  const inline = findInlineRanges(text, blockRanges);
-  const protectedRanges = mergeRanges([...blockRanges, ...inline.ranges]);
-  const linkedPeople = new Set();
-  const peopleByReferenceName = new Map();
-
-  for (const fullName of registry.fullNames) {
-    peopleByReferenceName.set(normalizedPersonName(fullName), fullName);
-  }
-  for (const [alias, fullName] of registry.aliases || []) {
-    peopleByReferenceName.set(normalizedPersonName(alias), fullName);
-  }
-
-  for (const wikiRange of inline.wikiRanges) {
-    const target = canonicalWikiTarget(text, wikiRange);
-    const label = wikiLinkLabel(text, wikiRange);
-    const linkedPerson = peopleByReferenceName.get(normalizedPersonName(target))
-      || peopleByReferenceName.get(normalizedPersonName(label));
-    if (linkedPerson) linkedPeople.add(linkedPerson);
-  }
+  const inlineRanges = findInlineRanges(text, blockRanges);
+  const protectedRanges = mergeRanges([...blockRanges, ...inlineRanges]);
 
   const poisoned = findPoisonedFirstNames(text, registry, protectedRanges);
   const ownerName = registry.ownerName || '';
@@ -589,23 +548,29 @@ function autoLinkContent(text, registry = buildRegistry()) {
     || left.target.localeCompare(right.target)
   ));
 
+  // Every eligible occurrence is linked (not just the first one per person):
+  // notes routinely mention someone several times, and each mention should
+  // navigate to the person page.
   const replacements = [];
   for (const occurrence of occurrences) {
-    if (linkedPeople.has(occurrence.target)) continue;
     if (rangesOverlap(occurrence.start, occurrence.end, replacements)) continue;
 
     const linkTarget = registry.targetsByFullName?.get(occurrence.target);
-    const replacement = linkTarget
-      ? `[[${linkTarget}|${occurrence.text}]]`
-      : occurrence.kind === 'full'
+    let replacement;
+    if (linkTarget) {
+      replacement = linkTarget === occurrence.text
+        ? `[[${linkTarget}]]`
+        : `[[${linkTarget}|${occurrence.text}]]`;
+    } else {
+      replacement = occurrence.kind === 'full'
         ? `[[${occurrence.target}]]`
         : `[[${occurrence.target}|${occurrence.text}]]`;
+    }
     replacements.push({
       start: occurrence.start,
       end: occurrence.end,
       replacement,
     });
-    linkedPeople.add(occurrence.target);
   }
 
   let linkedText = text;

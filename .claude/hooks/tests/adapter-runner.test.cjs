@@ -71,7 +71,7 @@ global.fetch = async (url) => {
     config: { api_key: apiKey, token },
     args: null,
   }, {
-    env: { ...process.env, NODE_OPTIONS: `--require=${preload}` },
+    env: { ...process.env, NODE_OPTIONS: `--require="${preload}"` },
   });
   const output = parseOnlyJsonLine(result);
   const serialized = `${result.stdout}${result.stderr}`;

@@ -243,7 +243,7 @@ When the user shares meeting notes or says they had a meeting:
 4. Suggest follow-ups. Use the `query` tool to search for implicit commitments — soft language like "we should revisit" or "let me think about" that regex might not catch as action items.
 5. If meeting with manager and Career folder exists, extract career development context
 
-**Automation:** Background sync records attendee emails and locations, runs entity creation, and verifies coverage after every sync; attendees without email remain tracked but are never auto-created. `/process-meetings` can still update existing pages with extracted context, while ad-hoc notes are handled manually. In Obsidian mode, `.scripts/auto-link-people.cjs` links names to the actual person-page paths.
+**Automation:** Background sync records attendee emails and locations, runs entity creation, and verifies coverage after every sync; attendees without email remain tracked but are never auto-created. `/process-meetings` can still update existing pages with extracted context, while ad-hoc notes are handled manually. In Obsidian mode, `.scripts/auto-link-people.cjs` links names to their person pages.
 
 ### Task Creation (Smart Pillar Inference)
 When the user requests task creation without specifying a pillar:
