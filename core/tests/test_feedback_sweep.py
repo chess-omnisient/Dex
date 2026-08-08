@@ -139,6 +139,17 @@ def test_daily_claim_blocks_second_attempt(vault, monkeypatch):
     assert len(calls) == 1
 
 
+def test_daily_claim_is_atomic_across_concurrent_sessions(vault):
+    # The claim is an O_CREAT|O_EXCL marker, so exactly one of N simultaneous
+    # claimants wins the day — two sessions can never both notify.
+    import concurrent.futures
+
+    (vault / "System" / ".dex").mkdir(parents=True, exist_ok=True)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: feedback_sweep._claim_today(vault), range(8)))
+    assert results.count(True) == 1
+
+
 def test_network_failure_is_silent(vault, monkeypatch):
     _write_ticket(vault, "DEX-142")
     monkeypatch.setattr(feedback_sweep, "_fetch_status", lambda token: None)

@@ -66,6 +66,75 @@ def test_fingerprint_is_stable_across_line_numbers_and_addresses():
     assert first != different
 
 
+def test_fingerprint_distinguishes_bugs_inside_realistic_tracebacks():
+    client = _load_script()
+    index_error = (
+        "Traceback (most recent call last):\n"
+        '  File "core/utils/doctor.py", line 42, in collect\n'
+        "    attendee = meeting.attendees[0]\n"
+        "IndexError: list index out of range"
+    )
+    key_error = (
+        "Traceback (most recent call last):\n"
+        '  File "core/utils/sync.py", line 97, in run\n'
+        "    person = pages[email]\n"
+        "KeyError: 'person@example.com'"
+    )
+    same_bug_other_line = index_error.replace("line 42", "line 58")
+
+    first = client.compute_fingerprint("/process-meetings", index_error, "s")
+    second = client.compute_fingerprint("/process-meetings", key_error, "s")
+    assert first != second, "different exceptions must not share a fingerprint"
+    assert first == client.compute_fingerprint("/process-meetings", same_bug_other_line, "s")
+
+
+def test_auth_failure_still_appends_a_receipt(tmp_path, monkeypatch):
+    client = _load_script()
+    draft_path = tmp_path / "draft.json"
+    draft_path.write_text(json.dumps(_draft()), encoding="utf-8")
+
+    def no_auth(**kwargs):
+        raise client.AuthError("not linked")
+
+    monkeypatch.setattr(client, "load_auth", no_auth)
+    args = client.build_parser().parse_args(
+        ["report", "--file", str(draft_path), "--vault", str(tmp_path)]
+    )
+    with pytest.raises(client.AuthError):
+        client.command_report(args)
+
+    receipts = (tmp_path / "System" / ".dex" / "feedback-log.jsonl").read_text(encoding="utf-8")
+    record = json.loads(receipts.strip())
+    assert record["sent"] is False
+    assert record["reason"] == "AuthError"
+
+
+def test_unsaveable_ticket_file_does_not_crash_a_successful_send(tmp_path, monkeypatch, capsys):
+    client = _load_script()
+    draft_path = tmp_path / "draft.json"
+    draft_path.write_text(json.dumps(_draft()), encoding="utf-8")
+    monkeypatch.setattr(
+        client, "load_auth", lambda **kwargs: {"sessionToken": "token", "timestamp": client.now_ms()}
+    )
+    monkeypatch.setattr(
+        client,
+        "_request_json",
+        lambda *args, **kwargs: {"ticket": "DEX-142", "receivedAt": 1754640001000},
+    )
+
+    def broken_write(*args, **kwargs):
+        raise OSError("read-only vault")
+
+    monkeypatch.setattr(client, "write_ticket_file", broken_write)
+    args = client.build_parser().parse_args(
+        ["report", "--file", str(draft_path), "--vault", str(tmp_path)]
+    )
+    assert client.command_report(args) == 0
+    out = capsys.readouterr().out
+    assert "DEX-142" in out
+    assert "could not be saved" in out
+
+
 def test_receipt_is_written_even_when_send_fails(tmp_path, monkeypatch):
     client = _load_script()
     draft_path = tmp_path / "draft.json"

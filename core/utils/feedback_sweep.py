@@ -77,22 +77,35 @@ def _load_tickets(vault: Path) -> dict:
 
 
 def _claim_today(vault: Path) -> bool:
-    """Claim today's attempt before doing any work; True if we own today."""
-    state_path = _state_path(vault)
+    """Claim today's attempt before doing any work; True if we own today.
+
+    The claim is an O_CREAT|O_EXCL dated marker file, so exactly one process
+    wins the day even when two sessions start simultaneously — a crash can
+    never leave a stale lock because the marker IS the claim, not a mutex.
+    """
+    if os.environ.get("DEX_FEEDBACK_SWEEP_FORCE"):
+        return True
+    directory = _state_path(vault).parent
     today = date.today().isoformat()
+    marker = directory / f"feedback-sweep-claim-{today}"
     try:
-        state = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        state = {}
-    if state.get("last_attempt_date") == today and not os.environ.get("DEX_FEEDBACK_SWEEP_FORCE"):
+        directory.mkdir(parents=True, exist_ok=True)
+        handle = os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
         return False
-    state["last_attempt_date"] = today
-    state["last_attempt_at"] = datetime.now(timezone.utc).isoformat()
-    try:
-        state_path.parent.mkdir(parents=True, exist_ok=True)
-        state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     except OSError:
         return False
+    try:
+        os.write(handle, datetime.now(timezone.utc).isoformat().encode("utf-8"))
+    finally:
+        os.close(handle)
+    # Opportunistically drop old markers so they never accumulate.
+    try:
+        for stale in directory.glob("feedback-sweep-claim-*"):
+            if stale.name != marker.name:
+                stale.unlink(missing_ok=True)
+    except OSError:
+        pass
     return True
 
 

@@ -47,6 +47,7 @@ System/.dex/telemetry-id
 System/.dex/feedback/
 System/.dex/feedback-log.jsonl
 System/.dex/feedback-sweep.json
+System/.dex/feedback-sweep-claim-*
 System/.dex/adoption/credential-journals/
 System/.dex/adoption/history-backups/
 System/.dex/local-only-preservation/

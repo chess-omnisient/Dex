@@ -330,12 +330,19 @@ def update_ticket_file(vault: Path, record: dict) -> None:
 # Report drafts
 # ---------------------------------------------------------------------------
 def compute_fingerprint(feature: str, error_trace: str, summary: str) -> str:
-    """Stable failure signature: same bug from different users should collide."""
-    head = ""
-    if error_trace.strip():
-        head = error_trace.strip().splitlines()[0]
+    """Stable failure signature: same bug from different users should collide.
+
+    Uses the LAST non-empty line of the error trace — for a Python traceback
+    that is the exception message ("IndexError: ..."), which distinguishes
+    bugs. The first line would be the generic "Traceback (most recent call
+    last):" header and would merge every distinct bug in a feature.
+    """
+    lines = [line for line in error_trace.strip().splitlines() if line.strip()]
+    if lines:
+        head = lines[-1]
     else:
-        head = summary.strip().splitlines()[0] if summary.strip() else ""
+        summary_lines = [line for line in summary.strip().splitlines() if line.strip()]
+        head = summary_lines[0] if summary_lines else ""
     normalized = re.sub(r"0x[0-9a-fA-F]+", "ADDR", head)
     normalized = re.sub(r"\d+", "#", normalized).strip().lower()
     return hashlib.sha256(f"{feature}\n{normalized}".encode("utf-8")).hexdigest()
@@ -447,7 +454,11 @@ def command_report(args: argparse.Namespace) -> int:
         raise FileProblem(f"Could not read {draft_path} as JSON.")
 
     payload = validate_draft(draft)
-    auth = load_auth(site_base=args.site_base)
+    try:
+        auth = load_auth(site_base=args.site_base)
+    except AuthError:
+        append_receipt(vault, "report", payload, sent=False, reason="AuthError")
+        raise
 
     try:
         response = _request_json(
@@ -468,7 +479,14 @@ def command_report(args: argparse.Namespace) -> int:
         raise BadResponse("Heydex accepted the report but did not return a valid ticket. Try 'status' in a minute.")
 
     append_receipt(vault, "report", payload, sent=True, reason="sent")
-    write_ticket_file(vault, ticket, payload, received_at)
+    try:
+        write_ticket_file(vault, ticket, payload, received_at)
+    except OSError:
+        print(
+            f"Sent — reference {ticket}. (The local ticket record could not be saved, "
+            "so automatic status updates for this ticket may not appear on this machine.)"
+        )
+        return 0
     print(f"Sent — reference {ticket}. Dex will tell you when there's news.")
     return 0
 
@@ -522,7 +540,10 @@ def command_status(args: argparse.Namespace) -> int:
                 record["fixed_in_version"] = report["fixedInVersion"]
             # Seeing the status in person counts as being notified.
             record["last_notified_status_changed_at"] = record.get("status_changed_at")
-            update_ticket_file(vault, record)
+            try:
+                update_ticket_file(vault, record)
+            except OSError:
+                pass
     return 0
 
 
@@ -556,7 +577,11 @@ def command_answer(args: argparse.Namespace) -> int:
         "captured_at": now_ms(),
         "answer": answer_text,
     }
-    auth = load_auth(site_base=args.site_base)
+    try:
+        auth = load_auth(site_base=args.site_base)
+    except AuthError:
+        append_receipt(vault, "answer", payload, sent=False, reason="AuthError")
+        raise
     try:
         _request_json(
             "POST",
@@ -575,7 +600,10 @@ def command_answer(args: argparse.Namespace) -> int:
         record = local[ticket]
         record["status"] = "investigating"
         record.pop("question", None)
-        update_ticket_file(vault, record)
+        try:
+            update_ticket_file(vault, record)
+        except OSError:
+            pass
     print(f"Answer sent for {ticket}. Thanks — this goes straight to the investigation.")
     return 0
 
