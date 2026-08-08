@@ -28,6 +28,14 @@ working_week:
 updates:
   channel: stable
 
+# Bug reports to the Dex team (/feedback).
+# review_mode controls whether you approve each report before it is sent:
+#   always-review (default) — Dex shows you the exact report and waits for a yes
+#   auto-send — reports go automatically; a local receipt is always kept, and
+#   the first report plus every follow-up answer is still shown to you first
+feedback:
+  review_mode: always-review
+
 # Optional local Git snapshots after the brain/vault split. This never pushes.
 vault:
   auto_commit: false

@@ -132,6 +132,31 @@ def test_validate_user_profile_requires_updates_to_be_an_object() -> None:
     assert validate_user_profile_config({"updates": "stable"}) == ["updates must be an object"]
 
 
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"feedback": {}},
+        {"feedback": {"review_mode": "always-review"}},
+        {"feedback": {"review_mode": "auto-send"}},
+    ],
+)
+def test_validate_user_profile_accepts_supported_or_absent_feedback_mode(
+    config: object,
+) -> None:
+    assert validate_user_profile_config(config) == []
+
+
+@pytest.mark.parametrize("review_mode", ["review", "Auto-Send", "", None, 1, True])
+def test_validate_user_profile_warns_for_invalid_feedback_mode(review_mode: object) -> None:
+    errors = validate_user_profile_config({"feedback": {"review_mode": review_mode}})
+
+    assert errors == ["feedback.review_mode must be always-review or auto-send"]
+
+
+def test_validate_user_profile_requires_feedback_to_be_an_object() -> None:
+    assert validate_user_profile_config({"feedback": "auto-send"}) == ["feedback must be an object"]
+
+
 def test_validate_user_profile_accepts_declared_boolean_capability_states() -> None:
     assert validate_user_profile_config(
         {

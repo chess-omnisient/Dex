@@ -24,6 +24,11 @@
 # --- DexDiff canonical @davekilleen handle used as the worked example (audit 2d) ---
 ^\.claude/skills/diff-.*:.*:(dave|killeen)$
 
+# --- /feedback loop: founder comments are relayed to reporters as 'Dave says:'
+#     by design (decided 2026-08-08; the personal thank-you IS the product) ---
+^\.claude/skills/feedback/scripts/feedback_client\.py:.*:dave$
+^core/utils/feedback_sweep\.py:.*:dave$
+
 # --- Test fixtures with the maintainer's name (distignored from release; audit 2d) ---
 ^core/tests/.*:.*:(dave|killeen)$
 ^\.claude/hooks/tests/.*:.*:(dave|killeen)$

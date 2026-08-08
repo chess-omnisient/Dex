@@ -279,10 +279,16 @@ Here `N`, `M`, and `U` come directly from `summary.ok`, `summary.off`, and
 `summary.unknown` in the collector JSON. If everything is healthy: one line — "Everything
 checks out. N checks healthy, M features off by choice." No ceremony.
 
-### Step 6: Track usage (silent)
+### Step 6: Track usage (silent) and offer to report Dex bugs
 
 Update `System/usage_log.md` per the usage-tracking convention. If learnings surfaced
 (e.g. a check that should exist but doesn't), suggest capturing via `capture_idea`.
+
+If the run surfaced something that is a defect in Dex itself — not the user's setup —
+offer once, lightly: "I've patched this for you, but it looks like a bug in Dex itself.
+Want me to report it so it gets fixed properly for everyone?" If yes, invoke the
+`/feedback` skill; the Doctor findings you just gathered become the report's
+machine-state and investigation ingredients, so the user does nothing but approve.
 
 ## Edge cases
 
@@ -293,8 +299,9 @@ Update `System/usage_log.md` per the usage-tracking convention. If learnings sur
 - **User says "just fix everything":** Tier 1 is already done; walk Tier 2 items one
   confirmation at a time anyway — batch-yes is how wrong heals happen. Tier 3 cannot be
   batched by definition.
-- **Repeated BROKEN on the same item across runs:** suggest filing it —
-  "this looks like a Dex bug, not your setup; want me to draft a GitHub issue?"
+- **Repeated BROKEN on the same item across runs:** suggest reporting it —
+  "this looks like a Dex bug, not your setup; want me to report it to the Dex team?"
+  If yes, invoke the `/feedback` skill with the repeat-BROKEN evidence.
 
 ## Related Commands
 

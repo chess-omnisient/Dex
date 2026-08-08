@@ -499,6 +499,7 @@ Skills extend Dex capabilities and are invoked with `/skill-name`. Common skills
 - `/xray` - AI education: understand what just happened under the hood (context, MCPs, hooks)
 - `/dex-level-up`, `/dex-backlog`, `/dex-improve` - System improvements
 - `/dex-doctor` - Full system checkup: finds what's broken, fixes what's safe, guides you through the rest
+- `/feedback` - Report a Dex bug to the Dex team with zero homework; Dex investigates, you approve, and you hear back when it's fixed
 - `/dex-update` - Update Dex automatically (shows what's new, updates if confirmed, no technical knowledge needed)
 - `/dex-rollback` - Undo last update if something went wrong
 - `/getting-started` - Interactive post-onboarding tour (adaptive to your setup)

@@ -33,6 +33,7 @@ def validate_user_profile_config(config: object) -> list[str]:
         "calendar",
         "updates",
         "capabilities",
+        "feedback",
     )
     for field in object_fields:
         if field in config and not isinstance(config[field], Mapping):
@@ -42,6 +43,11 @@ def validate_user_profile_config(config: object) -> list[str]:
         channel = updates["channel"]
         if not isinstance(channel, str) or channel not in {"stable", "beta"}:
             errors.append("updates.channel must be stable or beta")
+    feedback = config.get("feedback")
+    if isinstance(feedback, Mapping) and "review_mode" in feedback:
+        review_mode = feedback["review_mode"]
+        if not isinstance(review_mode, str) or review_mode not in {"always-review", "auto-send"}:
+            errors.append("feedback.review_mode must be always-review or auto-send")
     capabilities = config.get("capabilities")
     if isinstance(capabilities, Mapping):
         from core.capabilities import room_ids

@@ -7,6 +7,38 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.82.0] — 💬 Found a bug? Dex reports it for you — and tells you when it's fixed (2026-08-08)
+
+Until now, when something in Dex misbehaved, telling the Dex team meant writing it
+up yourself — so most problems went unreported, and the ones that arrived were too
+thin to act on. Now Dex has a proper way to raise its hand on your behalf: the new
+`/feedback` command.
+
+**What this fixes for you:**
+
+* **Report a bug with zero homework.** Say "report this" (or run `/feedback`) and
+  Dex investigates the problem on your machine, writes the report itself, and gives
+  you a reference number. The Doctor checkup offers the same thing when it finds
+  something that's genuinely a Dex problem rather than a setup problem.
+* **Nothing private ever leaves your machine.** Reports are built only from a fixed
+  list of safe ingredients — Dex's version, which feature misbehaved, and error
+  details from Dex's own workings. Your notes, meetings, people, and conversations
+  are never part of a report, and Dex shows you the exact report before anything is
+  sent. A copy of every attempt is also kept on your machine so you can always see
+  what went.
+* **You choose how involved to be.** Review every report before it goes (that's the
+  default), or — once you've seen what a report looks like — tell Dex to just send
+  future ones automatically. You can switch back anytime.
+* **You hear back.** When your bug is fixed in a release, your next session opens
+  with the good news and a thank-you — along with which version has the fix. If the
+  team needs one more detail, Dex relays the question, gathers the answer with your
+  approval, and sends it back. You can ask "what happened to my bug report?" anytime.
+* **One connection, thirty seconds, once.** The first report asks you to connect
+  this terminal to your heydex.ai account (the same quick sign-in the DexDiff
+  publishing flow uses). After that, reporting is invisible.
+
+---
+
 ## [1.81.19] — 💌 Your feedback, fixed — and updates that shrug off network blips (2026-08-07)
 
 One of Dex's longest-running users spent a day putting her whole setup through
