@@ -550,6 +550,8 @@
 .claude/skills/diff-profile/SKILL.md
 .claude/skills/diff-remove/SKILL.md
 .claude/skills/enable-semantic-search/SKILL.md
+.claude/skills/feedback/SKILL.md
+.claude/skills/feedback/scripts/feedback_client.py
 .claude/skills/getting-started/SKILL.md
 .claude/skills/google-workspace-setup/SKILL.md
 .claude/skills/granola-setup/SKILL.md
@@ -1038,6 +1040,8 @@ core/tests/test_entity_index.py
 core/tests/test_entity_pages.py
 core/tests/test_error_queue_lifecycle.py
 core/tests/test_feature_status.py
+core/tests/test_feedback_client_script.py
+core/tests/test_feedback_sweep.py
 core/tests/test_first_run_trigger.py
 core/tests/test_fixture_vault.py
 core/tests/test_founder_content_gate.py
@@ -1157,6 +1161,7 @@ core/utils/dex_logger.py
 core/utils/doctor.py
 core/utils/entity_pages.py
 core/utils/feature_status.py
+core/utils/feedback_sweep.py
 core/utils/health_session.py
 core/utils/health_telemetry.py
 core/utils/history_hygiene.py
@@ -1205,6 +1210,7 @@ docs/credential-remediation.md
 docs/customization-migration-threat-model.md
 docs/dex-doctor-spec.md
 docs/dexdiff-runtime-boundary.md
+docs/feedback-loop-contract.md
 docs/health-telemetry.md
 docs/merge-gates.md
 docs/plans/2026-07-23-brain-vault-existing-user-readiness.md
