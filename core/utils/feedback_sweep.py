@@ -241,20 +241,23 @@ def main(argv: "list[str] | None" = None) -> int:
     except Exception:
         return 0
 
-    if notice:
-        if session_start:
-            print(
-                json.dumps(
-                    {
-                        "hookSpecificOutput": {
-                            "hookEventName": "SessionStart",
-                            "additionalContext": f"\n{notice}\n",
+    try:
+        if notice:
+            if session_start:
+                print(
+                    json.dumps(
+                        {
+                            "hookSpecificOutput": {
+                                "hookEventName": "SessionStart",
+                                "additionalContext": f"\n{notice}\n",
+                            }
                         }
-                    }
+                    )
                 )
-            )
-        else:
-            print(notice)
+            else:
+                print(notice)
+    except OSError:
+        pass
     return 0
 
 
