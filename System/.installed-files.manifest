@@ -935,6 +935,7 @@ core/tests/fixtures/entity_pages/render-company.expected.md
 core/tests/fixtures/entity_pages/render-company.input.json
 core/tests/fixtures/entity_pages/render-person.expected.md
 core/tests/fixtures/entity_pages/render-person.input.json
+core/tests/fixtures/releases-feed.md
 core/tests/fixtures/sync-folder-vectors.json
 core/tests/fixtures/vault/00-Inbox/Daily_Plans/.gitkeep
 core/tests/fixtures/vault/00-Inbox/Ideas/.gitkeep
@@ -1100,10 +1101,12 @@ core/tests/test_relationships_feed.py
 core/tests/test_release_catalog.py
 core/tests/test_release_catalog_generation.py
 core/tests/test_release_channel.py
+core/tests/test_release_feed.py
 core/tests/test_release_fleet.py
 core/tests/test_release_fleet_acceptance.py
 core/tests/test_release_fleet_executor.py
 core/tests/test_release_fleet_failure_diagnostics.py
+core/tests/test_release_notes_sweep.py
 core/tests/test_release_tag_uniqueness.py
 core/tests/test_review_retirement.py
 core/tests/test_ritual_intelligence_entrypoints.py
@@ -1176,6 +1179,8 @@ core/utils/qmd_indexer.py
 core/utils/qmd_query.py
 core/utils/reference_formatter.py
 core/utils/release_channel.py
+core/utils/release_feed.py
+core/utils/release_notes_sweep.py
 core/utils/safe_autosave.py
 core/utils/session_health.py
 core/utils/smoke.py

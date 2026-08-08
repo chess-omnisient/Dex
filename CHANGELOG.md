@@ -7,6 +7,26 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.83.0] — 📣 Updates now introduce themselves (2026-08-08)
+
+The last release quietly gave Dex a capability many of you may not have
+noticed: say "report this" when something misbehaves and Dex writes the bug
+report for you, shows it to you before it goes, and tells you when the fix
+ships. Run `/feedback`, or read the guide at https://heydex.ai/help/feedback.html.
+The fact that you could miss a feature like that was itself a bug. Fixed today.
+
+**What this fixes for you:**
+
+* **Your next session after an update opens with what's new.** One short note,
+  once per version: the headline and the few things worth knowing, with a link
+  to the full story. No more silent updates.
+* **"Update available" now tells you why you'd care.** The session-start nudge
+  lists the headlines waiting for you, newest first, instead of asking you to
+  update on faith. It checks quickly and quietly, and if the network is slow it
+  simply shows the plain nudge rather than delaying your session.
+* **New users meet the bug reporter on day one.** Onboarding now ends by
+  introducing `/feedback`, so nobody has to discover it by accident.
+
 ## [1.82.0] — 💬 Found a bug? Dex reports it for you — and tells you when it's fixed (2026-08-08)
 
 Until now, when something in Dex misbehaved, telling the Dex team meant writing it
