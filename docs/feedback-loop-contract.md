@@ -55,11 +55,12 @@ Request body (JSON, capped at 32 KB, unknown fields rejected):
 
 Response `200`: `{ "ticket": "DEX-142", "receivedAt": 1754640001000 }`
 Errors: `401` (invalid/expired session — client shows the connect instructions),
-`400` opaque `{"error":"invalid_request","code":"INVALID_REQUEST"}`, `429` rate limit.
+`400` opaque `{"error":"invalid_request","code":"INVALID_REQUEST"}`, `429` rate
+limit (both the per-IP limiter and the per-account daily submission cap).
 
 ### GET /api/feedback/status
 
-Returns every report belonging to the authenticated account:
+Returns the authenticated account's reports, newest first (up to 1000):
 
 ```json
 {
@@ -73,6 +74,7 @@ Returns every report belonging to the authenticated account:
       "fixedInVersion": "1.82.0",
       "comment": "Great catch — this was hitting 14 other people too. Thank you.",
       "question": null,
+      "answers": [ { "text": "Both — earliest July 2.", "receivedAt": 1754650000000 } ],
       "createdAt": 1754640001000
     }
   ]
@@ -80,7 +82,7 @@ Returns every report belonging to the authenticated account:
 ```
 
 `status` enum: `received | investigating | needs_info | fixed | wont_fix`.
-`question` is non-null only in `needs_info`.
+`question` is non-null only in `needs_info`; `fixedInVersion` only in `fixed`.
 
 ### POST /api/feedback/answer
 
