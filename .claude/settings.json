@@ -18,6 +18,10 @@
           {
             "type": "command",
             "command": "node .claude/hooks/connection-health-checker.cjs"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/feedback_sweep.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
           }
         ]
       }
