@@ -1928,6 +1928,35 @@ def test_shipped_job_from_another_vault_is_not_attributed_to_this_vault(monkeypa
     assert fresh.verdict == "OFF"
 
 
+def test_shipped_job_from_another_worktree_vault_is_not_a_failure(monkeypatch, context):
+    """A disposable fixture must not fail because another Dex worktree has a job."""
+    plist = _write_plist(context, "com.dex.meeting-intel")
+    foreign_vault = context.home.parent / ".bb" / "worktrees" / "env_x" / "dex-core"
+    with plist.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": "com.dex.meeting-intel",
+                "ProgramArguments": [
+                    "/bin/bash",
+                    str(foreign_vault / ".scripts" / "dex-launcher.sh"),
+                ],
+                "WorkingDirectory": str(foreign_vault),
+            },
+            handle,
+        )
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    loaded = doctor._probe_jobs_loaded(context)
+    fresh = doctor._probe_jobs_fresh(context)
+
+    assert loaded.verdict == "OFF"
+    assert loaded.detail == (
+        "No launch agents for this vault are installed; "
+        "1 Dex launch agent from another Dex product was skipped"
+    )
+    assert fresh.verdict == "OFF"
+
+
 def test_corrupt_dex_plist_is_unknown_not_foreign(monkeypatch, context):
     """A malformed plist has no trustworthy ownership evidence either way."""
     agents = context.home / "Library" / "LaunchAgents"
@@ -2614,8 +2643,10 @@ def test_stored_former_vault_root_rejects_current_and_degenerate_roots(context):
     assert doctor._stored_former_vault_root(context) == former
 
 
-def test_jobs_loaded_flags_a_dex_plist_repointed_at_a_worktree(monkeypatch, context):
-    """A worktree-pointed job is a repointed install, not another product's."""
+def test_jobs_loaded_skips_a_dex_plist_pointing_at_another_worktree(
+    monkeypatch, context
+):
+    """A worktree path is foreign unless it is this vault's path evidence."""
     agents = context.home / "Library" / "LaunchAgents"
     agents.mkdir(parents=True, exist_ok=True)
     worktree = context.home.parent / ".bb" / "worktrees" / "env_x" / "dex-core"
@@ -2633,12 +2664,14 @@ def test_jobs_loaded_flags_a_dex_plist_repointed_at_a_worktree(monkeypatch, cont
 
     result = doctor._probe_jobs_loaded(context)
 
-    assert result.verdict == "BROKEN"
-    assert "temporary working copy" in result.detail
-    assert "reinstall it from the real vault" in result.detail
+    assert result.verdict == "OFF"
+    assert result.detail == (
+        "No launch agents for this vault are installed; "
+        "1 Dex launch agent from another Dex product was skipped"
+    )
 
 
-def test_jobs_loaded_flags_a_dex_plist_pointing_into_a_git_worktree_checkout(
+def test_jobs_loaded_skips_a_dex_plist_pointing_into_another_git_worktree_checkout(
     monkeypatch, context
 ):
     checkout = context.home.parent / "checkouts" / "dex-copy"
@@ -2662,8 +2695,11 @@ def test_jobs_loaded_flags_a_dex_plist_pointing_into_a_git_worktree_checkout(
 
     result = doctor._probe_jobs_loaded(context)
 
-    assert result.verdict == "BROKEN"
-    assert "temporary working copy" in result.detail
+    assert result.verdict == "OFF"
+    assert result.detail == (
+        "No launch agents for this vault are installed; "
+        "1 Dex launch agent from another Dex product was skipped"
+    )
 
 
 def test_preflight_queue_maps_server_and_queued_errors_to_broken(monkeypatch, context):

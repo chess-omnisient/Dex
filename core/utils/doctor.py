@@ -2473,43 +2473,6 @@ def _plist_owned_by_vault(data: dict[str, Any], vault_root: Path) -> bool:
     return False
 
 
-_TEMPORARY_CHECKOUT_MARKER = "/worktrees/"
-
-
-def _launch_agent_orphan_issue(data: dict[str, Any]) -> str | None:
-    """Name the defect when a Dex launch agent targets a dead or temporary path.
-
-    A foreign-but-healthy plist can belong to another Dex vault on the same
-    Mac and is none of this vault's business. One whose embedded absolute
-    path lives inside a git worktree cannot belong to any durable install —
-    it is a repointed job that runs (and fails) silently forever, so it must
-    be surfaced rather than skipped as another product's.
-    """
-    candidates: list[Path] = []
-    arguments = data.get("ProgramArguments")
-    strings: list[object] = list(arguments) if isinstance(arguments, list) else []
-    working_directory = data.get("WorkingDirectory")
-    if isinstance(working_directory, str):
-        strings.append(working_directory)
-    for argument in strings:
-        if not isinstance(argument, str):
-            continue
-        candidate = Path(argument).expanduser()
-        if candidate.is_absolute():
-            candidates.append(candidate)
-    for candidate in candidates:
-        if _TEMPORARY_CHECKOUT_MARKER in candidate.as_posix():
-            return f"points at a temporary working copy ({candidate})"
-        try:
-            if candidate.exists():
-                for ancestor in (candidate, *candidate.parents):
-                    if (ancestor / ".git").is_file():
-                        return f"points at a temporary working copy ({candidate})"
-        except OSError:
-            continue
-    return None
-
-
 def _with_skipped_launch_agents(detail: str, skipped_count: int) -> str:
     if not skipped_count:
         return detail
@@ -2625,7 +2588,6 @@ class LaunchAgentRecord:
     label: str
     data: dict[str, Any] | None = None
     error_detail: str | None = None  # unreadable only
-    orphan_issue: str | None = None  # foreign only: worktree-pointed defect
     stale_references: bool = False  # owned only: former-root strings remain
 
 
@@ -2702,7 +2664,6 @@ def _classify_launch_agents(context: DoctorContext) -> LaunchAgentScan:
                     classification=_FOREIGN,
                     label=label,
                     data=data,
-                    orphan_issue=_launch_agent_orphan_issue(data),
                 )
             )
     return LaunchAgentScan(stale_root=stale_root, records=tuple(records))
@@ -2765,16 +2726,7 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
             )
             continue
         if record.classification == _FOREIGN:
-            if record.orphan_issue is not None:
-                issues.append(
-                    (
-                        2,
-                        f"{record.label} {record.orphan_issue} — likely installed from a "
-                        "temporary checkout; reinstall it from the real vault",
-                    )
-                )
-            else:
-                skipped_count += 1
+            skipped_count += 1
             continue
         owned_count += 1
         plist, data, label = record.plist, record.data, record.label
