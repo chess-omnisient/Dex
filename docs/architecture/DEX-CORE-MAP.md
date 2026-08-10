@@ -148,7 +148,7 @@ therefore remains false.
 
 **What it is.** Jobs-to-be-done sharing: package how you use Dex (`/diff-generate`, `/diff-profile`), publish to heydex.ai, and let others adopt — where **adopt regenerates locally** for their role/vault rather than copying your files (`/diff-adopt`, `/diff-adopt-profile`, `/diff-list`, `/diff-remove`).
 
-**Where it lives.** Skills `.claude/skills/diff-*`; local adoption logic `core/dexdiff_profile_adopt.py`; boundary spec `docs/dexdiff-runtime-boundary.md`. Runtime split: `dex-core` owns the `/diff-*` surface + the client to `api.heydex.ai` + local application; `heydex-website` owns auth, hosted review sessions, published storage, profile pages.
+**Where it lives.** Skills `.claude/skills/diff-*`; local adoption logic `core/dexdiff_profile_adopt.py`; boundary spec `docs/dexdiff-runtime-boundary.md`. Runtime split: `dex-core` owns the `/diff-*` surface + the DexDiff Convex client + local application; `heydex-website` owns auth, hosted review sessions, published storage, profile pages.
 
 **Known issues (real, in code).**
 - **PII gate is prompt-only.** `diff-generate` has no redaction machinery — just guidance (e.g. "skills with `-dave` suffix are custom"). Nothing structurally stops personal content leaving.

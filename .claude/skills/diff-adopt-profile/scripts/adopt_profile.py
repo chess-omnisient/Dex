@@ -8,7 +8,7 @@ do not have core/dexdiff_profile_adopt.py. It mirrors that module exactly;
 core/tests/test_dexdiff_adopt_profile_script.py enforces parity.
 
 What it does:
-  1. fetch  GET <api>/api/profile-bundle?handle=<handle>   (api.heydex.ai)
+  1. fetch  GET <api>/api/profile-bundle?handle=<handle>
   2. validate the 2026-04-10 bundle contract
   3. save   04-Projects/DexDiff/beta/profile/adopted/<handle>/...
   4. log    System/.dex/adoptions/profiles/<handle>.json
@@ -35,7 +35,9 @@ from pathlib import Path
 from urllib.parse import quote
 
 PROFILE_BUNDLE_CONTRACT_VERSION = "2026-04-10"
-HEYDEX_API_BASE_URL = "https://api.heydex.ai"
+# Same DexDiff Convex deployment the sibling publish script uses. NOT
+# api.heydex.ai, which routes to the separate Dex Desktop backend.
+HEYDEX_API_BASE_URL = "https://gallant-reindeer-229.eu-west-1.convex.site"
 
 PROFILE_DRAFTS_RELATIVE = Path("04-Projects/DexDiff/beta/profile")
 ADOPTION_LOG_RELATIVE = Path("System/.dex/adoptions/profiles")
@@ -58,6 +60,10 @@ class NetworkError(BundleError):
 
 class NotFoundError(BundleError):
     exit_code = 4
+
+
+class AccessDeniedError(BundleError):
+    exit_code = 5
 
 
 class PayloadError(BundleError):
@@ -125,8 +131,15 @@ def fetch_profile_bundle(handle: str, base_url: "str | None" = None, timeout: fl
         if error.code == 404:
             raise NotFoundError(
                 f"No public profile found for @{normalized_handle}. "
-                "The profile may be private, or the handle may be misspelled. "
+                "The handle may be misspelled, or that person may not have "
+                "published a DexDiff profile. "
                 f"Check https://heydex.ai/diff/{normalized_handle}/ in a browser."
+            )
+        if error.code in (401, 403):
+            raise AccessDeniedError(
+                f"@{normalized_handle}'s DexDiff profile is behind the private beta gate. "
+                "You need access before this terminal command can fetch it. "
+                "Nothing was changed locally."
             )
         raise PayloadError(
             f"The Heydex API answered with HTTP {error.code} for @{normalized_handle}. "
@@ -140,6 +153,12 @@ def fetch_profile_bundle(handle: str, base_url: "str | None" = None, timeout: fl
         )
 
     if status != 200:
+        if status in (401, 403):
+            raise AccessDeniedError(
+                f"@{normalized_handle}'s DexDiff profile is behind the private beta gate. "
+                "You need access before this terminal command can fetch it. "
+                "Nothing was changed locally."
+            )
         raise PayloadError(
             f"The Heydex API answered with HTTP {status} for @{normalized_handle}. "
             "Try again in a minute."
@@ -320,7 +339,11 @@ def main(argv: "list | None" = None) -> int:
         description="Fetch a published Heydex profile bundle and save it into this vault.",
     )
     parser.add_argument("handle", help="@handle or public profile URL")
-    parser.add_argument("--base-url", default=None, help="API base (default: DEXDIFF_API_BASE or https://api.heydex.ai)")
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="API base (default: DEXDIFF_API_BASE or https://gallant-reindeer-229.eu-west-1.convex.site)",
+    )
     parser.add_argument("--fetch-only", action="store_true", help="fetch and report, write nothing")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args(argv)
@@ -371,6 +394,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     except NotFoundError as error:
         print("PROFILE NOT FOUND: %s" % error.user_message, flush=True)
+        return error.exit_code
+    except AccessDeniedError as error:
+        print("ACCESS REQUIRED: %s" % error.user_message, flush=True)
         return error.exit_code
     except NetworkError as error:
         print("NETWORK ERROR: %s" % error.user_message, flush=True)

@@ -3,12 +3,23 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import json
 from pathlib import Path
 
 import pytest
 
 dexdiff_profile_adopt = importlib.import_module("core.dexdiff_profile_adopt")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+PUBLISH_SCRIPT = REPO_ROOT / ".claude" / "skills" / "diff-generate" / "scripts" / "publish_diff.py"
+
+
+def _load_publish_script():
+    spec = importlib.util.spec_from_file_location("publish_diff_for_adopt_test", PUBLISH_SCRIPT)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _configure_paths(monkeypatch, tmp_path: Path) -> None:
@@ -64,8 +75,9 @@ def test_build_profile_bundle_url_trims_at_prefix():
 
 def test_build_profile_bundle_url_defaults_to_api_host(monkeypatch):
     monkeypatch.delenv("DEXDIFF_API_BASE", raising=False)
+    publish_diff = _load_publish_script()
     url = dexdiff_profile_adopt.build_profile_bundle_url(handle="@dave")
-    assert url == "https://api.heydex.ai/api/profile-bundle?handle=dave"
+    assert url == f"{publish_diff.HEYDEX_API_BASE_URL}/api/profile-bundle?handle=dave"
 
 
 def test_api_base_env_override(monkeypatch):
@@ -172,6 +184,17 @@ def test_fetch_profile_bundle_404_raises_not_found(stub_server):
     with pytest.raises(dexdiff_profile_adopt.ProfileBundleNotFoundError) as excinfo:
         dexdiff_profile_adopt.fetch_profile_bundle("@ghost", base_url=base)
     assert "No public profile found for @ghost" in excinfo.value.user_message
+    assert "private beta" not in excinfo.value.user_message
+
+
+def test_fetch_profile_bundle_401_raises_private_beta_access_error(stub_server):
+    base = stub_server(401, '{"error":"BETA_ACCESS_DENIED"}')
+    with pytest.raises(dexdiff_profile_adopt.ProfileBundleAccessDeniedError) as excinfo:
+        dexdiff_profile_adopt.fetch_profile_bundle("@dave", base_url=base)
+    assert "private beta" in excinfo.value.user_message
+    assert "need access" in excinfo.value.user_message
+    assert "server-side problem" not in excinfo.value.user_message
+    assert "Try again in a minute" not in excinfo.value.user_message
 
 
 def test_fetch_profile_bundle_500_raises_http_error(stub_server):
