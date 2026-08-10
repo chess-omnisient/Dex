@@ -140,21 +140,6 @@ class ProbeResult:
 
 
 @dataclass(frozen=True)
-class JobFreshness:
-    """The application log and allowed age for one installed job.
-
-    ``success_state_path`` names a JSON file whose ``lastSync`` field is
-    written only by a completed run.  When present it replaces the log-mtime
-    check: a job can fail on every run while still appending to its log, so
-    log age proves activity, not success.
-    """
-
-    log_path: Path
-    max_age: timedelta
-    success_state_path: Path | None = None
-
-
-@dataclass(frozen=True)
 class DoctorContext:
     """Filesystem and clock inputs for deterministic collector runs."""
 
@@ -595,26 +580,9 @@ PARA_PATH_NAMES = (
     "ARCHIVES_DIR",
 )
 
-# Keep in sync with .claude/hooks/session-start.sh's background-job staleness table.
-JOB_FRESHNESS = {
-    "com.dex.smoke-nightly": JobFreshness(
-        Path(".scripts/logs/smoke-nightly.log"),
-        timedelta(hours=26),
-    ),
-    "com.dex.meeting-intel": JobFreshness(
-        Path(".scripts/logs/meeting-intel.log"),
-        timedelta(hours=48),
-        success_state_path=Path(".scripts/meeting-intel/processed-meetings.json"),
-    ),
-    "com.dex.changelog-checker": JobFreshness(
-        Path(".scripts/logs/changelog-checker.log"),
-        timedelta(days=7),
-    ),
-    "com.dex.learning-review": JobFreshness(
-        Path(".scripts/logs/learning-review.log"),
-        timedelta(days=7),
-    ),
-}
+# Background-job success contracts live in the health promise register
+# (core/health/promises.py); .claude/hooks/session-start.sh mirrors it for the
+# in-session staleness glance.
 
 QUICK_CHECKS = (
     CheckDefinition("vault.structure", "Vault structure", "_probe_vault_structure"),
@@ -674,6 +642,8 @@ DEEP_CHECKS = (
         "_probe_customization_migration_status",
     ),
     CheckDefinition("granola.query_path", "Granola meeting sync", "_probe_granola_query_path"),
+    CheckDefinition("config.meeting_sources", "Configured meeting source", "_probe_meeting_sources"),
+    CheckDefinition("update.post-canary", "Post-update canary", "_probe_post_update_canary"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
     CheckDefinition("qmd.live", "Semantic search", "_probe_qmd_live"),
     CheckDefinition("integrations.enabled", "Enabled integrations", "_probe_integrations_enabled"),
@@ -2584,27 +2554,15 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     )
 
 
-def _last_success_timestamp(state_path: Path) -> datetime | None:
-    """Read the last completed-run timestamp a sync job records only on success."""
-    if not state_path.is_file():
-        return None
-    try:
-        state = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    value = state.get("lastSync") if isinstance(state, dict) else None
-    if not isinstance(value, str):
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
 def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
+    """Audit installed jobs against the health promise register.
+
+    The register's receipts prove success, not activity, so a job that keeps
+    running while failing every time is reported broken here even though its
+    log never stops growing.
+    """
+    from core.health import promises as health_promises
+
     installed = set()
     unknowns = []
     for plist in _installed_launch_agents(context):
@@ -2615,36 +2573,21 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
             continue
         if _plist_owned_by_vault(plist, data, context):
             installed.add(str(data.get("Label") or plist.stem))
-    monitored = [label for label in JOB_FRESHNESS if label in installed]
+    monitored = [
+        promise
+        for promise in health_promises.PROMISES
+        if promise.id in installed and promise.receipt_kind != "daemon"
+    ]
     if not monitored:
         if unknowns:
             return ProbeResult("UNKNOWN", "; ".join(unknowns))
         return ProbeResult("OFF", "No monitored Dex freshness jobs are installed")
 
     stale = []
-    for label in monitored:
-        policy = JOB_FRESHNESS[label]
-        if policy.success_state_path is not None:
-            succeeded = _last_success_timestamp(context.vault_root / policy.success_state_path)
-            if succeeded is None:
-                stale.append(
-                    f"{label} has never recorded a completed run "
-                    "(a job can keep writing its log while failing every time)"
-                )
-                continue
-            if context.now.astimezone(timezone.utc) - succeeded > policy.max_age:
-                stale.append(
-                    f"{label} last completed successfully on {succeeded.date().isoformat()} "
-                    "— it may still be running without succeeding"
-                )
-            continue
-        log_path = context.vault_root / policy.log_path
-        if not log_path.is_file():
-            stale.append(f"{label} has no run log")
-            continue
-        modified = datetime.fromtimestamp(log_path.stat().st_mtime, tz=timezone.utc)
-        if context.now.astimezone(timezone.utc) - modified > policy.max_age:
-            stale.append(f"{label} last ran on {modified.date().isoformat()}")
+    for promise in monitored:
+        audit = health_promises.audit_promise(context.vault_root, promise, now=context.now)
+        if audit.state in {"never", "broken"}:
+            stale.append(audit.detail())
     if stale:
         return ProbeResult(
             "BROKEN",
@@ -2653,7 +2596,10 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
         )
     if unknowns:
         return ProbeResult("UNKNOWN", "; ".join(unknowns))
-    return ProbeResult("OK", f"All {len(monitored)} installed job logs are within their freshness thresholds")
+    return ProbeResult(
+        "OK",
+        f"All {len(monitored)} installed job promises are within their promised cadence",
+    )
 
 
 def _preflight_snapshot(context: DoctorContext) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -2669,15 +2615,10 @@ def _historical_preflight_errors(context: DoctorContext) -> list[dict[str, Any]]
 
 
 def _parsed_queue_timestamp(value: object) -> datetime | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+    from core.utils.timezone import parse_timestamp
+
+    parsed = parse_timestamp(value)
+    return parsed.astimezone(timezone.utc) if parsed is not None else None
 
 
 def _resolved_preflight_error_ids(
@@ -4248,6 +4189,112 @@ def _granola_filtered_query(context: DoctorContext) -> list[dict[str, Any]]:
         )
 
 
+def _probe_meeting_sources(context: DoctorContext) -> ProbeResult:
+    """Compare the configured meeting-notes source with what actually exists.
+
+    A configured source that quietly stops matching reality is how a meeting
+    closeout ends up built from the wrong tool's notes: the vault search finds
+    nothing and the model improvises. Config-vs-reality is checkable, so
+    check it.
+    """
+    from core.ritual_intelligence.transcript_ingest import SUPPORTED_TRANSCRIPT_SUFFIXES
+
+    profile_path = context.vault_root / "System/user-profile.yaml"
+    if profile_path.is_symlink():
+        return ProbeResult(
+            "UNKNOWN",
+            "The doctor will not follow a symlinked profile to inspect meeting sources",
+        )
+    try:
+        profile = _load_yaml(profile_path)
+    except FileNotFoundError:
+        profile = {}
+    except (OSError, ValueError) as error:
+        return ProbeResult("UNKNOWN", f"user-profile.yaml could not be read ({_one_line(error)})")
+    if not isinstance(profile, dict):
+        return ProbeResult("UNKNOWN", "user-profile.yaml is not a mapping")
+    sources = profile.get("meeting_sources")
+    if not isinstance(sources, dict):
+        return ProbeResult("OFF", "No meeting source is configured")
+    folder = sources.get("notes_folder")
+    if not isinstance(folder, str) or not folder.strip():
+        primary = sources.get("primary")
+        if isinstance(primary, str) and primary not in {"", "none"}:
+            return ProbeResult("OK", f"Meeting source is {primary} (no notes folder to verify)")
+        return ProbeResult("OFF", "No meeting source is configured")
+    folder = folder.strip()
+    vault_root = context.vault_root.resolve()
+    target = (context.vault_root / folder).resolve() if not Path(folder).is_absolute() else Path(folder)
+    if (
+        Path(folder).is_absolute()
+        or ".." in Path(folder).parts
+        or target == vault_root
+        or not target.is_relative_to(vault_root)
+    ):
+        # resolve() also closes the symlinked-subfolder escape: a notes_folder
+        # whose real location is outside the vault is one no meeting flow reads.
+        return ProbeResult(
+            "BROKEN",
+            "The configured meeting-notes folder must be a folder inside the vault",
+            Heal(tier=2, action="Point meeting_sources.notes_folder at a vault folder.", applied=False),
+        )
+    if not target.is_dir():
+        return ProbeResult(
+            "BROKEN",
+            f"Your meeting notes are configured to live in '{folder}', but that folder does not exist "
+            "— meeting skills will search blind and may fall back to the wrong source",
+            Heal(tier=2, action="Recreate the folder or update meeting_sources.notes_folder.", applied=False),
+        )
+    has_note = False
+    for current_root, dirnames, filenames in os.walk(target, followlinks=False):
+        dirnames[:] = [name for name in dirnames if not name.startswith(".")]
+        if any(Path(name).suffix.lower() in SUPPORTED_TRANSCRIPT_SUFFIXES for name in filenames):
+            has_note = True
+            break
+    if not has_note:
+        # An empty folder is a young or quiet setup, not a defect: reporting
+        # BROKEN would turn a brand-new correct configuration into a critical
+        # health snapshot on day one.
+        return ProbeResult(
+            "UNKNOWN",
+            f"The configured meeting-notes folder '{folder}' exists but has no notes yet "
+            "— if your meeting tool should already be exporting, check that export",
+        )
+    return ProbeResult("OK", f"Meeting-notes folder '{folder}' exists and contains notes")
+
+
+def _probe_post_update_canary(context: DoctorContext) -> ProbeResult:
+    """Read the post-update canary's receipt so a failed canary stays visible.
+
+    The canary runs once, right after an update applies; this probe is what
+    makes its verdict durable — without a reader, a failed walk through the
+    lifecycle doors would be a line in a closed terminal and nothing more.
+    """
+    from core.health.post_update import RECEIPT_CONTRACT, RECEIPT_RELATIVE
+
+    receipt_path = context.vault_root / RECEIPT_RELATIVE
+    if not receipt_path.is_file():
+        return ProbeResult("OFF", "No post-update check has run yet (normal before the first update on this version)")
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ProbeResult("UNKNOWN", "The post-update check's receipt could not be read")
+    if not isinstance(receipt, dict) or receipt.get("contract") != RECEIPT_CONTRACT:
+        return ProbeResult("UNKNOWN", "The post-update check's receipt has an unrecognized shape")
+    version = receipt.get("dex_version")
+    version_text = f" (after updating to {version})" if isinstance(version, str) else ""
+    if receipt.get("ok") is True:
+        return ProbeResult("OK", f"The last post-update check passed{version_text}")
+    error = receipt.get("error")
+    detail = f": {error}" if isinstance(error, str) and error else ""
+    return ProbeResult(
+        "BROKEN",
+        f"The last post-update check failed{version_text}{detail} — plan/state operations "
+        "did not open after the update applied",
+        Heal(tier=2, action="Investigate the lifecycle refusal; /dex-rollback can undo the update.", applied=False),
+    )
+
+
 def _probe_granola_query_path(context: DoctorContext) -> ProbeResult:
     if not _granola_api_key(context):
         return ProbeResult("OFF", "Granola is not connected because no API key is configured")
@@ -4927,8 +4974,35 @@ def main(argv: list[str] | None = None, *, context: DoctorContext | None = None)
         print(f"dex-doctor could not produce JSON: {_one_line(error)}", file=sys.stderr)
         return 1
 
+    if args.deep:
+        _publish_health_snapshot(report, context)
     print(output)
     return 0
+
+
+def _publish_health_snapshot(report: dict[str, Any], context: DoctorContext | None) -> None:
+    """Best-effort: publish a completed deep report as the latest health snapshot.
+
+    This is the store's production writer — the session-start health surface
+    and the mid-session pulse both read the latest snapshot, so a Doctor deep
+    run is what refreshes the answer they glance at.  Only a complete
+    (deep) registry normalizes into a snapshot; failures never disturb the
+    prior snapshot or the Doctor report the user is reading.
+    """
+    try:
+        from core.health.doctor_reporter import from_doctor_report
+        from core.health.snapshot import HealthStore
+
+        refresh_id = f"doctor-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+        normalized = from_doctor_report(report, refresh_id=refresh_id)
+        if not normalized.accepted:
+            return
+        root = context.vault_root if context is not None else paths.VAULT_ROOT
+        store = HealthStore(root)
+        with store.refresh(refresh_id) as refresh:
+            refresh.publish(normalized)
+    except Exception:  # noqa: BLE001 - publication must never break a Doctor run
+        return
 
 
 if __name__ == "__main__":
