@@ -7,6 +7,15 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.90.0] — 🧭 Clearer rescue directions for stuck older installs (2026-08-10)
+
+The update-rescue guide (the page that helps when `/dex-update` refuses) sent some stuck installs down a road that couldn't work — and, in one rare case, a road that could cost files.
+
+**What this fixes for you:**
+
+* **The guide now checks your vault's shape first.** Installs where Dex's code already lives in its own private store were being pointed at a manual Git route that cannot work for them (its first command fails on those vaults); they're now sent straight to the supported one-time bridge, whatever version they're on.
+* **The oldest versions go to the bridge, never the old manual route.** A detailed report showed that versions before v1.62 hit a safety refusal the manual route can never satisfy — and that forcing past that refusal silently deleted three of the reporter's personal files (recovered from their own backup, nothing lost). The guide now says plainly: if you see that refusal, stop and use the bridge, which recognises those exact older versions and protects personal files by design.
+
 ## [1.89.0] — 🪟 Windows stops raising false alarms (2026-08-10)
 
 Two detailed reports from the community, one theme: on Windows, Dex's health checkup declared a perfectly healthy install broken. Both were false alarms — Dex behaved slightly differently on Windows than on Mac in a handful of invisible places — and both are fixed. Thank you to the Windows user who filed them.
