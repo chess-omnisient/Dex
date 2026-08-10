@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.89.0] — 🪟 Windows stops raising false alarms (2026-08-10)
+
+Two detailed reports from the community, one theme: on Windows, Dex's health checkup declared a perfectly healthy install broken. Both were false alarms — Dex behaved slightly differently on Windows than on Mac in a handful of invisible places — and both are fixed. Thank you to the Windows user who filed them.
+
+**What this fixes for you:**
+
+* **The checkup stops insisting your install doesn't match its release.** On Windows, the standard way of keeping files on disk quietly stores text in Windows' own format. Dex's integrity checks compared those files against the original release and reported a mismatch — every time, on every Windows machine — which cascaded into a whole page of "broken" verdicts across the update and adoption tools, and could brand files you never touched as "modified by you". Everywhere Dex checks its own files against a release — the install record, optional capability files, and the modified-or-not verdict on each file — it now recognizes Windows formatting for what it is: the same content, stored the Windows way. Files you actually edited are still caught exactly as before.
+* **The doctor stops blocking itself.** While running its checkup on Windows, Dex could trip over its own safety lock and refuse to finish, reporting "another Dex process is already changing this vault" — where the "other process" was the checkup itself. The cause was one internal bookkeeping step that works on Mac but simply doesn't exist on Windows; it turned out to be attempted in ten different places, so fixing only the first would have moved the failure one step down the line. All ten now handle Windows properly, and a failed attempt cleans up after itself instead of leaving a confusing leftover behind.
+* **Checking on another Dex process can no longer harm it.** The way Dex asked "is that other process still running?" was safe on Mac but on Windows could actually shut the other process down. Dex now only looks — it can never touch.
+
+These fixes were verified with tests that simulate the Windows behavior, not on a live Windows machine — if you're on Windows and still see either symptom after updating, please run `/feedback`.
+
 ## [1.88.0] — 🔄 An update now clears its own stale paperwork (2026-08-10)
 
 A wonderfully thorough field report (reproduced twice, traced to the exact line) showed that after every update, a small internal note recording "this version is active here" still named the old version, so the next planning or undo request was refused until a separate repair ran.
