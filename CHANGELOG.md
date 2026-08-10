@@ -7,6 +7,15 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.88.0] — 🔄 An update now clears its own stale paperwork (2026-08-10)
+
+A wonderfully thorough field report (reproduced twice, traced to the exact line) showed that after every update, a small internal note recording "this version is active here" still named the old version, so the next planning or undo request was refused until a separate repair ran.
+
+**What this fixes for you:**
+
+* **An update now clears the outdated note as its final step.** The moment the new files are safely in place, the note the old version left behind is removed — and the very next thing you do writes a fresh one for the new version. Plans, undo, and unattended nightly updates no longer trip over the previous version's paperwork, and there's no gap where your install disagrees with itself.
+* **Clearing the note can never block an update.** If the note is unreadable or can't be cleared, the update still completes exactly as before — tidying up is never allowed to veto an update that already succeeded — and Dex's existing self-repair still fixes the note the next time it's read.
+
 ## [1.87.0] — 🔄 Note-syncing survives busy days, and calendar permissions work again on newer Macs (2026-08-10)
 
 A community member sent in two unusually sharp bug reports, each diagnosed right down to the fix. Both are in this release — thank you, Chris.
