@@ -7,6 +7,17 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.85.0] — 🫀 Health checks that ask "did it work?" — and don't wait until tomorrow to tell you (2026-08-10)
+
+Yesterday's release fixed a background sync that had been failing silently for six days while every health check stayed green. Today's release fixes the deeper problem: health checks that measured the wrong thing, and health news that only arrived when you started a fresh session.
+
+**What this fixes for you:**
+
+* **Every background job now makes a promise Dex can audit.** Each of Dex's recurring background jobs — meeting sync, the nightly self-check, the update watcher, and the rest — now declares how often it should succeed and where it leaves its receipt when it does. The health checkup reads the receipts. A job that keeps running but never succeeding now shows up as broken, not busy. And Dex refuses to ship any new background job that doesn't make this promise, so the next feature is watched from day one.
+* **Bad health news finds you mid-session.** Health used to speak only at the start of a fresh session — if you lived in one long conversation for days, you heard nothing. Now Dex takes a tiny glance at its own latest checkup as you work (a glance, not a checkup — it adds no noticeable time) and tells you at most once a day if the checkup is overdue or found something serious.
+* **Every update proves the doors still open.** The bug fixed yesterday broke Dex's planning and undo features at the exact moment an update finished — and nothing noticed until a person tried them days later. Now, the moment an update applies, Dex walks through those same doors itself and tells you immediately if one is stuck.
+* **Dex checks that your meeting-notes setup still matches reality.** If you've told Dex where your meeting notes land, the checkup now verifies that the folder actually exists and is actually receiving notes — so a broken export from your meeting tool gets caught by the checkup, not by a wrong meeting summary.
+
 ## [1.84.0] — 🩺 Updates stop quietly breaking things, and plans stop "forgetting" (2026-08-10)
 
 Two users sent unusually detailed bug reports this week. Between them they uncovered six real problems — including one that silently affected every install that had ever taken an update. This release fixes all of them.

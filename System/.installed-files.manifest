@@ -20,6 +20,7 @@
 .claude/hooks/dex-core-orientation.sh
 .claude/hooks/dex-safety-guard.sh
 .claude/hooks/ensure-mcp-user-scope.cjs
+.claude/hooks/health-pulse.sh
 .claude/hooks/integration-concierge.cjs
 .claude/hooks/maintenance.cjs
 .claude/hooks/meeting-cache-builder.cjs
@@ -37,6 +38,7 @@
 .claude/hooks/tests/context-injectors.test.cjs
 .claude/hooks/tests/data-safety-instructions.test.cjs
 .claude/hooks/tests/first-run-directive.test.cjs
+.claude/hooks/tests/health-pulse.test.cjs
 .claude/hooks/tests/hook-harness.test.cjs
 .claude/hooks/tests/input-contract.test.cjs
 .claude/hooks/tests/integration-concierge.test.cjs
@@ -757,6 +759,8 @@ core/entity_maintenance.py
 core/health/__init__.py
 core/health/doctor_ref.py
 core/health/doctor_reporter.py
+core/health/post_update.py
+core/health/promises.py
 core/health/reporter.py
 core/health/snapshot.py
 core/integrations/BUILD_TRACKER.md
@@ -1053,6 +1057,7 @@ core/tests/test_granola_server.py
 core/tests/test_health_compatibility.py
 core/tests/test_health_doctor_ref.py
 core/tests/test_health_page_scripts.py
+core/tests/test_health_promises.py
 core/tests/test_health_reporter.py
 core/tests/test_health_session_surface.py
 core/tests/test_health_snapshot.py
@@ -1207,6 +1212,7 @@ docs/Dex_System/Updating_Dex.md
 docs/UPDATE-RESCUE.md
 docs/analytics-proxy.md
 docs/architecture/DEX-CORE-MAP.md
+docs/architecture/HEALTH-PROMISES.md
 docs/architecture/INVENTORY.md
 docs/architecture/STATE.md
 docs/assets/dex-hero.gif
@@ -1298,6 +1304,7 @@ scripts/dex_update_bridge.py
 scripts/founder-content-allowlist.txt
 scripts/generate-architecture-inventory.py
 scripts/generate-connections-contract.mjs
+scripts/generate-health-promises.py
 scripts/generate-manifest.sh
 scripts/generate-path-contracts.py
 scripts/generate-portable-contract.py
