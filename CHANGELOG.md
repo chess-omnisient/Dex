@@ -7,6 +7,15 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.92.0] — 🔢 Task numbers no longer stop counting at 999 (2026-08-10)
+
+A user with a well-used vault found that once his tasks passed number 999, every new task got the same number — four collisions in one day. His report arrived with the diagnosis already done (thank you, Martin), and it checked out exactly.
+
+**What this fixes for you:**
+
+* **Task numbers now count past 999, forever.** Every part of Dex that reads a task's ID assumed the number part is exactly three digits, so the ID generator couldn't see anything above 999 and kept handing out 1000. The assumption is gone from all sixteen places it lived — the generator, the task sync layers, and the automation helpers — and numbering simply continues: 1000, 1001, and onward. Existing task IDs don't change.
+* **Task 100 can no longer be mistaken for task 1000.** Looking up a task matched partial numbers, so acting on one task could quietly touch another whose number merely started the same. Matching is now exact — this one was waiting to bite anyone the moment they crossed a thousand tasks.
+
 ## [1.91.0] — 🔐 The file holding your AI keys is now private — and the checkup finally sees it (2026-08-10)
 
 If you gave Dex an AI key so meetings get analyzed in the background, that key sat in a small file at the top of your vault that other accounts on the same computer could read — and Dex's own checkup couldn't see the key at all, so it reported "no key" and recommended you put one exactly where it already was.
