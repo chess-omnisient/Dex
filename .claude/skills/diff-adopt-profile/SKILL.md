@@ -35,10 +35,10 @@ Examples:
 Always fetch the bundle from the **API host**:
 
 ```text
-GET https://api.heydex.ai/api/profile-bundle?handle=<handle>
+GET https://gallant-reindeer-229.eu-west-1.convex.site/api/profile-bundle?handle=<handle>
 ```
 
-Critical: the API lives on `api.heydex.ai` (Convex HTTP actions). The website host `heydex.ai` serves pages only - it has **no** `/api/*` routes, and fetching the bundle from `https://heydex.ai/api/...` returns a bare 404. Never use the website host for API calls. (Local stubs and rehearsals override the base with the `DEXDIFF_API_BASE` environment variable.)
+Critical: the profile-adoption API lives on the DexDiff Convex deployment, `gallant-reindeer-229.eu-west-1.convex.site`. The website host `heydex.ai` serves pages only - it has **no** `/api/*` routes, and `api.heydex.ai` routes to the separate Dex Desktop backend. Never use either host for profile-adoption API calls. (Local stubs and rehearsals override the base with the `DEXDIFF_API_BASE` environment variable.)
 
 Expected contract:
 - `contractVersion: "2026-04-10"`
@@ -62,7 +62,7 @@ python3 <skill-dir>/scripts/adopt_profile.py @<handle> --json
 
 Exit codes: `0` success, `2` bad handle, `3` network down, `4` profile not found, `5` malformed payload or server error, `6` not inside a Dex vault. Every non-zero exit prints a plain-language explanation on stdout - relay it to the user verbatim, then stop. Never improvise around a failure, and never fail silently.
 
-If `python3` is not available on the machine, fall back to fetching `https://api.heydex.ai/api/profile-bundle?handle=<handle>` yourself (WebFetch or curl), validate the contract fields listed above, and perform the same writes by hand - but say so explicitly and keep the same stop-on-failure behavior.
+If `python3` is not available on the machine, fall back to fetching `https://gallant-reindeer-229.eu-west-1.convex.site/api/profile-bundle?handle=<handle>` yourself (WebFetch or curl), validate the contract fields listed above, and perform the same writes by hand - but say so explicitly and keep the same stop-on-failure behavior.
 
 ## Flow
 
@@ -162,7 +162,7 @@ End by explaining:
 ## Important Rules
 
 - Treat this as a real runtime command, not future-state.
-- Always use the dedicated profile bundle contract on `api.heydex.ai` - never the website host.
+- Always use the dedicated profile bundle contract on `gallant-reindeer-229.eu-west-1.convex.site` - never the website host or `api.heydex.ai`.
 - Use the bundled `scripts/adopt_profile.py` for fetch and save; do not hand-roll the deterministic steps.
 - Every failure gets a plain-language explanation and a clean stop. Never fail silently, never half-complete.
 - Keep single-workflow adoption as `/diff-adopt @handle/diffId`.

@@ -1,9 +1,8 @@
 """Helpers for whole-profile DexDiff adoption.
 
-The hosted contract lives on ``https://api.heydex.ai`` (Convex HTTP actions).
-The website host ``https://heydex.ai`` serves pages only and has no ``/api/*``
-routes, fetching the bundle from there is the historical break 1 from the
-2026-06-10 end-to-end review. Keep all API calls on the API host.
+The hosted DexDiff contract lives on the same Convex deployment used by the
+publish path. The website host ``https://heydex.ai`` serves pages only and has
+no ``/api/*`` routes.
 """
 
 from __future__ import annotations
@@ -23,9 +22,9 @@ from core.paths import DEX_RUNTIME_DIR, DEXDIFF_PROFILE_DRAFTS_DIR, VAULT_ROOT
 PROFILE_BUNDLE_CONTRACT_VERSION = "2026-04-10"
 PROFILE_ADOPTIONS_DIR = DEX_RUNTIME_DIR / "adoptions" / "profiles"
 
-# Canonical hosted API base. Override with DEXDIFF_API_BASE (used by tests and
-# the sandbox rehearsal loop to point at a local stub server).
-HEYDEX_API_BASE_URL = "https://api.heydex.ai"
+# Canonical hosted DexDiff API base. Keep this aligned with the sibling publish
+# script. Override with DEXDIFF_API_BASE for local stubs and rehearsals.
+HEYDEX_API_BASE_URL = "https://gallant-reindeer-229.eu-west-1.convex.site"
 
 
 class ProfileBundleError(Exception):
@@ -42,6 +41,10 @@ class ProfileBundleNetworkError(ProfileBundleError):
 
 class ProfileBundleNotFoundError(ProfileBundleError):
     """The handle has no public profile bundle (404)."""
+
+
+class ProfileBundleAccessDeniedError(ProfileBundleError):
+    """The hosted profile exists behind an access gate (401/403)."""
 
 
 class ProfileBundleHTTPError(ProfileBundleError):
@@ -103,8 +106,15 @@ def fetch_profile_bundle(
         if error.code == 404:
             raise ProfileBundleNotFoundError(
                 f"No public profile found for @{normalized_handle}. "
-                "The profile may be private, or the handle may be misspelled. "
+                "The handle may be misspelled, or that person may not have "
+                "published a DexDiff profile. "
                 f"Check https://heydex.ai/diff/{normalized_handle}/ in a browser."
+            ) from error
+        if error.code in (401, 403):
+            raise ProfileBundleAccessDeniedError(
+                f"@{normalized_handle}'s DexDiff profile is behind the private beta gate. "
+                "You need access before this terminal command can fetch it. "
+                "Nothing was changed locally."
             ) from error
         raise ProfileBundleHTTPError(
             f"The Heydex API answered with HTTP {error.code} for @{normalized_handle}. "
@@ -118,6 +128,12 @@ def fetch_profile_bundle(
         ) from error
 
     if status != 200:
+        if status in (401, 403):
+            raise ProfileBundleAccessDeniedError(
+                f"@{normalized_handle}'s DexDiff profile is behind the private beta gate. "
+                "You need access before this terminal command can fetch it. "
+                "Nothing was changed locally."
+            )
         raise ProfileBundleHTTPError(
             f"The Heydex API answered with HTTP {status} for @{normalized_handle}. "
             "Try again in a minute."
@@ -318,7 +334,11 @@ def _cli(argv: list[str]) -> int:
         ),
     )
     parser.add_argument("handle", help="@handle or public profile URL")
-    parser.add_argument("--base-url", default=None, help="API base (default: %(default)s -> DEXDIFF_API_BASE or https://api.heydex.ai)")
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="API base (default: DEXDIFF_API_BASE or https://gallant-reindeer-229.eu-west-1.convex.site)",
+    )
     parser.add_argument("--fetch-only", action="store_true", help="fetch and report, write nothing")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args(argv)
@@ -334,6 +354,9 @@ def _cli(argv: list[str]) -> int:
     except ProfileBundleNotFoundError as error:
         print(f"PROFILE NOT FOUND: {error.user_message}", flush=True)
         return 4
+    except ProfileBundleAccessDeniedError as error:
+        print(f"ACCESS REQUIRED: {error.user_message}", flush=True)
+        return 5
     except ProfileBundleNetworkError as error:
         print(f"NETWORK ERROR: {error.user_message}", flush=True)
         return 3

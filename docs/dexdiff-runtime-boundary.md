@@ -14,7 +14,7 @@ Reference-only planning/docs:
 ## What Belongs In `dex-core`
 
 - the public `/diff-*` command surface
-- the client that talks to `heydex.ai`
+- the client that talks to the hosted DexDiff API
 - local application of adopted methodologies into a Dex vault
 - CLI error handling for link/review/publish/adopt flows
 - local DexDiff draft paths resolved from the canonical Dex path contract
@@ -32,10 +32,12 @@ Reference-only planning/docs:
 Host split (this has been broken before - keep it straight):
 
 - `https://heydex.ai` - pages only (Caddy static + React). It has **no** `/api/*` routes.
-- `https://api.heydex.ai` - every API endpoint below (Convex HTTP actions).
+- `https://gallant-reindeer-229.eu-west-1.convex.site` - DexDiff API endpoints below (Convex HTTP actions).
+- `https://api.heydex.ai` - the separate Dex Desktop backend; do not use it for DexDiff profile adoption.
 
-All portable-runtime API calls go to `api.heydex.ai`. Local stubs override via the
-`DEXDIFF_API_BASE` environment variable.
+Portable-runtime DexDiff profile adoption calls go to the Convex deployment above, matching
+the sibling publish script. Local stubs override via the `DEXDIFF_API_BASE` environment
+variable.
 
 The portable runtime should assume these hosted flows exist:
 

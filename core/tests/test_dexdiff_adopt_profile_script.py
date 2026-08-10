@@ -9,6 +9,7 @@ module so the two implementations cannot drift silently.
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import json
 import subprocess
 import sys
@@ -20,8 +21,17 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / ".claude" / "skills" / "diff-adopt-profile" / "scripts" / "adopt_profile.py"
+PUBLISH_SCRIPT = REPO_ROOT / ".claude" / "skills" / "diff-generate" / "scripts" / "publish_diff.py"
 
 dexdiff_profile_adopt = importlib.import_module("core.dexdiff_profile_adopt")
+
+
+def _load_script(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _bundle() -> dict:
@@ -91,6 +101,18 @@ def _run(args: list[str], vault: Path | None, **kwargs):
     )
 
 
+def test_script_default_api_base_matches_publish_script(monkeypatch):
+    monkeypatch.delenv("DEXDIFF_API_BASE", raising=False)
+    adopt_profile = _load_script(SCRIPT, "adopt_profile_for_default_test")
+    publish_diff = _load_script(PUBLISH_SCRIPT, "publish_diff_for_default_test")
+
+    assert adopt_profile.HEYDEX_API_BASE_URL == publish_diff.HEYDEX_API_BASE_URL
+    assert (
+        adopt_profile.build_profile_bundle_url(None, "@davekilleen")
+        == f"{publish_diff.HEYDEX_API_BASE_URL}/api/profile-bundle?handle=davekilleen"
+    )
+
+
 def test_script_happy_path_writes_all_artifacts(stub_server, tmp_path):
     base = stub_server(200, json.dumps(_bundle()))
     vault = _make_vault(tmp_path)
@@ -131,7 +153,22 @@ def test_script_profile_not_found(stub_server, tmp_path):
 
     assert result.returncode == 4
     assert "PROFILE NOT FOUND" in result.stdout
-    assert "may be private" in result.stdout
+    assert "No public profile found" in result.stdout
+    assert "private beta" not in result.stdout
+
+
+def test_script_private_beta_access_denied(stub_server, tmp_path):
+    base = stub_server(401, '{"error":"BETA_ACCESS_DENIED"}')
+    vault = _make_vault(tmp_path)
+
+    result = _run(["@davekilleen", "--base-url", base], vault)
+
+    assert result.returncode == 5
+    assert "ACCESS REQUIRED" in result.stdout
+    assert "private beta" in result.stdout
+    assert "need access" in result.stdout
+    assert "PROFILE NOT FOUND" not in result.stdout
+    assert "Try again in a minute" not in result.stdout
 
 
 def test_script_network_down(tmp_path):
