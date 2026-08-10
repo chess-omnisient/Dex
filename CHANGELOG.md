@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.84.0] — 🩺 Updates stop quietly breaking things, and plans stop "forgetting" (2026-08-10)
+
+Two users sent unusually detailed bug reports this week. Between them they uncovered six real problems — including one that silently affected every install that had ever taken an update. This release fixes all of them.
+
+**What this fixes for you:**
+
+* **Taking an update no longer quietly locks parts of Dex.** Dex keeps a small internal note recording which version it first activated. That note was written once and never refreshed, so from your first update onward, anything that read your install's plan, adoption choices, or undo history refused with an error — forever — while updates themselves kept working, hiding the damage. Dex now refreshes the note automatically, and installs already stuck this way heal themselves the first time they do anything after taking this update.
+* **Planning and review commands can see your conversation again.** Eleven commands — daily and weekly planning and reviews, meeting prep and processing, decisions, delegations, reflections, and more — used to run in a separate workspace that could not see what you'd already discussed. That's why a morning plan could resurface items you had settled minutes earlier: it wasn't forgetting, it never had the information. These commands now run inside your conversation by default; you can still ask for a background run.
+* **The update-rescue tool can no longer spin silently.** On some Macs the standalone recovery script restarted itself in an endless loop, burning CPU for minutes with nothing on screen. It now gets that restart right on Macs, stops with one plain sentence if it genuinely can't proceed, and narrates every stage as it works — so silence now means something is wrong, and the rescue guide says so. The guide also now makes clear it covers versions v1.74 through v1.79.
+* **Meeting closeouts only use notes you trust.** One user's meeting wrap-up couldn't find the notes in their vault and quietly fell back to auto-generated notes from a different tool — which had invented an action item and assigned it to their client. Dex now records where your meeting notes come from during setup, looks there first, and is forbidden from fishing in outside services for notes it can't find — it asks you for them instead. Thanks to the reporter who caught this before it reached their client.
+* **Background sync can't be hijacked by a temporary folder — and Dex now checks it actually succeeds.** Setup helpers could accidentally point background meeting sync (and the shared record of where your Dex lives) at a temporary working copy that later disappears, leaving sync failing quietly every half hour while every health check stayed green. Installers now refuse to run from temporary copies, the Doctor calls out a hijacked job instead of ignoring it, and health checks now ask "when did this last *succeed*?" rather than "is it still making noise?".
+* **Filing feedback checks your connection first.** /feedback now confirms this computer is linked to your heydex.ai account before it writes anything, so you're never asked to approve a finished report only to learn it can't be sent yet. Reported by the same user who stress-tested the whole flow — thank you.
+
 ## [1.83.0] — 📣 Updates now introduce themselves (2026-08-08)
 
 The last release quietly gave Dex a capability many of you may not have
