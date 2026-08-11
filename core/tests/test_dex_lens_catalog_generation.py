@@ -39,6 +39,11 @@ def _skill(root: Path, skill_id: str, description: str = "Use when planning a da
 
 def _registry(root: Path) -> None:
     skill_bytes = _skill(root, "daily-plan")
+    schema_source = REPO_ROOT / "core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json"
+    _write(
+        root / "core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json",
+        schema_source.read_text(encoding="utf-8"),
+    )
     _write(
         root / "CHANGELOG.md",
         "# Changelog\n\n## [1.94.0] - Test release\n\n## [1.80.0] - Older release\n",
@@ -159,9 +164,15 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
     assert capability["release_provenance"] == "core-release"
     assert capability["evidence"][0]["level"] == "verified"
     assert capability["compatibility"]["minimum_lens_contract"] == "0.1.0"
-    assert capability["portable_brief"]["headline"].startswith(
+    assert capability["compatibility"]["platforms"] == ["macos", "linux", "windows"]
+    assert capability["compatibility"]["needs_hooks"] is False
+    assert capability["compatibility"]["needs_mcp"] is True
+    assert capability["compatibility"]["host_requirements"] == ["skills-directory"]
+    assert "Needs hooks" not in " ".join(capability["compatibility"]["limitations"])
+    assert capability["portable_brief"]["goal"].startswith(
         "Create a daily planning routine"
     )
+    assert "adaptation_notes" not in capability["portable_brief"]
     assert capability["portable_brief"]["method_outline"] == [
         "Read today's meetings and open tasks.",
         "Choose a short focus list that fits the available time.",

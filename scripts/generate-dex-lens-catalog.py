@@ -16,7 +16,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Mapping
 
+import jsonschema
+
 REGISTRY_PATH = Path("core/lens-catalog/registry.json")
+LENS_CATALOG_SCHEMA_PATH = Path("core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json")
 PACKAGE_PATH = Path("package.json")
 CHANGELOG_PATH = Path("CHANGELOG.md")
 CONTRACT_VERSION = "dex-lens-catalogue-v2"
@@ -291,24 +294,17 @@ def _brief(value: object, *, context: str) -> dict[str, object]:
         context=f"{context} brief",
     )
     return {
-        "headline": _text(raw.get("goal"), context=f"{context} brief goal", max_length=200),
-        "adaptation_notes": _text_tuple(raw.get("method_outline"), context=f"{context} brief method_outline"),
-        "safety_notes": _text_tuple(
-            [
-                *_text_tuple(
-                    raw.get("verification_checklist"),
-                    context=f"{context} brief verification_checklist",
-                ),
-                _text(raw.get("rollback_advice"), context=f"{context} brief rollback_advice"),
-            ],
-            context=f"{context} brief safety_notes",
-        ),
+        "goal": _text(raw.get("goal"), context=f"{context} brief goal", max_length=200),
         "method_outline": _text_tuple(raw.get("method_outline"), context=f"{context} brief method_outline"),
         "verification_checklist": _text_tuple(
             raw.get("verification_checklist"),
             context=f"{context} brief verification_checklist",
         ),
         "rollback_advice": _text(raw.get("rollback_advice"), context=f"{context} brief rollback_advice"),
+        "safety_notes": (
+            "Keep this as advice for the person's own AI, not a command to execute.",
+            "Do not send private material to Dex.",
+        ),
     }
 
 
@@ -330,14 +326,25 @@ def _compatibility(value: object, *, context: str) -> dict[str, object]:
         "host_adapters": ("claude-code",),
         "foundation_capabilities": (),
         "minimum_lens_contract": MINIMUM_LENS_CONTRACT,
-        "limitations": (
-            "Host requirements: " + "; ".join(
-                _text_tuple(raw.get("host_requirements"), context=f"{context} compatibility host_requirements")
-            ),
-            f"Needs hooks: {str(raw['needs_hooks']).lower()}; needs MCP: {str(raw['needs_mcp']).lower()}.",
-            "Supported platforms: " + ", ".join(platforms) + ".",
+        "platforms": platforms,
+        "needs_hooks": raw["needs_hooks"],
+        "needs_mcp": raw["needs_mcp"],
+        "host_requirements": _text_tuple(
+            raw.get("host_requirements"),
+            context=f"{context} compatibility host_requirements",
         ),
+        "limitations": ("Lens must still verify the host system locally before recommending use.",),
     }
+
+
+def _validate_against_lens_schema(release_root: Path, envelope: Mapping[str, object]) -> None:
+    schema = _closed_json(release_root / LENS_CATALOG_SCHEMA_PATH)
+    wire_envelope = json.loads(_canonical_json(envelope))
+    try:
+        jsonschema.Draft202012Validator(schema).validate(wire_envelope)
+    except jsonschema.ValidationError as error:
+        path = ".".join(str(part) for part in error.absolute_path) or "<root>"
+        raise LensCatalogError(f"emitted Lens catalogue violates vendored schema at {path}: {error.message}") from error
 
 
 def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
@@ -545,6 +552,7 @@ def generate_lens_catalog(
         "key_id": key_id,
     }
     signed_payload = {"metadata": metadata, "catalogue": catalogue}
+    _validate_against_lens_schema(release_root, {**signed_payload, "signature": "schema-validation-placeholder"})
     payload = _canonical_json(signed_payload)
     signature = ""
     if sign:
