@@ -456,9 +456,16 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
                 "capability_id": entry["capability_id"],
                 "title": entry["title"],
                 "summary": entry["value"],
+                "value": entry["value"],
                 "jobs": entry["jobs"],
+                "prerequisites": entry["prerequisites"],
+                "trade_offs": entry["trade_offs"],
                 "evidence": entry["evidence"],
                 "compatibility": entry["compatibility"],
+                "docs_url": entry["docs_url"],
+                "since_release": entry["since_release"],
+                "changed_in": entry["changed_in"],
+                "release_provenance": entry["release_provenance"],
                 "portable_brief": entry["portable_brief"],
             }
             for entry in entries

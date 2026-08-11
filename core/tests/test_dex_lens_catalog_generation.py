@@ -144,13 +144,21 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
     assert envelope["metadata"]["key_id"] == "dex-core-lens-1"
     assert envelope["catalogue"]["jobs_taxonomy"][0]["job_id"] == "plan-my-day"
     assert envelope["catalogue"]["jobs_taxonomy"][0]["label"] == "Plan my day"
-    assert envelope["catalogue"]["capabilities"][0]["capability_id"] == "daily-plan"
-    assert envelope["catalogue"]["capabilities"][0]["summary"] == (
+    capability = envelope["catalogue"]["capabilities"][0]
+    assert capability["capability_id"] == "daily-plan"
+    assert capability["summary"] == (
         "Helps a person choose what matters today before work scatters."
     )
-    assert envelope["catalogue"]["capabilities"][0]["evidence"][0]["level"] == "verified"
-    assert envelope["catalogue"]["capabilities"][0]["compatibility"]["minimum_lens_contract"] == "0.1.0"
-    assert envelope["catalogue"]["capabilities"][0]["portable_brief"]["headline"].startswith(
+    assert capability["value"] == "Helps a person choose what matters today before work scatters."
+    assert capability["prerequisites"] == ["A task list or calendar the host can inspect."]
+    assert capability["trade_offs"] == ["The plan is only as current as the source material."]
+    assert capability["docs_url"] == "https://github.com/davekilleen/Dex"
+    assert capability["since_release"] == "1.80.0"
+    assert capability["changed_in"] == []
+    assert capability["release_provenance"] == "core-release"
+    assert capability["evidence"][0]["level"] == "verified"
+    assert capability["compatibility"]["minimum_lens_contract"] == "0.1.0"
+    assert capability["portable_brief"]["headline"].startswith(
         "Create a daily planning routine"
     )
     assert envelope["catalogue"]["portable_brief"]["format"] == "markdown"
