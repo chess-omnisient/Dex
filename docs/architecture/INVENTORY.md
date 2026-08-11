@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: adac6199498ecb5bcc3370800370b710cd2179b6871eb2faf0bb7b0b5ba87f85 -->
+<!-- Content SHA-256: 8583c7cea95053e62a47ca3c4b99c12bc24f94c049b827e4117c3d92b7a879fb -->
 
 # Architecture Inventory
 
@@ -147,13 +147,13 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 | Class | Rule count | Update action |
 | --- | ---: | --- |
-| `brain` | 45 | `replace` |
+| `brain` | 46 | `replace` |
 | `seed` | 38 | `write-if-absent` |
 | `generated` | 9 | `regenerate` |
 | `vault` | 17 | `never` |
-| `runtime` | 13 | `never` |
+| `runtime` | 14 | `never` |
 
-<details><summary><code>brain</code> declared paths (45)</summary>
+<details><summary><code>brain</code> declared paths (46)</summary>
 
 - `.agents` (dir; `brain-agents`)
 - `.ci` (dir; `brain-ci`)
@@ -187,6 +187,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `README.md` (file; `brain-readme`)
 - `System/Beta_Communications` (dir; `brain-beta-communications`)
 - `System/README.md` (file; `brain-system-readme`)
+- `System/backup/RESTORE.md` (file; `brain-backup-restore-guide`)
 - `core` (dir; `brain-core`)
 - `core/data/sync-folder-markers.json` (file; `brain-sync-folder-markers`)
 - `docs` (dir; `brain-docs`)
@@ -282,7 +283,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 </details>
 
-<details><summary><code>runtime</code> declared paths (13)</summary>
+<details><summary><code>runtime</code> declared paths (14)</summary>
 
 - `.logs` (dir; `runtime-logs`)
 - `System/.dex` (dir; `runtime-dex-dir`)
@@ -295,6 +296,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `System/.onboarding-session.json` (file; `runtime-onboarding-session`)
 - `System/Session_Learnings` (dir; `runtime-session-learnings`)
 - `System/Session_Memory` (dir; `runtime-session-memory`)
+- `System/backup` (dir; `runtime-backup-logs`)
 - `System/claude-code-state.json` (file; `runtime-claude-state`)
 - `System/usage_log.md` (file; `runtime-usage-log`)
 
