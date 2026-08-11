@@ -9,7 +9,7 @@ All notable changes to Dex will be documented in this file.
 
 ## [1.97.0] — 🗄️ Backups keep the part that matters, and a restore never leaves you half-unpacked (2026-08-11)
 
-Follow-up hardening on the vault backup feature, from reviewing it against the days it actually has to work. Five ways a backup could look healthy while being less than it claimed, all closed.
+Follow-up hardening on the vault backup feature, from reviewing it against the days it actually has to work. Six ways a backup could look healthy while being less than it claimed, all closed.
 
 **What this fixes for you:**
 
@@ -17,6 +17,7 @@ Follow-up hardening on the vault backup feature, from reviewing it against the d
 * **A backup that stored less than a full copy now says so.** `/dex-doctor` used to report a plain "all good" for these. It now tells you what's missing and why, because a backup you trust more than it deserves is the whole problem this feature exists to solve.
 * **A stopped restore cleans up after itself.** If unpacking a backup can't finish, Dex now explains why in a plain sentence and removes the half-finished folder. Before, it left a partly-unpacked copy behind with a page of developer error text — a folder that looks like your restored vault but silently isn't all of it.
 * **A backup can no longer be declared checked when it wasn't.** Each copy travels with a small fingerprint file proving it's undamaged. If that file got mixed up with a different copy's — easy to do in a folder that syncs — Dex checked the other copy and called this one intact. It now refuses, and points you to the most recent copy that genuinely is.
+* **Saved sign-in tokens stay on your machine.** Backups already left out your AI keys, but a saved Google sign-in (and a few other credential files) could still be copied into the archive and carried up to whichever cloud folder you back up to. They are now left out, and a test ties the backup's exclusion list to the one Dex already uses everywhere else, so the two can't drift apart again.
 * **Shortcut-style linked files are flagged when the backup is taken, not when you need it.** If your vault contains a shortcut pointing outside itself, unpacking it safely isn't possible. You're now told at backup time, while you can still fix it.
 
 Backups of very large vaults also no longer load whole copies into memory at once.

@@ -481,3 +481,67 @@ def test_escaping_link_detection_accepts_links_that_stay_inside(vault, tmp_path)
     write_config(vault, destination=str(dest))
     assert backup_vault.run_backup(vault) == 0
     assert read_stamp(vault)["warnings"] == []
+
+
+# --- secrets must never reach a synced folder -------------------------------
+
+def test_backup_excludes_everything_the_contract_hard_denies():
+    """The engine's exclusion list must not drift behind the repo's authority.
+
+    core.portable_contract.HARD_DENY_PATTERNS is what this repo means by "a
+    credential". backup_vault duplicates the secret half of it (deliberately:
+    the engine stays stdlib-only so a scheduled run cannot die on an import),
+    so this test is what stops the copy going stale. Adding a deny pattern
+    without teaching the backup about it fails here rather than in someone's
+    cloud folder.
+    """
+    from core import portable_contract
+
+    # .git is denied for write-safety, not secrecy, and is intentionally kept:
+    # restoring a working repository is the point of the archive.
+    representative = {
+        ".env": ".env",
+        ".env.*": ".env.production",
+        "System/credentials": "System/credentials",
+        "System/credentials/*": "System/credentials/todoist.json",
+        "*token.json": "System/.gmail-oauth-token.json",
+        "*.key": "04-Projects/deploy/id_rsa.key",
+        "*.pem": "05-Areas/certs/client.pem",
+    }
+    covered = {".git", ".git/*"}
+    unhandled = [pattern for pattern in portable_contract.HARD_DENY_PATTERNS
+                 if pattern not in representative and pattern not in covered]
+    assert unhandled == [], (
+        "new hard-deny patterns exist that this test does not pin; add them "
+        "to backup_vault.GLOB_EXCLUDES/ANCHORED_EXCLUDES and to this mapping")
+
+    for pattern, sample in representative.items():
+        assert backup_vault.excluded(sample) is True, \
+            f"{sample} (hard-denied by {pattern}) would be uploaded in a backup"
+
+
+def test_a_real_oauth_token_never_reaches_the_archive(vault, tmp_path):
+    """The Google Workspace setup writes this exact file into the vault."""
+    (vault / "System" / ".gmail-oauth-token.json").write_text('{"refresh_token": "x"}')
+    (vault / "System" / "credentials").mkdir()
+    (vault / "System" / "credentials" / "todoist.json").write_text('{"api_key": "x"}')
+    (vault / "id_rsa.key").write_text("PRIVATE KEY")
+
+    artifacts = backup_vault.build_artifacts(vault, tmp_path, "20260711-020000")
+    with tarfile.open(artifacts[0]) as tar:
+        names = tar.getnames()
+
+    assert f"{backup_vault.ARCNAME}/05-Areas/People/Ada_Lovelace.md" in names
+    for secret in ("gmail-oauth-token.json", "credentials", "id_rsa.key"):
+        assert not any(secret in name for name in names), \
+            f"{secret} was archived and would sync to the user's cloud folder"
+
+
+def test_ordinary_notes_that_merely_look_secret_are_still_backed_up(vault, tmp_path):
+    """The globs match file shapes, not topics: notes about keys are notes."""
+    (vault / "04-Projects" ).mkdir(exist_ok=True)
+    (vault / "04-Projects" / "API_keys_rotation_plan.md").write_text("# plan\n")
+    artifacts = backup_vault.build_artifacts(vault, tmp_path, "20260711-020000")
+    with tarfile.open(artifacts[0]) as tar:
+        names = tar.getnames()
+    assert f"{backup_vault.ARCNAME}/04-Projects/API_keys_rotation_plan.md" in names

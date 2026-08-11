@@ -22,7 +22,7 @@ Every run writes a **set** of three files, stamped with the date and time:
 | `dex-vault-<stamp>.bundle` | The vault's version history, individually verified so a restore is provable rather than hoped for |
 | `dex-vault-<stamp>.sha256` | Fingerprints of both, so damage in storage is detectable |
 
-Secrets are deliberately left out: the `.env` file holding AI keys, generated tool configuration that can reference credentials, virtual environments, and caches. Never store those in a synced folder. Keys live in the system keychain or get re-entered on restore. See `System/backup/RESTORE.md` for what a full rebuild needs beyond these files.
+Secrets are deliberately left out: the `.env` file holding AI keys, generated tool configuration that can reference credentials, saved sign-in tokens (`*token.json`), the `System/credentials` folder, any `.key` or `.pem` file, virtual environments, and caches. Never store those in a synced folder. Keys live in the system keychain or get re-entered on restore. See `System/backup/RESTORE.md` for what a full rebuild needs beyond these files.
 
 ## Step 1: Where should backups go?
 
@@ -42,6 +42,8 @@ For option 2, check whether rclone is present and configured:
 ```bash
 rclone listremotes
 ```
+
+If they choose rclone, use a named remote they created with `rclone config` (for example `b2:dex-backups`). Never put an inline connection string carrying a key or secret into `backup.remote`: it would be written to the local run record and archived inside the backup itself.
 
 If rclone is missing, say so plainly and give them the choice: install it (`brew install rclone`, then `rclone config` to add their provider) or start with a synced folder now and switch later. Do not attempt to configure their cloud credentials for them; rclone's own setup handles that interactively and safely.
 

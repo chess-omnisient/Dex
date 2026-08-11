@@ -46,6 +46,7 @@ import sys
 import tarfile
 import tempfile
 from datetime import datetime
+from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 
 PREFIX = "dex-vault-"
@@ -58,10 +59,29 @@ ANCHORED_EXCLUDES = frozenset({
     ".env",
     ".env.local",
     ".mcp.json",
+    "System/credentials",
     ".claude/worktrees",
     "System/backup/backup.log",
     "System/backup/backup-job.log",
 })
+
+# Secret shapes, matched against any path segment as a glob. These mirror the
+# secret entries of core.portable_contract.HARD_DENY_PATTERNS, which is the
+# repo's authority on what counts as a credential. The list is duplicated
+# rather than imported on purpose: this module stays stdlib-only so a launchd
+# run with a bare environment cannot die on an import. The duplication is held
+# honest by test_backup_excludes_everything_the_contract_hard_denies, which
+# fails if a new deny pattern is added without updating this set.
+#
+# .git is hard-denied for write-safety, not secrecy, and stays in the archive:
+# restoring a working repository is the point.
+GLOB_EXCLUDES = (
+    ".env",
+    ".env.*",
+    "*token.json",
+    "*.key",
+    "*.pem",
+)
 
 # Regenerable bulk and platform noise: matched against any path segment.
 SEGMENT_EXCLUDES = frozenset({
@@ -195,7 +215,11 @@ def excluded(relative: str) -> bool:
     if any(rel == relative or relative.startswith(rel + "/")
            for rel in ANCHORED_EXCLUDES):
         return True
-    return any(part in SEGMENT_EXCLUDES for part in Path(relative).parts)
+    parts = Path(relative).parts
+    if any(part in SEGMENT_EXCLUDES for part in parts):
+        return True
+    return any(fnmatch(part, pattern)
+               for part in parts for pattern in GLOB_EXCLUDES)
 
 
 def _tar_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:

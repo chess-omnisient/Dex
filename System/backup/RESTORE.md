@@ -20,6 +20,9 @@ Secrets never leave the machine. The archive excludes:
 
 - `.env` and `.env.local` (AI and integration API keys)
 - `.mcp.json` (generated tool configuration that can reference credentials)
+- saved sign-in tokens (anything named `*token.json`, such as the Google
+  Workspace sign-in), the `System/credentials` folder, and any `.key` or
+  `.pem` file anywhere in the vault
 - virtual environments, `node_modules`, caches, and scratch working copies
 
 This is a feature: a backup folder that syncs through a cloud provider must
