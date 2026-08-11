@@ -78,3 +78,15 @@ After completing, ask: "Quick rating (1-5, 5 = great)?" If a number comes back, 
 
 - Names may be dictated by voice; resolve owner names against `owner_mapping` and the People Index before mapping, and don't create duplicates from spelling variants.
 - A focus deal owned by a colleague is in scope: the tracker can hold the whole team's book. A 403 on a write means the token can't edit that deal; surface it honestly and offer to note the change on the tracker side only.
+
+## Known limitation: a retried write can duplicate
+
+If the connection drops after Pipedrive accepts a note or activity but before
+its reply arrives, the write succeeded and Dex cannot tell. Pipedrive's API
+offers no idempotency key, so there is no way to make a retry provably safe.
+
+**So do not silently retry a write that failed with a network error.** Say what
+happened, and offer to check the deal first: `pipedrive_get_deal` lists the
+deal's recent notes and activities, so the user can see whether the write
+landed before deciding to send it again. A duplicate note in a shared CRM is
+cheap to delete and expensive to explain — checking beats guessing.
