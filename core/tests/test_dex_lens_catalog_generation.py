@@ -147,6 +147,7 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
     assert envelope["catalogue"]["jobs_taxonomy"][0]["label"] == "Plan my day"
     capability = envelope["catalogue"]["capabilities"][0]
     assert capability["capability_id"] == "daily-plan"
+    assert capability["title"] == "Daily Plan"
     assert capability["summary"] == "Use when planning a day."
     assert capability["value"] == "Helps a person choose what matters today before work scatters."
     assert capability["summary"] != capability["value"]
@@ -161,6 +162,14 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
     assert capability["portable_brief"]["headline"].startswith(
         "Create a daily planning routine"
     )
+    assert capability["portable_brief"]["method_outline"] == [
+        "Read today's meetings and open tasks.",
+        "Choose a short focus list that fits the available time.",
+    ]
+    assert capability["portable_brief"]["verification_checklist"] == [
+        "The output names a bounded set of actions for today."
+    ]
+    assert capability["portable_brief"]["rollback_advice"].startswith("Remove the routine")
     assert envelope["catalogue"]["portable_brief"]["format"] == "markdown"
     assert (tmp_path / "dist/dex-lens-catalog-latest.json").read_text() == json.dumps(
         envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")

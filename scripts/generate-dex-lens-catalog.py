@@ -182,6 +182,10 @@ def _skill_description(path: Path) -> str:
     raise LensCatalogError(f"shipped skill source has no description: {path}")
 
 
+def _human_title(entry_id: str) -> str:
+    return " ".join(part.capitalize() for part in entry_id.split("-"))
+
+
 def _is_git_tracked(release_root: Path, relative: str) -> bool:
     git_dir = release_root / ".git"
     if not git_dir.exists():
@@ -299,6 +303,12 @@ def _brief(value: object, *, context: str) -> dict[str, object]:
             ],
             context=f"{context} brief safety_notes",
         ),
+        "method_outline": _text_tuple(raw.get("method_outline"), context=f"{context} brief method_outline"),
+        "verification_checklist": _text_tuple(
+            raw.get("verification_checklist"),
+            context=f"{context} brief verification_checklist",
+        ),
+        "rollback_advice": _text(raw.get("rollback_advice"), context=f"{context} brief rollback_advice"),
     }
 
 
@@ -426,7 +436,7 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
         entries.append(
             {
                 "capability_id": entry_id,
-                "title": entry_id,
+                "title": _human_title(entry_id),
                 "summary": _skill_description(release_root / str(source["path"])),
                 "value": _text(entry.get("value"), context=f"{context} value"),
                 "jobs": jobs_served,
