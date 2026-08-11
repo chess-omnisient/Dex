@@ -483,44 +483,22 @@ def _signature(payload: str, *, signing_key_env: str, key_id: str, test_determin
     if test_deterministic:
         digest = hashlib.sha512(key_bytes + b"\0" + payload.encode("utf-8")).digest()
         return base64.b64encode(digest).decode("ascii")
-    descriptor, private_key_name = tempfile.mkstemp(prefix=".dex-lens-ed25519-", suffix=".pem")
-    payload_descriptor, payload_name = tempfile.mkstemp(prefix=".dex-lens-payload-", suffix=".json")
-    private_key = Path(private_key_name)
-    payload_file = Path(payload_name)
     try:
-        with os.fdopen(descriptor, "wb") as file:
-            file.write(key_bytes)
-            file.flush()
-            os.fsync(file.fileno())
-        with os.fdopen(payload_descriptor, "wb") as file:
-            file.write(payload.encode("utf-8"))
-            file.flush()
-            os.fsync(file.fileno())
-        os.chmod(private_key, 0o600)
-        result = subprocess.run(
-            [
-                "openssl",
-                "pkeyutl",
-                "-sign",
-                "-rawin",
-                "-inkey",
-                str(private_key),
-                "-in",
-                str(payload_file),
-            ],
-            check=False,
-            capture_output=True,
-        )
-    finally:
-        private_key.unlink(missing_ok=True)
-        payload_file.unlink(missing_ok=True)
-    if result.returncode != 0:
-        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    except ImportError as error:
         raise LensCatalogError(
-            f"Ed25519 signing failed for key_id {key_id!r}; verify the CI secret contains a base64 PEM private key"
-            + (f": {detail}" if detail else "")
-        )
-    return base64.b64encode(result.stdout).decode("ascii")
+            "cryptography>=42 is required to sign the Dex Lens catalog on this runner"
+        ) from error
+    try:
+        private_key = serialization.load_pem_private_key(key_bytes, password=None)
+    except ValueError as error:
+        raise LensCatalogError(
+            f"Ed25519 signing failed for key_id {key_id!r}; CI secret must contain a base64 PEM private key"
+        ) from error
+    if not isinstance(private_key, Ed25519PrivateKey):
+        raise LensCatalogError(f"signing key_id {key_id!r} is not an Ed25519 private key")
+    return base64.b64encode(private_key.sign(payload.encode("utf-8"))).decode("ascii")
 
 
 def generate_lens_catalog(

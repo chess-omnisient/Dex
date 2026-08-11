@@ -5,10 +5,12 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = REPO_ROOT / "scripts/generate-dex-lens-catalog.py"
@@ -240,20 +242,12 @@ def test_signing_requires_environment_secret_and_never_generates_a_key(tmp_path:
 
 
 def test_real_ed25519_signing_hook_uses_only_environment_key(tmp_path: Path) -> None:
-    if shutil.which("openssl") is None:
-        return
     _registry(tmp_path)
-    private_key = tmp_path / "ed25519.pem"
-    public_key = tmp_path / "ed25519.pub.pem"
-    subprocess.run(
-        ["openssl", "genpkey", "-algorithm", "ED25519", "-out", str(private_key)],
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        ["openssl", "pkey", "-in", str(private_key), "-pubout", "-out", str(public_key)],
-        check=True,
-        capture_output=True,
+    private_key = Ed25519PrivateKey.generate()
+    private_pem = private_key.private_bytes(
+        Encoding.PEM,
+        PrivateFormat.PKCS8,
+        NoEncryption(),
     )
 
     signed = subprocess.run(
@@ -273,31 +267,11 @@ def test_real_ed25519_signing_hook_uses_only_environment_key(tmp_path: Path) -> 
             "ed25519-test-key",
         ],
         cwd=REPO_ROOT,
-        env={"DEX_LENS_TEST_KEY": base64.b64encode(private_key.read_bytes()).decode("ascii")},
+        env={"DEX_LENS_TEST_KEY": base64.b64encode(private_pem).decode("ascii")},
         capture_output=True,
         text=True,
     )
     assert signed.returncode == 0, signed.stderr
     envelope = json.loads((tmp_path / "dist/dex-lens-catalog-v1.94.0.json").read_text())
     signature = base64.b64decode(envelope["signature"])
-    payload_file = tmp_path / "payload.json"
-    payload_file.write_text(_signed_payload(envelope), encoding="utf-8")
-    sigfile = tmp_path / "sig.bin"
-    sigfile.write_bytes(signature)
-    verify = subprocess.run(
-        [
-            "openssl",
-            "pkeyutl",
-            "-verify",
-            "-rawin",
-            "-pubin",
-            "-inkey",
-            str(public_key),
-            "-sigfile",
-            str(sigfile),
-            "-in",
-            str(payload_file),
-        ],
-        capture_output=True,
-    )
-    assert verify.returncode == 0, verify.stderr.decode("utf-8", errors="replace")
+    private_key.public_key().verify(signature, _signed_payload(envelope).encode("utf-8"))
