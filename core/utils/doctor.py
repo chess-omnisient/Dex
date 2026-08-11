@@ -4755,10 +4755,20 @@ def _probe_backup_freshness(context: DoctorContext) -> ProbeResult:
             _BACKUP_HEAL,
         )
     destination = _one_line(stamp.get("location") or stamp.get("backend") or "the configured destination")
-    return ProbeResult(
-        "OK",
-        f"The last backup succeeded within the last two days (set {_one_line(stamp.get('set') or 'unknown')} to {destination})",
+    summary = (
+        f"The last backup succeeded within the last two days "
+        f"(set {_one_line(stamp.get('set') or 'unknown')} to {destination})"
     )
+    # A run can succeed and still have stored less than the user expects — a
+    # history bundle that could not be built, or linked files a restore cannot
+    # unpack. Reporting a bare OK for those would recreate the exact silence
+    # this check exists to end.
+    warnings = stamp.get("warnings")
+    if isinstance(warnings, list) and warnings:
+        detail = "; ".join(_one_line(str(item)) for item in warnings[:3])
+        return ProbeResult("BROKEN", f"{summary}, but it stored less than a full "
+                                     f"backup: {detail}", _BACKUP_HEAL)
+    return ProbeResult("OK", summary)
 
 
 def _calendar_permission_status(_context: DoctorContext) -> str:

@@ -346,3 +346,138 @@ def test_pick_set_prefers_newest_and_validates_requests(tmp_path):
     assert restore_vault.pick_set(dest, "20260710-020000") == "20260710-020000"
     with pytest.raises(restore_vault.RestoreError, match="not found"):
         restore_vault.pick_set(dest, "20990101-000000")
+
+
+# --- degradation, cleanup, and restore honesty (review follow-up) -----------
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git not available")
+def test_unbundleable_history_still_backs_up_the_notes_and_warns(vault, tmp_path):
+    """A git repo with no commits must not cost the user their notes backup."""
+    subprocess.run(["git", "init", "-q"], cwd=vault, check=True)
+    dest = tmp_path / "backups"
+    write_config(vault, destination=str(dest))
+
+    assert backup_vault.run_backup(vault) == 0
+    stamp = read_stamp(vault)
+    assert stamp["ok"] is True
+    assert len(list(dest.glob(f"{backup_vault.PREFIX}*.tar.gz"))) == 1
+    assert not list(dest.glob(f"{backup_vault.PREFIX}*.bundle"))
+    assert any("version history could not be bundled" in warning
+               for warning in stamp["warnings"])
+    assert "WARNING" in (vault / "System" / "backup" / "backup.log").read_text()
+
+
+def test_a_failed_store_leaves_no_half_written_set_behind(vault, tmp_path, monkeypatch):
+    """A set missing its checksum file would be picked as newest and be unusable.
+
+    The previous good set must also survive untouched: a run that cannot
+    finish is exactly when the last successful copy matters most.
+    """
+    dest = tmp_path / "backups"
+    write_config(vault, destination=str(dest))
+    good = "20260101-000000"
+    dest.mkdir(parents=True)
+    for artifact in backup_vault.build_artifacts(vault, tmp_path, good):
+        shutil.copy2(artifact, dest / artifact.name)
+
+    real_copyfileobj = backup_vault.shutil.copyfileobj
+    calls = {"n": 0}
+
+    def fail_on_the_sidecar(src, dst, length=0):
+        calls["n"] += 1
+        if calls["n"] == 2:  # archive lands, checksum file does not
+            raise OSError(28, "No space left on device")
+        return real_copyfileobj(src, dst, length)
+
+    monkeypatch.setattr(backup_vault.shutil, "copyfileobj", fail_on_the_sidecar)
+    assert backup_vault.run_backup(vault) == 1
+
+    assert read_stamp(vault)["ok"] is False
+    assert not list(dest.glob("*.partial")), "orphaned partial files accumulate"
+    assert restore_vault.pick_set(dest, None) == good, \
+        "a half-stored set must not become the one a restore picks"
+    restore_vault.verify_set(dest, good)
+
+
+def test_links_pointing_outside_the_vault_are_reported_at_backup_time(vault, tmp_path):
+    """The restore tool cannot unpack these; learning that in a crisis is too late."""
+    (tmp_path / "outside.md").write_text("elsewhere")
+    (vault / "linked.md").symlink_to(tmp_path / "outside.md")
+    dest = tmp_path / "backups"
+    write_config(vault, destination=str(dest))
+
+    assert backup_vault.run_backup(vault) == 0
+    warnings = read_stamp(vault)["warnings"]
+    assert any("point outside it" in warning for warning in warnings)
+    assert any("linked.md" in warning for warning in warnings)
+
+
+def test_a_vault_without_stray_links_records_no_warnings(vault, tmp_path):
+    write_config(vault, destination=str(tmp_path / "backups"))
+    assert backup_vault.run_backup(vault) == 0
+    assert read_stamp(vault)["warnings"] == []
+
+
+def test_restore_explains_an_unusable_archive_and_removes_the_partial_folder(
+        vault, tmp_path):
+    """Never leave a half-unpacked folder that reads as a finished restore."""
+    (tmp_path / "outside.md").write_text("elsewhere")
+    (vault / "linked.md").symlink_to(tmp_path / "outside.md")
+    dest = tmp_path / "backups"
+    write_config(vault, destination=str(dest))
+    assert backup_vault.run_backup(vault) == 0
+    stamp = read_stamp(vault)["set"]
+
+    target = tmp_path / "restored"
+    with pytest.raises(restore_vault.RestoreError, match="could not be unpacked"):
+        restore_vault.restore(dest, stamp, target, vault)
+    assert not target.exists(), "a half-unpacked restore target was left behind"
+
+
+def test_test_mode_reports_an_unusable_archive_as_a_plain_stop(vault, tmp_path, capsys):
+    (tmp_path / "outside.md").write_text("elsewhere")
+    (vault / "linked.md").symlink_to(tmp_path / "outside.md")
+    dest = tmp_path / "backups"
+    write_config(vault, destination=str(dest))
+    assert backup_vault.run_backup(vault) == 0
+
+    code = restore_vault.main(["test", "--source", str(dest), "--vault", str(vault)])
+    out = capsys.readouterr().out
+    assert code == 1, "an unrestorable set must not report a successful test"
+    assert "Stopped:" in out and "could not be unpacked" in out
+    assert "Traceback" not in out
+
+
+def test_a_damaged_newest_set_points_at_the_newest_intact_one(vault, tmp_path):
+    dest = tmp_path / "backups"
+    write_config(vault, destination=str(dest))
+    assert backup_vault.run_backup(vault) == 0
+    older = read_stamp(vault)["set"]
+    for artifact in sorted(dest.glob(f"{backup_vault.PREFIX}{older}.*")):
+        newer = artifact.with_name(artifact.name.replace(older, "29991231-235959"))
+        shutil.copy2(artifact, newer)
+    damaged = dest / f"{backup_vault.PREFIX}29991231-235959.tar.gz"
+    damaged.write_bytes(damaged.read_bytes() + b"rot")
+
+    code = restore_vault.main(["verify", "--source", str(dest), "--vault", str(vault)])
+    assert code == 1
+    error = _capture_restore_error(dest, "29991231-235959")
+    assert f"--set {older}" in error
+
+
+def _capture_restore_error(dest, stamp):
+    try:
+        restore_vault.verify_set(dest, stamp)
+    except restore_vault.RestoreError as first:
+        return str(restore_vault._with_fallback_hint(first, dest, stamp))
+    raise AssertionError("expected the damaged set to fail verification")
+
+
+def test_escaping_link_detection_accepts_links_that_stay_inside(vault, tmp_path):
+    inside = vault / "05-Areas" / "People" / "Ada_Lovelace.md"
+    (vault / "shortcut.md").symlink_to(Path("05-Areas/People/Ada_Lovelace.md"))
+    assert inside.exists()
+    dest = tmp_path / "backups"
+    write_config(vault, destination=str(dest))
+    assert backup_vault.run_backup(vault) == 0
+    assert read_stamp(vault)["warnings"] == []

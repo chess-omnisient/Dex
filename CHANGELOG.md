@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.0] — 🗄️ Backups keep the part that matters, and a restore never leaves you half-unpacked (2026-08-11)
+
+Follow-up hardening on the vault backup feature, from reviewing it against the days it actually has to work. Five ways a backup could look healthy while being less than it claimed, all closed.
+
+**What this fixes for you:**
+
+* **A backup no longer gives up everything because it couldn't save one part.** Each backup stores your notes and, separately, the record of every past edit. If that edit record couldn't be saved — on a brand-new vault, or a damaged one — the whole backup used to abandon the run and store nothing at all, losing the notes too. Now your notes are always saved, and Dex records exactly why the rest wasn't.
+* **A backup that stored less than a full copy now says so.** `/dex-doctor` used to report a plain "all good" for these. It now tells you what's missing and why, because a backup you trust more than it deserves is the whole problem this feature exists to solve.
+* **A stopped restore cleans up after itself.** If unpacking a backup can't finish, Dex now explains why in a plain sentence and removes the half-finished folder. Before, it left a partly-unpacked copy behind with a page of developer error text — a folder that looks like your restored vault but silently isn't all of it.
+* **A backup can no longer be declared checked when it wasn't.** Each copy travels with a small fingerprint file proving it's undamaged. If that file got mixed up with a different copy's — easy to do in a folder that syncs — Dex checked the other copy and called this one intact. It now refuses, and points you to the most recent copy that genuinely is.
+* **Shortcut-style linked files are flagged when the backup is taken, not when you need it.** If your vault contains a shortcut pointing outside itself, unpacking it safely isn't possible. You're now told at backup time, while you can still fix it.
+
+Backups of very large vaults also no longer load whole copies into memory at once.
+
 ## [1.96.0] — 🗄️ Your notes now back themselves up, and Dex tells you loudly if that ever stops (2026-08-11)
 
 Until now, everything in your vault lived on exactly one computer. That's the right privacy posture, but it made a failed disk a total-loss scenario, and the only alternative on offer (a private code-hosting account) was the wrong ask for most people. Worse, backups have a cruel failure mode: on a real vault that pioneered this feature, the scheduled backup quietly stopped for ten days and nothing noticed. This release is built around never letting that happen silently again.

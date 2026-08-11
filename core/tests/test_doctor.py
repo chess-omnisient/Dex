@@ -3638,7 +3638,7 @@ def _write_backup_config(context, *, enabled=True):
     )
 
 
-def _write_backup_stamp(context, *, ok, timestamp, error=None):
+def _write_backup_stamp(context, *, ok, timestamp, error=None, warnings=None):
     runtime = context.vault_root / "System" / ".dex"
     runtime.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -3650,7 +3650,34 @@ def _write_backup_stamp(context, *, ok, timestamp, error=None):
     }
     if error is not None:
         payload["error"] = error
+    if warnings is not None:
+        payload["warnings"] = warnings
     (runtime / "backup-last-run.json").write_text(json.dumps(payload))
+
+
+def test_backup_freshness_broken_when_a_recent_run_stored_less_than_asked(context):
+    """A fresh, successful, but degraded backup must not report a bare OK."""
+    _write_backup_config(context)
+    _write_backup_stamp(
+        context,
+        ok=True,
+        timestamp="2026-07-10T02:00:00+00:00",
+        warnings=["the vault's version history could not be bundled, so this "
+                  "set holds the notes archive only: fatal: Refusing to create "
+                  "empty bundle."],
+    )
+    result = doctor._probe_backup_freshness(context)
+    assert result.verdict == "BROKEN"
+    assert "stored less than a full backup" in result.detail
+    assert "version history could not be bundled" in result.detail
+    assert result.heal is not None
+
+
+def test_backup_freshness_stays_ok_when_the_run_recorded_no_warnings(context):
+    _write_backup_config(context)
+    _write_backup_stamp(
+        context, ok=True, timestamp="2026-07-10T02:00:00+00:00", warnings=[])
+    assert doctor._probe_backup_freshness(context).verdict == "OK"
 
 
 def test_backup_freshness_off_when_not_configured(context):

@@ -24,7 +24,6 @@ rclone backend, first copy one set down to a local folder
 from __future__ import annotations
 
 import argparse
-import hashlib
 import shutil
 import subprocess
 import sys
@@ -33,10 +32,12 @@ import tempfile
 from pathlib import Path
 
 try:
-    from core.backup.backup_vault import PREFIX, load_config, resolve_vault_root
+    from core.backup.backup_vault import (PREFIX, file_digest, load_config,
+                                          resolve_vault_root)
 except ImportError:  # invoked by file path: put the vault root on sys.path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from core.backup.backup_vault import PREFIX, load_config, resolve_vault_root
+    from core.backup.backup_vault import (PREFIX, file_digest, load_config,
+                                          resolve_vault_root)
 
 
 class RestoreError(RuntimeError):
@@ -80,20 +81,36 @@ def verify_set(source: Path, stamp: str) -> list[str]:
     if not sidecar.exists():
         raise RestoreError(f"The checksum file {sidecar.name} is missing; "
                            "this set cannot be proven intact")
+    checked: set[str] = set()
     for line in sidecar.read_text().splitlines():
         expected, _, name = line.strip().partition("  ")
         if not name:
             continue
+        checked.add(name)
         artifact = source / name
         if not artifact.exists():
             raise RestoreError(f"{name} is listed in the checksum file but missing")
-        actual = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        actual = file_digest(artifact)
         if actual != expected:
             raise RestoreError(f"{name} does not match its recorded checksum; "
                                "the copy in storage is damaged")
         findings.append(f"{name}: checksum matches")
+    # The sidecar names the files it covers, so a sidecar carried over from a
+    # different set (a copy, a rename, a sync conflict) would otherwise verify
+    # that other set's files and report this one intact without ever reading
+    # the archive about to be unpacked.
+    archive_name = f"{PREFIX}{stamp}.tar.gz"
+    if archive_name not in checked:
+        raise RestoreError(
+            f"{sidecar.name} does not cover {archive_name}, so the archive "
+            "this set would restore has not been checked at all. The checksum "
+            "file belongs to a different set; do not rely on this copy.")
     bundle = source / f"{PREFIX}{stamp}.bundle"
     if bundle.exists():
+        if bundle.name not in checked:
+            raise RestoreError(
+                f"{bundle.name} is present but {sidecar.name} does not cover "
+                "it, so the version history in this set is unchecked.")
         git = shutil.which("git")
         if git is None:
             findings.append(f"{bundle.name}: present, but git is not installed "
@@ -111,15 +128,61 @@ def verify_set(source: Path, stamp: str) -> list[str]:
     return findings
 
 
+def _with_fallback_hint(error: RestoreError, source: Path,
+                        failed: str) -> RestoreError:
+    """Add the newest set that does verify, when the requested one does not."""
+    others = [s for s in sorted(
+        {p.name[len(PREFIX):-len(".tar.gz")]
+         for p in source.glob(f"{PREFIX}*.tar.gz")}, reverse=True)
+        if s != failed]
+    for candidate in others:
+        try:
+            verify_set(source, candidate)
+        except RestoreError:
+            continue
+        return RestoreError(
+            f"{error} The most recent set that does check out intact is "
+            f"{candidate}; add --set {candidate} to use it.")
+    if others:
+        return RestoreError(f"{error} No older set in {source} checks out "
+                            "intact either.")
+    return error
+
+
 def extract_archive(source: Path, stamp: str, target: Path) -> int:
+    """Extract one set's archive, turning any failure into a plain explanation.
+
+    Extraction refuses shortcut-style linked files that point outside the
+    folder being written (a safety rule, and the right one). A vault that
+    contains such a link therefore backs up cleanly but stops here — which
+    must read as a clear sentence and a half-written folder that gets cleaned
+    up, never as a crash report on top of a folder the reader might mistake
+    for a finished restore.
+    """
     archive = source / f"{PREFIX}{stamp}.tar.gz"
-    with tarfile.open(archive) as tar:
-        members = tar.getmembers()
-        if hasattr(tarfile, "data_filter"):
-            tar.extractall(target, filter="data")
-        else:  # pragma: no cover (Python < 3.12 fallback)
-            tar.extractall(target)
+    try:
+        with tarfile.open(archive) as tar:
+            members = tar.getmembers()
+            if hasattr(tarfile, "data_filter"):
+                tar.extractall(target, filter="data")
+            else:  # pragma: no cover (Python < 3.12 fallback)
+                tar.extractall(target)
+    except tarfile.TarError as error:
+        raise RestoreError(
+            f"{archive.name} could not be unpacked: {_one_line(error)}. "
+            "Nothing usable was written. Try `verify` on this set, or pick an "
+            "older one with --set.") from error
+    except OSError as error:
+        raise RestoreError(
+            f"{archive.name} could not be unpacked: {_one_line(error)}. "
+            "This usually means the disk is full or the folder is not "
+            "writable.") from error
     return len(members)
+
+
+def _one_line(error: BaseException) -> str:
+    text = str(error).strip() or error.__class__.__name__
+    return " ".join(text.split())[:300]
 
 
 def test_restore(source: Path, stamp: str) -> None:
@@ -142,8 +205,23 @@ def restore(source: Path, stamp: str, target: Path, vault: Path) -> None:
     if target.exists() and any(target.iterdir()):
         raise RestoreError(f"Refusing to restore into {target}: the folder is "
                            "not empty. This tool never overwrites existing files.")
+    created = not target.exists()
     target.mkdir(parents=True, exist_ok=True)
-    count = extract_archive(source, stamp, target)
+    try:
+        count = extract_archive(source, stamp, target)
+    except RestoreError:
+        # The target was empty or absent when we started, so everything in it
+        # is ours. Leaving a half-unpacked vault behind is the one outcome a
+        # restore tool must never produce: it looks like a finished restore.
+        if created:
+            shutil.rmtree(target, ignore_errors=True)
+        else:
+            for child in target.iterdir():
+                if child.is_dir() and not child.is_symlink():
+                    shutil.rmtree(child, ignore_errors=True)
+                else:
+                    child.unlink(missing_ok=True)
+        raise
     print(f"Restored {count} entries to {target}.")
     bundle = source / f"{PREFIX}{stamp}.bundle"
     if bundle.exists():
@@ -169,7 +247,14 @@ def main(argv: list[str] | None = None) -> int:
         source = resolve_source(vault, args.source)
         stamp = pick_set(source, args.stamp)
         print(f"Backup set {stamp} in {source}:")
-        for finding in verify_set(source, stamp):
+        try:
+            findings = verify_set(source, stamp)
+        except RestoreError as error:
+            # Being told the newest copy is damaged, with no hint that an
+            # intact older one is sitting right there, is the worst possible
+            # answer on the day someone actually needs this.
+            raise _with_fallback_hint(error, source, stamp) from None
+        for finding in findings:
             print(f"  {finding}")
         if args.mode == "test":
             test_restore(source, stamp)
