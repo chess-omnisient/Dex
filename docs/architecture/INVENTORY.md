@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 4f6b5dc842230fd27164b6a82c0ff4545b7e2524dc4985c2ae146db70bee54a1 -->
+<!-- Content SHA-256: ee2f684fa835b3dbcd3c1fd45f87979d327a0a0c0c5e41b1b2a0683414e44886 -->
 
 # Architecture Inventory
 
@@ -26,7 +26,7 @@ This inventory is derived only from repository code and shipped skill files.
 
 ## Skills
 
-**Skill count:** 78<br>
+**Skill count:** 81<br>
 **Discoverability-risk count:** 4
 
 A description has a trigger when its frontmatter contains the word `when` or `whenever` (case-insensitive). Length is measured in characters.
@@ -50,6 +50,9 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `anthropic-webapp-testing` | `.claude/skills/anthropic-webapp-testing/SKILL.md` | Toolkit for interacting with and testing local web applications using Playwright. Supports verifying frontend functionality, debugging UI behavior, capturing browser screenshots, and viewing browser logs. | 204 | **discoverability-risk** |
 | `anthropic-xlsx` | `.claude/skills/anthropic-xlsx/SKILL.md` | Comprehensive spreadsheet creation, editing, and analysis with support for formulas, formatting, data analysis, and visualization. When Claude needs to work with spreadsheets (.xlsx, .xlsm, .csv, .tsv, etc) for: (1) Creating new spreadsheets with formulas and formatting, (2) Reading or analyzing data, (3) Modify existing spreadsheets while preserving formulas, (4) Data analysis and visualization in spreadsheets, or (5) Recalculating formulas | 445 | when |
 | `atlassian-setup` | `.claude/skills/atlassian-setup/SKILL.md` | Connect Jira and Confluence for project tracking and knowledge search. Use when the user says 'connect Jira', 'hook up Confluence', 'my tickets/board'. Not for a personal task app like Todoist/Things/Trello; use `todoist-setup`/`things-setup`/`trello-setup`. | 258 | when |
+| `backup-now` | `.claude/skills/backup-now/SKILL.md` | Run a vault backup right now and report the verified result. Use when the user says 'back up now', 'take a backup before I do this', or is about to make a big change. Not for scheduling or changing where backups go (`backup-setup`); not for getting files back (`backup-restore`). | 279 | when |
+| `backup-restore` | `.claude/skills/backup-restore/SKILL.md` | Verify a vault backup, prove it restores, or restore it to a folder of the user's choosing. Use when the user says 'restore my backup', 'test my backups', 'are my backups any good', or after data loss. Never overwrites the live vault. Not for taking a backup (`backup-now`); not for scheduling (`backup-setup`). | 311 | when |
+| `backup-setup` | `.claude/skills/backup-setup/SKILL.md` | Set up automatic vault backups to a synced folder or a cloud provider, with verified archives and tiered retention. Use when the user says 'back up my vault', 'set up backups', 'where are my backups going', or asks about losing their notes. Not for restoring or testing a restore (`backup-restore`); not for a one-off backup right now (`backup-now`). | 350 | when |
 | `calendar-setup` | `.claude/skills/calendar-setup/SKILL.md` | Grant Python calendar access for ~30x faster calendar queries. Use when the user says 'connect my calendar', 'calendar is slow', 'set up calendar access'. Not for connecting Google Workspace as a whole; use `google-workspace-setup`. | 232 | when |
 | `commitments` | `.claude/skills/commitments/SKILL.md` | Reconcile the promises you made and the asks you received across meetings and notes into a clear owner/due/source list, then — only with your confirmation — turn the real ones into tracked tasks. Use when the user says 'what did I promise', 'what am I on the hook for', 'anything I owe people', 'loose ends', or after a run of meetings. Also use proactively during daily-plan/daily-review when uncaptured commitments surface. Not for tracking work you handed off to others; use `delegate-check`. Not for recording a decision you made; use `decision-log`. | 554 | when |
 | `connect` | `.claude/skills/connect/SKILL.md` | Connect, check and manage your app integrations — Google and Linear are reviewed and ready; hundreds more (Slack, Notion, GitHub and others) connect with an extra confirmation. OAuth or paste-a-key, tokens stored encrypted on your machine. | 239 | **discoverability-risk** |
