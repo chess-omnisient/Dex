@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.98.0] — 🤝 Dex can work with your Pipedrive deals, and never behind your back (2026-08-11)
+
+If you keep deals in Pipedrive, you have been keeping them twice: once in the system your company reports from, and once in the notes where you actually think about the deal. The two drift apart within days, and reconciling them by hand is exactly the admin nobody does on a Friday afternoon. Chris built this to solve it for himself and offered it back.
+
+**What this adds for you:**
+
+* **Ask Dex what is really in your pipeline.** Connect Pipedrive once (`/pipedrive-setup`) and Dex can read your live deals: stage, value, likelihood, close date, owner, and recent activity. Your weekly review, meeting prep and daily plan can all draw on the real numbers instead of whatever was last typed into a note.
+* **One reconciliation instead of two arguments.** `/pipeline-sync` puts your deal notes and Pipedrive side by side, shows you every place they disagree, and lets you choose which one is right, deal by deal. The principle throughout: Pipedrive is trusted for the numbers, your notes are trusted for the strategy, and neither is ever silently overwritten by the other.
+* **Nothing reaches your company's system without you saying yes.** Every change Dex could make to Pipedrive is shown to you in full first, exactly as it would be sent, and goes nowhere until you approve that specific change. This is deliberate: for most people Pipedrive is a shared company system where a surprise edit is a real problem. Showing you the change is also what happens by default, so the safe path is the one Dex takes when anything is unclear — a muddled instruction or a retry after a hiccup costs you a second look at a preview, never a surprise edit.
+* **Dex will never delete one of your deals.** It can move a deal to won or lost when you ask, because that is ordinary pipeline upkeep. Removing a deal from your company's system is not something Dex will do on your behalf at all, whatever it is asked — that one stays yours, in Pipedrive.
+* **A slow or blocked connection can't turn a half-read pipeline into a false all-clear.** If Dex can only reach some of your deals, or your pipeline is longer than one look can cover, it says so plainly and names what it couldn't see. It will not tell you a deal is up to date when it never managed to read it.
+* **Creating new deals stays switched off until you decide otherwise.** Dex can update existing deals out of the box, but creating new ones is off by default and takes a deliberate change to your settings to enable. Same reasoning: adding a deal to a shared company system is a bigger step than updating one, and it should be your call, not a side effect.
+* **Your access key is kept in your Mac's keychain,** not in a file in your notes, and never appears in any note, log or report Dex writes.
+
+Thanks to Chris, who built and hardened this before offering it upstream (requested in issue #360).
+
 ## [1.97.0] — 🧺 Your daily plan stops running out of room as your vault grows (2026-08-11)
 
 The big daily rituals (planning your day, reviewing it, closing the week, prepping a meeting, processing your meetings) work by reading a lot first: your calendar, your tasks, your notes, your mail, your meeting history. In a young vault that reading is light. In a vault with a year or two of history, it can be so much material that Dex fills up on the reading alone and has nothing left for the part you actually came for. The failure is quiet: sessions get slower and shallower, and on the worst days a review dies halfway through and has to be rebuilt the next morning. One long-time user measured a single day of these rituals and found that of everything Dex read, less than two percent actually needed to stay in the conversation.
