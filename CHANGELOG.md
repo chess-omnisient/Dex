@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.96.0] — 🗄️ Your notes now back themselves up, and Dex tells you loudly if that ever stops (2026-08-11)
+
+Until now, everything in your vault lived on exactly one computer. That's the right privacy posture, but it made a failed disk a total-loss scenario, and the only alternative on offer (a private code-hosting account) was the wrong ask for most people. Worse, backups have a cruel failure mode: on a real vault that pioneered this feature, the scheduled backup quietly stopped for ten days and nothing noticed. This release is built around never letting that happen silently again.
+
+**What this fixes for you:**
+
+* **Backups to anywhere that looks like a folder.** Run `/backup-setup` once and Dex archives your whole vault, on a daily schedule, to OneDrive, iCloud Drive, Dropbox, an external disk, or (for those who want it) directly to a cloud storage service. Recent copies are kept for accidents, weekly and monthly copies for problems you only notice late, and old copies are tidied away automatically. The newest copy is never deleted, no matter what.
+* **Every backup is provable, not hopeful.** Each copy is checked as it's made, your vault's full edit history travels with it and is verified as complete, and fingerprints are stored so damage in storage is detectable. `/backup-restore` goes further: its test mode fully unpacks a backup into a throwaway folder to prove a restore actually works, without touching anything of yours.
+* **A backup that stops working can no longer hide.** Every run, good or bad, writes a record, and `/dex-doctor` reads it: if the last backup failed, or the newest good one is more than two days old, you're told plainly what went wrong and how to fix it. Silence now means healthy, not unchecked.
+* **Restoring never gambles with your live vault.** A restore always lands in a fresh folder you choose, for you to inspect and move into place yourself. And your secrets (AI keys and the like) are deliberately never inside a backup, so nothing sensitive ever sits in a synced folder; the short restore guide covers what to re-enter on a new machine.
+
+Thanks to Chris, who proposed this, ran it on his own vault first, and whose ten silent days shaped the design.
+
 ## [1.94.0] — 📦 Moving your Dex folder no longer locks you out of updating (2026-08-11)
 
 Dex writes down where your vault lives. Move that folder, rename it, or work from a copy of it, and the note still points at the old place — and Dex was reading that mismatch as damage. It refused to update at all, with a message that didn't say why. A user hit this while rehearsing the rescue route on a duplicate of his own vault, and spent an hour reading Dex's code to work out which of its nine checks had failed.

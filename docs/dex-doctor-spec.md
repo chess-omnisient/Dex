@@ -126,6 +126,7 @@ repointed to `/dex-doctor`.
 | qmd.live | registered in `.mcp.json` → `which qmd` + `qmd status` | not registered (opt-in respected) | registered but binary/status fails (T3: `/enable-semantic-search`) |
 | integrations.enabled | for each `enabled: true` in `System/integrations/config.yaml`, run its existing health checker (gmail/teams/connection cjs) | not enabled | checker reports failure |
 | mcp.importable | each registered `core/mcp/*_server.py` imports in a subprocess | — | ImportError (T2: reinstall deps) |
+| backup.freshness | reads the engine's run record (`System/.dex/backup-last-run.json`, written on every run, success or failure) against the `backup:` block in `System/integrations/config.yaml`. OFF when backups are not configured (a healthy, never-nagged state). OK when the newest run succeeded within 2 days. Sandbox denials while reading config or record are `UNKNOWN`; an unparseable record is `UNKNOWN`, never silently OK. Exists because a real vault's scheduled backup died silently for ten days. | `backup.enabled` absent or false | last run failed (detail carries the stamped error), configured-but-never-ran, or newest success older than 2 days (T3: `/backup-setup`) |
 
 Sandbox note (for the builder): EventKit/GPU/permission probes can fail in a sandboxed
 build environment even when correct — such failures must map to `UNKNOWN`, and tests must

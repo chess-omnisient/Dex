@@ -63,6 +63,7 @@ DEEP_IDS = [
     "integrations.enabled",
     "mcp.importable",
     "smoke.journeys",
+    "backup.freshness",
 ]
 
 
@@ -3624,6 +3625,92 @@ def test_granola_no_key_is_off_and_api_400_is_broken(monkeypatch, context):
         "Granola query failed (HTTP 400) — the connector may need updating. "
         "Response: created_after is invalid"
     )
+
+
+def _write_backup_config(context, *, enabled=True):
+    config = context.vault_root / "System" / "integrations" / "config.yaml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(
+        "backup:\n"
+        f"  enabled: {str(enabled).lower()}\n"
+        "  backend: folder\n"
+        "  destination: /backups\n"
+    )
+
+
+def _write_backup_stamp(context, *, ok, timestamp, error=None):
+    runtime = context.vault_root / "System" / ".dex"
+    runtime.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "timestamp": timestamp,
+        "ok": ok,
+        "backend": "folder",
+        "location": "/backups",
+        "set": "20260710-020000",
+    }
+    if error is not None:
+        payload["error"] = error
+    (runtime / "backup-last-run.json").write_text(json.dumps(payload))
+
+
+def test_backup_freshness_off_when_not_configured(context):
+    assert doctor._probe_backup_freshness(context).verdict == "OFF"
+
+    _write_backup_config(context, enabled=False)
+    result = doctor._probe_backup_freshness(context)
+    assert result.verdict == "OFF"
+    assert result.heal is None
+
+
+def test_backup_freshness_ok_when_last_success_is_within_two_days(context):
+    _write_backup_config(context)
+    _write_backup_stamp(context, ok=True, timestamp="2026-07-10T02:00:00+00:00")
+    result = doctor._probe_backup_freshness(context)
+    assert result.verdict == "OK"
+    assert "20260710-020000" in result.detail
+    assert "/backups" in result.detail
+
+
+def test_backup_freshness_broken_when_last_run_failed(context):
+    _write_backup_config(context)
+    _write_backup_stamp(
+        context,
+        ok=False,
+        timestamp="2026-07-11T02:00:00+00:00",
+        error="backup.destination is not set; run /backup-setup",
+    )
+    result = doctor._probe_backup_freshness(context)
+    assert result.verdict == "BROKEN"
+    assert "backup.destination is not set" in result.detail
+    assert result.heal.tier == 3
+    assert "/backup-setup" in result.heal.action
+
+
+def test_backup_freshness_broken_when_newest_success_is_stale(context):
+    _write_backup_config(context)
+    _write_backup_stamp(context, ok=True, timestamp="2026-07-05T02:00:00+00:00")
+    result = doctor._probe_backup_freshness(context)
+    assert result.verdict == "BROKEN"
+    assert "6 days old" in result.detail
+    assert result.heal.tier == 3
+
+
+def test_backup_freshness_broken_when_configured_but_never_ran(context):
+    _write_backup_config(context)
+    result = doctor._probe_backup_freshness(context)
+    assert result.verdict == "BROKEN"
+    assert "never recorded a run" in result.detail
+    assert result.heal.tier == 3
+
+
+def test_backup_freshness_unknown_when_stamp_is_unreadable(context):
+    _write_backup_config(context)
+    runtime = context.vault_root / "System" / ".dex"
+    runtime.mkdir(parents=True, exist_ok=True)
+    (runtime / "backup-last-run.json").write_text("{not json")
+    result = doctor._probe_backup_freshness(context)
+    assert result.verdict == "UNKNOWN"
+    assert "could not be read" in result.detail
 
 
 def test_granola_key_adapter_reads_exported_quoted_env_file(monkeypatch, context):
