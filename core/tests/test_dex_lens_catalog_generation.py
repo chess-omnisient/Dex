@@ -141,6 +141,7 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
     assert envelope["metadata"]["contract_version"] == "dex-lens-catalogue-v2"
     assert envelope["metadata"]["catalog_version"] == 7
     assert envelope["metadata"]["producer"] == "Dex Core release pipeline v1.94.0"
+    assert envelope["metadata"]["core_release"] == "v1.94.0"
     assert envelope["metadata"]["key_id"] == "dex-core-lens-1"
     assert envelope["catalogue"]["jobs_taxonomy"][0]["job_id"] == "plan-my-day"
     assert envelope["catalogue"]["jobs_taxonomy"][0]["label"] == "Plan my day"
@@ -247,6 +248,37 @@ def test_signing_requires_environment_secret_and_never_generates_a_key(tmp_path:
     envelope = json.loads((tmp_path / "dist/dex-lens-catalog-v1.94.0.json").read_text())
     assert envelope["metadata"]["key_id"] == "test-key"
     assert len(base64.b64decode(envelope["signature"], validate=True)) == 64
+
+
+def test_deterministic_test_signature_is_unreachable_in_ci(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    key = base64.b64encode(b"test-only-not-a-real-ed25519-private-key").decode("ascii")
+
+    signed = subprocess.run(
+        [
+            sys.executable,
+            str(GENERATOR),
+            "--release-root",
+            str(tmp_path),
+            "--output-dir",
+            str(tmp_path / "dist"),
+            "--issued-at",
+            "2026-08-11T12:00:00Z",
+            "--sign",
+            "--signing-key-env",
+            "DEX_LENS_TEST_KEY",
+            "--key-id",
+            "test-key",
+            "--test-deterministic-signature",
+        ],
+        cwd=REPO_ROOT,
+        env={"DEX_LENS_TEST_KEY": key, "GITHUB_ACTIONS": "true"},
+        capture_output=True,
+        text=True,
+    )
+
+    assert signed.returncode == 1
+    assert "deterministic test signature mode is disabled in CI" in signed.stderr
 
 
 def test_real_ed25519_signing_hook_uses_only_environment_key(tmp_path: Path) -> None:

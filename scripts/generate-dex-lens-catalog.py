@@ -488,6 +488,8 @@ def _signature(payload: str, *, signing_key_env: str, key_id: str, test_determin
     except ValueError as error:
         raise LensCatalogError(f"environment secret {signing_key_env} is not base64") from error
     if test_deterministic:
+        if os.environ.get("GITHUB_ACTIONS") or os.environ.get("CI"):
+            raise LensCatalogError("deterministic test signature mode is disabled in CI")
         digest = hashlib.sha512(key_bytes + b"\0" + payload.encode("utf-8")).digest()
         return base64.b64encode(digest).decode("ascii")
     try:
@@ -529,6 +531,7 @@ def generate_lens_catalog(
         "produced_at": issued.isoformat().replace("+00:00", "Z"),
         "expires_at": (issued + timedelta(days=30)).isoformat().replace("+00:00", "Z"),
         "producer": f"Dex Core release pipeline v{release_version}",
+        "core_release": f"v{release_version}",
         "key_id": key_id,
     }
     signed_payload = {"metadata": metadata, "catalogue": catalogue}
