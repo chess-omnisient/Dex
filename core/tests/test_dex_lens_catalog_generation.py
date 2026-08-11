@@ -147,10 +147,9 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
     assert envelope["catalogue"]["jobs_taxonomy"][0]["label"] == "Plan my day"
     capability = envelope["catalogue"]["capabilities"][0]
     assert capability["capability_id"] == "daily-plan"
-    assert capability["summary"] == (
-        "Helps a person choose what matters today before work scatters."
-    )
+    assert capability["summary"] == "Use when planning a day."
     assert capability["value"] == "Helps a person choose what matters today before work scatters."
+    assert capability["summary"] != capability["value"]
     assert capability["prerequisites"] == ["A task list or calendar the host can inspect."]
     assert capability["trade_offs"] == ["The plan is only as current as the source material."]
     assert capability["docs_url"] == "https://github.com/davekilleen/Dex"

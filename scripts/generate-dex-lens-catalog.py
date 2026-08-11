@@ -455,7 +455,7 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
             {
                 "capability_id": entry["capability_id"],
                 "title": entry["title"],
-                "summary": entry["value"],
+                "summary": entry["summary"],
                 "value": entry["value"],
                 "jobs": entry["jobs"],
                 "prerequisites": entry["prerequisites"],
