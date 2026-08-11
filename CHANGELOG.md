@@ -23,6 +23,22 @@ The same steps run in the same order on a small or young vault, with more headro
 
 ---
 
+## [1.96.0] — 🗄️ Your notes now back themselves up, and Dex tells you loudly if that ever stops (2026-08-11)
+
+Until now, everything in your vault lived on exactly one computer. That's the right privacy posture, but it made a failed disk a total-loss scenario, and the only alternative on offer (a private code-hosting account) was the wrong ask for most people. Worse, backups have a cruel failure mode: on a real vault that pioneered this feature, the scheduled backup quietly stopped for ten days and nothing noticed. This release is built around never letting that happen silently again.
+
+**What this fixes for you:**
+
+* **Backups to anywhere that looks like a folder.** Run `/backup-setup` once and Dex archives your whole vault, on a daily schedule, to OneDrive, iCloud Drive, Dropbox, an external disk, or (for those who want it) directly to a cloud storage service. Recent copies are kept for accidents, weekly and monthly copies for problems you only notice late, and old copies are tidied away automatically. The newest copy is never deleted, no matter what.
+* **Every backup is provable, not hopeful.** Each copy is checked as it's made, your vault's full edit history travels with it and is verified as complete, and fingerprints are stored so damage in storage is detectable. Dex checks the fingerprints belong to the copy in front of it, so a mix-up in a busy synced folder can't make a damaged backup look sound. `/backup-restore` goes further: its test mode fully unpacks a backup into a throwaway folder to prove a restore actually works, without touching anything of yours.
+* **A backup that stops working — or quietly stores less than it should — can no longer hide.** Every run, good or bad, writes a record, and `/dex-doctor` reads it: if the last backup failed, if the newest good one is more than two days old, or if a run saved your notes but couldn't save something else, you're told plainly what happened and how to fix it. Silence now means healthy, not unchecked. Your notes are always saved even when another part of the backup can't be, because they're the part you can't rebuild.
+* **Restoring never gambles with your live vault.** A restore always lands in a fresh folder you choose, for you to inspect and move into place yourself. If unpacking can't finish, Dex says why in a plain sentence and clears away the half-finished folder, so you're never left with something that looks like your restored vault but isn't all of it.
+* **Nothing sensitive rides along to the cloud.** Your AI keys, saved sign-ins (such as a connected Google account), and any key or certificate files are deliberately left out of every backup, so none of it ever sits in a synced folder. The short restore guide travels inside the backup itself and covers what to re-enter on a new machine.
+
+Very large vaults are handled a piece at a time rather than loaded whole, so size isn't a barrier.
+
+Thanks to Chris, who proposed this, built it, ran it on his own vault first, and whose ten silent days shaped the design.
+
 ## [1.95.0] — 🧹 Your list of changes stays yours — Dex's own files stop showing up in it (2026-08-10)
 
 Chris found his vault's change list crowded with dozens of files he never touched — Dex's own product files, freshly rewritten by an update and showing up as if they were his edits. The cause: the file that tells your vault what to overlook is written for the team that builds Dex, and it deliberately keeps Dex's own files visible there. Inside *your* vault that's backwards — one broad "save everything" moment quietly folds hundreds of Dex files into your private history, and every update after that dirties them all again.

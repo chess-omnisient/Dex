@@ -649,6 +649,7 @@ DEEP_CHECKS = (
     CheckDefinition("integrations.enabled", "Enabled integrations", "_probe_integrations_enabled"),
     CheckDefinition("mcp.importable", "MCP imports", "_probe_mcp_importable"),
     CheckDefinition("smoke.journeys", "End-to-end smoke journeys", "_probe_smoke_journeys"),
+    CheckDefinition("backup.freshness", "Vault backups", "_probe_backup_freshness"),
 )
 
 
@@ -4719,6 +4720,90 @@ def _probe_granola_query_path(context: DoctorContext) -> ProbeResult:
             return ProbeResult("UNKNOWN", f"The sandbox blocked the Granola query: {_one_line(error)}")
         raise
     return ProbeResult("OK", f"The real filtered Granola query completed and returned {len(notes)} note summaries")
+
+
+BACKUP_FRESHNESS_WINDOW = timedelta(days=2)
+BACKUP_STAMP_FILENAME = "backup-last-run.json"
+_BACKUP_HEAL = Heal(
+    tier=3,
+    action="Run /backup-setup to repair the backup schedule and take a verified backup.",
+    applied=False,
+)
+
+
+def _backup_settings(context: DoctorContext) -> dict[str, Any] | None:
+    """Return the backup block from the integrations config, or None."""
+    config_path = context.core_path("INTEGRATION_CONFIG_FILE")
+    if not config_path.exists():
+        return None
+    parsed = _load_yaml(config_path) or {}
+    if not isinstance(parsed, Mapping):
+        raise ValueError("integrations config.yaml must contain an object")
+    block = parsed.get("backup")
+    return dict(block) if isinstance(block, Mapping) else None
+
+
+def _backup_stamp_timestamp(stamp: Mapping[str, Any], context: DoctorContext) -> datetime:
+    parsed = datetime.fromisoformat(str(stamp["timestamp"]))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=context.now.astimezone().tzinfo)
+    return parsed
+
+
+def _probe_backup_freshness(context: DoctorContext) -> ProbeResult:
+    try:
+        settings = _backup_settings(context)
+    except Exception as error:  # noqa: BLE001 - map sandbox denials to UNKNOWN
+        detail = _one_line(error)
+        if _looks_like_sandbox_failure(detail):
+            return ProbeResult("UNKNOWN", f"The sandbox blocked reading the backup configuration: {detail}")
+        raise
+    if not settings or not settings.get("enabled"):
+        return ProbeResult("OFF", "Vault backups are not configured; /backup-setup turns them on")
+    stamp_path = context.core_path("DEX_RUNTIME_DIR") / BACKUP_STAMP_FILENAME
+    try:
+        raw = stamp_path.read_text()
+    except FileNotFoundError:
+        return ProbeResult(
+            "BROKEN",
+            "Backups are configured but have never recorded a run",
+            _BACKUP_HEAL,
+        )
+    except OSError as error:
+        detail = _one_line(error)
+        if _looks_like_sandbox_failure(detail):
+            return ProbeResult("UNKNOWN", f"The sandbox blocked reading the backup run record: {detail}")
+        raise
+    try:
+        stamp = json.loads(raw)
+        when = _backup_stamp_timestamp(stamp, context)
+    except (ValueError, TypeError, KeyError) as error:
+        return ProbeResult("UNKNOWN", f"The backup run record could not be read: {_one_line(error)}")
+    if not stamp.get("ok"):
+        recorded = _one_line(stamp.get("error") or "no error detail was recorded")
+        return ProbeResult("BROKEN", f"The last backup run failed: {recorded}", _BACKUP_HEAL)
+    age = context.now - when
+    if age > BACKUP_FRESHNESS_WINDOW:
+        return ProbeResult(
+            "BROKEN",
+            f"The newest successful backup is {age.days} days old (recorded {when.date().isoformat()})",
+            _BACKUP_HEAL,
+        )
+    destination = _one_line(stamp.get("location") or stamp.get("backend") or "the configured destination")
+    summary = (
+        f"The last backup succeeded within the last two days "
+        f"(set {_one_line(stamp.get('set') or 'unknown')} to {destination})"
+    )
+    # A run can succeed and still have stored less than the user expects — a
+    # history bundle that could not be built, or linked files a restore cannot
+    # unpack. Reporting a bare OK for those would recreate the exact silence
+    # this check exists to end.
+    warnings = stamp.get("warnings")
+    if isinstance(warnings, list) and warnings:
+        detail = "; ".join(_one_line(str(item)) for item in warnings[:3])
+        return ProbeResult("BROKEN", f"{summary}, but it stored less than a full "
+                                     f"backup: {detail}", _BACKUP_HEAL)
+    return ProbeResult("OK", summary)
 
 
 def _calendar_permission_status(_context: DoctorContext) -> str:
