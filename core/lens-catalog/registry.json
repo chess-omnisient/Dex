@@ -34,8 +34,8 @@
       "source": {
         "kind": "skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
-        "sha256": "afbe7ced7c39d3b6d2fb0856e2602b69ba30bd18fc6949d21cc4657615cf2a27",
-        "byte_size": 27519
+        "sha256": "311c9cdf45842936cee4a91d1ac116ce9e1eeae576c01aacdce989e44b912221",
+        "byte_size": 30797
       },
       "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
       "jobs_served": ["plan-my-work"],
@@ -116,8 +116,8 @@
       "source": {
         "kind": "skill",
         "path": ".claude/skills/process-meetings/SKILL.md",
-        "sha256": "06849f800f65386bd49ce103ad23f9fcb7c3ffdd81111e878100fb2d3246dc9f",
-        "byte_size": 15297
+        "sha256": "eb7e819ed4c4e32fb5ec1f5477b249ec4bd6d8805870360107098d893a04642c",
+        "byte_size": 19094
       },
       "value": "Turns meeting material into people context and follow-up tasks, reducing the chance that decisions or promises disappear after the call.",
       "jobs_served": ["process-meetings", "keep-relationships-warm"],
