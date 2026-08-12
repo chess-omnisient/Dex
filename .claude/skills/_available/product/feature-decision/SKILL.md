@@ -33,6 +33,27 @@ Treat this skill as decision support: a recommendation is analysis, while the de
 
 ---
 
+## Method
+
+Define the decision question, options, constraints, planning horizon, and named
+human decision authority. Gather dated customer, strategic, delivery, design,
+commercial, and dependency evidence into a source ledger. Use only a configured
+or user-confirmed sizing scale; if no scale or estimate exists, preserve effort
+as `Unknown`. Compare options and trade-offs, expose assumptions and conflicting
+evidence, and produce a recommendation without converting it into a decision.
+Search prior decision records before proposing any save, preserving their history
+and requiring separate confirmation for a new or superseding entry.
+
+## Output contract
+
+Return the decision question, authority, scope and evidence coverage, options,
+source-backed impact and effort assessment, unknowns, contradictions, trade-offs,
+recommendation, and an explicitly separate `Human decision` field. Every rating
+must cite its configured scale and evidence; unsupported values remain unknown.
+If a decision is confirmed, include its date and rationale. End with the proposed
+record operation or verified read-back receipt. Never label a recommendation,
+preview, tool response, or unconfirmed draft as an accepted decision.
+
 ## Step 1: Define the Feature
 
 Ask the user to clarify:
@@ -95,7 +116,7 @@ Guide the user through these questions:
 ### Effort Questions
 
 4. **Engineering Effort**
-   - Size estimate? (Small: <1 week, Medium: 1-4 weeks, Large: 1-3 months, XL: 3+ months)
+   - Size estimate using the team's configured or user-confirmed sizing scale? If none exists, record `Unknown` rather than supplying generic duration bands.
    - Technical complexity? (Low / Medium / High)
    - Dependencies on other systems?
    - Risk level? (Low / Medium / High)

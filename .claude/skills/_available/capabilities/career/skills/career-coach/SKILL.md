@@ -53,6 +53,27 @@ invent absent evidence, dates, metrics, intent, or outcomes.
 
 ---
 
+## Method
+
+Confirm the coaching mode and selected review period, then inventory available
+Career and Work sources before analysis. Build a dated evidence ledger and report
+coverage for that period; missing evidence is not missing competency. Keep facts,
+user reflections, inferences, contradictions, and coaching recommendations
+separate, with confidence tied to source coverage and freshness. Respect HR and
+manager decision boundaries. Hook output is only an unconfirmed candidate: show
+the exact evidence bytes and ask separately before saving. Read back every
+confirmed report, goal, history, or evidence mutation before claiming success.
+
+## Output contract
+
+Return the selected mode and period, source/tool coverage, evidence ledger,
+unknowns and contradictions, confidence basis, mode-specific coaching analysis,
+and recommendations awaiting the user's judgment. Do not report counts or trends
+outside the selected period. End with a mutation ledger naming every proposed,
+declined, verified, partial, or failed destination. A generated report remains a
+draft until its exact preview is confirmed and its bytes are read back; a hook
+candidate, competency mapping, or coaching assessment is never an HR decision.
+
 ## Coach Personality & Adaptation
 
 The coach adapts based on:
@@ -317,8 +338,8 @@ Analyze patterns across recent check-ins and captured evidence.
 
 **Use Career MCP Tools:**
 - Call `scan_evidence(date_range: "last-30-days")` to get recent evidence
-- Call `timeline_analysis(period: "last-6-months", group_by: "month")` to see trends
-- Interpret the aggregated data to identify patterns
+- Call `timeline_analysis(period: "last-30-days", group_by: "week")` so every query stays inside the selected review period
+- Report source coverage, unavailable inputs, and unknown dates before interpreting patterns
 
 Then generate:
 
@@ -684,11 +705,11 @@ These tools provide consistent, structured data that you then interpret for coac
 
 **Example MCP workflow:**
 ```
-[Career MCP: scan_evidence() - returns 42 files]
-[Career MCP: parse_ladder() - returns 8 competencies]
-[Career MCP: analyze_coverage() - returns evidence counts per competency]
-[Work MCP: get_quarterly_goals() - returns 12 goals, 8 completed]
-[Work MCP: scan_work_for_evidence() - finds 5 high-impact completed goals]
+[Career MCP: scan_evidence() - returns [observed count] records for [selected period], with [coverage/unknowns]]
+[Career MCP: parse_ladder() - returns [observed count] sourced competencies]
+[Career MCP: analyze_coverage() - returns sourced evidence counts plus unknown mappings]
+[Work MCP: get_quarterly_goals() - returns [observed count] goals and their source states]
+[Work MCP: scan_work_for_evidence() - returns [observed count] candidates requiring user validation]
 [Now interpret combined data and generate assessment below]
 ```
 
@@ -884,7 +905,7 @@ When discussing promotion with your manager, emphasize:
 
 **Proposed save path:** `05-Areas/Career/Assessments/YYYY-MM-DD - Promotion Assessment.md` (not written until the user confirms the exact preview)
 
-**This is a snapshot based on current evidence.** As you continue working, Dex will capture more examples that strengthen your case.
+**This is a snapshot based on current evidence.** As you continue working, you may choose which new examples Dex should save after an exact preview and separate confirmation.
 
 **Suggested Next Steps:**
 

@@ -20,6 +20,27 @@ Create a comprehensive strategic account plan by gathering all context on an acc
 
 ---
 
+## Method
+
+Define the account, planning horizon, authorized owner, and `as-of` time before
+searching. Build a source ledger across company, person, meeting, deal, and prior
+plan records; deduplicate copied facts while retaining every source ID and source
+date. Classify each material item as observed, customer-stated, inferred,
+contradictory, stale, or unknown. Only then map stakeholders, current state,
+opportunities, risks, and possible actions. Keep recommendations separate from
+the account owner's decisions, and never convert a suggested action into a task
+or saved plan without the controlled-write sequence below.
+
+## Output contract
+
+Return the scope and coverage first, followed by the source ledger, known account
+facts, unresolved contradictions and unknowns, stakeholder map, evidence-backed
+opportunities and risks, and recommendations awaiting human decision. Any count
+or total must name its denominator and excluded unknown values. End with a save
+status of `not requested`, `awaiting confirmation`, `verified from read-back`, or
+`failed`, plus the exact path and receipt when a confirmed write occurred. Never
+describe an unverified draft as the current account plan.
+
 ## Evidence, authority, and recovery
 
 Treat the account plan as a decision aid, not as a source of truth. Set an

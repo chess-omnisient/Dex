@@ -16,6 +16,27 @@ Requires the Pipedrive integration. If `System/integrations/config.yaml -> piped
 - `/pipeline-sync map`: (re)map focus deals to their Pipedrive records (first-run, or after adding a deal)
 - `/pipeline-sync discover`: list open Pipedrive deals **not** in the tracker (find what you're missing)
 
+## Method
+
+Gate the run on the companion skill, integration state, configured tracker path,
+and a complete live read. Build a deal-by-deal ledger containing the tracker and
+Pipedrive identifiers, values, source update times, retrieval `as-of` time, and
+read completeness. Reconcile mappings, fields, totals, and untracked deals
+without changing either system. Present each drift direction as a human choice.
+For every confirmed mutation, preview the exact payload or file diff, apply only
+that choice, then read back both affected authorities before moving to the next
+change. Treat ambiguous network outcomes as unresolved, not retryable failures.
+
+## Output contract
+
+Return integration and coverage status, the source ledger, drift rows, unchecked
+deals, mapping gaps, totals reconciliation, and decisions still required. The
+final change summary must be derived only from read-back receipts and must name
+each verified target. Explicitly report zero changes, partial completion, or
+failure rather than using a fixed success sentence. Include unresolved and
+unknown items, the denominator behind every total, and any ambiguous write that
+must be inspected before retry. A tool response alone is never a success receipt.
+
 ## Operating principles (non-negotiable)
 
 - **Confirm every write.** Never call a Pipedrive write tool (`pipedrive_add_deal_note`, `pipedrive_add_deal_activity`, `pipedrive_update_deal`, `pipedrive_create_deal`, `pipedrive_create_org`) without first showing the exact payload (use `dry_run: true`) and getting the user's explicit yes. CRMs are often shared with colleagues. The tools preview by default and only send on an explicit `dry_run: false`, so that parameter is the record of the user's yes — never pass it to "get past" a preview the user has not actually seen and approved.
@@ -100,11 +121,12 @@ For each row ask which way to resolve (or batch: "take Pipedrive for all numbers
 
 ## Step 4: Summarise
 
-Report what changed and where: "Updated 2 tracker rows from Pipedrive; pushed 1 value change to Pipedrive (confirmed); recomputed totals; logged sync to the company page." Note anything left unresolved.
-
-## Step 5: Rating
-
-After completing, ask: "Quick rating (1-5, 5 = great)?" If a number comes back, `capture_skill_rating(skill_name="pipeline-sync", rating=N)`.
+Build the summary from the read-back receipt for each approved target. Name the
+verified tracker rows, company pages, mappings, or Pipedrive records and report
+their actual counts. If no approved mutation occurred, say `zero changes`. If
+some writes failed or could not be read back, report `partial` with each verified
+and unverified target. If the gather or every mutation failed, report `failure`
+and the authoritative state that remains unknown. Note all unresolved drift.
 
 ---
 

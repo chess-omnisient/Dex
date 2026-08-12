@@ -158,6 +158,53 @@ def _frontmatter_description(text: str) -> str:
     return match.group(1).strip().strip('"') if match else ""
 
 
+def _level_two_section_bounds(
+    text: str,
+    heading: str,
+) -> tuple[list[str], int, int] | None:
+    """Find a real level-two section, ignoring heading-like text in fences."""
+    lines = text.splitlines(keepends=True)
+    heading_index: int | None = None
+    fence_marker: str | None = None
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        fence = re.match(r"^(```+|~~~+)", stripped)
+        if fence:
+            marker = fence.group(1)[0]
+            if fence_marker is None:
+                fence_marker = marker
+            elif marker == fence_marker:
+                fence_marker = None
+            continue
+        if fence_marker is not None:
+            continue
+        if heading_index is None:
+            if stripped == heading:
+                heading_index = index
+            continue
+        if re.match(r"^##(?:\s|$)", line):
+            return lines, heading_index, index
+    if heading_index is None:
+        return None
+    return lines, heading_index, len(lines)
+
+
+def _level_two_section(text: str, heading: str) -> str | None:
+    bounds = _level_two_section_bounds(text, heading)
+    if bounds is None:
+        return None
+    lines, heading_index, end = bounds
+    return "".join(lines[heading_index + 1 : end]).strip()
+
+
+def _without_level_two_section(text: str, heading: str) -> tuple[str, bool]:
+    bounds = _level_two_section_bounds(text, heading)
+    if bounds is None:
+        return text, False
+    lines, heading_index, end = bounds
+    return "".join((*lines[:heading_index], *lines[end:])), True
+
+
 def role_skill_contract_errors(skill_id: str, text: str) -> list[str]:
     """Return every evidence-and-depth contract failure for one role skill."""
     lowered = text.lower()
@@ -166,8 +213,13 @@ def role_skill_contract_errors(skill_id: str, text: str) -> list[str]:
     if not _frontmatter_description(text).lower().startswith("use when "):
         errors.append("frontmatter description must route with 'Use when ...'")
     for heading in REQUIRED_HEADINGS:
-        if heading not in text:
+        if _level_two_section(text, heading) is None:
             errors.append(f"missing heading {heading!r}")
+
+    for heading in ("## Method", "## Output contract"):
+        body = _level_two_section(text, heading)
+        if body is None or len(body.split()) < 35:
+            errors.append(f"missing substantive {heading} section")
 
     common_ideas = {
         "anti-trigger": ("do not use", "not for"),
@@ -212,3 +264,26 @@ def test_role_specific_method_gate_fails_on_deliberate_mutation() -> None:
 
     errors = role_skill_contract_errors(skill_id, mutated)
     assert any("deduplicat" in error for error in errors)
+
+
+@pytest.mark.parametrize("skill_id", tuple(ROLE_SKILLS))
+@pytest.mark.parametrize("heading", ("## Method", "## Output contract"))
+def test_role_skill_gate_rejects_fenced_decoy_after_section_deletion(
+    skill_id: str,
+    heading: str,
+) -> None:
+    text = (REPO_ROOT / ROLE_SKILLS[skill_id]).read_text(encoding="utf-8")
+    mutated, removed = _without_level_two_section(text, heading)
+
+    assert removed, f"positive control needs {heading} in {skill_id}"
+    decoy = (
+        f"\n```markdown\n{heading}\n"
+        "This deliberately long fenced example is not an executable instruction "
+        "section. It exists to prove that example text cannot satisfy the contract "
+        "even when it contains enough words to pass a naive length check. The real "
+        "top-level method or output contract has been removed from this mutation.\n"
+        "```\n"
+    )
+    errors = role_skill_contract_errors(skill_id, mutated + decoy)
+
+    assert any(heading in error for error in errors)

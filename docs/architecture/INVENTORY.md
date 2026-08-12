@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: d821a87a1b2c5a27494ee3b81cf5716d1db4f37ef4d387c9adbdd41faaf67abb -->
+<!-- Content SHA-256: 52f444e5914466ad8f7b5d338f00fbfafb985330de3a98f83e9f53b3b07008bc -->
 
 # Architecture Inventory
 
@@ -131,7 +131,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 | `dex-pipedrive-mcp` | 2 | normal | `pipedrive-setup` (`pipedrive_list_stages`, `pipedrive_list_users`, `pipedrive_status`); `pipeline-sync` (`pipedrive_add_deal_activity`, `pipedrive_add_deal_note`, `pipedrive_create_deal`, `pipedrive_create_org`, `pipedrive_find_deal`, `pipedrive_find_org`, `pipedrive_get_deal`, `pipedrive_get_mapping`, `pipedrive_get_pipeline_snapshot`, `pipedrive_list_deals`, `pipedrive_save_mapping`, `pipedrive_status`, `pipedrive_update_deal`) |
 | `dex-resume-mcp` | 0 | **under-surfaced** | — |
 | `dex-session-memory` | 0 | **under-surfaced** | — |
-| `dex-work-mcp` | 13 | **over-surfaced** | `commitments` (`create_task`, `get_commitments_due`); `create-mcp` (`create_task`, `list_tasks`); `daily-plan` (`analyze_calendar_capacity`, `build_people_index`, `confirm_goal_link`, `confirm_relationship`, `create_task`, `dismiss_relationship`, `get_commitments_due`, `get_meeting_context`, `get_week_progress`, `get_work_summary`, `list_tasks`, `process_inbox_with_dedup`, `record_external_task_mapping`, `suggest_task_scheduling`, `update_task_status`); `daily-review` (`analyze_calendar_capacity`, `create_task`, `get_commitments_due`, `get_meeting_context`, `get_skill_ratings`, `get_week_priorities`, `get_week_progress`, `list_tasks`, `lookup_person`, `update_task_status`); `initiative-kickoff` (`confirm_goal_link`, `create_task`, `get_quarterly_goals`, `lookup_person`); `meeting-closeout` (`create_task`, `get_meeting_context`, `lookup_person`); `meeting-prep` (`get_meeting_context`, `lookup_person`, `query_meeting_cache`); `pipeline-sync` (`capture_skill_rating`); `process-meetings` (`create_person`, `create_task`, `detect_soft_commitments`, `list_tasks`, `lookup_person`); `relationship-radar` (`build_people_index`, `create_task`); `triage` (`create_task`); `week-plan` (`analyze_calendar_capacity`, `classify_task_effort`, `create_weekly_priority`, `get_commitments_due`, `get_goal_status`, `get_quarterly_goals`, `list_tasks`, `suggest_task_scheduling`); `week-review` (`get_goal_status`, `get_pillar_summary`, `get_quarterly_goals`, `get_skill_ratings`, `get_week_priorities`, `get_week_progress`, `list_tasks`) |
+| `dex-work-mcp` | 12 | **over-surfaced** | `commitments` (`create_task`, `get_commitments_due`); `create-mcp` (`create_task`, `list_tasks`); `daily-plan` (`analyze_calendar_capacity`, `build_people_index`, `confirm_goal_link`, `confirm_relationship`, `create_task`, `dismiss_relationship`, `get_commitments_due`, `get_meeting_context`, `get_week_progress`, `get_work_summary`, `list_tasks`, `process_inbox_with_dedup`, `record_external_task_mapping`, `suggest_task_scheduling`, `update_task_status`); `daily-review` (`analyze_calendar_capacity`, `create_task`, `get_commitments_due`, `get_meeting_context`, `get_skill_ratings`, `get_week_priorities`, `get_week_progress`, `list_tasks`, `lookup_person`, `update_task_status`); `initiative-kickoff` (`confirm_goal_link`, `create_task`, `get_quarterly_goals`, `lookup_person`); `meeting-closeout` (`create_task`, `get_meeting_context`, `lookup_person`); `meeting-prep` (`get_meeting_context`, `lookup_person`, `query_meeting_cache`); `process-meetings` (`create_person`, `create_task`, `detect_soft_commitments`, `list_tasks`, `lookup_person`); `relationship-radar` (`build_people_index`, `create_task`); `triage` (`create_task`); `week-plan` (`analyze_calendar_capacity`, `classify_task_effort`, `create_weekly_priority`, `get_commitments_due`, `get_goal_status`, `get_quarterly_goals`, `list_tasks`, `suggest_task_scheduling`); `week-review` (`get_goal_status`, `get_pillar_summary`, `get_quarterly_goals`, `get_skill_ratings`, `get_week_priorities`, `get_week_progress`, `list_tasks`) |
 
 ### Under-surfaced servers
 
@@ -142,7 +142,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 ### Over-surfaced servers
 
 - `dex-analytics` — 28 skills reference its tools.
-- `dex-work-mcp` — 13 skills reference its tools.
+- `dex-work-mcp` — 12 skills reference its tools.
 
 ## Portable ownership classes
 

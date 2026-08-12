@@ -1290,8 +1290,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/pipeline-sync/SKILL.md",
-        "sha256": "8632eec749f6a0115e960ebc34326fd573a81a586faa7d18a3ef5e902516e55c",
-        "byte_size": 9623
+        "sha256": "f7fff71ef0a682b1547d5f3353721dd03c217807e146b08fafcf07f5686c5b7e",
+        "byte_size": 10959
       },
       "value": "Reconciles Pipedrive deal facts with local strategy notes through explicit previews and read-back checks.",
       "jobs_served": ["run-my-role"],

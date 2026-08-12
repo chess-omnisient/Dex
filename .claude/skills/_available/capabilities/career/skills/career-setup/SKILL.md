@@ -18,6 +18,27 @@ One-time setup (or re-run to update). Creates your Career folder and baseline co
 
 ---
 
+## Method
+
+Verify the Career room and available integrations, then ask which setup inputs the
+user wants to provide. Minimize sensitive collection and retain the source path,
+source date, retrieval `as-of` time, and uncertainty for each job description,
+ladder, review, and goal. Normalize all evidence to the portable
+`05-Areas/Career/Evidence/` path. Stage each destination independently, show the
+exact complete bytes, obtain explicit confirmation immediately before writing,
+and read the file back before proceeding. Treat the evidence hook as a read-only
+candidate detector; it never supplies consent or writes on the user's behalf.
+
+## Output contract
+
+Return room and MCP readiness, the inputs received and deliberately omitted,
+provenance and unknowns, the exact proposed file set, and a per-file mutation
+state. Each destination must be labelled `not requested`, `awaiting confirmation`,
+`verified from read-back`, or `failed`; never summarize a partially written setup
+as complete. Include hook availability separately from evidence-save status. The
+completion summary must list only verified paths, preserve every pre-existing
+conflict, and explain the next safe recovery step for any failed or declined file.
+
 ## Step 0: Verify the room and integrations
 
 Before collecting or writing career information, read the authoritative capability

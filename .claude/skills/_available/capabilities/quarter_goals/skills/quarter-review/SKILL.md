@@ -14,6 +14,29 @@ Review and synthesize the quarter that just ended. Evaluates goal completion, ca
 
 ---
 
+## Method
+
+Verify the room, fiscal boundaries, target quarter, and source availability before
+counting anything. Build a dated evidence ledger across goals, tasks, projects,
+meetings, syntheses, reminders, and backlog records. Report unavailable sources
+as `Unknown` with their coverage impact; never infer completion percentages from
+activity or modification times. Walk through each goal with the user, separating
+recorded status, observed evidence, and their assessment. Apply only configured,
+dated backlog policies. Preview and confirm each processing, archive, reminder,
+task, or backlog mutation separately, make archives idempotent, and read back
+every destination.
+
+## Output contract
+
+Return the quarter calculation, source/tool coverage, goal-by-goal evidence and
+user assessment, exact status counts with denominator, unknowns, contradictions,
+learnings, pillar context, and backlog observations under the named policy source
+and policy date. Unavailable sources remain visible and excluded from affected
+counts. Never output an inferred completion percentage. End with separate mutation
+receipts for every confirmed write or external action; label partial or failed
+operations explicitly, and call the archive verified only after byte-for-byte
+read-back.
+
 ## Step 0: Check if Quarterly Planning is Enabled
 
 Read `System/user-profile.yaml`:
@@ -71,7 +94,7 @@ Before reviewing, check for tasks captured from phone that haven't been triaged:
 Use: reminders_list_items(list_name="Dex Inbox")
 ```
 
-**If the tool is unavailable or errors** (Apple Reminders phone-capture is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled.
+**If the tool is unavailable or errors** (Apple Reminders phone-capture is optional and may not be set up on this machine): record `Dex Inbox: Unknown — source unavailable` in the coverage summary. Do not present it as an error the user caused, and exclude phone captures from any completeness claim.
 
 If items found:
 - Surface them: "📱 **Phone captures not yet triaged** (X items in Dex Inbox)"
@@ -79,7 +102,8 @@ If items found:
   user consent before creating each task and before marking each Reminder complete
 - Complete this before the review so task counts are accurate
 
-**If empty:** Skip silently.
+**If empty:** Record `Dex Inbox: 0 items` with the successful query time in the
+coverage summary, then continue without a separate alert.
 
 ### Process Unprocessed Meetings
 
@@ -90,7 +114,7 @@ confirmation before running it when it will write notes, pages, or tasks. Verify
 the processed sources and dates afterward; do not call the review complete merely
 because the command returned.
 
-- If no new meetings are found, continue silently
+- If no new meetings are found, record the checked sources and a zero result
 - If meetings are processed, note the count
 
 ### Task Completion
@@ -152,7 +176,9 @@ If available, enhance the quarterly review with meaning-based analysis:
 
 **Integration:** Add a "Semantic Discoveries" subsection under each goal assessment showing work that contributed but wasn't explicitly tracked. Also add a "Cross-Goal Themes" section to the quarterly review output.
 
-**If QMD unavailable:** Skip silently. Goal assessment still works from explicit data.
+**If QMD unavailable:** Record semantic enrichment as `Unknown — source unavailable`
+and state its coverage impact. Goal assessment may continue from explicit data,
+but must not claim that hidden progress or cross-goal links were comprehensively checked.
 
 ---
 
@@ -232,7 +258,7 @@ Read `System/Dex_Backlog.md` if it exists:
 
 **Extract:**
 - Total ideas in backlog
-- High-priority ideas (score >= 85)
+- Ideas matching the configured priority policy, when a policy source and policy date exist
 - Ideas captured during this quarter
 - Ideas marked as implemented
 
@@ -241,12 +267,12 @@ Read `System/Dex_Backlog.md` if it exists:
 > "**Dex System Improvement Backlog:**
 > 
 > - Total ideas captured: [count]
-> - High-priority (ready to implement): [count]
+> - Policy-matched priority ideas: [count, configured policy source, policy date; otherwise Unknown]
 > - Implemented this quarter: [count]
 > 
 > Looking at your Dex backlog:
 > - Any 1-2 high-impact improvements to prioritize next quarter?
-> - Any stale ideas (>6 months old) to archive?"
+> - Any ideas that meet your configured, dated staleness policy to review? If no policy exists, which review rule would you like to use?"
 
 Wait for user input on:
 - Which 1-2 ideas to tackle next quarter
@@ -254,12 +280,12 @@ Wait for user input on:
 
 ### Suggest Backlog Review
 
-**If 3+ high-priority ideas exist:**
+**If the configured, dated policy identifies more priority items than the user
+wants to inspect here:**
 
 > "💡 Consider running `/dex-backlog` soon to re-rank ideas based on updated system state."
 
 **If no Dex_Backlog.md exists:**
-- Skip this section silently
 - In review document, note: "Dex backlog system not yet in use"
 
 ---
@@ -383,7 +409,7 @@ reviewed_on: [date]
 ### Dex Backlog Activity
 - **Ideas captured:** [Count during quarter]
 - **Ideas implemented:** [Count marked as completed]
-- **Current high-priority ideas:** [Count with score >= 85]
+- **Current policy-matched priority ideas:** [Count, policy source, policy date; otherwise Unknown]
 
 ### Improvements Implemented This Quarter
 - **[idea-XXX]** [Title] — [Brief description of what was built]

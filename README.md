@@ -625,14 +625,14 @@ One decision instead of many. Immediate filing.
 
 Great work happens daily, but evidence disappears. Review time becomes a scramble to remember what you accomplished.
 
-Career coaching lives in Dex's optional **Career room** — Dex offers it during setup, or turn it on anytime with `/manage-capabilities`. Then run `/career-setup` once (job description, career ladder, recent review, growth goals). From that point forward, Dex automatically captures career evidence:
+Career coaching lives in Dex's optional **Career room** — Dex offers it during setup, or turn it on anytime with `/manage-capabilities`. Then run `/career-setup` once (job description, career ladder, recent review, growth goals). From that point forward, Dex can surface possible career evidence during supported workflows. It shows the exact sourced candidate and asks before saving anything:
 
-| When | What Gets Captured |
+| When | What Dex May Suggest |
 |------|-------------------|
-| Daily reviews | Achievements worth saving for promotion discussions |
-| Manager 1:1s (via Granola) | Feedback and development context |
-| Project completions | Impact and skills demonstrated |
-| Weekly reviews | Work tagged with career skills |
+| Daily reviews | Achievements that may be worth saving for promotion discussions |
+| Manager 1:1s (via Granola) | Feedback and development context found in the source note |
+| Project completions | Sourced impact and skills that may be useful later |
+| Weekly reviews | Work that may support a career skill |
 
 ### Your Personal Career Coach
 

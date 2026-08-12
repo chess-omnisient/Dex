@@ -273,6 +273,25 @@ def test_enabling_later_provisions_declared_folders_and_skills(tmp_path: Path) -
         assert (vault / ".claude/skills" / skill / "SKILL.md").is_file()
     profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
     assert profile["capabilities"]["career"]["enabled"] is True
+    assert "System/user-profile.yaml" in result["mutation_paths"]
+
+
+def test_room_toggle_receipt_includes_new_profile_ancestors_and_file(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    result = capabilities.set_enabled(
+        "career",
+        True,
+        vault_root=vault,
+        contract_path=CONTRACT_PATH,
+    )
+
+    assert "System" in result["mutation_paths"]
+    assert "System/user-profile.yaml" in result["mutation_paths"]
+    assert (vault / "System/user-profile.yaml").is_file()
 
 
 def test_room_reconcile_reports_every_persistent_mutation_and_then_reports_none(

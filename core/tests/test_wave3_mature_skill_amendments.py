@@ -147,7 +147,7 @@ CATALOGUE_UNSUPPORTED_CLAIMS: dict[str, tuple[str, ...]] = {
     "roadmap": ("health denominators", "calculate health"),
 }
 
-STRUCTURED_METHOD_SKILLS = ("call-prep", "deal-review", "pipeline-health", "roadmap")
+STRUCTURED_METHOD_SKILLS = tuple(MATURE_SKILLS)
 
 PROVENANCE_EXAMPLE_SKILLS: dict[str, tuple[str, ...]] = {
     "account-plan": ("acme corp", "$180,000", "sarah chen"),
@@ -198,13 +198,18 @@ def _level_two_section_bounds(
 ) -> tuple[list[str], int, int] | None:
     lines = text.splitlines(keepends=True)
     heading_index: int | None = None
-    in_fence = False
+    fence_marker: str | None = None
     for index, line in enumerate(lines):
         stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
+        fence = re.match(r"^(```+|~~~+)", stripped)
+        if fence:
+            marker = fence.group(1)[0]
+            if fence_marker is None:
+                fence_marker = marker
+            elif marker == fence_marker:
+                fence_marker = None
             continue
-        if in_fence:
+        if fence_marker is not None:
             continue
         if heading_index is None:
             if stripped == heading:
@@ -268,6 +273,29 @@ def test_mature_skill_gate_rejects_deleted_method_or_output_section(
     assert any(heading in error for error in errors)
 
 
+@pytest.mark.parametrize("skill_id", STRUCTURED_METHOD_SKILLS)
+@pytest.mark.parametrize("heading", ("## Method", "## Output contract"))
+def test_mature_skill_gate_rejects_fenced_decoy_after_section_deletion(
+    skill_id: str,
+    heading: str,
+) -> None:
+    text = (REPO_ROOT / MATURE_SKILLS[skill_id]).read_text(encoding="utf-8")
+    mutated, removed = _without_level_two_section(text, heading)
+
+    assert removed, f"positive control needs {heading} in {skill_id}"
+    decoy = (
+        f"\n~~~markdown\n{heading}\n"
+        "This deliberately long fenced example cannot replace a real instruction "
+        "section. It contains enough words to catch an implementation that merely "
+        "counts prose, while the actual top-level method or output contract has been "
+        "deleted. Publication must fail closed for this mutation every time.\n"
+        "~~~\n"
+    )
+    errors = mature_skill_amendment_errors(skill_id, mutated + decoy)
+
+    assert any(heading in error for error in errors)
+
+
 @pytest.mark.parametrize("skill_id", tuple(PROVENANCE_EXAMPLE_SKILLS))
 def test_examples_use_provenance_placeholders_instead_of_fabricated_facts(
     skill_id: str,
@@ -284,6 +312,80 @@ def test_examples_use_provenance_placeholders_instead_of_fabricated_facts(
         assert required in example, f"{skill_id} example is missing {required}"
     for fabricated in PROVENANCE_EXAMPLE_SKILLS[skill_id]:
         assert fabricated not in example, f"{skill_id} retains fabricated example fact: {fabricated}"
+
+
+def test_resume_examples_do_not_supply_realistic_fabricated_facts() -> None:
+    text = (REPO_ROOT / MATURE_SKILLS["resume-builder"]).read_text(encoding="utf-8")
+    fabricated = (
+        "$2.1M ARR",
+        "team of 12",
+        "500+ users",
+        "$180K annually",
+        "Ex-Google",
+        "Stanford MBA",
+        "$50M+",
+        "10x User Growth",
+        "$2M product launch",
+        "50K users",
+        "Senior Product Manager at TechCo",
+    )
+
+    for claim in fabricated:
+        assert claim.lower() not in text.lower(), f"fabricated resume example remains: {claim}"
+    for placeholder in ("[source id]", "[source date]", "[user-confirmed metric]"):
+        assert placeholder in text
+
+
+def test_resume_lists_sessions_before_confirmed_persistent_session_creation() -> None:
+    text = (REPO_ROOT / MATURE_SKILLS["resume-builder"]).read_text(encoding="utf-8")
+    usage = _level_two_section(text, "## MCP Tool Usage")
+
+    assert usage is not None
+    assert usage.index("list_sessions") < usage.index("start_session")
+    assert "`start_session` creates a persistent file" in usage
+    assert "exact preview" in usage
+    assert "explicit confirmation" in usage
+
+
+def test_pipeline_sync_reports_only_read_back_receipts_and_has_no_rating_write() -> None:
+    text = (REPO_ROOT / MATURE_SKILLS["pipeline-sync"]).read_text(encoding="utf-8")
+
+    assert "capture_skill_rating" not in text
+    assert "Updated 2 tracker rows" not in text
+    for required in ("read-back receipt", "zero changes", "partial", "failure"):
+        assert required in text
+
+
+def test_career_coach_queries_match_the_selected_review_period() -> None:
+    text = (REPO_ROOT / MATURE_SKILLS["career-coach"]).read_text(encoding="utf-8")
+    monthly = _level_two_section(text, "## Mode 2: Monthly Reflection")
+
+    assert monthly is not None
+    assert "last-6-months" not in monthly
+    assert "selected review period" in monthly
+    assert "coverage" in monthly
+    assert "returns 42 files" not in text
+    assert "returns 8 competencies" not in text
+    assert "returns 12 goals" not in text
+
+
+def test_quarter_review_surfaces_missing_coverage_and_uses_configured_policies() -> None:
+    text = (REPO_ROOT / MATURE_SKILLS["quarter-review"]).read_text(encoding="utf-8")
+    lowered = text.lower()
+
+    for forbidden in ("skip this step silently", "skip silently", "score >= 85", ">6 months old", "if 3+ high-priority"):
+        assert forbidden not in lowered
+    for required in ("coverage", "unknown", "configured", "policy source", "policy date"):
+        assert required in lowered
+
+
+def test_feature_decision_does_not_supply_generic_effort_durations() -> None:
+    text = (REPO_ROOT / MATURE_SKILLS["feature-decision"]).read_text(encoding="utf-8")
+
+    assert "Small: <1 week" not in text
+    assert "Medium: 1-4 weeks" not in text
+    assert "Large: 1-3 months" not in text
+    assert "configured or user-confirmed sizing scale" in text
 
 
 def test_career_setup_gates_phase_six_and_skip_writes_at_the_point_of_action() -> None:

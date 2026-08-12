@@ -14,6 +14,28 @@ Set 3-5 strategic goals for the quarter. Runs at the start of each quarter (or m
 
 ---
 
+## Method
+
+Verify the Quarter Goals room, fiscal start-month source, and target-quarter
+boundaries before gathering context. Build a dated ledger from pillars, prior
+goals, current commitments, and user input; preserve conflicts and keep missing
+capacity or outcomes unknown. Help the user choose three to five goals without
+turning suggestions into decisions. Define each goal's source-backed outcome,
+milestones, owner, and review signal. Preview configuration, archive, and goal
+mutations independently, preserve existing bytes on conflict, obtain explicit
+confirmation for each operation, and read back every confirmed destination.
+
+## Output contract
+
+Return room readiness, fiscal-quarter calculation with source and `as-of` time,
+context coverage, unresolved carry-over items, and the user's chosen goals with
+pillars, success criteria, milestones, owners, and unknowns. Do not invent
+capacity, dates, percentages, or alignment. End with a per-operation mutation
+ledger covering profile configuration, any archive, and the active goals file.
+Only read-back-matched paths may be labelled verified; conflicts, declined writes,
+and partial failures remain explicit and must not be summarized as a completed
+quarter plan.
+
 ## Step 0: Confirm the Quarter Goals room is enabled
 
 Read `System/user-profile.yaml`:

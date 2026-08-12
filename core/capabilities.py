@@ -815,6 +815,39 @@ def preflight_all(
     return rooms
 
 
+def preflight_mutation_targets(
+    vault_root: Path | str,
+    targets: list[Mapping[str, Any]],
+) -> tuple[dict[str, str], ...]:
+    """Validate a closed list of provisioner write targets without mutation.
+
+    The Node provisioner calls this boundary before it changes profile, seed,
+    generated, or session files. Keeping lexical ancestor inspection here means
+    room toggles and onboarding share the same no-symlink/no-escape discipline.
+    """
+    root = Path(vault_root).resolve()
+    validated: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for index, raw in enumerate(targets):
+        if not isinstance(raw, Mapping) or set(raw) != {"path", "kind"}:
+            raise CapabilityError(
+                f"Provision mutation target {index} must contain only path and kind"
+            )
+        relative_path = raw["path"]
+        kind = raw["kind"]
+        if not isinstance(relative_path, str) or kind not in {"file", "directory"}:
+            raise CapabilityError(
+                f"Provision mutation target {index} has an invalid path or kind"
+            )
+        identity = (relative_path, kind)
+        if identity in seen:
+            continue
+        _lexical_target(root, relative_path, kind=kind)
+        seen.add(identity)
+        validated.append({"path": relative_path, "kind": kind})
+    return tuple(validated)
+
+
 def preflight_skill_targets(
     vault_root: Path | str,
     *,
@@ -1048,15 +1081,15 @@ def set_enabled(
     profile_file = Path(profile_path or root / "System/user-profile.yaml")
     try:
         profile_relative = profile_file.absolute().relative_to(root)
-    except ValueError:
-        profile_relative = None
-    if profile_relative is not None:
-        _lexical_target(root, profile_relative.as_posix(), kind="file")
+    except ValueError as error:
+        raise CapabilityError("Profile mutation target must stay inside the vault") from error
+    _lexical_target(root, profile_relative.as_posix(), kind="file")
     # Reads may fail safely to "off", but mutations must never replace malformed
     # or unreadable user state with an empty profile. strict=True raises on
     # unreadable YAML before any edit is attempted.
     _read_profile(profile_file, strict=True)
-    original = profile_file.read_text(encoding="utf-8") if profile_file.exists() else ""
+    original_bytes = profile_file.read_bytes() if profile_file.exists() else b""
+    original = original_bytes.decode("utf-8")
 
     # Surgical line edits: only the enabled flags change; every other byte of
     # the user's profile — comments and formatting included — is preserved.
@@ -1079,14 +1112,8 @@ def set_enabled(
 
     profile_existed = profile_file.exists()
     profile_written = not profile_existed or updated != original
-    missing_profile_directories: list[Path] = []
-    cursor = profile_file.parent
-    while not cursor.exists():
-        missing_profile_directories.append(cursor)
-        parent = cursor.parent
-        if parent == cursor:
-            break
-        cursor = parent
+    profile_mutation_paths: list[str] = []
+    profile_journal = _MutationJournal()
 
     if profile_written:
         if profile_existed:
@@ -1098,40 +1125,51 @@ def set_enabled(
                 raise CapabilityError("profile changed after preview; refusing to write")
         elif profile_file.exists() or profile_file.is_symlink():
             raise CapabilityError("profile target appeared after preview; refusing to write")
+        updated_bytes = updated.encode("utf-8")
         try:
+            _mkdir_with_mutation_receipt(
+                profile_file.parent,
+                profile_mutation_paths,
+                root,
+                profile_journal,
+            )
             _atomic_text_write(profile_file, updated)
+            if profile_existed:
+                profile_journal.replaced_file(
+                    profile_file,
+                    original_bytes,
+                    updated_bytes,
+                )
+            else:
+                profile_journal.created_file(profile_file, updated_bytes)
+            profile_mutation_paths.append(profile_relative.as_posix())
+            if profile_file.read_bytes() != updated_bytes:
+                raise CapabilityError("profile read-back did not match the preview")
         except Exception as error:
-            for directory in missing_profile_directories:
-                try:
-                    directory.rmdir()
-                except OSError:
-                    break
-            raise CapabilityError(f"profile write failed before room reconciliation: {error}") from error
+            try:
+                profile_journal.rollback()
+            except Exception as rollback_error:
+                raise CapabilityError(
+                    "profile write failed and rollback was incomplete: "
+                    f"{rollback_error}"
+                ) from error
+            raise CapabilityError(
+                f"profile write failed before room reconciliation: {error}"
+            ) from error
     try:
-        return reconcile_room(
+        result = reconcile_room(
             room,
             room_enabled,
             vault_root=root,
             contract_path=contract_path,
         )
+        result["mutation_paths"] = sorted(
+            set(result["mutation_paths"]) | set(profile_mutation_paths)
+        )
+        return result
     except Exception as error:
         try:
-            if profile_written and profile_existed:
-                if (
-                    profile_file.is_symlink()
-                    or not profile_file.is_file()
-                    or profile_file.read_text(encoding="utf-8") != updated
-                ):
-                    raise CapabilityError("profile changed before rollback")
-                _atomic_text_write(profile_file, original)
-            elif profile_written:
-                if profile_file.is_symlink() or not profile_file.is_file():
-                    raise CapabilityError("new profile target became unsafe during rollback")
-                if profile_file.read_text(encoding="utf-8") != updated:
-                    raise CapabilityError("new profile changed before rollback")
-                profile_file.unlink()
-                for directory in missing_profile_directories:
-                    directory.rmdir()
+            profile_journal.rollback()
         except Exception as rollback_error:
             raise CapabilityError(
                 f"Room {room} reconciliation failed and profile rollback was incomplete: "
@@ -1164,6 +1202,16 @@ def _main() -> int:
         help="Validate every room source and active target without mutation",
     )
     parser.add_argument(
+        "--preflight-mutation-targets",
+        action="store_true",
+        help="Validate caller-declared provision mutation targets without room checks",
+    )
+    parser.add_argument(
+        "--mutation-targets-json",
+        default="[]",
+        help="Closed JSON array of {path, kind} provision mutation targets",
+    )
+    parser.add_argument(
         "--vault",
         default=os.environ.get("VAULT_PATH", str(REPO_ROOT)),
         help="Dex vault root (defaults to VAULT_PATH or this checkout)",
@@ -1174,11 +1222,18 @@ def _main() -> int:
         help="Portable contract authority (defaults to the shipped contract)",
     )
     args = parser.parse_args()
+    try:
+        mutation_targets = json.loads(args.mutation_targets_json)
+    except json.JSONDecodeError as error:
+        parser.error(f"--mutation-targets-json must be valid JSON: {error}")
+    if not isinstance(mutation_targets, list):
+        parser.error("--mutation-targets-json must contain an array")
     if args.list:
         print(json.dumps({"rooms": room_ids(contract_path=args.contract)}, indent=2))
         return 0
     if args.preflight:
         rooms = preflight_all(Path(args.vault), contract_path=args.contract)
+        validated_targets = preflight_mutation_targets(Path(args.vault), mutation_targets)
         print(
             json.dumps(
                 {
@@ -1188,6 +1243,19 @@ def _main() -> int:
                         Path(args.vault),
                         contract_path=args.contract,
                     ),
+                    "mutation_targets": validated_targets,
+                },
+                indent=2,
+            )
+        )
+        return 0
+    if args.preflight_mutation_targets:
+        validated_targets = preflight_mutation_targets(Path(args.vault), mutation_targets)
+        print(
+            json.dumps(
+                {
+                    "preflight": "passed",
+                    "mutation_targets": validated_targets,
                 },
                 indent=2,
             )
@@ -1198,7 +1266,10 @@ def _main() -> int:
         print(json.dumps({"rooms": results}, indent=2))
         return 0
     if args.room is None or args.state is None:
-        parser.error("room and state are required unless --list, --preflight, or --reconcile is used")
+        parser.error(
+            "room and state are required unless --list, --preflight, "
+            "--preflight-mutation-targets, or --reconcile is used"
+        )
     result = set_enabled(
         args.room,
         args.state == "on",

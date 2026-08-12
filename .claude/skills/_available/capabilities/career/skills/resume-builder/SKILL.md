@@ -33,26 +33,36 @@ You will guide the user through six distinct phases:
 
 ---
 
+## Method
+
+List existing sessions before proposing a new one, because session creation is a
+persistent write. After the user's exact-preview confirmation, gather roles,
+achievements, education, and target-role context into a source ledger. Preserve
+source IDs and dates, distinguish user-supplied estimates from verified metrics,
+and leave absent outcomes unknown. Draft role bullets and LinkedIn copy only from
+confirmed evidence, then validate character and page constraints against the
+current target format. Preview every state change and cross-file write separately.
+Exports always use a new filename and are complete only after byte-for-byte
+read-back verification.
+
+## Output contract
+
+Return session choice and persistence state, source coverage, confirmed role and
+achievement facts, unknown or contradictory details, resume draft, LinkedIn draft,
+and validation results. Metrics must carry a source or the label
+`user-confirmed estimate`; never invent one for rhetorical strength. A two-page
+claim requires a rendered check. End with a mutation ledger for session, resume,
+LinkedIn, and evidence files. Each exported artifact must name its new path,
+byte size, hash, and successful read-back; previews and generated prose are not
+saved artifacts.
+
 ## MCP Tool Usage
 
 **This command uses the Resume Builder MCP server for deterministic state management and validation.**
 
-### Session Initialization
-
-When user runs `/resume-builder`, immediately call:
-
-```
-start_session({
-    "approach": "from_scratch" or "improve_existing",
-    "target_role": "[optional target role]"
-})
-```
-
-Store the returned `session_id` in your conversation context and use it for ALL subsequent tool calls.
-
 ### Loading Previous Sessions
 
-At the start of the command, check if the user wants to continue a previous session:
+At the start of the command, call the read-only listing before creating anything:
 
 ```
 list_sessions() → returns available sessions with metadata
@@ -66,6 +76,23 @@ If continuing, call:
 ```
 load_session({"session_id": "resume_YYYYMMDD_HHMMSS"})
 ```
+
+### Session Initialization
+
+`start_session` creates a persistent file; selecting this skill or saying “start
+fresh” is not itself write authority. If the user chooses a fresh session, show
+an exact preview of the approach, target role, and new session destination, then
+obtain explicit confirmation before calling:
+
+```
+start_session({
+    "approach": "from_scratch" or "improve_existing",
+    "target_role": "[optional target role]"
+})
+```
+
+Store the returned `session_id` in conversation context, read back the created
+session, and use that ID for all subsequent confirmed tool calls.
 
 ### Tool Call Pattern
 
@@ -394,9 +421,9 @@ After gathering achievement details for a role, write professional bullet points
 **Examples:**
 
 ✅ **Good:**
-- "Launched new pricing model that increased MRR by 34% ($2.1M ARR) within 6 months through experimentation and customer research with 500+ users"
-- "Led cross-functional team of 12 (Eng, Design, Data) to ship ML recommendation engine, improving user engagement by 45% and reducing churn by 23%"
-- "Reduced cloud infrastructure costs by $180K annually (28% reduction) by optimizing database queries and implementing caching strategy"
+- "[Action supported by source] produced [user-confirmed metric] over [confirmed period] ([source id], [source date])"
+- "[Leadership action] with [confirmed scope] delivered [supported outcome] ([source id], [source date])"
+- "[Cost or quality improvement] changed [confirmed baseline] to [confirmed result]; absent values remain Unknown ([source id], [source date])"
 
 ❌ **Bad (vague, no metrics):**
 - "Helped with pricing strategy"
@@ -548,9 +575,9 @@ LinkedIn profiles differ from resumes — they're more conversational, searchabl
 [Current Role] | [Key Value Proposition] | [Notable Achievement or Expertise]
 
 **Examples:**
-- "Senior Product Manager | Building AI-Powered Tools | Ex-Google, Stanford MBA"
-- "VP Engineering | Scaling Teams & Infrastructure | $50M+ in Cost Savings"
-- "Growth Marketing Leader | 10x User Growth | B2B SaaS Specialist"
+- "[Current role] | [evidence-backed specialty] | [supported value proposition]"
+- "[Leadership scope] | [confirmed expertise] | [user-confirmed metric, if supplied]"
+- "[Discipline] | [target-role keyword from current brief] | [supported domain]"
 
 **Character limit: 220 characters**
 
@@ -649,11 +676,10 @@ LinkedIn profiles differ from resumes — they're more conversational, searchabl
 
 - [ ] Professional photo (head-and-shoulders, professional attire, neutral background)
 - [ ] Custom background image (relevant to your industry/brand)
-- [ ] Headline uses all 220 characters effectively
+- [ ] Headline fits the current LinkedIn limit verified at execution time
 - [ ] About section tells a compelling story
 - [ ] Experience includes keywords for your target role
-- [ ] 50+ connections (minimum for searchability)
-- [ ] At least 5 skills with endorsements
+- [ ] Connection and skills choices reflect the user's real network and target role; no ranking threshold is assumed
 - [ ] Recommendations from former colleagues/managers
 - [ ] Custom LinkedIn URL (linkedin.com/in/yourname)
 
@@ -678,18 +704,17 @@ LinkedIn profiles differ from resumes — they're more conversational, searchabl
 3. **Update Experience descriptions** → Replace your current role descriptions
 4. **Add/reorder Skills** → Focus on top 3 most important
 5. **Get a professional photo** → If you don't have one already
-6. **Ask for recommendations** → From 2-3 recent colleagues/managers
+6. **Ask for recommendations** → From appropriate colleagues or managers chosen by the user
 
 ---
 
 ### SEO Tips for LinkedIn
 
-Your profile will rank higher in searches if you:
-- Include target keywords 3-4 times naturally (role titles you want)
-- Keep profile 100% complete (LinkedIn's measure)
-- Stay active (post, comment, engage weekly)
-- Get endorsed for top skills
-- Join relevant groups in your industry
+Without a current, cited LinkedIn source, do not promise ranking outcomes or use
+fixed keyword, completeness, connection, endorsement, or activity thresholds.
+Offer evidence-bounded hygiene instead: use accurate target-role language where
+it reads naturally, complete fields the user genuinely wants public, and keep
+claims consistent with the confirmed resume and source ledger.
 
 ---
 
@@ -975,7 +1000,7 @@ Before finalizing resume and LinkedIn profile, verify:
 
 **Be a quality filter:**
 - Weak bullet: "Managed the project team"
-- Strong bullet: "Led cross-functional team of 8 to deliver $2M product launch 3 weeks ahead of schedule, resulting in 50K users in first month"
+- Evidence-bounded bullet: "[Leadership action] with [confirmed team scope] delivered [supported outcome] by [confirmed date] ([source id], [source date]); [user-confirmed metric] or Unknown"
 
 **Connect the dots:**
 - Link achievements to career ladder competencies
@@ -1045,7 +1070,7 @@ When you've listed all your roles, type "DONE WITH ROLES"
 **Dex:** [Confirms roles, moves to achievement extraction]
 
 ```markdown
-## Role: Senior Product Manager at TechCo
+## Role: [Confirmed Job Title] at [Confirmed Company]
 
 **Dates:** Jan 2020 — Present
 

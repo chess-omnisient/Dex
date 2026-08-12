@@ -298,9 +298,52 @@ function reconcileCapabilities(vaultRoot, profile, reporter, dryRun, authority =
   }
 }
 
+function provisionMutationTargets(vaultRoot, options) {
+  const targets = [];
+  const add = (relativePath, kind) => targets.push({ path: relativePath, kind });
+
+  if (options.installConfigOnly) {
+    add('.mcp.json', 'file');
+    add('core/paths.json', 'file');
+  } else if (options.lifecycleOnly) {
+    add('System/user-profile.yaml', 'file');
+    add('System/.dex', 'directory');
+  } else {
+    for (const relativePath of contract.para_directories || []) add(relativePath, 'directory');
+    for (const relativePath of Object.values(contract.seed_files || {})) add(relativePath, 'file');
+    for (const definition of Object.values(portableContract.capabilities || {})) {
+      for (const relativePath of definition.folders || []) add(relativePath, 'directory');
+    }
+    for (const [relativePath, kind] of [
+      ['System/user-profile.yaml', 'file'],
+      ['System/pillars.yaml', 'file'],
+      ['System/.onboarding-complete', 'file'],
+      ['System/.dex', 'directory'],
+      ['CLAUDE.md', 'file'],
+      ['.mcp.json', 'file'],
+      ['core/paths.json', 'file'],
+    ]) add(relativePath, kind);
+  }
+
+  if (options.sessionFile) {
+    const sessionPath = path.resolve(options.sessionFile);
+    const relativeSession = path.relative(vaultRoot, sessionPath);
+    if (
+      relativeSession.startsWith(`..${path.sep}`)
+      || relativeSession === '..'
+      || path.isAbsolute(relativeSession)
+    ) throw new Error('--session-file must stay inside the vault');
+    add(relativeSession.split(path.sep).join('/'), 'file');
+  }
+
+  return targets.filter((target, index, all) => all.findIndex(
+    candidate => candidate.path === target.path && candidate.kind === target.kind,
+  ) === index);
+}
+
 function routeCapabilityAuthority(
   vaultRoot,
-  { preflightOnly = true } = {},
+  { preflightOnly = true, mutationTargets = [], targetsOnly = false } = {},
 ) {
   const python = process.env.DEX_CAPABILITY_PYTHON
     || process.env.DEX_PYTHON
@@ -313,11 +356,13 @@ function routeCapabilityAuthority(
     python,
     [
       path.join(repoRoot, 'core', 'capabilities.py'),
-      preflightOnly ? '--preflight' : '--reconcile',
+      targetsOnly ? '--preflight-mutation-targets' : (preflightOnly ? '--preflight' : '--reconcile'),
       '--vault',
       vaultRoot,
       '--contract',
       contractPath,
+      '--mutation-targets-json',
+      JSON.stringify(mutationTargets),
     ],
     {
       cwd: repoRoot,
@@ -599,8 +644,20 @@ function provision(options) {
     return reporter.summary;
   }
 
+  let mutationTargets;
+  try {
+    mutationTargets = provisionMutationTargets(vaultRoot, options);
+  } catch (error) {
+    reporter.error(error.message);
+    return reporter.summary;
+  }
+
   if (options.installConfigOnly) {
     try {
+      reporter.summary.capability_authority = routeCapabilityAuthority(
+        vaultRoot,
+        { mutationTargets, targetsOnly: true },
+      );
       return provisionInstallerConfig(options, vaultRoot, reporter);
     } catch (error) {
       reporter.error(error.message);
@@ -616,7 +673,7 @@ function provision(options) {
     try {
       reporter.summary.capability_authority = routeCapabilityAuthority(
         vaultRoot,
-        { preflightOnly: true },
+        { preflightOnly: true, mutationTargets },
       );
       reporter.summary.lifecycle_executor = routeAdoptionThroughLifecycleService(
         vaultRoot,
@@ -656,7 +713,7 @@ function provision(options) {
   try {
     const capabilityAuthority = routeCapabilityAuthority(
       vaultRoot,
-      { preflightOnly: true },
+      { preflightOnly: true, mutationTargets },
     );
     reporter.summary.capability_authority = capabilityAuthority;
     if (options.adopt || options.onboard) {
@@ -906,6 +963,7 @@ module.exports = {
   deepFillMissing,
   parseArgs,
   pathExports,
+  provisionMutationTargets,
   provision,
   routeAdoptionThroughLifecycleService,
   routeCapabilityAuthority,

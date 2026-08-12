@@ -33,6 +33,27 @@ Treat customer intelligence as an evidence ledger, not as memory or a polished g
 
 ---
 
+## Method
+
+Resolve the requested customer or time window before gathering. Build a dated
+source ledger from meeting notes, person pages, feedback captures, and project
+records. Preserve exact quotes separately from paraphrases, deduplicate copied
+records, and distinguish independent mentions from repetitions. Classify every
+theme, frequency, trend, sentiment, and roadmap connection as observed, inferred,
+contradictory, stale, or unknown. Compare supporting and disconfirming evidence,
+then produce recommendations only where coverage is sufficient. Keep the entire
+analysis read-only unless the user separately approves an exact write preview.
+
+## Output contract
+
+Return the resolved scope and coverage, source ledger, deduplication decisions,
+themes with independent-source counts, exact quotes with provenance, conflicting
+or missing evidence, and recommendations awaiting human judgment. Counts must
+state their denominator and exclude unknown or duplicate records. When evidence
+cannot support a conclusion, output `insufficient evidence` rather than a weak
+theme. End with the save state and, only after a confirmed write, the destination,
+byte or diff receipt, and read-back result. Never call a draft saved or current.
+
 ## Step 1: Gather Customer Feedback
 
 Search across multiple sources for customer mentions:

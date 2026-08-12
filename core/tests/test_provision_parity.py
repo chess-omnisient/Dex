@@ -209,6 +209,70 @@ def test_onboarding_refuses_non_directory_skill_ancestor_before_any_vault_mutati
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize(
+    ("unsafe_target", "target_kind"),
+    (
+        ("System", "directory"),
+        ("core", "directory"),
+        ("CLAUDE.md", "file"),
+        (".mcp.json", "file"),
+    ),
+)
+def test_onboarding_refuses_symlinked_mutation_targets_before_any_write(
+    tmp_path: Path,
+    unsafe_target: str,
+    target_kind: str,
+) -> None:
+    vault = _prepare_provision_vault(tmp_path)
+    outside = tmp_path / f"outside-{unsafe_target.replace('/', '-') }"
+    target = vault / unsafe_target
+    if target_kind == "directory":
+        target.rename(outside)
+        target.symlink_to(outside, target_is_directory=True)
+    else:
+        outside.write_text(
+            '{"mcpServers": {}}\n' if unsafe_target == ".mcp.json" else "outside bytes\n",
+            encoding="utf-8",
+        )
+        if target.exists() or target.is_symlink():
+            target.unlink()
+        target.symlink_to(outside)
+    before_vault = _snapshot_tree(vault)
+    before_outside = _snapshot_tree(outside) if outside.is_dir() else outside.read_bytes()
+
+    completed = _invoke_provision(vault, "--onboard")
+
+    assert completed.returncode != 0
+    errors = " ".join(json.loads(completed.stdout)["errors"]).lower()
+    assert "symlink" in errors or "unsafe" in errors
+    assert _snapshot_tree(vault) == before_vault
+    after_outside = _snapshot_tree(outside) if outside.is_dir() else outside.read_bytes()
+    assert after_outside == before_outside
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_onboarding_rejects_outside_session_file_before_any_write(tmp_path: Path) -> None:
+    vault = _prepare_provision_vault(tmp_path)
+    outside_session = tmp_path / "outside-session.json"
+    outside_session.write_text('{"private": true}\n', encoding="utf-8")
+    before_vault = _snapshot_tree(vault)
+    before_session = outside_session.read_bytes()
+
+    completed = _invoke_provision(
+        vault,
+        "--onboard",
+        "--session-file",
+        str(outside_session),
+    )
+
+    assert completed.returncode != 0
+    errors = " ".join(json.loads(completed.stdout)["errors"]).lower()
+    assert "session" in errors and "inside the vault" in errors
+    assert _snapshot_tree(vault) == before_vault
+    assert outside_session.read_bytes() == before_session
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_onboarding_dry_run_and_apply_upgrade_one_known_prior_room_payload(
     tmp_path: Path,
 ) -> None:

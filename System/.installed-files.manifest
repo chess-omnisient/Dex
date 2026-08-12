@@ -34,6 +34,7 @@
 .claude/hooks/tests/adapter-runner.test.cjs
 .claude/hooks/tests/auto-link-gate.test.cjs
 .claude/hooks/tests/auto-link-people.test.cjs
+.claude/hooks/tests/career-evidence-capture.test.cjs
 .claude/hooks/tests/connection-health-checker.test.cjs
 .claude/hooks/tests/context-injectors.test.cjs
 .claude/hooks/tests/data-safety-instructions.test.cjs
@@ -1149,6 +1150,7 @@ core/tests/test_release_publish_draft_first.py
 core/tests/test_release_tag_uniqueness.py
 core/tests/test_release_tree_matches_tag.py
 core/tests/test_release_workflows_draft_first.py
+core/tests/test_resume_export_safety.py
 core/tests/test_review_retirement.py
 core/tests/test_ritual_intelligence_entrypoints.py
 core/tests/test_ritual_intelligence_runtime.py
