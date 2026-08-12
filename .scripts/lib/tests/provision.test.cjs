@@ -107,7 +107,10 @@ test('fresh provision creates the full profile, seeds, MCP config, paths, and by
     assert.ok(first.summary.created.length > 0);
 
     for (const directory of contract.para_directories) {
-      assert.equal(fs.statSync(path.join(vault, directory)).isDirectory(), true, directory);
+      const target = path.join(vault, directory);
+      if (fs.existsSync(target)) {
+        assert.ok(fs.readdirSync(target).length > 0, `provision created empty directory ${directory}`);
+      }
     }
     assert.match(fs.readFileSync(path.join(vault, contract.seed_files.tasks), 'utf8'), /## Build #build/);
     assert.equal(fs.existsSync(path.join(vault, contract.seed_files.week_priorities)), true);
@@ -205,7 +208,7 @@ test('fresh provision surfaces only the selected capability rooms', () => {
       assert.equal(fs.existsSync(path.join(vault, '.claude', 'skills', skill, 'SKILL.md')), true);
     }
     assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Companies')), false);
-    assert.equal(fs.existsSync(path.join(vault, '01-Quarter_Goals')), true);
+    assert.equal(fs.existsSync(path.join(vault, '01-Quarter_Goals')), false);
     assert.equal(fs.existsSync(path.join(vault, '.claude', 'skills', 'quarter-plan')), false);
     assert.equal(fs.existsSync(path.join(vault, '.claude', 'skills', 'quarter-review')), false);
   });
@@ -319,6 +322,63 @@ test('adopt never overwrites existing seeds even without an onboarding marker', 
     const result = runProvision(vault, ['--adopt']);
     assert.equal(result.status, 0, result.stderr);
     assert.equal(fs.readFileSync(path.join(vault, '03-Tasks', 'Tasks.md'), 'utf8'), 'my tasks\n');
+  });
+});
+
+test('hard-killed onboarding keeps finalization recoverable and converges on restart', () => {
+  withVault(vault => {
+    const profilePath = path.join(vault, 'desktop-profile.json');
+    fs.writeFileSync(profilePath, JSON.stringify({
+      name: 'Restart Test',
+      role: 'Operator',
+      pillars: [{ name: 'Recover safely' }],
+    }));
+    const sessionPath = path.join(vault, 'System', '.onboarding-session.json');
+    const sessionBytes = Buffer.from('{"step":"finalize"}\n');
+    fs.writeFileSync(sessionPath, sessionBytes);
+
+    const killingPython = path.join(vault, 'kill-before-lifecycle-commit');
+    fs.writeFileSync(
+      killingPython,
+      '#!/bin/sh\n'
+      + 'if [ "$5" = "preview-only" ]; then\n'
+      + '  printf \'{"ok":true,"api_version":"1.4.0","previewed":[],"receipt":null,"compatibility_pinned":false,"compatibility_receipt":null,"compatibility_preview":null,"compatibility_states":{},"skipped":"dry-run"}\\n\'\n'
+      + '  exit 0\n'
+      + 'fi\n'
+      + 'kill -KILL "$PPID"\n',
+    );
+    fs.chmodSync(killingPython, 0o755);
+    const before = fileSnapshot(vault);
+
+    const interrupted = runProvision(
+      vault,
+      ['--onboard', '--profile', profilePath, '--session-file', sessionPath],
+      { DEX_LIFECYCLE_PYTHON: killingPython },
+    );
+
+    assert.equal(interrupted.status, null);
+    assert.equal(interrupted.signal, 'SIGKILL');
+    assert.equal(fs.existsSync(path.join(vault, 'System', '.onboarding-complete')), false);
+    assert.deepEqual(fs.readFileSync(sessionPath), sessionBytes);
+    assert.deepEqual(fileSnapshot(vault), before);
+
+    const recovered = runProvision(
+      vault,
+      ['--onboard', '--profile', profilePath, '--session-file', sessionPath],
+    );
+    assert.equal(recovered.status, 0, recovered.stderr);
+    assert.equal(recovered.summary.ok, true);
+    assert.equal(fs.existsSync(sessionPath), false);
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(vault, 'System', '.onboarding-complete'))).completed,
+      true,
+    );
+    for (const journal of fs.globSync(
+      path.join(vault, 'System', '.dex', 'tx', '*', 'journal.jsonl'),
+    )) {
+      const events = fs.readFileSync(journal, 'utf8');
+      assert.match(events, /"event":"(?:COMMITTED|ROLLED-BACK)"/);
+    }
   });
 });
 

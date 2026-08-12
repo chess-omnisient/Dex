@@ -14,6 +14,13 @@ import yaml
 
 from core import capabilities
 from core.lifecycle import service
+from core.lifecycle.catalog import canonical_catalog_bytes
+from core.tests.lifecycle_test_helpers import (
+    write_bridge_release,
+    write_file,
+    write_manifest,
+)
+from core.tests.test_adoption_transaction import _document
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = REPO_ROOT / "packages/dex-contracts/dist/portable-vault.contract.json"
@@ -91,6 +98,27 @@ def _snapshot_tree(root: Path) -> dict[str, tuple[str, bytes | str]]:
         elif candidate.is_dir():
             snapshot[relative] = ("directory", "")
     return snapshot
+
+
+def _install_adoptable_lifecycle_fixture(vault: Path) -> None:
+    payloads = {
+        "alpha": {
+            ".claude/skills/alpha/SKILL.md": b"# alpha\n",
+        }
+    }
+    manifest = write_manifest(
+        vault,
+        [path for files in payloads.values() for path in files],
+    )
+    document = _document(manifest, payloads)
+    write_file(
+        vault,
+        "System/.release-catalog.json",
+        canonical_catalog_bytes(document),
+    )
+    for relative, content in payloads["alpha"].items():
+        write_file(vault, relative, content)
+    write_bridge_release(vault)
 
 
 def test_installer_routes_bootstrap_config_to_sanctioned_provision_contract() -> None:
@@ -206,8 +234,283 @@ def test_onboarding_rolls_back_every_write_when_a_late_target_fails(
     assert summary.get("rolled_back") is True
     assert summary["created"] == []
     assert summary["removed"] == []
-    assert summary["mutation_receipt"]["declared_paths"] == []
-    assert after == before
+    failed = summary["provision_transaction_failure"]
+    assert failed["terminal"] is True
+    assert failed["transaction_ids"]
+    declared = set(summary["mutation_receipt"]["declared_paths"])
+    changed = {
+        path
+        for path in set(before) | set(after)
+        if before.get(path) != after.get(path)
+    }
+    assert changed
+    assert changed <= declared
+    assert all(path == "System/.dex" or path.startswith("System/.dex/tx") for path in changed)
+    assert {
+        path: value
+        for path, value in after.items()
+        if not path.startswith("System/.dex")
+    } == {
+        path: value
+        for path, value in before.items()
+        if not path.startswith("System/.dex")
+    }
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize(
+    "crash_seam",
+    (
+        "after-begin",
+        "after-snapshot",
+        "mid-apply:0",
+        "after-apply",
+        "after-verify",
+        "after-commit-record",
+    ),
+)
+def test_real_onboarding_recovers_every_direct_transaction_crash_seam(
+    tmp_path: Path,
+    crash_seam: str,
+) -> None:
+    vault = _prepare_provision_vault(tmp_path)
+    profile = tmp_path / "profile.json"
+    profile.write_text(
+        json.dumps({"name": "Crash Test", "pillars": [{"name": "Recover"}]}),
+        encoding="utf-8",
+    )
+    session = vault / "System/.onboarding-session.json"
+    session_bytes = b'{"step":"finalize"}\n'
+    session.write_bytes(session_bytes)
+    protected = vault / "05-Areas/Do-Not-Touch/sentinel.md"
+    protected.parent.mkdir(parents=True)
+    protected.write_bytes(b"user-owned\n")
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"outside-owned\n")
+    custom_link = vault / "user-owned-link"
+    custom_link.symlink_to(outside)
+
+    interrupted = _invoke_provision(
+        vault,
+        "--onboard",
+        "--profile",
+        str(profile),
+        "--session-file",
+        str(session),
+        env={**os.environ, "DEX_TX_TEST_STOP_AFTER": crash_seam},
+    )
+
+    assert interrupted.returncode != 0
+    marker = vault / "System/.onboarding-complete"
+    assert marker.exists() or session.exists()
+    if not marker.exists():
+        assert session.read_bytes() == session_bytes
+    assert protected.read_bytes() == b"user-owned\n"
+    assert custom_link.is_symlink() and custom_link.resolve() == outside
+    assert outside.read_bytes() == b"outside-owned\n"
+
+    provision_plans: list[list[dict[str, object]]] = []
+    for journal in sorted((vault / "System/.dex/tx").glob("*/journal.jsonl")):
+        records = [json.loads(line) for line in journal.read_text().splitlines()]
+        begin = next((record for record in records if record["event"] == "BEGIN"), None)
+        if begin and begin["payload"].get("operation") == "onboarding-provision":
+            provision_plans.append(begin["payload"]["plan"])
+    assert provision_plans
+    plan_paths = [entry["relative"] for entry in provision_plans[-1]]
+    marker_index = plan_paths.index("System/.onboarding-complete")
+    session_index = plan_paths.index("System/.onboarding-session.json")
+    assert all(
+        index < marker_index
+        for index, relative in enumerate(plan_paths)
+        if relative not in {
+            "System/.onboarding-complete",
+            "System/.onboarding-session.json",
+        }
+    )
+    assert marker_index < session_index
+
+    recovered = _invoke_provision(
+        vault,
+        "--onboard",
+        "--profile",
+        str(profile),
+        "--session-file",
+        str(session),
+    )
+    assert recovered.returncode == 0, recovered.stderr
+    recovered_summary = json.loads(recovered.stdout)
+    assert recovered_summary["ok"] is True
+    assert marker.is_file()
+    assert not session.exists()
+    assert protected.read_bytes() == b"user-owned\n"
+    assert custom_link.is_symlink() and custom_link.resolve() == outside
+    assert outside.read_bytes() == b"outside-owned\n"
+
+    committed: set[str] = set()
+    for journal in sorted((vault / "System/.dex/tx").glob("*/journal.jsonl")):
+        events = {
+            json.loads(line)["event"]
+            for line in journal.read_text(encoding="utf-8").splitlines()
+        }
+        assert len(events & {"COMMITTED", "ROLLED-BACK"}) == 1
+        if "COMMITTED" in events:
+            committed.add(journal.parent.name)
+    assert committed <= set(recovered_summary["mutation_receipt"]["transaction_ids"])
+
+    settled = _snapshot_tree(vault)
+    repeated = _invoke_provision(
+        vault,
+        "--onboard",
+        "--profile",
+        str(profile),
+        "--session-file",
+        str(session),
+    )
+    assert repeated.returncode == 0, repeated.stderr
+    repeated_summary = json.loads(repeated.stdout)
+    assert repeated_summary["created"] == []
+    assert repeated_summary["removed"] == []
+    assert _snapshot_tree(vault) == settled
+    assert committed <= set(repeated_summary["mutation_receipt"]["transaction_ids"])
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_real_adopt_recovers_a_lifecycle_commit_after_its_receipt_is_lost(
+    tmp_path: Path,
+) -> None:
+    vault = _prepare_provision_vault(
+        tmp_path,
+        profile_text="name: Existing User\ncustom: keep\n",
+        companies_default=True,
+    )
+    session = vault / "System/.onboarding-session.json"
+    session_bytes = b'{"step":"finalize"}\n'
+    session.write_bytes(session_bytes)
+
+    interrupted = _invoke_provision(
+        vault,
+        "--adopt",
+        "--session-file",
+        str(session),
+        env={**os.environ, "DEX_TX_TEST_STOP_AFTER": "after-commit-record"},
+    )
+
+    assert interrupted.returncode != 0
+    assert not (vault / "System/.onboarding-complete").exists()
+    assert session.read_bytes() == session_bytes
+    committed = {
+        journal.parent.name
+        for journal in (vault / "System/.dex/tx").glob("*/journal.jsonl")
+        if '"event":"COMMITTED"' in journal.read_text(encoding="utf-8")
+    }
+    assert len(committed) == 1
+
+    recovered = _invoke_provision(
+        vault,
+        "--adopt",
+        "--session-file",
+        str(session),
+    )
+    assert recovered.returncode == 0, recovered.stderr
+    summary = json.loads(recovered.stdout)
+    assert summary["ok"] is True
+    assert (vault / "System/.onboarding-complete").is_file()
+    assert not session.exists()
+    profile = yaml.safe_load(
+        (vault / "System/user-profile.yaml").read_text(encoding="utf-8")
+    )
+    assert profile["capabilities"]["companies"]["enabled"] is True
+    assert committed <= set(summary["mutation_receipt"]["transaction_ids"])
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize(
+    ("transaction_seam", "adoption_seam"),
+    (
+        ("after-commit-record", None),
+        (None, "after-receipt"),
+        (None, "after-ledger"),
+    ),
+)
+def test_child_provisioner_recovers_catalogue_adoption_finalization_boundaries(
+    tmp_path: Path,
+    transaction_seam: str | None,
+    adoption_seam: str | None,
+) -> None:
+    vault = _prepare_provision_vault(
+        tmp_path,
+        profile_text=(
+            "name: Existing User\n"
+            "custom: keep\n"
+            "capabilities:\n"
+            "  career:\n"
+            "    enabled: true\n"
+            "  companies:\n"
+            "    enabled: true\n"
+            "  quarter_goals:\n"
+            "    enabled: true\n"
+        ),
+    )
+    _install_adoptable_lifecycle_fixture(vault)
+    session = vault / "System/.onboarding-session.json"
+    session_bytes = b'{"step":"finalize"}\n'
+    session.write_bytes(session_bytes)
+    environment = dict(os.environ)
+    if transaction_seam is not None:
+        environment["DEX_TX_TEST_STOP_AFTER"] = transaction_seam
+    if adoption_seam is not None:
+        environment["DEX_ADOPTION_TEST_STOP_AFTER"] = adoption_seam
+
+    interrupted = _invoke_provision(
+        vault,
+        "--adopt",
+        "--session-file",
+        str(session),
+        env=environment,
+    )
+
+    assert interrupted.returncode != 0
+    assert not (vault / "System/.onboarding-complete").exists()
+    assert session.read_bytes() == session_bytes
+    adoption_journals = []
+    for journal in (vault / "System/.dex/tx").glob("*/journal.jsonl"):
+        records = [json.loads(line) for line in journal.read_text().splitlines()]
+        if any(record["event"] == "ADOPTION-INTENT" for record in records):
+            adoption_journals.append((journal, records))
+    assert len(adoption_journals) == 1
+    journal, records = adoption_journals[0]
+    assert sum(record["event"] == "COMMITTED" for record in records) == 1
+    transaction_id = journal.parent.name
+
+    recovered = _invoke_provision(
+        vault,
+        "--adopt",
+        "--session-file",
+        str(session),
+    )
+
+    assert recovered.returncode == 0, recovered.stderr
+    summary = json.loads(recovered.stdout)
+    assert summary["ok"] is True
+    assert (vault / "System/.onboarding-complete").is_file()
+    assert not session.exists()
+    receipt = vault / f"System/.dex/adoptions/{transaction_id}.receipt.json"
+    assert receipt.is_file()
+    assert transaction_id in summary["mutation_receipt"]["transaction_ids"]
+
+    settled = _snapshot_tree(vault)
+    repeated = _invoke_provision(
+        vault,
+        "--adopt",
+        "--session-file",
+        str(session),
+    )
+    assert repeated.returncode == 0, repeated.stderr
+    repeated_summary = json.loads(repeated.stdout)
+    assert repeated_summary["created"] == []
+    assert repeated_summary["removed"] == []
+    assert _snapshot_tree(vault) == settled
+    assert transaction_id in repeated_summary["mutation_receipt"]["transaction_ids"]
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
@@ -317,6 +620,29 @@ def test_onboarding_rejects_outside_session_file_before_any_write(tmp_path: Path
     assert "session" in errors and "inside the vault" in errors
     assert _snapshot_tree(vault) == before_vault
     assert outside_session.read_bytes() == before_session
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_onboarding_rejects_an_adjacent_in_vault_session_before_any_write(
+    tmp_path: Path,
+) -> None:
+    vault = _prepare_provision_vault(tmp_path)
+    adjacent_session = vault / "System/.onboarding/other.json"
+    adjacent_session.parent.mkdir(parents=True)
+    adjacent_session.write_text('{"private": true}\n', encoding="utf-8")
+    before = _snapshot_tree(vault)
+
+    completed = _invoke_provision(
+        vault,
+        "--onboard",
+        "--session-file",
+        str(adjacent_session),
+    )
+
+    assert completed.returncode != 0
+    errors = " ".join(json.loads(completed.stdout)["errors"])
+    assert "System/.onboarding-session.json" in errors
+    assert _snapshot_tree(vault) == before
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")

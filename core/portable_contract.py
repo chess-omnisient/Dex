@@ -486,6 +486,32 @@ MUTATION_POLICY: dict[str, str] = {
     "runtime": "never",           # local machine state; updates never write
 }
 
+# First-run setup is a narrower authority than an update.  These are the only
+# file paths the provision planner may place in its crash-safe transaction.
+# Parent directories are created and recovered only as part of those file writes;
+# the provisioner never opens a separate empty-directory mutation path.
+ONBOARDING_PROVISION_PATHS = frozenset(
+    {
+        "System/user-profile.yaml",
+        "System/pillars.yaml",
+        "System/.onboarding-complete",
+        "System/.onboarding-session.json",
+        "CLAUDE.md",
+        ".mcp.json",
+        "core/paths.json",
+        "03-Tasks/Tasks.md",
+        "02-Week_Priorities/Week_Priorities.md",
+        "01-Quarter_Goals/Quarter_Goals.md",
+        "05-Areas/Career/Evidence/README.md",
+        "05-Areas/Companies/README.md",
+    }
+    | {
+        str(source["target_path"])
+        for room in CAPABILITIES.values()
+        for source in room.get("skill_sources", ())
+    }
+)
+
 CUSTOMIZATION_MIGRATION_SEAMS_VERSION = 0
 CUSTOMIZATION_MIGRATION_SEAM_PREFIXES = ("System/.dex/customization-migrations/",)
 CUSTOMIZATION_MIGRATION_SEAM_PATHS = ("CLAUDE-custom.md",)
@@ -540,8 +566,49 @@ def update_write_verdict(
         "mcp-registration",
         "legacy-qmd-reconciliation",
         "onboarding-context",
+        "onboarding-provision",
     ):
         raise ValueError(f"unknown write operation: {operation}")
+
+    if operation == "onboarding-provision":
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "outside-onboarding-provision",
+                None,
+                None,
+            )
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        if candidate in ONBOARDING_PROVISION_PATHS:
+            return WriteVerdict(
+                candidate,
+                True,
+                "write-onboarding-provision",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-onboarding-provision",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
+        )
 
     if operation == "capability-state":
         try:

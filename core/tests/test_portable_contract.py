@@ -390,6 +390,54 @@ def test_onboarding_context_operation_only_authorizes_the_live_profile() -> None
 @pytest.mark.parametrize(
     "path",
     [
+        "System/user-profile.yaml",
+        "System/pillars.yaml",
+        "System/.onboarding-complete",
+        "System/.onboarding-session.json",
+        "CLAUDE.md",
+        ".mcp.json",
+        "core/paths.json",
+        "03-Tasks/Tasks.md",
+        "02-Week_Priorities/Week_Priorities.md",
+        ".claude/skills/career-setup/SKILL.md",
+        "05-Areas/Career/Evidence/README.md",
+    ],
+)
+def test_onboarding_provision_operation_authorizes_only_declared_outputs(path: str) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=True,
+        operation="onboarding-provision",
+    )
+
+    assert verdict.allowed is True
+    assert verdict.action == "write-onboarding-provision"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "System/.onboarding/other.json",
+        "System/credentials/token.json",
+        ".claude/skills/not-a-room-skill/SKILL.md",
+        "05-Areas/Career/private.md",
+        "README.md",
+    ],
+)
+def test_onboarding_provision_operation_refuses_adjacent_and_denied_paths(path: str) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="onboarding-provision",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action in {"deny", "outside-onboarding-provision"}
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
         ".env",
         "System/.dex/customization-migrations/abc123/.env",
         "System/.dex/customization-migrations/abc123/private.pem",
