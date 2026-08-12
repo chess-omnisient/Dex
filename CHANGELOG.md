@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.96.0] — 🧭 Lens can now find the Dex built for your role (2026-08-12)
+
+Dex Lens is the private guide that looks at your own AI setup and suggests useful Dex capabilities without changing anything. Its first expansion covered the everyday work almost everyone shares. This release adds the next layer: thirty adoptable capabilities for sales, product, marketing, engineering, finance, customer success, operations, design, career development, and quarterly planning.
+
+**What this changes for you:**
+
+* **Lens can recommend a role pack instead of a generic pile of commands.** It now understands work such as account planning, campaign review, architecture decisions, month-end close, customer health, operational metrics, and design-system review. Those skills remain off until you choose to adopt them.
+* **Optional rooms are visible without pretending they are standalone switches.** Career and quarterly-planning skills are presented as the bundles they really are, including the setup and connected tools each room needs.
+* **Every new recommendation says what is and is not proved.** All thirty additions have shipped instructions and adoption support, but none is labelled behaviourally verified yet. Lens will show them as *supported* until a real workflow test earns the stronger label.
+* **The thinner role skills now have real working methods.** Seventeen short prompts were expanded with source discipline, explicit uncertainty, role-specific calculations or review methods, human authority boundaries, and recovery checks. Thirteen already-deep skills had their remaining evidence and safety gaps closed.
+* **A changed dormant skill can no longer slip into the catalogue or an optional room.** Role packs resolve through Dex's release catalogue, room skills carry one release-owned identity, and room activation checks those exact bytes before changing a profile or creating anything. A mismatch stops the operation with the user's existing state untouched.
+
+Lens still works the same way at the trust boundary: it reads the signed public catalogue, examines the person's own system locally, and offers advice. It does not receive their private working material or apply a recommendation for them.
+
 ## [1.95.2] — 🔎 Dex Lens now sees more of the work Dex can help with (2026-08-12)
 
 Dex Lens is the private guide that looks at your own AI setup and suggests useful Dex capabilities without changing anything. It previously knew about six things Dex can do. It now knows about twenty-five: the everyday work around reviews, meetings, commitments, decisions, market thinking, and keeping your work recoverable.
