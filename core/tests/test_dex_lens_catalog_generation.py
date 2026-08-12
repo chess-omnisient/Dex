@@ -20,6 +20,44 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = REPO_ROOT / "scripts/generate-dex-lens-catalog.py"
 REAL_REGISTRY = REPO_ROOT / "core/lens-catalog/registry.json"
 
+WAVE3_IDS = (
+    "account-plan",
+    "call-prep",
+    "deal-review",
+    "pipeline-health",
+    "pipeline-sync",
+    "customer-intel",
+    "feature-decision",
+    "roadmap",
+    "audience-intel",
+    "campaign-review",
+    "content-calendar",
+    "messaging-audit",
+    "architecture-decision",
+    "incident-review",
+    "tech-debt",
+    "board-prep",
+    "close-status",
+    "variance-analysis",
+    "expansion-opportunities",
+    "health-score",
+    "renewal-prep",
+    "metrics-review",
+    "process-audit",
+    "design-review",
+    "design-system-audit",
+    "career-setup",
+    "career-coach",
+    "resume-builder",
+    "quarter-plan",
+    "quarter-review",
+)
+WAVE3_ROOM_IDS = frozenset(
+    {"career-setup", "career-coach", "resume-builder", "quarter-plan", "quarter-review"}
+)
+WAVE3_ACTIVE_IDS = frozenset({"pipeline-sync"})
+WAVE3_LIFECYCLE_IDS = frozenset(WAVE3_IDS) - WAVE3_ROOM_IDS - WAVE3_ACTIVE_IDS
+
 
 def _signed_payload(envelope: dict) -> str:
     return json.dumps(
@@ -651,6 +689,49 @@ def test_broken_registry_refusal_is_not_a_signing_failure(tmp_path: Path, signin
 #
 # These two tests read core/lens-catalog/registry.json against the real release
 # root, so pin drift fails on the pull request that causes it.
+
+
+def test_wave3_source_partition_is_exact_and_resolves_to_unique_targets() -> None:
+    registry = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
+    wave3 = registry["entries"][-len(WAVE3_IDS) :]
+
+    assert registry["catalog_version"] == 2
+    assert len(registry["jobs"]) == 11
+    assert [job["job_id"] for job in registry["jobs"][-2:]] == [
+        "run-my-role",
+        "grow-my-career",
+    ]
+    assert len(registry["entries"]) == 55
+    assert tuple(entry["id"] for entry in wave3) == WAVE3_IDS
+    assert all(
+        evidence.get("coverage") == "supporting"
+        for entry in wave3
+        for evidence in entry["evidence"]
+        if evidence["kind"] == "test"
+    )
+    by_kind = {
+        kind: {entry["id"] for entry in wave3 if entry["source"]["kind"] == kind}
+        for kind in ("active-skill", "lifecycle-skill", "room-skill")
+    }
+    assert by_kind == {
+        "active-skill": WAVE3_ACTIVE_IDS,
+        "lifecycle-skill": WAVE3_LIFECYCLE_IDS,
+        "room-skill": WAVE3_ROOM_IDS,
+    }
+    expected_fields = {
+        "active-skill": {"kind", "path", "sha256", "byte_size"},
+        "lifecycle-skill": {"kind", "item_id"},
+        "room-skill": {"kind", "room", "skill"},
+    }
+    assert all(set(entry["source"]) == expected_fields[entry["source"]["kind"]] for entry in wave3)
+
+    pins = [resolve_skill_source(entry["source"], REPO_ROOT) for entry in wave3]
+    assert [pin.target_path for pin in pins] == [
+        f".claude/skills/{entry_id}/SKILL.md" for entry_id in WAVE3_IDS
+    ]
+    assert len({pin.target_path for pin in pins}) == len(pins)
+    pipeline = pins[WAVE3_IDS.index("pipeline-sync")]
+    assert pipeline.source_path == ".claude/skills/pipeline-sync/SKILL.md"
 
 
 def _registry_source_pin_drifts(registry_path: Path, release_root: Path) -> list[str]:
