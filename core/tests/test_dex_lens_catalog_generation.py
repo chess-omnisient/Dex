@@ -42,6 +42,8 @@ def _skill(root: Path, skill_id: str, description: str = "Use when planning a da
 
 def _registry(root: Path) -> None:
     skill_bytes = _skill(root, "daily-plan")
+    _write(root / "core/tests/test_commitments_skill.py", "# fixture test evidence\n")
+    _write(root / "docs/backup-restore.md", "# fixture documentation evidence\n")
     schema_source = REPO_ROOT / "core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json"
     _write(
         root / "core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json",
@@ -85,6 +87,7 @@ def _registry(root: Path) -> None:
                         "evidence": [
                             {
                                 "kind": "test",
+                                "coverage": "behavioral",
                                 "reference": "core/tests/test_commitments_skill.py",
                                 "summary": "Daily planning skill coverage exercises task creation boundaries.",
                             }
@@ -658,29 +661,36 @@ def _rewrite_registry_evidence(root: Path, evidence: list[dict[str, str]]) -> No
 
 
 @pytest.mark.parametrize(
-    ("kind", "reference", "expected_level"),
+    ("kind", "reference", "coverage", "expected_level"),
     (
-        ("test", "core/tests/test_commitments_skill.py", "verified"),
-        ("runtime-path", ".claude/skills/daily-plan/SKILL.md", "supported"),
-        ("doc", "docs/backup-restore.md", "supported"),
-        ("release-note", "CHANGELOG.md", "supported"),
+        ("test", "core/tests/test_commitments_skill.py", "behavioral", "verified"),
+        ("test", "core/tests/test_commitments_skill.py", "supporting", "supported"),
+        ("runtime-path", ".claude/skills/daily-plan/SKILL.md", None, "supported"),
+        ("doc", "docs/backup-restore.md", None, "supported"),
+        ("release-note", "CHANGELOG.md", None, "supported"),
     ),
 )
-def test_only_a_test_reference_earns_the_verified_evidence_level(
-    tmp_path: Path, kind: str, reference: str, expected_level: str
+def test_only_behavioral_test_evidence_earns_the_verified_evidence_level(
+    tmp_path: Path, kind: str, reference: str, coverage: str | None, expected_level: str
 ) -> None:
-    """A runtime path proves a capability ships, not that its behaviour is exercised.
+    """A test name alone must not turn supporting evidence into verified behaviour.
 
-    Levels are derived by the producer, never declared by the registry, so this is
-    the only place the distinction can be enforced. If runtime-path evidence were
-    to read as `verified`, an entry backed by nothing but its own shipped file
-    would be indistinguishable from one a test actually covers -- which is exactly
-    the overclaim the catalogue's evidence vocabulary exists to prevent.
+    The registry must say whether a test exercises the capability itself or merely
+    supports a related promise. That distinction is deliberately derived by the
+    producer: a review of shipped instructions, an adoption test, or a runtime
+    path cannot accidentally read as behaviourally proven.
     """
     _registry(tmp_path)
+    evidence = {
+        "kind": kind,
+        "reference": reference,
+        "summary": "Evidence level derivation probe.",
+    }
+    if coverage is not None:
+        evidence["coverage"] = coverage
     _rewrite_registry_evidence(
         tmp_path,
-        [{"kind": kind, "reference": reference, "summary": "Evidence level derivation probe."}],
+        [evidence],
     )
 
     result = _generate(tmp_path)
@@ -691,13 +701,50 @@ def test_only_a_test_reference_earns_the_verified_evidence_level(
     assert [item["level"] for item in evidence] == [expected_level]
 
 
-def test_real_entries_without_test_evidence_never_claim_verified(tmp_path: Path) -> None:
-    """No shipped entry may read as behaviourally proven on its own file alone.
+def test_generator_rejects_unclassified_or_missing_test_evidence(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    _rewrite_registry_evidence(
+        tmp_path,
+        [
+            {
+                "kind": "test",
+                "reference": "core/tests/test_commitments_skill.py",
+                "summary": "A test without an explicit scope must fail closed.",
+            }
+        ],
+    )
 
-    Wave 2 deliberately includes capabilities that no test exercises. Those entries
-    are honest only while their evidence declares the lower level, so this gate
-    reads the real catalogue rather than a fixture: it fails the moment an entry
-    without a test reference starts claiming `verified`.
+    unclassified = _generate(tmp_path)
+
+    assert unclassified.returncode == 1
+    assert "missing coverage" in unclassified.stderr
+
+    _registry(tmp_path)
+    _rewrite_registry_evidence(
+        tmp_path,
+        [
+            {
+                "kind": "test",
+                "coverage": "behavioral",
+                "reference": "core/tests/missing.py",
+                "summary": "A made-up test cannot be evidence.",
+            }
+        ],
+    )
+
+    missing = _generate(tmp_path)
+
+    assert missing.returncode == 1
+    assert "evidence 0 reference is missing or not a regular file" in missing.stderr
+
+
+def test_real_test_evidence_is_explicit_and_only_behavioral_evidence_verifies(tmp_path: Path) -> None:
+    """The real catalogue can only verify sources manually classified as behavioural.
+
+    This is the release-facing guard. Every test reference must have a narrow
+    coverage classification, and the emitted catalogue must match it exactly.
+    That makes an instruction-contract or adoption test visibly supporting evidence
+    until a behavioural test is genuinely added.
     """
     result = subprocess.run(
         [
@@ -717,24 +764,35 @@ def test_real_entries_without_test_evidence_never_claim_verified(tmp_path: Path)
     assert result.returncode == 0, result.stderr
 
     envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text())
-    overclaiming = {
-        capability["capability_id"]
-        for capability in envelope["catalogue"]["capabilities"]
-        if not any(item["source"].startswith("test: ") for item in capability["evidence"])
-        and any(item["level"] == "verified" for item in capability["evidence"])
-    }
-    assert not overclaiming, (
-        "these shipped capabilities claim verified evidence without a single test"
-        f" reference behind them: {sorted(overclaiming)}"
+    registry = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
+    test_evidence = [
+        (entry["id"], item)
+        for entry in registry["entries"]
+        for item in entry["evidence"]
+        if item["kind"] == "test"
+    ]
+    invalid_coverage = [
+        f"{entry_id}: {item['reference']} ({item.get('coverage')!r})"
+        for entry_id, item in test_evidence
+        if item.get("coverage") not in {"behavioral", "supporting"}
+    ]
+    assert not invalid_coverage, (
+        "every test evidence record must say whether it exercises the capability itself "
+        f"or only supports a related promise: {invalid_coverage}"
     )
-
-    # The gate is only meaningful while entries of both kinds actually exist.
-    levels = {
-        item["level"]
+    expected_verified_evidence = {
+        (entry_id, f"test: {item['reference']}")
+        for entry_id, item in test_evidence
+        if item["coverage"] == "behavioral"
+    }
+    verified_evidence = {
+        (capability["capability_id"], item["source"])
         for capability in envelope["catalogue"]["capabilities"]
         for item in capability["evidence"]
+        if item["level"] == "verified"
     }
-    assert levels == {"verified", "supported"}, (
-        "the shipped catalogue no longer contains both evidence levels, so this gate"
-        f" would pass without proving anything: {sorted(levels)}"
+    assert verified_evidence == expected_verified_evidence, (
+        "the released catalogue's verified evidence does not exactly match the test "
+        f"records classified as behavioural: expected {sorted(expected_verified_evidence)}, "
+        f"got {sorted(verified_evidence)}"
     )

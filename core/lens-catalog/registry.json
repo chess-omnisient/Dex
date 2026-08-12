@@ -65,6 +65,7 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_commitments_skill.py",
           "summary": "The planning path is covered where commitments become bounded, reviewable tasks."
         },
@@ -106,6 +107,7 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_work_server_weekly_priority_creation.py",
           "summary": "Weekly priority creation is covered through the Work MCP path."
         },
@@ -147,6 +149,7 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_process_meetings_soft_commitment_wiring.py",
           "summary": "Meeting processing is covered where soft commitments are detected and routed."
         },
@@ -188,6 +191,7 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "behavioral",
           "reference": "core/tests/test_doctor.py",
           "summary": "Doctor behavior is covered by the main health-check test suite."
         },
@@ -229,6 +233,7 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_relationship_radar_skill.py",
           "summary": "Relationship radar skill behavior is covered in the skill test."
         },
@@ -270,6 +275,7 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_learning_capture_command_name.py",
           "summary": "Learning capture command naming is pinned by tests."
         },
@@ -311,11 +317,13 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_review_retirement.py",
           "summary": "A dedicated test pins the end-of-day behaviour Dex ships: the review runs in the current conversation, and where a review already exists for today it checks that one rather than writing a competing second version. It reads the shipped instructions, not a live day."
         },
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_skill_delegated_gathering.py",
           "summary": "Covers the paired gathering instructions this review depends on for a large collection of notes, so the heavy reading step cannot be silently orphaned by a later edit."
         },
@@ -357,11 +365,13 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_instruction_honesty.py",
           "summary": "A dedicated test pins that the weekly review reads the person's own configured working week and lands on their last working day, rather than assuming everyone finishes on a Friday."
         },
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_skill_delegated_gathering.py",
           "summary": "Covers the paired gathering instructions the weekly review depends on, so the bulk reading step cannot be orphaned by a later edit."
         },
@@ -403,11 +413,13 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_instruction_honesty.py",
           "summary": "A dedicated test pins that this capability reports a source that is switched off or broken in Dex's honest wording, rather than letting a gap in the gathering pass as a finished brief."
         },
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_skill_delegated_gathering.py",
           "summary": "Covers the paired gathering instructions the prep depends on when the history is large, so the reading step cannot be orphaned by a later edit."
         },
@@ -449,6 +461,7 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_meeting_closeout_skill.py",
           "summary": "Dedicated tests pin the load-bearing promises: this is one meeting rather than a bulk catch-up, owners are named or honestly marked unknown, the person's setting for creating new people records is respected, no task is created without confirmation, and a meeting it cannot find is asked for rather than reconstructed. The tests read the shipped instructions, not a live meeting."
         },
@@ -490,6 +503,7 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_commitments_skill.py",
           "summary": "Dedicated tests pin the load-bearing promises: it reuses the existing scanner rather than building a second one, never creates a task without confirmation, says so plainly when the scan is unavailable instead of inventing a list, and reads back what it created before reporting. The tests read the shipped instructions, not a live scan."
         },
@@ -531,6 +545,7 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_adoption_effective_behavior.py",
           "summary": "Real behaviour coverage of how this capability is switched on and off again: the test adopts it through Dex's live change system, proves the change can be rewound exactly, and proves a rewind refuses rather than overwrite a file the person has since edited. That covers the switch-on path, not the review conversation itself."
         },
@@ -644,6 +659,7 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_adoption_effective_behavior.py",
           "summary": "Real behaviour coverage of how this capability is switched on and off again: the test adopts it through Dex's live change system, proves the change can be rewound exactly, and proves a rewind refuses rather than overwrite a file the person has since edited. That covers the switch-on path, not the recording conversation itself."
         },
@@ -685,6 +701,7 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_initiative_kickoff_skill.py",
           "summary": "Dedicated tests pin the load-bearing promises: success signals must be checkable, no connection to a goal is manufactured where none fits, nothing is created without confirmation, and the person's setting for creating new people records is respected. The tests read the shipped instructions, not a live kickoff."
         },
@@ -834,6 +851,7 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "supporting",
           "reference": "core/tests/test_adoption_effective_behavior.py",
           "summary": "Real behaviour coverage of how this capability is switched on and off again: the test adopts it through Dex's live change system, proves the change can be rewound exactly, and proves a rewind refuses rather than overwrite a file the person has since edited. That covers the switch-on path, not the reflection conversation itself."
         },
@@ -947,11 +965,13 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "behavioral",
           "reference": "core/tests/test_backup_vault.py",
           "summary": "Real behaviour coverage of the copying engine and its scheduler: the ladder of older copies keeps what it claims and never deletes the newest one, a real sign-in token never reaches the archive, an ordinary note that merely looks secret is still kept, and on a system without the supported scheduler nothing is installed and the equivalent instruction is printed instead."
         },
         {
           "kind": "test",
+          "coverage": "behavioral",
           "reference": "core/tests/test_doctor.py",
           "summary": "The health check's backup probe is covered directly: a recent, successful run that quietly stored less than a full copy is reported as broken rather than passing as fine."
         },
@@ -998,6 +1018,7 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "behavioral",
           "reference": "core/tests/test_backup_vault.py",
           "summary": "Real behaviour coverage of a single run: a successful run stores the set and records it, a failure records the actual error rather than a generic one, and a run that fails part-way leaves no half-written copy behind to be mistaken for a good one."
         },
@@ -1039,6 +1060,7 @@
       "evidence": [
         {
           "kind": "test",
+          "coverage": "behavioral",
           "reference": "core/tests/test_backup_vault.py",
           "summary": "Real behaviour coverage of all three modes: verification passes on an intact copy and detects a damaged one, the test mode unpacks only into a temporary folder, a real restore refuses the live location and any folder that is not empty, and a damaged newest copy points at the newest intact one instead."
         },

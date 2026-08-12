@@ -263,23 +263,36 @@ def _source(entry: Mapping[str, object], release_root: Path, *, context: str) ->
     }
 
 
-def _evidence(value: object, *, context: str) -> tuple[dict[str, str], ...]:
+def _evidence(
+    value: object, release_root: Path, *, context: str
+) -> tuple[dict[str, str], ...]:
     if not isinstance(value, list) or not value:
         raise LensCatalogError(f"{context} evidence must be a non-empty array")
     result = []
     for index, item in enumerate(value):
         item_context = f"{context} evidence {index}"
         raw = _mapping(item, context=item_context)
-        _exact_fields(raw, {"kind", "reference", "summary"}, context=item_context)
         kind = _text(raw.get("kind"), context=f"{item_context} kind", max_length=32)
         if kind not in {"test", "doc", "release-note", "runtime-path"}:
             raise LensCatalogError(f"{item_context} kind is not recognized")
-        reference = _text(raw.get("reference"), context=f"{item_context} reference", max_length=256)
+        if kind == "test":
+            _exact_fields(raw, {"kind", "coverage", "reference", "summary"}, context=item_context)
+            coverage = _text(raw.get("coverage"), context=f"{item_context} coverage", max_length=32)
+            if coverage not in {"behavioral", "supporting"}:
+                raise LensCatalogError(
+                    f"{item_context} coverage must be behavioral or supporting"
+                )
+        else:
+            _exact_fields(raw, {"kind", "reference", "summary"}, context=item_context)
+            coverage = "supporting"
+        reference, _ = _release_file(
+            release_root, raw.get("reference"), context=f"{item_context} reference"
+        )
         summary = _text(raw.get("summary"), context=f"{item_context} summary")
-        # Only a test earns "verified". A runtime path proves the capability ships,
-        # not that its behaviour is exercised, so it declares the lower level and an
-        # entry backed by nothing else cannot read as behaviourally proven.
-        level = "verified" if kind == "test" else "supported"
+        # A test earns "verified" only when it explicitly exercises the capability
+        # itself. Instruction-contract, adoption, and runtime evidence still support
+        # the entry, but cannot overclaim behavioural proof.
+        level = "verified" if kind == "test" and coverage == "behavioral" else "supported"
         result.append(
             {
                 "level": level,
@@ -454,7 +467,7 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
                 "jobs": jobs_served,
                 "prerequisites": _text_tuple(entry.get("prerequisites"), context=f"{context} prerequisites"),
                 "trade_offs": _text_tuple(entry.get("trade_offs"), context=f"{context} trade_offs"),
-                "evidence": _evidence(entry.get("evidence"), context=context),
+                "evidence": _evidence(entry.get("evidence"), release_root, context=context),
                 "brief": _brief(entry.get("brief"), context=context),
                 "compatibility": {
                     **compatibility,
