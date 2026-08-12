@@ -9,6 +9,7 @@ import json
 import stat
 import subprocess
 import urllib.error
+from collections.abc import Sequence
 from dataclasses import fields
 from pathlib import Path
 from types import SimpleNamespace
