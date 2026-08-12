@@ -648,3 +648,93 @@ def test_shipped_registry_builds_the_release_catalogue(tmp_path: Path, signing_k
     assert [capability["capability_id"] for capability in envelope["catalogue"]["capabilities"]] == [
         entry["id"] for entry in registry["entries"]
     ]
+
+
+def _rewrite_registry_evidence(root: Path, evidence: list[dict[str, str]]) -> None:
+    registry_path = root / "core/lens-catalog/registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry["entries"][0]["evidence"] = evidence
+    registry_path.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("kind", "reference", "expected_level"),
+    (
+        ("test", "core/tests/test_commitments_skill.py", "verified"),
+        ("runtime-path", ".claude/skills/daily-plan/SKILL.md", "supported"),
+        ("doc", "docs/backup-restore.md", "supported"),
+        ("release-note", "CHANGELOG.md", "supported"),
+    ),
+)
+def test_only_a_test_reference_earns_the_verified_evidence_level(
+    tmp_path: Path, kind: str, reference: str, expected_level: str
+) -> None:
+    """A runtime path proves a capability ships, not that its behaviour is exercised.
+
+    Levels are derived by the producer, never declared by the registry, so this is
+    the only place the distinction can be enforced. If runtime-path evidence were
+    to read as `verified`, an entry backed by nothing but its own shipped file
+    would be indistinguishable from one a test actually covers -- which is exactly
+    the overclaim the catalogue's evidence vocabulary exists to prevent.
+    """
+    _registry(tmp_path)
+    _rewrite_registry_evidence(
+        tmp_path,
+        [{"kind": kind, "reference": reference, "summary": "Evidence level derivation probe."}],
+    )
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text())
+    evidence = envelope["catalogue"]["capabilities"][0]["evidence"]
+    assert [item["level"] for item in evidence] == [expected_level]
+
+
+def test_real_entries_without_test_evidence_never_claim_verified(tmp_path: Path) -> None:
+    """No shipped entry may read as behaviourally proven on its own file alone.
+
+    Wave 2 deliberately includes capabilities that no test exercises. Those entries
+    are honest only while their evidence declares the lower level, so this gate
+    reads the real catalogue rather than a fixture: it fails the moment an entry
+    without a test reference starts claiming `verified`.
+    """
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(GENERATOR),
+            "--release-root",
+            str(REPO_ROOT),
+            "--output-dir",
+            str(tmp_path / "dist"),
+            "--issued-at",
+            "2026-08-11T12:00:00Z",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+    envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text())
+    overclaiming = {
+        capability["capability_id"]
+        for capability in envelope["catalogue"]["capabilities"]
+        if not any(item["source"].startswith("test: ") for item in capability["evidence"])
+        and any(item["level"] == "verified" for item in capability["evidence"])
+    }
+    assert not overclaiming, (
+        "these shipped capabilities claim verified evidence without a single test"
+        f" reference behind them: {sorted(overclaiming)}"
+    )
+
+    # The gate is only meaningful while entries of both kinds actually exist.
+    levels = {
+        item["level"]
+        for capability in envelope["catalogue"]["capabilities"]
+        for item in capability["evidence"]
+    }
+    assert levels == {"verified", "supported"}, (
+        "the shipped catalogue no longer contains both evidence levels, so this gate"
+        f" would pass without proving anything: {sorted(levels)}"
+    )

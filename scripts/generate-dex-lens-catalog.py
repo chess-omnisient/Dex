@@ -276,7 +276,10 @@ def _evidence(value: object, *, context: str) -> tuple[dict[str, str], ...]:
             raise LensCatalogError(f"{item_context} kind is not recognized")
         reference = _text(raw.get("reference"), context=f"{item_context} reference", max_length=256)
         summary = _text(raw.get("summary"), context=f"{item_context} summary")
-        level = "verified" if kind in {"test", "runtime-path"} else "supported"
+        # Only a test earns "verified". A runtime path proves the capability ships,
+        # not that its behaviour is exercised, so it declares the lower level and an
+        # entry backed by nothing else cannot read as behaviourally proven.
+        level = "verified" if kind == "test" else "supported"
         result.append(
             {
                 "level": level,
