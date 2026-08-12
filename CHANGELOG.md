@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.95.2] — 🔎 Dex Lens now sees more of the work Dex can help with (2026-08-12)
+
+Dex Lens is the private guide that looks at your own AI setup and suggests useful Dex capabilities without changing anything. It previously knew about six things Dex can do. It now knows about twenty-five: the everyday work around reviews, meetings, commitments, decisions, market thinking, and keeping your work recoverable.
+
+**What this changes for you:**
+
+* **Lens can make much more useful suggestions.** It can now recognise the routines around closing a day or week, preparing for and closing a meeting, following through on commitments, recording decisions, starting an initiative, understanding your market, and recovering your work when something goes wrong.
+* **The proof labels now mean what they say.** A capability is called *verified* only when a test exercises that capability itself. Tests that check its instructions or a related safety mechanism are still useful, but Lens calls them *supported* instead. A missing or vague evidence link stops the catalogue from being published at all.
+* **Nothing starts changing your own setup.** Lens remains a private, read-only guide. It does not send your working material to Dex or apply a recommendation for you.
+
+### 🧪 The catalogue is tested before a release can burn a version number
+
+The signed list that Lens downloads is now rehearsed in the same release environment before a version is created. Dex also checks its update-repair route from the messy kind of terminal environment a real person uses, rather than only from an unusually clean test setup. Those checks make a failed release stop before it can appear ready to download.
+
 ## [1.95.1] — 💾 Session snapshots actually save now — plus first-party backups, Pipedrive, and roomier daily rituals (2026-08-12)
 
 A larger release than usual: six pieces of work landed together, four of them from Chris, who has been running Dex hard and reporting what broke. Each is written up in full below.
