@@ -124,6 +124,34 @@ def test_capability_cli_starts_from_its_shipped_script_entrypoint() -> None:
     }
 
 
+def test_capability_cli_preflight_fails_closed_on_room_source_drift(
+    tmp_path: Path,
+) -> None:
+    contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    contract["capabilities"]["career"]["skill_sources"][0]["sha256"] = "0" * 64
+    drifted = tmp_path / "drifted-contract.json"
+    drifted.write_text(json.dumps(contract), encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "core/capabilities.py"),
+            "--preflight",
+            "--vault",
+            str(tmp_path / "vault"),
+            "--contract",
+            str(drifted),
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "identity" in result.stderr.lower() or "sha256" in result.stderr.lower()
+
+
 def test_room_missing_from_contract_registry_is_unknown(tmp_path: Path) -> None:
     contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
     contract["capabilities"].pop("career")
@@ -308,7 +336,7 @@ def test_toggle_refuses_to_overwrite_a_malformed_existing_profile(
     assert not (vault / "05-Areas/Career").exists()
 
 
-def test_reconcile_refreshes_enabled_skills_after_a_brain_update(
+def test_reconcile_refuses_to_overwrite_unrecognized_active_skill_bytes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -318,17 +346,97 @@ def test_reconcile_refreshes_enabled_skills_after_a_brain_update(
     monkeypatch.setattr(capabilities, "REPO_ROOT", vault)
     contract_path = _fake_contract_with_skill_pins(tmp_path, vault)
     profile_path = _profile(vault / "System/user-profile.yaml", career=True)
-    stale = vault / ".claude/skills/career-setup/SKILL.md"
-    stale.parent.mkdir(parents=True, exist_ok=True)
-    stale.write_text("stale release copy\n", encoding="utf-8")
+    custom = vault / ".claude/skills/career-setup/SKILL.md"
+    custom.parent.mkdir(parents=True, exist_ok=True)
+    custom.write_text("user-owned custom skill\n", encoding="utf-8")
+    original_profile = profile_path.read_bytes()
 
-    capabilities.reconcile_all(
-        vault,
-        profile_path=profile_path,
-        contract_path=contract_path,
+    with pytest.raises(capabilities.CapabilityError, match="identity|authoritative|target"):
+        capabilities.reconcile_all(
+            vault,
+            profile_path=profile_path,
+            contract_path=contract_path,
+        )
+
+    assert profile_path.read_bytes() == original_profile
+    assert custom.read_text(encoding="utf-8") == "user-owned custom skill\n"
+    assert not (vault / "05-Areas/Career").exists()
+    assert not (vault / ".claude/skills/career-coach").exists()
+
+
+@pytest.mark.parametrize("unsafe_kind", ("symlink", "custom-bytes"))
+def test_disable_preflights_active_skill_targets_before_profile_or_user_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_kind: str,
+) -> None:
+    vault = _fake_vault(tmp_path)
+    monkeypatch.setattr(capabilities, "REPO_ROOT", vault)
+    contract_path = _fake_contract_with_skill_pins(tmp_path, vault)
+    profile_path = _profile(vault / "System/user-profile.yaml", career=True)
+    original_profile = profile_path.read_bytes()
+    target = vault / ".claude/skills/resume-builder"
+
+    if unsafe_kind == "symlink":
+        protected = vault / "05-Areas/Do-Not-Touch"
+        protected.mkdir(parents=True)
+        (protected / "sentinel.md").write_text("preserve\n", encoding="utf-8")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.symlink_to(protected, target_is_directory=True)
+    else:
+        target.mkdir(parents=True)
+        (target / "SKILL.md").write_text("user-owned custom skill\n", encoding="utf-8")
+
+    with pytest.raises(capabilities.CapabilityError, match="target|symlink|identity|authoritative"):
+        capabilities.set_enabled(
+            "career",
+            False,
+            vault_root=vault,
+            profile_path=profile_path,
+            contract_path=contract_path,
+        )
+
+    assert profile_path.read_bytes() == original_profile
+    if unsafe_kind == "symlink":
+        assert target.is_symlink()
+        assert (vault / "05-Areas/Do-Not-Touch/sentinel.md").read_text(encoding="utf-8") == "preserve\n"
+    else:
+        assert (target / "SKILL.md").read_text(encoding="utf-8") == "user-owned custom skill\n"
+
+
+def test_reconcile_all_preflights_every_room_before_mutating_an_earlier_room(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _fake_vault(tmp_path)
+    monkeypatch.setattr(capabilities, "REPO_ROOT", vault)
+    contract_path = _fake_contract_with_skill_pins(tmp_path, vault)
+    profile_path = _profile(
+        vault / "System/user-profile.yaml",
+        career=True,
+        companies=True,
+        quarter_goals=True,
     )
+    protected = vault / "05-Areas/Do-Not-Touch"
+    protected.mkdir(parents=True)
+    (protected / "sentinel.md").write_text("preserve\n", encoding="utf-8")
+    unsafe = vault / ".claude/skills/quarter-review"
+    unsafe.parent.mkdir(parents=True, exist_ok=True)
+    unsafe.symlink_to(protected, target_is_directory=True)
 
-    assert "description: Test skill" in stale.read_text(encoding="utf-8")
+    with pytest.raises(capabilities.CapabilityError, match="target|symlink"):
+        capabilities.reconcile_all(
+            vault,
+            profile_path=profile_path,
+            contract_path=contract_path,
+        )
+
+    assert not (vault / "05-Areas/Career").exists()
+    assert not (vault / "05-Areas/Companies").exists()
+    assert not (vault / "01-Quarter_Goals").exists()
+    assert not (vault / ".claude/skills/career-setup").exists()
+    assert unsafe.is_symlink()
+    assert (protected / "sentinel.md").read_text(encoding="utf-8") == "preserve\n"
 
 
 def test_enable_preflights_dormant_assets_before_changing_profile_or_folders(

@@ -228,35 +228,22 @@ function copyMissing(source, target, reporter, dryRun) {
   } else reporter.skipped(target);
 }
 
-function snapshotTree(target) {
-  const observed = new Map();
-  function walk(candidate) {
-    if (!fs.existsSync(candidate)) return;
-    const stat = fs.lstatSync(candidate);
-    if (stat.isSymbolicLink()) {
-      observed.set(candidate, `link:${stat.mode & 0o777}:${fs.readlinkSync(candidate)}`);
-      return;
-    }
-    if (stat.isDirectory()) {
-      observed.set(candidate, `directory:${stat.mode & 0o777}`);
-      for (const entry of fs.readdirSync(candidate)) walk(path.join(candidate, entry));
-      return;
-    }
-    observed.set(candidate, `file:${stat.mode & 0o777}:${fs.readFileSync(candidate).toString('base64')}`);
-  }
-  walk(target);
-  return observed;
-}
-
-function reportTreeChanges(before, after, reporter) {
-  for (const candidate of new Set([...before.keys(), ...after.keys()])) {
-    if (before.get(candidate) === after.get(candidate)) continue;
-    if (after.has(candidate)) reporter.created(candidate);
-    else reporter.removed(candidate);
-  }
-}
-
 function reconcileCapabilities(vaultRoot, profile, reporter, dryRun) {
+  if (!dryRun) {
+    const result = routeCapabilityAuthority(vaultRoot, { preflightOnly: false });
+    for (const room of result.rooms || []) {
+      for (const relativePath of [...(room.created || []), ...(room.skills_surfaced || [])]) {
+        reporter.created(path.join(vaultRoot, ...relativePath.split('/')));
+      }
+      for (const relativePath of room.skills_hidden || []) {
+        reporter.removed(path.join(vaultRoot, ...relativePath.split('/')));
+      }
+    }
+    return result;
+  }
+
+  // A dry run reports the intended surfaces after the shared Python authority
+  // has validated all pins and targets. It never copies or removes a skill.
   for (const [room, definition] of Object.entries(portableContract.capabilities || {})) {
     const roomEnabled = capabilityEnabled(profile, room, definition);
     const roomSource = path.join(CAPABILITY_CATALOG, room);
@@ -272,17 +259,9 @@ function reconcileCapabilities(vaultRoot, profile, reporter, dryRun) {
         );
       }
       for (const skill of definition.skills || []) {
-        const source = path.join(roomSource, 'skills', skill);
         const target = path.join(vaultRoot, '.claude', 'skills', skill);
-        if (!fs.existsSync(source)) throw new Error(`Dormant skill is missing for ${room}: ${skill}`);
-        ensureDirectory(path.dirname(target), reporter, dryRun);
-        const before = dryRun ? null : snapshotTree(target);
-        if (!dryRun) {
-          fs.rmSync(target, { recursive: true, force: true });
-          fs.cpSync(source, target, { recursive: true });
-        }
-        if (dryRun) reporter.created(target);
-        else reportTreeChanges(before, snapshotTree(target), reporter);
+        ensureDirectory(path.dirname(target), reporter, true);
+        reporter.created(target);
       }
     } else {
       // Room folders contain user content and are never deleted. Only release-owned
@@ -290,13 +269,55 @@ function reconcileCapabilities(vaultRoot, profile, reporter, dryRun) {
       for (const skill of definition.skills || []) {
         const target = path.join(vaultRoot, '.claude', 'skills', skill);
         if (fs.existsSync(target)) {
-          const before = dryRun ? null : snapshotTree(target);
-          if (!dryRun) fs.rmSync(target, { recursive: true, force: true });
-          if (!dryRun) reportTreeChanges(before, snapshotTree(target), reporter);
-          else reporter.removed(target);
+          reporter.removed(target);
         }
       }
     }
+  }
+}
+
+function routeCapabilityAuthority(
+  vaultRoot,
+  { preflightOnly = true } = {},
+) {
+  const python = process.env.DEX_CAPABILITY_PYTHON
+    || process.env.DEX_PYTHON
+    || (process.platform === 'win32' ? 'python' : 'python3');
+  const repoRoot = path.resolve(__dirname, '..');
+  const separator = process.platform === 'win32' ? ';' : ':';
+  const contractPath = process.env.DEX_CAPABILITY_CONTRACT_PATH
+    || path.join(repoRoot, 'packages', 'dex-contracts', 'dist', 'portable-vault.contract.json');
+  const result = childProcess.spawnSync(
+    python,
+    [
+      path.join(repoRoot, 'core', 'capabilities.py'),
+      preflightOnly ? '--preflight' : '--reconcile',
+      '--vault',
+      vaultRoot,
+      '--contract',
+      contractPath,
+    ],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PYTHONPATH: process.env.PYTHONPATH
+          ? `${repoRoot}${separator}${process.env.PYTHONPATH}`
+          : repoRoot,
+      },
+    },
+  );
+  if (result.error) {
+    throw new Error(`Capability source authority could not start: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`Capability source authority refused provisioning: ${(result.stderr || result.stdout).trim()}`);
+  }
+  try {
+    return JSON.parse(result.stdout);
+  } catch (_) {
+    throw new Error('Capability source authority returned an invalid response');
   }
 }
 
@@ -571,6 +592,10 @@ function provision(options) {
       return reporter.summary;
     }
     try {
+      reporter.summary.capability_authority = routeCapabilityAuthority(
+        vaultRoot,
+        { preflightOnly: true },
+      );
       reporter.summary.lifecycle_executor = routeAdoptionThroughLifecycleService(
         vaultRoot,
         { previewOnly: options.dryRun },
@@ -607,6 +632,10 @@ function provision(options) {
   }
 
   try {
+    reporter.summary.capability_authority = routeCapabilityAuthority(
+      vaultRoot,
+      { preflightOnly: true },
+    );
     if (options.adopt || options.onboard) {
       try {
         reporter.summary.lifecycle_executor = routeAdoptionThroughLifecycleService(
@@ -850,6 +879,7 @@ module.exports = {
   pathExports,
   provision,
   routeAdoptionThroughLifecycleService,
+  routeCapabilityAuthority,
   reconcileCapabilities,
   updateClaudeContent,
 };

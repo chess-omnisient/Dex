@@ -38,7 +38,8 @@ import posixpath
 from dataclasses import dataclass
 from typing import Iterable
 
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 2
+SUPPORTED_CONTRACT_VERSIONS = (1, CONTRACT_VERSION)
 VAULT_SCHEMA_SUPPORTED = ">=1 <2"
 
 OWNERSHIP_CLASSES = ("brain", "vault", "seed", "generated", "runtime")
@@ -785,11 +786,57 @@ def legacy_shipped_runtime(paths: Iterable[str]) -> list[str]:
     ]
 
 
-def build_contract_schema() -> dict[str, object]:
-    """JSON Schema validating the committed contract document."""
+def build_contract_schema(
+    *,
+    contract_version: int = CONTRACT_VERSION,
+) -> dict[str, object]:
+    """JSON Schema for one supported portable-contract wire version."""
+    if contract_version not in SUPPORTED_CONTRACT_VERSIONS:
+        raise ValueError(f"unsupported portable contract version: {contract_version}")
+    capability_properties: dict[str, object] = {
+        "default_enabled": {"type": "boolean"},
+        "folders": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "minItems": 1,
+        },
+        "skills": {"type": "array", "items": {"type": "string"}},
+        "mcp": {"type": "array", "items": {"type": "string"}},
+        "features": {"type": "array", "items": {"type": "string"}},
+        "config": {"type": "string", "minLength": 1},
+    }
+    capability_required = ["default_enabled", "folders"]
+    if contract_version >= 2:
+        capability_required.extend(("skills", "skill_sources"))
+        capability_properties["skill_sources"] = {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "room",
+                    "skill",
+                    "source_path",
+                    "target_path",
+                    "sha256",
+                    "byte_size",
+                ],
+                "properties": {
+                    "room": {"type": "string", "minLength": 1},
+                    "skill": {"type": "string", "minLength": 1},
+                    "source_path": {"type": "string", "minLength": 1},
+                    "target_path": {"type": "string", "minLength": 1},
+                    "sha256": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$",
+                    },
+                    "byte_size": {"type": "integer", "minimum": 0},
+                },
+            },
+        }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://dex/contracts/portable-vault.schema.json",
+        "$id": f"https://dex/contracts/portable-vault.v{contract_version}.schema.json",
         "title": "Dex Portable Vault Ownership Contract",
         "type": "object",
         "additionalProperties": False,
@@ -806,7 +853,7 @@ def build_contract_schema() -> dict[str, object]:
             "capabilities",
         ],
         "properties": {
-            "contract_version": {"type": "integer", "minimum": 1},
+            "contract_version": {"const": contract_version},
             "source": {"const": "core/portable_contract.py"},
             "vault_schema_supported": {"type": "string", "minLength": 1},
             "mutation_policy": {
@@ -889,50 +936,8 @@ def build_contract_schema() -> dict[str, object]:
                 "additionalProperties": {
                     "type": "object",
                     "additionalProperties": False,
-                    "required": [
-                        "default_enabled",
-                        "folders",
-                        "skills",
-                        "skill_sources",
-                    ],
-                    "properties": {
-                        "default_enabled": {"type": "boolean"},
-                        "folders": {
-                            "type": "array",
-                            "items": {"type": "string", "minLength": 1},
-                            "minItems": 1,
-                        },
-                        "skills": {"type": "array", "items": {"type": "string"}},
-                        "skill_sources": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "additionalProperties": False,
-                                "required": [
-                                    "room",
-                                    "skill",
-                                    "source_path",
-                                    "target_path",
-                                    "sha256",
-                                    "byte_size",
-                                ],
-                                "properties": {
-                                    "room": {"type": "string", "minLength": 1},
-                                    "skill": {"type": "string", "minLength": 1},
-                                    "source_path": {"type": "string", "minLength": 1},
-                                    "target_path": {"type": "string", "minLength": 1},
-                                    "sha256": {
-                                        "type": "string",
-                                        "pattern": "^[0-9a-f]{64}$",
-                                    },
-                                    "byte_size": {"type": "integer", "minimum": 0},
-                                },
-                            },
-                        },
-                        "mcp": {"type": "array", "items": {"type": "string"}},
-                        "features": {"type": "array", "items": {"type": "string"}},
-                        "config": {"type": "string", "minLength": 1},
-                    },
+                    "required": capability_required,
+                    "properties": capability_properties,
                 },
             },
         },
@@ -957,10 +962,15 @@ def write_contract_package(dist_dir) -> dict[str, object]:
     return document
 
 
-def build_contract_document() -> dict[str, object]:
-    """The deterministic JSON view committed to packages/dex-contracts/dist."""
+def build_contract_document(
+    *,
+    contract_version: int = CONTRACT_VERSION,
+) -> dict[str, object]:
+    """The deterministic JSON view for one supported wire version."""
+    if contract_version not in SUPPORTED_CONTRACT_VERSIONS:
+        raise ValueError(f"unsupported portable contract version: {contract_version}")
     return {
-        "contract_version": CONTRACT_VERSION,
+        "contract_version": contract_version,
         "source": "core/portable_contract.py",
         "vault_schema_supported": VAULT_SCHEMA_SUPPORTED,
         "ownership_classes": list(OWNERSHIP_CLASSES),
@@ -987,6 +997,7 @@ def build_contract_document() -> dict[str, object]:
             name: {
                 key: (list(value) if isinstance(value, tuple) else value)
                 for key, value in sorted(spec.items())
+                if contract_version >= 2 or key != "skill_sources"
             }
             for name, spec in sorted(CAPABILITIES.items())
         },

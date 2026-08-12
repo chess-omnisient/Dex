@@ -197,6 +197,28 @@ def test_lifecycle_reference_rejects_duplicate_item_identity(tmp_path: Path) -> 
         _resolve(tmp_path, fixture["lifecycle"], fixture)
 
 
+def test_lifecycle_reference_rejects_a_source_swapped_from_another_skill(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path)
+    catalog_path = fixture["lifecycle_catalog"]
+    document = json.loads(catalog_path.read_text(encoding="utf-8"))
+    swapped = _write(
+        tmp_path / ".claude/skills/_available/sales/call-prep/SKILL.md",
+        "---\nname: call-prep\ndescription: Different skill bytes.\n---\n",
+    )
+    sha256, byte_size = _pin(swapped)
+    document["items"][0]["files"][0].update(
+        source_path=".claude/skills/_available/sales/call-prep/SKILL.md",
+        sha256=sha256,
+        byte_size=byte_size,
+    )
+    catalog_path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(SkillSourceError, match="source.*account-plan|identity"):
+        _resolve(tmp_path, fixture["lifecycle"], fixture)
+
+
 @pytest.mark.parametrize("mutation", ("missing", "extra", "duplicate", "wrong-room"))
 def test_room_authority_must_exactly_cover_declared_room_skills(tmp_path: Path, mutation: str) -> None:
     fixture = _fixture(tmp_path)

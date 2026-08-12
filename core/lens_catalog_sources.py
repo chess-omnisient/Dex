@@ -279,6 +279,10 @@ def _lifecycle_skill(
     )
     if not source.startswith(".claude/skills/_available/") or not source.endswith("/SKILL.md"):
         raise SkillSourceError(f"lifecycle item {item_id!r} source must be a dormant skill SKILL.md")
+    if Path(source).parent.name != item_id:
+        raise SkillSourceError(
+            f"lifecycle item {item_id!r} source identity must come from its {item_id} directory"
+        )
     return _verify_pin(
         kind="lifecycle-skill",
         release_root=release_root,

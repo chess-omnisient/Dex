@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -51,8 +52,12 @@ def _prepare_provision_vault(
     return vault
 
 
-def _run_provision(vault: Path, *options: str) -> dict:
-    completed = subprocess.run(
+def _invoke_provision(
+    vault: Path,
+    *options: str,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
         [
             "node",
             str(REPO_ROOT / "core/provision.cjs"),
@@ -64,9 +69,27 @@ def _run_provision(vault: Path, *options: str) -> dict:
         check=False,
         capture_output=True,
         text=True,
+        env=env,
     )
+
+
+def _run_provision(vault: Path, *options: str) -> dict:
+    completed = _invoke_provision(vault, *options)
     assert completed.returncode == 0, completed.stderr
     return json.loads(completed.stdout)
+
+
+def _snapshot_tree(root: Path) -> dict[str, tuple[str, bytes | str]]:
+    snapshot: dict[str, tuple[str, bytes | str]] = {}
+    for candidate in sorted(root.rglob("*")):
+        relative = candidate.relative_to(root).as_posix()
+        if candidate.is_symlink():
+            snapshot[relative] = ("symlink", os.readlink(candidate))
+        elif candidate.is_file():
+            snapshot[relative] = ("file", candidate.read_bytes())
+        elif candidate.is_dir():
+            snapshot[relative] = ("directory", "")
+    return snapshot
 
 
 def test_installer_routes_bootstrap_config_to_sanctioned_provision_contract() -> None:
@@ -111,6 +134,59 @@ def test_fresh_provision_enables_companies_and_creates_its_room(tmp_path: Path) 
         contract_path=CONTRACT_PATH,
     ) is True
     assert (vault / "05-Areas/Companies").is_dir()
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_onboarding_refuses_room_source_drift_before_any_vault_mutation(
+    tmp_path: Path,
+) -> None:
+    vault = _prepare_provision_vault(tmp_path)
+    contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    contract["capabilities"]["career"]["skill_sources"][0]["sha256"] = "0" * 64
+    drifted = tmp_path / "drifted-contract.json"
+    drifted.write_text(json.dumps(contract), encoding="utf-8")
+    before = _snapshot_tree(vault)
+
+    completed = _invoke_provision(
+        vault,
+        "--onboard",
+        env={
+            **os.environ,
+            "DEX_CAPABILITY_CONTRACT_PATH": str(drifted),
+        },
+    )
+
+    assert completed.returncode != 0
+    errors = " ".join(json.loads(completed.stdout)["errors"]).lower()
+    assert "identity" in errors or "sha256" in errors
+    assert _snapshot_tree(vault) == before
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize("unsafe_kind", ("symlink", "custom-bytes"))
+def test_onboarding_refuses_unsafe_active_skill_before_any_vault_mutation(
+    tmp_path: Path,
+    unsafe_kind: str,
+) -> None:
+    vault = _prepare_provision_vault(tmp_path)
+    target = vault / ".claude/skills/resume-builder"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if unsafe_kind == "symlink":
+        protected = vault / "05-Areas/Do-Not-Touch"
+        protected.mkdir(parents=True)
+        (protected / "sentinel.md").write_text("preserve\n", encoding="utf-8")
+        target.symlink_to(protected, target_is_directory=True)
+    else:
+        target.mkdir()
+        (target / "SKILL.md").write_text("user-owned custom skill\n", encoding="utf-8")
+    before = _snapshot_tree(vault)
+
+    completed = _invoke_provision(vault, "--onboard")
+
+    assert completed.returncode != 0
+    errors = " ".join(json.loads(completed.stdout)["errors"]).lower()
+    assert "target" in errors or "symlink" in errors
+    assert _snapshot_tree(vault) == before
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")

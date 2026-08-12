@@ -6,3 +6,4 @@ ruff
 hypothesis
 pytest-split
 cryptography>=42
+jsonschema>=4.23,<5

@@ -113,6 +113,31 @@ ROLE_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+UNSUPPORTED_ASSUMPTIONS: dict[str, tuple[str, ...]] = {
+    "call-prep": (
+        r"pays for itself in 3 months",
+        r"2-week rollout",
+        r"3 other customers have requested",
+    ),
+    "deal-review": (
+        r"fresh:\*{0,2}\s*updated within last 5 days",
+        r"aging:\*{0,2}\s*6-10 days without update",
+        r"stale:\*{0,2}\s*11\+ days without update",
+    ),
+    "pipeline-health": (
+        r"3x\+? coverage\s*=\s*healthy",
+        r"2-3x coverage\s*=\s*adequate",
+        r"contract stage deals\s*\(90% probability\)",
+        r"negotiation \+ contract\s*\(75%\+ probability\)",
+        r"flag deals exceeding average by 50%\+",
+        r"pipeline < 3x target",
+    ),
+    "roadmap": (
+        r"flag if > 14 days old",
+        r"\*\*health score:\*\*",
+    ),
+}
+
 
 def mature_skill_amendment_errors(skill_id: str, text: str) -> list[str]:
     lowered = text.lower()
@@ -133,6 +158,9 @@ def mature_skill_amendment_errors(skill_id: str, text: str) -> list[str]:
     for pattern in ROLE_REQUIREMENTS[skill_id]:
         if re.search(pattern, lowered, re.DOTALL) is None:
             errors.append(f"known role gap remains; expected /{pattern}/")
+    for pattern in UNSUPPORTED_ASSUMPTIONS.get(skill_id, ()):
+        if re.search(pattern, lowered, re.DOTALL):
+            errors.append(f"unsupported rule or invented claim remains; found /{pattern}/")
 
     if skill_id == "career-setup" and "06-resources/career_evidence" in lowered:
         errors.append("contradictory legacy career evidence path remains")
@@ -160,3 +188,22 @@ def test_mature_skill_gate_detects_loss_of_a_known_method() -> None:
     assert mutated != text
     errors = mature_skill_amendment_errors(skill_id, mutated)
     assert any("denominator" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("skill_id", "contradiction"),
+    (
+        ("pipeline-health", "3x coverage = Healthy"),
+        ("deal-review", "Fresh: Updated within last 5 days"),
+        ("roadmap", "**Health score:** Good"),
+        ("call-prep", "Cost response: pays for itself in 3 months"),
+    ),
+)
+def test_mature_skill_gate_detects_unsupported_rules_and_invented_claims(
+    skill_id: str,
+    contradiction: str,
+) -> None:
+    text = (REPO_ROOT / MATURE_SKILLS[skill_id]).read_text(encoding="utf-8")
+    errors = mature_skill_amendment_errors(skill_id, f"{text}\n{contradiction}\n")
+
+    assert any("unsupported rule or invented claim" in error for error in errors)

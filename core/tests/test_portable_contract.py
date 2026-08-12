@@ -14,10 +14,33 @@ import sys
 from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from core import portable_contract
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_portable_contract_v2_versions_the_new_room_pin_wire_shape() -> None:
+    v1_document = portable_contract.build_contract_document(contract_version=1)
+    v1_schema = portable_contract.build_contract_schema(contract_version=1)
+    v2_document = portable_contract.build_contract_document(contract_version=2)
+    v2_schema = portable_contract.build_contract_schema(contract_version=2)
+
+    assert portable_contract.CONTRACT_VERSION == 2
+    assert v1_schema["$id"] != v2_schema["$id"]
+    Draft202012Validator.check_schema(v1_schema)
+    Draft202012Validator.check_schema(v2_schema)
+    assert list(Draft202012Validator(v1_schema).iter_errors(v1_document)) == []
+    assert list(Draft202012Validator(v2_schema).iter_errors(v2_document)) == []
+
+    # A consumer can distinguish the historical v1 room shape from v2's
+    # release-authoritative skill pins. Neither wire shape masquerades as the
+    # other version.
+    assert list(Draft202012Validator(v2_schema).iter_errors(v1_document))
+    assert list(Draft202012Validator(v1_schema).iter_errors(v2_document))
+    assert all("skill_sources" not in room for room in v1_document["capabilities"].values())
+    assert all("skill_sources" in room for room in v2_document["capabilities"].values())
 
 
 def _tracked_paths() -> list[str]:

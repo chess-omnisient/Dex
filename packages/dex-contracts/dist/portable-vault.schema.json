@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dex/contracts/portable-vault.schema.json",
+  "$id": "https://dex/contracts/portable-vault.v2.schema.json",
   "title": "Dex Portable Vault Ownership Contract",
   "type": "object",
   "additionalProperties": false,
@@ -18,8 +18,7 @@
   ],
   "properties": {
     "contract_version": {
-      "type": "integer",
-      "minimum": 1
+      "const": 2
     },
     "source": {
       "const": "core/portable_contract.py"
@@ -220,6 +219,22 @@
               "type": "string"
             }
           },
+          "mcp": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "config": {
+            "type": "string",
+            "minLength": 1
+          },
           "skill_sources": {
             "type": "array",
             "items": {
@@ -260,22 +275,6 @@
                 }
               }
             }
-          },
-          "mcp": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "features": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "config": {
-            "type": "string",
-            "minLength": 1
           }
         }
       }

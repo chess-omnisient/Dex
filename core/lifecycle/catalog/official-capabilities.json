@@ -69,8 +69,8 @@
         {
           "path": ".claude/skills/call-prep/SKILL.md",
           "source_path": ".claude/skills/_available/sales/call-prep/SKILL.md",
-          "sha256": "d7980e91cf1323ff154cc0e3be4d17a73a5b1df3426878e196fc39afc9a177ef",
-          "byte_size": 11876
+          "sha256": "fffdd05c449db5a179da532ffcd464e84e3990582e9f62d943e280e581fabef3",
+          "byte_size": 6015
         }
       ],
       "dependencies": [],
@@ -144,8 +144,8 @@
         {
           "path": ".claude/skills/deal-review/SKILL.md",
           "source_path": ".claude/skills/_available/sales/deal-review/SKILL.md",
-          "sha256": "854859dd7a7f27c4f0febec99448219ddde3626ffdbff3c56302aa1121b3cab5",
-          "byte_size": 11274
+          "sha256": "ba3ae9d78968990c944021d61d4119bbd3d4238c8811fd26b467c3c625b1028c",
+          "byte_size": 6216
         }
       ],
       "dependencies": [],
@@ -309,8 +309,8 @@
         {
           "path": ".claude/skills/pipeline-health/SKILL.md",
           "source_path": ".claude/skills/_available/sales/pipeline-health/SKILL.md",
-          "sha256": "572f2f1d81508ee3e4b75ea6879c93bb444ce2e7f2a4190936bc934df51a5304",
-          "byte_size": 15546
+          "sha256": "01fe6fc44271b66178e05400e7be9ba6e526f8552bf8ca1c5732cc7dcf58e961",
+          "byte_size": 7289
         }
       ],
       "dependencies": [],
@@ -354,8 +354,8 @@
         {
           "path": ".claude/skills/roadmap/SKILL.md",
           "source_path": ".claude/skills/_available/product/roadmap/SKILL.md",
-          "sha256": "56d9878039c0126e68ccd0a7bf66fe4b39ef2070bc350b59c5e1c6d01ba2b2a4",
-          "byte_size": 8772
+          "sha256": "6b29b0544e6c1bfaa854ebb81ab5700cf2022728fd78e7e254da4168b3925261",
+          "byte_size": 6062
         }
       ],
       "dependencies": [],

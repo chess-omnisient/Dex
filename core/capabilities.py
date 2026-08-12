@@ -327,7 +327,12 @@ def _preflight_room_assets(
 
 
 def _active_room_skill_target(root: Path, pin: SkillSourcePin) -> Path:
-    """Validate one lexical active target without following any vault symlink."""
+    """Validate one lexical active target without following any vault symlink.
+
+    An existing target is safe only when it is the exact release-owned payload.
+    Unknown bytes are user-owned for safety purposes and must never be replaced
+    or removed by a room toggle.
+    """
     relative = Path(pin.target_path).parent
     target = root / relative
     cursor = root
@@ -343,9 +348,22 @@ def _active_room_skill_target(root: Path, pin: SkillSourcePin) -> Path:
         entries = tuple(target.iterdir())
     except OSError as error:
         raise CapabilityError(f"Active room skill target cannot be inspected: {relative.as_posix()}") from error
-    if any(entry.name != "SKILL.md" or entry.is_symlink() or not entry.is_file() for entry in entries):
+    if len(entries) != 1 or any(
+        entry.name != "SKILL.md" or entry.is_symlink() or not entry.is_file()
+        for entry in entries
+    ):
         raise CapabilityError(
             f"Active room skill target contains unpinned or unsafe entries: {relative.as_posix()}"
+        )
+    try:
+        payload = entries[0].read_bytes()
+    except OSError as error:
+        raise CapabilityError(
+            f"Active room skill target cannot be read: {relative.as_posix()}"
+        ) from error
+    if hashlib.sha256(payload).hexdigest() != pin.sha256 or len(payload) != pin.byte_size:
+        raise CapabilityError(
+            f"Active room skill target does not match its authoritative pin: {relative.as_posix()}"
         )
     return target
 
@@ -354,6 +372,10 @@ def _copy_verified_room_skill(pin: SkillSourcePin, target: Path) -> None:
     """Surface only the pinned SKILL.md and verify the active bytes after copy."""
     if target.is_symlink() or (target.exists() and not target.is_dir()):
         raise CapabilityError(f"Active room skill target is unsafe: {target}")
+    if target.exists():
+        # Preflight proved these are already the exact release-owned bytes.
+        # Do not replace an intact target just to refresh its metadata.
+        return
     target.parent.mkdir(parents=True, exist_ok=True)
     staged = Path(tempfile.mkdtemp(prefix=f".{target.name}.", dir=target.parent))
     try:
@@ -361,8 +383,6 @@ def _copy_verified_room_skill(pin: SkillSourcePin, target: Path) -> None:
         payload = (staged / "SKILL.md").read_bytes()
         if hashlib.sha256(payload).hexdigest() != pin.sha256 or len(payload) != pin.byte_size:
             raise CapabilityError(f"Staged room skill bytes do not match source identity: {pin.source_path}")
-        if target.exists():
-            shutil.rmtree(target)
         staged.replace(target)
         surfaced = (target / "SKILL.md").read_bytes()
         if hashlib.sha256(surfaced).hexdigest() != pin.sha256 or len(surfaced) != pin.byte_size:
@@ -384,11 +404,12 @@ def reconcile_room(
         raise CapabilityError("enabled state must be true or false")
     root = Path(vault_root).resolve()
     surfaces = surfaces_for(room, contract_path=contract_path)
-    if room_enabled:
-        dormant, skill_pins = _preflight_room_assets(root, room, surfaces, contract_path=contract_path)
-    else:
-        dormant = _dormant_root(room, root)
-        skill_pins = {}
+    dormant, skill_pins = _preflight_room_assets(
+        root,
+        room,
+        surfaces,
+        contract_path=contract_path,
+    )
     created: list[str] = []
     surfaced: list[str] = []
     hidden: list[str] = []
@@ -412,7 +433,8 @@ def reconcile_room(
         # Capability folders are vault-owned user content.  They are intentionally
         # left untouched.  Only release-owned active skill copies are unsurfaced.
         for skill in surfaces.get("skills", []):
-            target = _within(root, f".claude/skills/{skill}")
+            pin = skill_pins[str(skill)]
+            target = _active_room_skill_target(root, pin)
             if target.exists():
                 shutil.rmtree(target)
                 hidden.append(target.relative_to(root).as_posix())
@@ -485,6 +507,24 @@ def migrate_legacy_room_state(
     return seeded
 
 
+def preflight_all(
+    vault_root: Path | str,
+    *,
+    contract_path: Path | str | None = None,
+) -> tuple[str, ...]:
+    """Validate every room source and active target before any room mutates."""
+    root = Path(vault_root).resolve()
+    rooms = room_ids(contract_path=contract_path)
+    for room in rooms:
+        _preflight_room_assets(
+            root,
+            room,
+            surfaces_for(room, contract_path=contract_path),
+            contract_path=contract_path,
+        )
+    return rooms
+
+
 def reconcile_all(
     vault_root: Path | str,
     *,
@@ -498,6 +538,7 @@ def reconcile_all(
     """
     root = Path(vault_root).resolve()
     profile = Path(profile_path or root / "System/user-profile.yaml")
+    preflight_all(root, contract_path=contract_path)
     migrate_legacy_room_state(root, profile_path=profile, contract_path=contract_path)
     return [
         reconcile_room(
@@ -684,10 +725,9 @@ def set_enabled(
         raise CapabilityError("enabled state must be true or false")
     surfaces = surfaces_for(room, contract_path=contract_path)
     root = Path(vault_root).resolve()
-    if room_enabled:
-        # Fail before changing profile state or creating the room when a shipped
-        # release asset is incomplete.
-        _preflight_room_assets(root, room, surfaces, contract_path=contract_path)
+    # Enabling and disabling both change active code. Prove the release source
+    # and every existing target before changing profile state or room assets.
+    _preflight_room_assets(root, room, surfaces, contract_path=contract_path)
     profile_file = Path(profile_path or root / "System/user-profile.yaml")
     # Reads may fail safely to "off", but mutations must never replace malformed
     # or unreadable user state with an empty profile. strict=True raises on
@@ -738,21 +778,40 @@ def _main() -> int:
         help="Refresh surfaced room assets from the current profile",
     )
     parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help="Validate every room source and active target without mutation",
+    )
+    parser.add_argument(
         "--vault",
         default=os.environ.get("VAULT_PATH", str(REPO_ROOT)),
         help="Dex vault root (defaults to VAULT_PATH or this checkout)",
     )
+    parser.add_argument(
+        "--contract",
+        default=None,
+        help="Portable contract authority (defaults to the shipped contract)",
+    )
     args = parser.parse_args()
     if args.list:
-        print(json.dumps({"rooms": room_ids()}, indent=2))
+        print(json.dumps({"rooms": room_ids(contract_path=args.contract)}, indent=2))
+        return 0
+    if args.preflight:
+        rooms = preflight_all(Path(args.vault), contract_path=args.contract)
+        print(json.dumps({"preflight": "passed", "rooms": rooms}, indent=2))
         return 0
     if args.reconcile:
-        results = reconcile_all(Path(args.vault))
+        results = reconcile_all(Path(args.vault), contract_path=args.contract)
         print(json.dumps({"rooms": results}, indent=2))
         return 0
     if args.room is None or args.state is None:
-        parser.error("room and state are required unless --list or --reconcile is used")
-    result = set_enabled(args.room, args.state == "on", vault_root=Path(args.vault))
+        parser.error("room and state are required unless --list, --preflight, or --reconcile is used")
+    result = set_enabled(
+        args.room,
+        args.state == "on",
+        vault_root=Path(args.vault),
+        contract_path=args.contract,
+    )
     print(json.dumps(result, indent=2))
     return 0
 
