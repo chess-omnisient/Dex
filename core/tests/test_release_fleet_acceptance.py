@@ -735,6 +735,29 @@ def _case_document(case: release_fleet.CaseResult) -> dict[str, object]:
     return {field.name: getattr(case, field.name) for field in fields(case)}
 
 
+def _write_process_entry_evidence(
+    output: Path,
+    starting_tag: str,
+    releases: Sequence[release_fleet.DistributionRelease],
+) -> None:
+    """Leave the evidence a real journey's process probe leaves behind.
+
+    The floor in `collect_platform_runs` reads the artifact rather than the
+    intention, so a stand-in journey has to produce the artifact or it is not
+    standing in for anything.
+    """
+
+    matched = [release for release in releases if release.tag == starting_tag]
+    assert len(matched) == 1, f"unknown test release: {starting_tag}"
+    root = (
+        output
+        / f"{release_fleet.safe_case_name(matched[0])}"
+        f"{release_fleet.BRIDGE_PROCESS_ENTRY_SUFFIX}"
+    )
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "bridge-process-entry.json").write_text("{}\n", encoding="utf-8")
+
+
 def _bridge_pair(root: Path) -> tuple[Path, Path]:
     asset = root / "dex-update-bridge-v1.81.1.py"
     checksum = root / f"{asset.name}.sha256"
@@ -755,6 +778,7 @@ def test_platform_collector_retains_every_live_run_and_exact_counts(
         _release("dist/release/v1.80.5-2222222", "1.80.5", "2"),
     )
     created: list[object] = []
+    probed: list[tuple[str, bool]] = []
     asset_path, checksum_path = _bridge_pair(tmp_path)
 
     def journey_runner(
@@ -767,6 +791,7 @@ def test_platform_collector_retains_every_live_run_and_exact_counts(
         bridge_asset: Path,
         bridge_checksum: Path,
         controlled_approvals: bool,
+        bridge_process_entry: bool = False,
     ) -> object:
         assert output == tmp_path
         assert foundation_tag == FOUNDATION.tag
@@ -774,6 +799,9 @@ def test_platform_collector_retains_every_live_run_and_exact_counts(
         assert bridge_asset == asset_path
         assert bridge_checksum == checksum_path
         assert controlled_approvals is True
+        probed.append((starting_tag, bridge_process_entry))
+        if bridge_process_entry:
+            _write_process_entry_evidence(output, starting_tag, releases)
         run = SimpleNamespace(case=_case_document(_case(starting_tag, "darwin")))
         created.append(run)
         return run
@@ -802,6 +830,178 @@ def test_platform_collector_retains_every_live_run_and_exact_counts(
     }
 
 
+def test_the_formal_fleet_probes_the_newest_release_not_the_canary_s_oldest() -> None:
+    """The two gates must not be correlated.
+
+    The PR canary probes the oldest of its fixed starts. If the formal fleet
+    inherited that choice, both would exercise the same vault shape and neither
+    would cover what the other misses: an old pre-split vault stops first at the
+    topology approval, while an already-split vault skips it entirely and stops
+    at the delivered-release approval instead. Probing only the oldest means no
+    gate ever watches the bridge reach the second one as a real process.
+    """
+
+    acceptance = _acceptance()
+    releases = (
+        _release("v1.51.0", "1.51.0", "1"),
+        _release("dist/release/v1.80.5-2222222", "1.80.5", "2"),
+        _release("v1.81.1", "1.81.1", "3"),
+    )
+
+    designated = acceptance.bridge_process_entry_release(releases)
+
+    assert designated is not None
+    assert designated.tag == "v1.81.1"
+    assert designated.tag != releases[0].tag, "must not inherit the canary's oldest"
+    assert acceptance.bridge_process_entry_release(()) is None
+
+
+def test_platform_collector_requests_the_process_probe_for_exactly_one_release(
+    tmp_path: Path,
+) -> None:
+    acceptance = _acceptance()
+    releases = (
+        _release("v1.51.0", "1.51.0", "1"),
+        _release("dist/release/v1.80.5-2222222", "1.80.5", "2"),
+    )
+    asset_path, checksum_path = _bridge_pair(tmp_path)
+    requested: list[tuple[str, bool]] = []
+
+    def journey_runner(
+        _repo: Path,
+        *,
+        output: Path,
+        starting_tag: str,
+        foundation_tag: str,
+        follow_up_tag: str,
+        bridge_asset: Path,
+        bridge_checksum: Path,
+        controlled_approvals: bool,
+        bridge_process_entry: bool = False,
+    ) -> object:
+        del foundation_tag, follow_up_tag, bridge_asset, bridge_checksum
+        del controlled_approvals
+        requested.append((starting_tag, bridge_process_entry))
+        if bridge_process_entry:
+            _write_process_entry_evidence(output, starting_tag, releases)
+        return SimpleNamespace(case=_case_document(_case(starting_tag, "darwin")))
+
+    acceptance.collect_platform_runs(
+        tmp_path,
+        output=tmp_path,
+        releases=releases,
+        foundation_tag=FOUNDATION.tag,
+        follow_up_tag="dist/release/v1.81.1-3333333",
+        running_platform="darwin",
+        bridge_asset=asset_path,
+        bridge_checksum=checksum_path,
+        journey_runner=journey_runner,
+    )
+
+    assert requested == [
+        ("v1.51.0", False),
+        ("dist/release/v1.80.5-2222222", True),
+    ]
+
+
+def test_the_platform_floor_fails_a_run_whose_probe_never_executed(
+    tmp_path: Path,
+) -> None:
+    """The load-bearing half: a gate that can silently not run is not a gate.
+
+    This is the exact regression that would occur if the single boolean wiring
+    the probe were dropped -- every journey still passes, and without this floor
+    the platform run would be green having never started the bridge.
+    """
+
+    acceptance = _acceptance()
+    releases = (
+        _release("v1.51.0", "1.51.0", "1"),
+        _release("dist/release/v1.80.5-2222222", "1.80.5", "2"),
+    )
+    asset_path, checksum_path = _bridge_pair(tmp_path)
+
+    def journey_runner(
+        _repo: Path,
+        *,
+        output: Path,
+        starting_tag: str,
+        foundation_tag: str,
+        follow_up_tag: str,
+        bridge_asset: Path,
+        bridge_checksum: Path,
+        controlled_approvals: bool,
+        bridge_process_entry: bool = False,
+    ) -> object:
+        del output, foundation_tag, follow_up_tag, bridge_asset, bridge_checksum
+        del controlled_approvals
+        # Exactly the shape of the wiring being deleted: asked for, never done.
+        del bridge_process_entry
+        return SimpleNamespace(case=_case_document(_case(starting_tag, "darwin")))
+
+    with pytest.raises(acceptance.PlatformFleetFailure) as failure:
+        acceptance.collect_platform_runs(
+            tmp_path,
+            output=tmp_path,
+            releases=releases,
+            foundation_tag=FOUNDATION.tag,
+            follow_up_tag="dist/release/v1.81.1-3333333",
+            running_platform="darwin",
+            bridge_asset=asset_path,
+            bridge_checksum=checksum_path,
+            journey_runner=journey_runner,
+        )
+
+    assert "no release started the bridge as a top-level process" in str(failure.value)
+
+
+def test_the_platform_floor_rejects_evidence_from_the_wrong_release(
+    tmp_path: Path,
+) -> None:
+    """Evidence has to belong to the release the fleet designated."""
+
+    acceptance = _acceptance()
+    releases = (
+        _release("v1.51.0", "1.51.0", "1"),
+        _release("dist/release/v1.80.5-2222222", "1.80.5", "2"),
+    )
+    asset_path, checksum_path = _bridge_pair(tmp_path)
+
+    def journey_runner(
+        _repo: Path,
+        *,
+        output: Path,
+        starting_tag: str,
+        foundation_tag: str,
+        follow_up_tag: str,
+        bridge_asset: Path,
+        bridge_checksum: Path,
+        controlled_approvals: bool,
+        bridge_process_entry: bool = False,
+    ) -> object:
+        del foundation_tag, follow_up_tag, bridge_asset, bridge_checksum
+        del controlled_approvals, bridge_process_entry
+        # The oldest probes instead of the designated newest.
+        if starting_tag == releases[0].tag:
+            _write_process_entry_evidence(output, starting_tag, releases)
+        return SimpleNamespace(case=_case_document(_case(starting_tag, "darwin")))
+
+    with pytest.raises(acceptance.PlatformFleetFailure) as failure:
+        acceptance.collect_platform_runs(
+            tmp_path,
+            output=tmp_path,
+            releases=releases,
+            foundation_tag=FOUNDATION.tag,
+            follow_up_tag="dist/release/v1.81.1-3333333",
+            running_platform="darwin",
+            bridge_asset=asset_path,
+            bridge_checksum=checksum_path,
+            journey_runner=journey_runner,
+        )
+
+    assert "does not match the designated release" in str(failure.value)
+
+
 def test_platform_collector_collects_every_case_failure_before_failing_closed(
     tmp_path: Path,
 ) -> None:
@@ -824,8 +1024,10 @@ def test_platform_collector_collects_every_case_failure_before_failing_closed(
         bridge_asset: Path,
         bridge_checksum: Path,
         controlled_approvals: bool,
+        bridge_process_entry: bool = False,
     ) -> object:
         del output, foundation_tag, follow_up_tag, bridge_asset, bridge_checksum
+        del bridge_process_entry
         assert controlled_approvals is True
         attempted.append(starting_tag)
         if starting_tag in {releases[0].tag, releases[2].tag}:

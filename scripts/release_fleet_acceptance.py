@@ -699,6 +699,72 @@ def _write_platform_failure_summary(
     return path
 
 
+def bridge_process_entry_release(
+    releases: Sequence[release_fleet.DistributionRelease],
+) -> release_fleet.DistributionRelease | None:
+    """Choose the one release that also starts the bridge as a process.
+
+    Deliberately the **newest** in the cohort, where the PR canary probes the
+    **oldest** of its fixed starts. Inheriting the canary's choice would leave
+    the two gates correlated, and they would then miss the same thing.
+
+    They are not interchangeable, because the two vault shapes take different
+    paths through the bridge. An old pre-split vault stops first at the topology
+    approval -- "Dex will first separate its code from your notes." A vault that
+    is already brain/vault split skips that entirely (``run_bridge`` records
+    ``already-brain-vault-split`` and asks for no token), so its first approval
+    gate is the delivered-release one. Probing only the oldest start would mean
+    no gate ever watched the bridge reach the second of those as a real process.
+
+    ``discover_distribution_releases`` sorts ascending by semantic version, so
+    the newest is the last entry.
+    """
+
+    return releases[-1] if releases else None
+
+
+def _assert_bridge_process_entry_ran(
+    output: Path,
+    designated: release_fleet.DistributionRelease | None,
+    counts: Mapping[str, int],
+) -> None:
+    """Refuse a platform run in which the process probe never actually ran.
+
+    The probe is wired in by a single boolean, and a gate that can silently
+    stop running is the failure this whole line of work exists to retire. So
+    the evidence the probe leaves behind is checked here rather than the
+    intention that it was requested: an empty observation is not a result.
+    """
+
+    if designated is None:
+        raise PlatformFleetFailure(
+            "platform cohort was empty, so nothing started the bridge as a process",
+            dict(counts),
+        )
+    expected = (
+        output
+        / f"{release_fleet.safe_case_name(designated)}"
+        f"{release_fleet.BRIDGE_PROCESS_ENTRY_SUFFIX}"
+        / "bridge-process-entry.json"
+    )
+    observed = sorted(
+        output.glob(f"*{release_fleet.BRIDGE_PROCESS_ENTRY_SUFFIX}/bridge-process-entry.json")
+    )
+    if not observed:
+        raise PlatformFleetFailure(
+            "no release started the bridge as a top-level process: expected "
+            f"evidence at {expected}",
+            dict(counts),
+        )
+    if len(observed) != 1 or observed[0] != expected:
+        raise PlatformFleetFailure(
+            "bridge process-entry evidence does not match the designated release "
+            f"{designated.tag}: expected exactly {expected}, observed "
+            + ", ".join(str(path) for path in observed),
+            dict(counts),
+        )
+
+
 def collect_platform_runs(
     repo: Path,
     *,
@@ -723,6 +789,7 @@ def collect_platform_runs(
     executor_runs: list[object] = []
     case_documents: list[dict[str, object]] = []
     case_failures: list[PlatformCaseFailure] = []
+    designated = bridge_process_entry_release(releases)
     for release in releases:
         counts["started"] += 1
         try:
@@ -735,6 +802,9 @@ def collect_platform_runs(
                 bridge_asset=bridge_asset,
                 bridge_checksum=bridge_checksum,
                 controlled_approvals=True,
+                bridge_process_entry=(
+                    designated is not None and release.tag == designated.tag
+                ),
             )
             case = getattr(run, "case", None)
             if not isinstance(case, Mapping):
@@ -771,6 +841,8 @@ def collect_platform_runs(
             counts,
             case_failures,
         )
+
+    _assert_bridge_process_entry_ran(output, designated, counts)
 
     try:
         report = release_fleet.acceptance_report_from_json(
