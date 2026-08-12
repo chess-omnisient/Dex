@@ -7,51 +7,11 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.99.0] — 📦 A new version is never announced before the files you download exist (2026-08-12)
+## [1.95.0] — 🗄️ Your notes now back themselves up — plus Pipedrive, roomier daily rituals, and releases that never announce a file that isn't there (2026-08-12)
 
-When Dex put out a new version, the announcement page appeared within seconds — but the files your copy of Dex actually downloads to update or repair itself were prepared separately, after the full test suite had run, and attached only afterwards. So there was always a window where the newest version was announced and undownloadable, and if those tests failed or got stuck waiting behind another long-running check, the window never closed. That is what happened on 11 August: version 1.94.0 sat at the top of the releases page for about ninety minutes with nothing attached to it, while Dex's own emergency repair instructions pointed at a file that came back "not found". The person most likely to hit that is someone whose update is already broken.
+A larger release than usual: five pieces of work landed together, three of them from Chris, who has been running Dex hard and reporting what broke. Each is written up in full below.
 
-**What this fixes for you:**
-
-* **"Newest version" now means the files are actually there.** The release page is created hidden. The downloads are attached to it, each one fetched back off the page and compared against what was prepared, and only then does the page become visible. There is no longer a moment where you can see a version you cannot download.
-* **A release that goes wrong now leaves nothing published at all.** If any part of it fails, the release simply stays hidden until someone fixes it. Before, a failure left a half-finished release sitting at the top of the page looking like the current version.
-* **Your download is verified before it is offered, not after.** Each release includes small companion files that let you confirm a download arrived complete and unaltered. Dex now checks those against the real files before the release goes public, so the verification step in the repair instructions cannot fail on something Dex itself published.
-* **Something now keeps checking the real download links.** A standing check fetches the newest release exactly the way your copy of Dex would — including the precise links written into the emergency repair instructions — and raises the alarm if any of them is missing or damaged. It runs hourly on the machine that watches Dex's releases, with a second, slower copy running on GitHub itself in case that machine is off. A half-published release is caught in minutes to an hour or so, rather than whenever someone unlucky runs into it.
-* **A release waiting its turn now says so.** Before releases go out, Dex runs a long rehearsal that replays real historic updates, and that rehearsal occupies the release lane for several hours. A release queued behind it now explains that on its own page, so it reads as waiting rather than broken.
-
-## [1.98.0] — 🤝 Dex can work with your Pipedrive deals, and never behind your back (2026-08-11)
-
-If you keep deals in Pipedrive, you have been keeping them twice: once in the system your company reports from, and once in the notes where you actually think about the deal. The two drift apart within days, and reconciling them by hand is exactly the admin nobody does on a Friday afternoon. Chris built this to solve it for himself and offered it back.
-
-**What this adds for you:**
-
-* **Ask Dex what is really in your pipeline.** Connect Pipedrive once (`/pipedrive-setup`) and Dex can read your live deals: stage, value, likelihood, close date, owner, and recent activity. Your weekly review, meeting prep and daily plan can all draw on the real numbers instead of whatever was last typed into a note.
-* **One reconciliation instead of two arguments.** `/pipeline-sync` puts your deal notes and Pipedrive side by side, shows you every place they disagree, and lets you choose which one is right, deal by deal. The principle throughout: Pipedrive is trusted for the numbers, your notes are trusted for the strategy, and neither is ever silently overwritten by the other.
-* **Nothing reaches your company's system without you saying yes.** Every change Dex could make to Pipedrive is shown to you in full first, exactly as it would be sent, and goes nowhere until you approve that specific change. This is deliberate: for most people Pipedrive is a shared company system where a surprise edit is a real problem. Showing you the change is also what happens by default, so the safe path is the one Dex takes when anything is unclear — a muddled instruction or a retry after a hiccup costs you a second look at a preview, never a surprise edit.
-* **Dex will never delete one of your deals.** It can move a deal to won or lost when you ask, because that is ordinary pipeline upkeep. Removing a deal from your company's system is not something Dex will do on your behalf at all, whatever it is asked — that one stays yours, in Pipedrive.
-* **A slow or blocked connection can't turn a half-read pipeline into a false all-clear.** If Dex can only reach some of your deals, or your pipeline is longer than one look can cover, it says so plainly and names what it couldn't see. It will not tell you a deal is up to date when it never managed to read it.
-* **Creating new deals stays switched off until you decide otherwise.** Dex can update existing deals out of the box, but creating new ones is off by default and takes a deliberate change to your settings to enable. Same reasoning: adding a deal to a shared company system is a bigger step than updating one, and it should be your call, not a side effect.
-* **Your access key is kept in your Mac's keychain,** not in a file in your notes, and never appears in any note, log or report Dex writes.
-
-Thanks to Chris, who built and hardened this before offering it upstream (requested in issue #360).
-
-## [1.97.0] — 🧺 Your daily plan stops running out of room as your vault grows (2026-08-11)
-
-The big daily rituals (planning your day, reviewing it, closing the week, prepping a meeting, processing your meetings) work by reading a lot first: your calendar, your tasks, your notes, your mail, your meeting history. In a young vault that reading is light. In a vault with a year or two of history, it can be so much material that Dex fills up on the reading alone and has nothing left for the part you actually came for. The failure is quiet: sessions get slower and shallower, and on the worst days a review dies halfway through and has to be rebuilt the next morning. One long-time user measured a single day of these rituals and found that of everything Dex read, less than two percent actually needed to stay in the conversation.
-
-**What this fixes for you:**
-
-* **The reading now happens in a side room, not in your conversation.** Each of the five heavy skills sends a helper off to do the bulk reading and come back with just the findings. The helper's workspace is cleared the moment it finishes, so your conversation keeps its room for the thinking, the writing, and the back-and-forth with you.
-* **The conversation itself doesn't change.** These skills still run right where you're talking, still see what you've already discussed and decided this session, and still ask you every question they used to ask. Only the silent bulk reading moved.
-* **If the helper ever fails, you still get your plan.** Dex says so plainly and does the reading the old way in the conversation instead. A hiccup in the new route never means a missing plan or review.
-* **Meeting processing keeps updating your people pages.** Dex can't count on its usual automatic bookkeeping for work done in the side room, so the helper is told to do that bookkeeping itself. Two new automatic checks now guard the arrangement: one makes sure the two halves of each skill can never quietly drift apart in a future release, and one makes sure the helper is only ever told to use tools Dex actually has — a wrong name would have meant a whole source, such as your calendar, going missing with no error shown.
-* **Nothing gets written into your vault on trust.** Where the helper adds tasks from your meeting notes, it now has to confirm each one landed correctly before it marks that meeting finished, and anything you'd normally be asked about — a commitment you mentioned in passing, a focus item that isn't a task yet — comes back to you for a yes before it becomes real.
-
-The same steps run in the same order on a small or young vault, with more headroom for the day the vault gets big. Being honest about what's measured: the reading cost above was measured on a real, mature vault; the improvement to your conversation's headroom follows from moving that reading out of it, and hasn't been measured side by side.
-
----
-
-## [1.96.0] — 🗄️ Your notes now back themselves up, and Dex tells you loudly if that ever stops (2026-08-11)
+### 🗄️ Your notes now back themselves up, and Dex tells you loudly if that ever stops
 
 Until now, everything in your vault lived on exactly one computer. That's the right privacy posture, but it made a failed disk a total-loss scenario, and the only alternative on offer (a private code-hosting account) was the wrong ask for most people. Worse, backups have a cruel failure mode: on a real vault that pioneered this feature, the scheduled backup quietly stopped for ten days and nothing noticed. This release is built around never letting that happen silently again.
 
@@ -67,7 +27,37 @@ Very large vaults are handled a piece at a time rather than loaded whole, so siz
 
 Thanks to Chris, who proposed this, built it, ran it on his own vault first, and whose ten silent days shaped the design.
 
-## [1.95.0] — 🧹 Your list of changes stays yours — Dex's own files stop showing up in it (2026-08-10)
+### 🤝 Dex can work with your Pipedrive deals, and never behind your back
+
+If you keep deals in Pipedrive, you have been keeping them twice: once in the system your company reports from, and once in the notes where you actually think about the deal. The two drift apart within days, and reconciling them by hand is exactly the admin nobody does on a Friday afternoon. Chris built this to solve it for himself and offered it back.
+
+**What this adds for you:**
+
+* **Ask Dex what is really in your pipeline.** Connect Pipedrive once (`/pipedrive-setup`) and Dex can read your live deals: stage, value, likelihood, close date, owner, and recent activity. Your weekly review, meeting prep and daily plan can all draw on the real numbers instead of whatever was last typed into a note.
+* **One reconciliation instead of two arguments.** `/pipeline-sync` puts your deal notes and Pipedrive side by side, shows you every place they disagree, and lets you choose which one is right, deal by deal. The principle throughout: Pipedrive is trusted for the numbers, your notes are trusted for the strategy, and neither is ever silently overwritten by the other.
+* **Nothing reaches your company's system without you saying yes.** Every change Dex could make to Pipedrive is shown to you in full first, exactly as it would be sent, and goes nowhere until you approve that specific change. This is deliberate: for most people Pipedrive is a shared company system where a surprise edit is a real problem. Showing you the change is also what happens by default, so the safe path is the one Dex takes when anything is unclear — a muddled instruction or a retry after a hiccup costs you a second look at a preview, never a surprise edit.
+* **Dex will never delete one of your deals.** It can move a deal to won or lost when you ask, because that is ordinary pipeline upkeep. Removing a deal from your company's system is not something Dex will do on your behalf at all, whatever it is asked — that one stays yours, in Pipedrive.
+* **A slow or blocked connection can't turn a half-read pipeline into a false all-clear.** If Dex can only reach some of your deals, or your pipeline is longer than one look can cover, it says so plainly and names what it couldn't see. It will not tell you a deal is up to date when it never managed to read it.
+* **Creating new deals stays switched off until you decide otherwise.** Dex can update existing deals out of the box, but creating new ones is off by default and takes a deliberate change to your settings to enable. Same reasoning: adding a deal to a shared company system is a bigger step than updating one, and it should be your call, not a side effect.
+* **Your access key is kept in your Mac's keychain,** not in a file in your notes, and never appears in any note, log or report Dex writes.
+
+Thanks to Chris, who built and hardened this before offering it upstream (requested in issue #360).
+
+### 🧺 Your daily plan stops running out of room as your vault grows
+
+The big daily rituals (planning your day, reviewing it, closing the week, prepping a meeting, processing your meetings) work by reading a lot first: your calendar, your tasks, your notes, your mail, your meeting history. In a young vault that reading is light. In a vault with a year or two of history, it can be so much material that Dex fills up on the reading alone and has nothing left for the part you actually came for. The failure is quiet: sessions get slower and shallower, and on the worst days a review dies halfway through and has to be rebuilt the next morning. One long-time user measured a single day of these rituals and found that of everything Dex read, less than two percent actually needed to stay in the conversation.
+
+**What this fixes for you:**
+
+* **The reading now happens in a side room, not in your conversation.** Each of the five heavy skills sends a helper off to do the bulk reading and come back with just the findings. The helper's workspace is cleared the moment it finishes, so your conversation keeps its room for the thinking, the writing, and the back-and-forth with you.
+* **The conversation itself doesn't change.** These skills still run right where you're talking, still see what you've already discussed and decided this session, and still ask you every question they used to ask. Only the silent bulk reading moved.
+* **If the helper ever fails, you still get your plan.** Dex says so plainly and does the reading the old way in the conversation instead. A hiccup in the new route never means a missing plan or review.
+* **Meeting processing keeps updating your people pages.** Dex can't count on its usual automatic bookkeeping for work done in the side room, so the helper is told to do that bookkeeping itself. Two new automatic checks now guard the arrangement: one makes sure the two halves of each skill can never quietly drift apart in a future release, and one makes sure the helper is only ever told to use tools Dex actually has — a wrong name would have meant a whole source, such as your calendar, going missing with no error shown.
+* **Nothing gets written into your vault on trust.** Where the helper adds tasks from your meeting notes, it now has to confirm each one landed correctly before it marks that meeting finished, and anything you'd normally be asked about — a commitment you mentioned in passing, a focus item that isn't a task yet — comes back to you for a yes before it becomes real.
+
+The same steps run in the same order on a small or young vault, with more headroom for the day the vault gets big. Being honest about what's measured: the reading cost above was measured on a real, mature vault; the improvement to your conversation's headroom follows from moving that reading out of it, and hasn't been measured side by side.
+
+### 🧹 Your list of changes stays yours — Dex's own files stop showing up in it
 
 Chris found his vault's change list crowded with dozens of files he never touched — Dex's own product files, freshly rewritten by an update and showing up as if they were his edits. The cause: the file that tells your vault what to overlook is written for the team that builds Dex, and it deliberately keeps Dex's own files visible there. Inside *your* vault that's backwards — one broad "save everything" moment quietly folds hundreds of Dex files into your private history, and every update after that dirties them all again.
 
@@ -79,7 +69,17 @@ Chris found his vault's change list crowded with dozens of files he never touche
 
 Thanks to Chris for the report, traced from a single noisy update all the way to the root cause.
 
----
+### 📦 A new version is never announced before the files you download exist
+
+When Dex put out a new version, the announcement page appeared within seconds — but the files your copy of Dex actually downloads to update or repair itself were prepared separately, after the full test suite had run, and attached only afterwards. So there was always a window where the newest version was announced and undownloadable, and if those tests failed or got stuck waiting behind another long-running check, the window never closed. That is what happened on 11 August: version 1.94.0 sat at the top of the releases page for about ninety minutes with nothing attached to it, while Dex's own emergency repair instructions pointed at a file that came back "not found". The person most likely to hit that is someone whose update is already broken.
+
+**What this fixes for you:**
+
+* **"Newest version" now means the files are actually there.** The release page is created hidden. The downloads are attached to it, each one fetched back off the page and compared against what was prepared, and only then does the page become visible. There is no longer a moment where you can see a version you cannot download.
+* **A release that goes wrong now leaves nothing published at all.** If any part of it fails, the release simply stays hidden until someone fixes it. Before, a failure left a half-finished release sitting at the top of the page looking like the current version.
+* **Your download is verified before it is offered, not after.** Each release includes small companion files that let you confirm a download arrived complete and unaltered. Dex now checks those against the real files before the release goes public, so the verification step in the repair instructions cannot fail on something Dex itself published.
+* **Something now keeps checking the real download links.** A standing check fetches the newest release exactly the way your copy of Dex would — including the precise links written into the emergency repair instructions — and raises the alarm if any of them is missing or damaged. It runs hourly on the machine that watches Dex's releases, with a second, slower copy running on GitHub itself in case that machine is off. A half-published release is caught in minutes to an hour or so, rather than whenever someone unlucky runs into it.
+* **A release waiting its turn now says so.** Before releases go out, Dex runs a long rehearsal that replays real historic updates, and that rehearsal occupies the release lane for several hours. A release queued behind it now explains that on its own page, so it reads as waiting rather than broken.
 
 ## [1.94.0] — 📦 Moving your Dex folder no longer locks you out of updating (2026-08-11)
 
