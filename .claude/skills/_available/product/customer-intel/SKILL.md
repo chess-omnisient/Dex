@@ -13,6 +13,18 @@ time_investment: "5-10 minutes per review"
 
 Aggregate and analyze customer feedback from all sources - meeting notes, person pages, feedback captures - to identify patterns, prioritize pain points, and inform product decisions.
 
+## Evidence, authority, and recovery
+
+Treat customer intelligence as an evidence ledger, not as memory or a polished guess.
+
+- For every finding, retain a stable source ID (vault path, note ID, or capture ID), source type, source date (when the customer said or wrote it), and the as-of date (when this review read it). Keep the source ID and source date attached when a finding is summarized.
+- Deduplicate repeated copies of the same evidence for frequency counts, but preserve every source ID and source date in the provenance. Distinguish a copied meeting note from an independent mention; duplicate copies are not extra customer mentions.
+- Preserve quote fidelity: quoted text must be copied exactly, including wording and meaningful punctuation. Mark omissions or inaudible text explicitly, and label any cleaned-up summary as a paraphrase rather than a quote.
+- Keep unknown and contradictory evidence visible. If sources disagree, show each claim with its source ID and date and call out the contradiction; do not silently choose one. If the records do not support a count, customer attribution, urgency, trend, or roadmap status, write `unknown` and return **insufficient evidence** rather than filling the gap.
+- Never invent absent facts, including customer names, dates, quotes, counts, sentiment, urgency, trend, or roadmap status. An empty search is not negative feedback.
+- Recommendations are not human decisions. Before any create or update, show an exact preview with the target path, operation, and complete proposed content or diff; require explicit confirmation from the human authority before changing anything.
+- After an approved change, read back the target and compare it with the confirmed preview before reporting success. If the write fails or the read-back does not match, report the exact failure, preserve the prior content, do not claim completion, and recover by re-reading the source and presenting a corrected preview for fresh human confirmation.
+
 ## Usage
 
 - `/customer-intel` - Review last 30 days of feedback
@@ -36,6 +48,8 @@ Search across multiple sources for customer mentions:
 3. **00-Inbox/Customer_Feedback/** (if exists) - Dedicated feedback captures
 
 4. **04-Projects/** - Customer mentions in project context
+
+Create an evidence ledger before categorizing: one entry per source occurrence with its source ID, source date, as-of date, customer attribution, exact quote or clearly labeled paraphrase, and location. Do not collapse entries yet; this ledger is what preserves provenance through later deduplication.
 
 ### Keywords to Search
 
@@ -81,6 +95,8 @@ For each theme, identify:
 3. **Urgency** - High (blocker), Medium (painful), Low (nice-to-have)
 4. **Trend** - Increasing, stable, or decreasing mentions
 
+Count independent source occurrences, not copied text. When deduplicating a repeated capture, retain the full list of source IDs and dates and state how many independent mentions remain. Mark trend as `unknown` when the dated evidence cannot support it.
+
 ---
 
 ## Step 4: Cross-Reference with Roadmap
@@ -101,7 +117,7 @@ Present findings in this format:
 # 🎯 Customer Intelligence Report
 
 **Period:** [Timeframe]
-**Sources analyzed:** [Count] meetings, [Count] person pages, [Count] feedback captures
+**Sources analyzed:** [Count] distinct source IDs ([Count] meetings, [Count] person pages, [Count] feedback captures; duplicate copies noted separately)
 **Customers represented:** [Count]
 
 ---
@@ -115,8 +131,8 @@ Present findings in this format:
 **Trend:** ↑ Increasing / → Stable / ↓ Decreasing
 
 **Details:**
-- "[Quote from customer 1]" - [Customer name], [Date]
-- "[Quote from customer 2]" - [Customer name], [Date]
+- `[Source ID]` — "[Exact quote from customer 1]" — [Customer name], source date [Date], reviewed as of [As-of date]
+- `[Source ID]` — "[Exact quote from customer 2]" — [Customer name], source date [Date], reviewed as of [As-of date]
 
 **Roadmap status:** [On roadmap / Planned / Not planned]
 **Related project:** [Link to 04-Projects/ file if exists]

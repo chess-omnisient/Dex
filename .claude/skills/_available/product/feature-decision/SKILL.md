@@ -14,6 +14,18 @@ time_investment: "15-20 minutes per decision"
 
 Make and document feature prioritization decisions with a structured framework. Ensures key factors are considered, stakeholders are consulted, and rationale is preserved for future reference.
 
+## Evidence, authority, and recovery
+
+Treat this skill as decision support: a recommendation is analysis, while the decision belongs to an identified human authority.
+
+- Attach a source ID or path, source date, and as-of date to every material claim, quote, estimate, stakeholder input, and roadmap fact. Keep the evidence date separate from the date the human confirms a decision.
+- Expose unknown effort and unknown evidence as first-class values. `Unknown` effort is not Small, and missing evidence is not evidence of no impact; name the missing input or assumption instead of choosing a convenient rating. Preserve contradictory evidence with both sources and dates rather than reconciling it silently.
+- Never invent absent customer names, user counts, revenue, effort estimates, dates, stakeholder alignment, owners, quotes, or dependencies. If a field is not supported, record `unknown` or `not provided` and explain what would resolve it.
+- Keep the recommendation separate from the decision authority: label the output `Recommendation` and `Human decision authority` separately. Recommendations are not human decisions; only the human authority may choose or confirm Go, No-Go, or Defer.
+- Before creating or updating a decision document, search for existing decisions for the feature and show an exact preview: target path, create/update operation, and complete proposed contents or diff. Require explicit confirmation from the human authority before any change.
+- Preserve each earlier decision. Never overwrite it silently: append a dated decision entry when extending the record, or explicitly supersede the earlier decision with the human authority, reason, and link recorded.
+- After an approved write, read back the target and compare it with the confirmed preview. If the write fails or the read-back differs, report the exact failure, leave the earlier decision intact, do not claim the document was created or updated, and recover by re-reading the current file and presenting a new preview for explicit confirmation.
+
 ## Usage
 
 - `/feature-decision [feature-name]` - Make a decision on a specific feature
@@ -109,6 +121,8 @@ Guide the user through these questions:
    - Competitive risk?
    - Team morale?
 
+Keep unsupported answers as `unknown`; do not turn absent evidence into a low impact, low effort, or low risk rating.
+
 ---
 
 ## Step 4: Consult Stakeholders
@@ -150,11 +164,15 @@ Based on the framework, present a recommendation:
 - [Key factor 2]
 - [Key factor 3]
 
+State `Recommendation` and `Human decision authority` as separate fields. The recommendation is not the decision; wait for the human authority to explicitly choose Go, No-Go, or Defer.
+
 Ask user: "Does this recommendation make sense? Want to adjust the decision?"
 
 ---
 
 ## Step 6: Document the Decision
+
+Before creating a decision document, search `04-Projects/` for an existing decision for the feature. Show the exact target path, whether this is a new document or an append/supersede operation, and the complete proposed document or diff. Ask for explicit confirmation from the human authority, then create only the confirmed version.
 
 Create a decision document in 04-Projects/:
 
@@ -272,6 +290,8 @@ Create a decision document in 04-Projects/:
 
 This decision is logged for future reference. Run `/decision-log` to see all major product decisions.
 ```
+
+If an earlier decision exists, preserve its content and provenance. Append a new dated entry when the decision is revisited, or explicitly mark the earlier decision as superseded with the replacement decision, reason, human authority, and source evidence. Do not replace an earlier decision merely because the latest recommendation differs.
 
 Save to: `04-Projects/Decision_[Feature-Name]_[Date].md`
 

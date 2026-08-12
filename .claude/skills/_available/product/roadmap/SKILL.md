@@ -13,6 +13,18 @@ time_investment: "10-15 minutes per review"
 
 Review your product roadmap holistically - surface blockers, identify stale initiatives, and ensure alignment with strategic priorities. This gives you a quick health check of all roadmap work.
 
+## Evidence, authority, and recovery
+
+Treat a roadmap review as a dated evidence report, not a projection of what might be true.
+
+- Use the canonical status source for each project: the project's explicit status entry and status date in its `04-Projects/` record. Record that source ID/path, status date, and the review as-of date. A filesystem modified time is only a freshness clue, never a substitute for a missing status date.
+- Cite source evidence for every status, blocker, milestone, pillar, alignment claim, and feedback item. Keep meeting notes or task snippets as corroborating sources unless the canonical record is updated; if sources conflict, show the contradiction and leave the status `unknown` until a human resolves it.
+- `unknown` is distinct from `blocked`: use `blocked` only when the canonical record explicitly names an unresolved dependency preventing progress; use `unknown` when status is absent, stale without a current status entry, or contradictory. Staleness is a freshness warning, not proof of a blocker.
+- Define every denominator. For each count or percentage, state the numerator, the full cohort used as the denominator, timeframe, and exclusions (including projects with unknown status). If a denominator cannot be established, report a count and mark the rate `unknown` rather than inventing arithmetic.
+- Never invent absent status, dates, blockers, dependencies, milestones, pillar tags, customer feedback, counts, or health scores. Do not infer a blocker from silence or a stale file.
+- Recommendations are not human decisions. Before any project update or document creation, show an exact preview with the target path, operation, and complete proposed content or diff; require explicit confirmation from the human authority before changing anything.
+- After an approved change, read back the target and compare it with the confirmed preview. If the write fails or the read-back differs, report the exact failure, preserve the prior content, do not claim success, and recover by re-reading the current record and presenting a corrected preview for fresh human confirmation.
+
 ## Usage
 
 - `/roadmap` - Full roadmap review
@@ -36,7 +48,8 @@ Read roadmap-related projects and context:
 For each project in 04-Projects/, extract:
 
 **Status indicators:**
-- Last modified date (flag if > 14 days without update)
+- Canonical status source and status date (flag if > 14 days old; if the status date is absent, mark freshness and status `unknown`)
+- Filesystem last modified date as a secondary freshness clue only, never as the status date
 - Completion status (in progress, blocked, completed)
 - Pillar tags (ensure they exist and are valid)
 
@@ -44,6 +57,8 @@ For each project in 04-Projects/, extract:
 - Search for keywords: "blocked", "waiting", "dependency", "need"
 - Extract stakeholder dependencies
 - Identify missing decisions
+
+Treat keyword matches as leads, not proof. Confirm a blocker from the canonical status source; otherwise report the project as `unknown` and cite the source evidence that is missing or contradictory.
 
 **Alignment:**
 - Check if project tags match pillars in System/pillars.yaml
@@ -72,6 +87,7 @@ Present findings in this format:
 
 **Date:** [Today's date]
 **Projects reviewed:** [Count]
+**As of:** [Review date]
 
 ---
 
@@ -126,6 +142,8 @@ Present findings in this format:
 - [X] projects on track
 - [X] projects need attention
 - [X] projects blocked
+
+**Denominator definitions:** [For every count or percentage, state the numerator, cohort/denominator, timeframe, and exclusions; disclose projects with unknown status]
 
 **Recommended actions:**
 1. [Top priority action]
