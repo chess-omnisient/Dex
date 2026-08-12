@@ -21,11 +21,20 @@ from typing import Any, Mapping
 
 import yaml
 
-from core.lens_catalog_sources import (
-    SkillSourceError,
-    SkillSourcePin,
-    resolve_room_skill_sources,
-)
+try:
+    from core.lens_catalog_sources import (
+        SkillSourceError,
+        SkillSourcePin,
+        resolve_room_skill_sources,
+    )
+except ModuleNotFoundError as error:  # direct ``python core/capabilities.py`` entrypoint
+    if error.name != "core":
+        raise
+    from lens_catalog_sources import (  # type: ignore[no-redef]
+        SkillSourceError,
+        SkillSourcePin,
+        resolve_room_skill_sources,
+    )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONTRACT_PATH = REPO_ROOT / "packages/dex-contracts/dist/portable-vault.contract.json"

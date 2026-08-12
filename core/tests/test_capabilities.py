@@ -7,6 +7,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -106,6 +107,21 @@ def test_surfaces_are_read_from_the_portable_contract_registry() -> None:
         "resume-builder",
     ]
     assert career["mcp"] == ["career_server", "resume_server"]
+
+
+def test_capability_cli_starts_from_its_shipped_script_entrypoint() -> None:
+    result = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "core/capabilities.py"), "--list"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {
+        "rooms": ["career", "companies", "quarter_goals"]
+    }
 
 
 def test_room_missing_from_contract_registry_is_unknown(tmp_path: Path) -> None:
