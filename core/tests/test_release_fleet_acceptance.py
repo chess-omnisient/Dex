@@ -1214,6 +1214,21 @@ def test_forged_executor_runs_cannot_mint_a_platform_receipt(
     key, session, inputs = _signed_session(acceptance)
     running_platform = acceptance._running_platform()
     bridge_asset, bridge_checksum = _bridge_pair(tmp_path)
+
+    def journey_runner(
+        _repo: Path,
+        *,
+        output: Path,
+        starting_tag: str,
+        bridge_process_entry: bool = False,
+        **_kwargs: object,
+    ) -> object:
+        if bridge_process_entry:
+            _write_process_entry_evidence(output, starting_tag, inputs.releases)
+        return SimpleNamespace(
+            case=_case_document(_case(starting_tag, running_platform))
+        )
+
     execution = acceptance.collect_platform_runs(
         tmp_path,
         output=tmp_path,
@@ -1223,9 +1238,7 @@ def test_forged_executor_runs_cannot_mint_a_platform_receipt(
         running_platform=running_platform,
         bridge_asset=bridge_asset,
         bridge_checksum=bridge_checksum,
-        journey_runner=lambda _repo, **kwargs: SimpleNamespace(
-            case=_case_document(_case(str(kwargs["starting_tag"]), running_platform))
-        ),
+        journey_runner=journey_runner,
     )
 
     with pytest.raises(release_fleet.FleetError, match="executor authority"):
@@ -1266,6 +1279,21 @@ def test_changed_evidence_validator_cannot_mint_a_platform_receipt(
         _release("v1.20.1", "1.20.1", "1"),
         _release("dist/release/v1.80.5-2222222", "1.80.5", "2"),
     )
+
+    def journey_runner(
+        _repo: Path,
+        *,
+        output: Path,
+        starting_tag: str,
+        bridge_process_entry: bool = False,
+        **_kwargs: object,
+    ) -> object:
+        if bridge_process_entry:
+            _write_process_entry_evidence(output, starting_tag, releases)
+        return SimpleNamespace(
+            case=_case_document(_case(starting_tag, running_platform))
+        )
+
     execution = acceptance.collect_platform_runs(
         tmp_path,
         output=tmp_path,
@@ -1275,9 +1303,7 @@ def test_changed_evidence_validator_cannot_mint_a_platform_receipt(
         running_platform=running_platform,
         bridge_asset=bridge_asset,
         bridge_checksum=bridge_checksum,
-        journey_runner=lambda _repo, **kwargs: SimpleNamespace(
-            case=_case_document(_case(str(kwargs["starting_tag"]), running_platform))
-        ),
+        journey_runner=journey_runner,
     )
     monkeypatch.setattr(release_fleet, "assert_evidence_bound", lambda *args, **kwargs: None)
 
