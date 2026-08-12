@@ -1384,11 +1384,13 @@ class TestCapabilityStep:
         assert (tmp_path / "05-Areas/Career/Evidence/README.md").is_file()
         assert (tmp_path / ".claude/skills/career-setup/SKILL.md").is_file()
         assert not (tmp_path / "05-Areas/Companies").exists()
-        assert (tmp_path / "01-Quarter_Goals").is_dir()
+        # Disabled rooms and genuinely empty spine folders stay absent. Parent
+        # directories are created only for files in the durable transaction.
+        assert not (tmp_path / "01-Quarter_Goals").exists()
         assert not (tmp_path / ".claude/skills/quarter-plan").exists()
         assert not (tmp_path / ".claude/skills/quarter-review").exists()
         assert (tmp_path / "03-Tasks/Tasks.md").is_file()
-        assert (tmp_path / "05-Areas/People/Internal").is_dir()
+        assert not (tmp_path / "05-Areas/People/Internal").exists()
         profile = (tmp_path / "System/user-profile.yaml").read_text(encoding="utf-8")
         assert "working_week:" in profile
         assert "days:" in profile
