@@ -32,6 +32,9 @@ function runSessionStart(sandbox) {
       HOME: sandbox.home,
       PATH: process.env.PATH || '/usr/bin:/bin',
       VAULT_PATH: sandbox.vault,
+      DEX_SESSION_ANALYTICS_CALLS: sandbox.analyticsCalls
+        || path.join(path.dirname(sandbox.vault), 'unused-session-analytics-calls'),
+      DEX_SESSION_ANALYTICS_RESULT: sandbox.analyticsResult || '',
       DEX_SESSION_HEALTH_CALLS: path.join(
         path.dirname(sandbox.vault),
         'unused-session-health-calls',
@@ -52,6 +55,34 @@ function completeOnboarding(sandbox) {
   const marker = path.join(sandbox.vault, 'System', '.onboarding-complete');
   fs.mkdirSync(path.dirname(marker), { recursive: true });
   fs.writeFileSync(marker, '{}\n');
+}
+
+function installAnalyticsProbe(sandbox) {
+  const helper = path.join(sandbox.vault, 'core', 'mcp', 'analytics_helper.py');
+  sandbox.analyticsCalls = path.join(path.dirname(sandbox.vault), 'session-analytics-calls');
+  fs.mkdirSync(path.dirname(helper), { recursive: true });
+  fs.writeFileSync(
+    helper,
+    [
+      'import os',
+      'import sys',
+      'from pathlib import Path',
+      'Path(os.environ["DEX_SESSION_ANALYTICS_CALLS"]).write_text(" ".join(sys.argv[1:]) + "\\n", encoding="utf-8")',
+      'result = os.environ.get("DEX_SESSION_ANALYTICS_RESULT", "")',
+      'if result:',
+      '    print(result)',
+      '',
+    ].join('\n'),
+  );
+}
+
+async function waitForFile(filePath, timeoutMs = 500) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(filePath)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return fs.existsSync(filePath);
 }
 
 test('a never-onboarded vault begins canonical onboarding on its first session', (t) => {
@@ -92,4 +123,44 @@ test('an onboarded vault emits no first-time setup directive', (t) => {
   assert.doesNotMatch(stdout, /FIRST-TIME SETUP REQUIRED/);
   assert.doesNotMatch(stdout, /begin onboarding NOW/);
   assert.doesNotMatch(stdout, /resume setup NOW/);
+});
+
+test('a completed vault starts the named session event with a bounded request once', async (t) => {
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  installAnalyticsProbe(sandbox);
+
+  runSessionStart(sandbox);
+
+  assert.equal(await waitForFile(sandbox.analyticsCalls), true);
+  assert.equal(
+    fs.readFileSync(sandbox.analyticsCalls, 'utf8'),
+    '--event session_started --request-timeout-seconds 2\n',
+  );
+});
+
+test('a completed vault visibly reports a safe receipt-write failure', (t) => {
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  sandbox.analyticsResult = JSON.stringify({
+    receipt_written: false,
+    receipt_reason: 'receipt_write_failed',
+  });
+  installAnalyticsProbe(sandbox);
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.match(stdout, /Dex could not save the local analytics receipt/);
+  assert.match(stdout, /No usage event was retried/);
+  assert.doesNotMatch(stdout, /private relay token/);
+});
+
+test('a never-onboarded vault does not start a session event', async (t) => {
+  const sandbox = createSandbox(t);
+  installAnalyticsProbe(sandbox);
+
+  runSessionStart(sandbox);
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(fs.existsSync(sandbox.analyticsCalls), false);
 });

@@ -65,6 +65,26 @@ fi
 # These are fast checks with interval throttling - only run when needed
 if [[ -f "$ONBOARDING_MARKER" ]]; then
 
+    # This records only the built-in session_started event and the analytics
+    # helper owns consent, delivery, and the safe local receipt. Keep the
+    # result long enough to show a fixed, non-sensitive receipt failure; never
+    # print helper output or retry the delivery. A first-run vault emits none.
+    if [[ -f "$CLAUDE_DIR/core/mcp/analytics_helper.py" ]]; then
+        ANALYTICS_PYTHON="python3"
+        if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
+            ANALYTICS_PYTHON="$CLAUDE_DIR/.venv/bin/python"
+        fi
+        ANALYTICS_RESULT=$(
+            cd "$CLAUDE_DIR" && VAULT_PATH="$CLAUDE_DIR" \
+                "$ANALYTICS_PYTHON" core/mcp/analytics_helper.py --event session_started --request-timeout-seconds 2 \
+                2>/dev/null
+        )
+        ANALYTICS_STATUS=$?
+        if [[ "$ANALYTICS_STATUS" -ne 0 || "$ANALYTICS_RESULT" == *receipt_write_failed* ]]; then
+            echo "Dex could not save the local analytics receipt. No usage event was retried."
+        fi
+    fi
+
     # Claude Code changelog is now checked in daily plan Step 0.5 via fetch-changelog.cjs
     # Background checker removed (was never installed as LaunchAgent, redundant)
 
