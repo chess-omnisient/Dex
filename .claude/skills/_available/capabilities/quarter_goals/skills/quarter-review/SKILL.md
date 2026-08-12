@@ -41,6 +41,10 @@ Calculate:
 - `quarter_start`: "2026-01-01"
 - `quarter_end`: "2026-03-31"
 
+Use the configured fiscal start month and explicit three-month fiscal-quarter
+boundaries, including year rollover. Record the source of the setting and the
+calculation `as-of` date/time; do not substitute calendar dates silently.
+
 ---
 
 ## Step 2: Context Gathering
@@ -51,7 +55,8 @@ Check for `01-Quarter_Goals/Quarter_Goals.md`:
 
 **If exists and matches target quarter:**
 - Extract goals that were set
-- Note progress percentages (if updated)
+- Record any progress percentage exactly as reported, with its source, source date,
+  and `as-of` time; do not treat it as independently verified
 - List milestones and completion status
 
 **If missing or wrong quarter:**
@@ -70,7 +75,8 @@ Use: reminders_list_items(list_name="Dex Inbox")
 
 If items found:
 - Surface them: "📱 **Phone captures not yet triaged** (X items in Dex Inbox)"
-- Run triage flow: infer pillar, confirm with user, create task, mark Reminder complete
+- Suggest a pillar without treating the suggestion as a decision; obtain separate
+  user consent before creating each task and before marking each Reminder complete
 - Complete this before the review so task counts are accurate
 
 **If empty:** Skip silently.
@@ -78,6 +84,11 @@ If items found:
 ### Process Unprocessed Meetings
 
 Before scanning meeting data, ensure all recent meetings are in the vault by running `/process-meetings`. This pulls any unprocessed meetings from the meeting source (Otter.ai, Granola, etc.), creates meeting notes, updates person/company pages, and extracts tasks — so the quarterly review has complete meeting data.
+
+Treat processing as a mutation: preview the affected paths and obtain explicit
+confirmation before running it when it will write notes, pages, or tasks. Verify
+the processed sources and dates afterward; do not call the review complete merely
+because the command returned.
 
 - If no new meetings are found, continue silently
 - If meetings are processed, note the count
@@ -168,12 +179,12 @@ For each, capture:
 
 > "Goal 1: [Goal title]
 > 
-> Progress indicator showed: [X%]
+> Progress indicator reported: [value, source, source date, and as-of time] (omit this line when unavailable; never calculate it)
 > Milestones: [Y of Z completed]
 > 
 > How would you assess this goal?
 > - ✅ Completed
-> - 🔄 Partial (what % done?)
+> - 🔄 Partial (describe what is done and what remains; do not infer a percentage)
 > - ❌ Didn't get to it
 > - 🚫 Deprioritized"
 
@@ -257,6 +268,12 @@ Wait for user input on:
 
 Create `07-Archives/Reviews/[Quarter].md`:
 
+Before creating or updating the archive, preview the exact destination and
+complete bytes. If that destination already contains the same review, report it
+as already archived and do not write again. If it contains different bytes,
+preserve the existing file and stop for a user decision; do not overwrite, merge,
+or create a duplicate path silently.
+
 ```markdown
 ---
 quarter: Q1 2026
@@ -273,7 +290,7 @@ reviewed_on: [date]
 
 ## TL;DR
 
-- **Goals:** [X of Y completed]
+- **Goals:** [count of each reviewed status, sourced from the goal records and user answers]
 - **Key win:** [Biggest accomplishment]
 - **Key learning:** [Most important insight]
 - **Pillar balance:** [Assessment]
@@ -284,7 +301,7 @@ reviewed_on: [date]
 
 ### Goal 1: [Goal Title] — **[Pillar]**
 
-**Status:** ✅ Completed / 🔄 Partial (X%) / ❌ Not Started / 🚫 Deprioritized
+**Status:** ✅ Completed / 🔄 Partial / ❌ Not Started / 🚫 Deprioritized
 
 **Original success criteria:**
 [What was defined in 01-Quarter_Goals/Quarter_Goals.md]
@@ -396,11 +413,11 @@ Based on backlog review, prioritize these improvements:
 
 ## Stats
 
-- **Weeks in quarter:** 13
-- **Meetings held:** [Count]
-- **Tasks completed:** [Count]
-- **Projects shipped:** [Count]
-- **Weekly syntheses:** [Count completed]
+- **Weeks in quarter:** [Count, with source and as-of date]
+- **Meetings held:** [Count, with source and as-of date]
+- **Tasks completed:** [Count, with source and as-of date]
+- **Projects shipped:** [Count, with source and as-of date]
+- **Weekly syntheses:** [Count completed, with source and as-of date]
 
 ---
 
@@ -424,6 +441,15 @@ Based on this quarter's learnings:
 ### Process Changes
 - [Adjustment to workflow]
 - [System improvement to implement]
+
+---
+
+## Unknowns and contradictions
+
+List every material unknown, unavailable source, stale result, and contradiction
+that affected the review. Include the source identifier or path, source date, and
+review `as-of` date/time. Do not convert an unknown into zero, a missing source
+into a negative result, or a contradiction into a single invented value.
 
 ---
 
@@ -455,7 +481,7 @@ Based on this quarter's learnings:
 
 After review is complete:
 
-> "Quarter reviewed and saved to `07-Archives/Reviews/Q1-2026.md`
+> "Quarter reviewed and verified at `07-Archives/Reviews/Q1-2026.md`
 > 
 > **Ready to plan next quarter (Q2 2026)?**
 > 
@@ -470,8 +496,10 @@ After review is complete:
 ## Follow-up Actions
 
 After review:
-1. Archive old `01-Quarter_Goals/Quarter_Goals.md` if not already done
-2. Update `System/user-profile.yaml` with completed quarter
+1. Propose archiving old `01-Quarter_Goals/Quarter_Goals.md` if not already done;
+   do not assume the review confirmation authorizes this separate mutation
+2. Propose updating `System/user-profile.yaml` with the completed quarter only
+   after a separate preview and consent
 3. Suggest running `/quarter-plan` for next quarter
 
 ---
@@ -510,14 +538,46 @@ After review:
 
 ---
 
+## Evidence, authority, and recovery
+
+- Source every statistic: record the source path, tool query, or user answer, its
+  source date, and the review or retrieval `as-of` date/time. If a source or date
+  is absent, write `unknown`; if sources contradict, expose both versions and ask
+  the user how to proceed. Never invent counts, dates, outcomes, or explanations.
+- Never infer completion percentages. Use explicit status words from the goal
+  record or the user's answer; do not calculate a percentage from milestones,
+  elapsed time, task counts, or a status label. If the user supplies a percentage,
+  label it as a user-supplied estimate with its source and as-of time. Keep the
+  archive idempotent and never infer a completion percentage just to fill a
+  template or analytics field.
+- Make the archive operation idempotent: if the canonical review already exists
+  with the same bytes, report it and perform no write; on any conflict, preserve
+  existing bytes and stop. Do not overwrite, merge, duplicate, or rename around a
+  conflict without a new explicit choice.
+- Before each mutation, show an exact preview of every destination and new bytes
+  or patch. Obtain separate consent for each mutation—task creation, Reminder
+  completion, meeting processing, review archive, profile update, usage-log
+  update, and analytics action—from the human user. Recommendations are not human
+  decisions or authority, and consent for the review does not authorize follow-up
+  writes.
+- After every confirmed mutation, read back the affected file, record, or tool
+  result and compare it with the preview. If any write, archive, tool call, or
+  read back fails, surface the exact failure, preserve existing bytes, and do not
+  claim completion. List partial confirmed changes and offer a fresh preview to
+  resume; retry only after explicit human confirmation.
+
+---
+
 ## Track Usage (Silent)
 
-Update `System/usage_log.md` to mark quarterly review as used.
+"Silent" does not bypass the mutation boundary: include the exact
+`System/usage_log.md` patch in the preview, honor analytics opt-in, obtain human
+confirmation, read it back, and surface any failure before claiming it was updated.
 
 **Analytics (Silent):**
 
 Call `track_event` with event_name `quarter_review_completed` and properties:
 - goals_assessed
-- completion_rate
+- completion_status_summary (statuses only; never an inferred completion percentage)
 
 This only fires if the user has opted into analytics. No action needed if it returns "analytics_disabled".

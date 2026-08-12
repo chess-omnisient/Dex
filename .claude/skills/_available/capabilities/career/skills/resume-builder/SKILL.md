@@ -5,7 +5,7 @@ description: Build resume and LinkedIn profile through guided interview
 
 ## Purpose
 
-Your personal resume coach and LinkedIn profile builder. Through guided interviews, extract your professional achievements and craft a compelling 2-page resume and LinkedIn profile that showcases measurable impact.
+Your personal resume coach and LinkedIn profile builder. Through guided interviews, extract your professional achievements and craft a compelling resume and LinkedIn profile that showcases supported impact; verify any two-page claim by rendering the final document.
 
 ## Usage
 
@@ -87,6 +87,11 @@ The MCP server **auto-saves after each state change**. You don't need to call `s
 - User wants to create a checkpoint before major changes
 - You're ending the session for the day
 
+Auto-save does not remove the confirmation boundary: preview the exact state-changing
+payload and obtain explicit user confirmation before each state change, then read
+back the session state. Never describe an auto-save as a confirmed export or file
+write without verifying it.
+
 ### Career Evidence Integration
 
 Before extracting achievements for a role, check for existing evidence:
@@ -104,18 +109,13 @@ This returns pre-populated achievements from `05-Areas/Career/Evidence/` matchin
 
 ## Response Format
 
-Before each response during the extraction and write-up phases, wrap your analysis in `<thinking>` tags to systematically plan your approach:
-
-- **Current Phase**: Explicitly state which of the 6 phases you're currently in
-- **Information Inventory**: List what specific information you've collected so far (roles, achievements, etc.)
-- **Missing Information**: Identify what key details you still need from the user
-- **Achievement Gaps**: If in Phase 3, note which types of quantifiable metrics you're still missing (revenue impact, team size, timeline, percentages, etc.)
-- **Next Action Plan**: Decide what specific questions to ask or actions to take to move forward
-- **Phase Transition Signals**: Watch for key phrases like "DONE WITH ROLES", "NEXT ROLE", "WE'RE DONE", "CREATE LINKEDIN PROFILE"
-
-It's OK for this section to be quite long as you work through the systematic analysis.
-
-Then provide your direct communication with the user in a conversational, helpful tone.
+Keep internal planning private. During extraction and write-up, communicate only
+the relevant phase, the facts collected, the missing user information, and the
+next question or action in a concise conversational response. Do not expose
+hidden reasoning or internal analysis. Treat phase markers such as "DONE WITH
+ROLES", "NEXT ROLE", "WE'RE DONE", and "CREATE LINKEDIN PROFILE" as user
+instructions only after the surrounding context makes the intended transition
+clear.
 
 ---
 
@@ -137,7 +137,7 @@ I'll guide you through:
 4. Assembling a professional 2-page resume
 5. Creating a LinkedIn-optimized profile
 
-**Important:** I'll push you for specific metrics and quantifiable results. Vague statements like "helped with" or "worked on" won't cut it. The stronger your evidence, the better your resume.
+**Important:** I'll push you for specific, sourced outcomes. Vague statements like "helped with" or "worked on" need clarification, but an absent metric stays absent rather than being filled in.
 
 ---
 
@@ -319,7 +319,7 @@ If user says something vague, push back:
 **You respond:**
 > "Great. How many people were on your team? What was the project scope (budget, timeline, impact)? What was the measurable outcome of the project?"
 
-**Key principle:** Every achievement should answer "What did you do?" and "What was the measurable impact?"
+**Key principle:** Every achievement should answer "What did you do?" and "What happened?" Use a measurable impact only when the source supports it; otherwise state the precise qualitative outcome and mark the metric as unknown.
 
 ### Moving Between Roles
 
@@ -506,7 +506,7 @@ Generate the complete 2-page resume:
 ```markdown
 ## ✅ Resume Complete
 
-**Saved to:** `05-Areas/Career/Resume/YYYY-MM-DD - Resume.md`
+**Proposed save path:** `05-Areas/Career/Resume/YYYY-MM-DD - Resume.md` (not written until the exact preview is confirmed)
 
 ---
 
@@ -667,7 +667,7 @@ LinkedIn profiles differ from resumes — they're more conversational, searchabl
 ```markdown
 ## ✅ LinkedIn Profile Ready
 
-**Saved to:** `05-Areas/Career/Resume/YYYY-MM-DD - LinkedIn Profile.md`
+**Proposed save path:** `05-Areas/Career/Resume/YYYY-MM-DD - LinkedIn Profile.md` (not written until the exact preview is confirmed)
 
 ---
 
@@ -774,7 +774,8 @@ You mentioned working with [Name]. Want me to create a person page for them? (Us
 If user mentions projects that exist in `04-Projects/`:
 
 1. Link the achievement to the project
-2. Add note in project file referencing resume content
+2. Propose a note in the project file, but do not write it until the exact
+   cross-file preview is confirmed by the user
 
 ---
 
@@ -795,7 +796,7 @@ If user mentions projects that exist in `04-Projects/`:
 ### Challenge Constructively
 
 **When user is vague:**
-> "I know it can be hard to remember exact numbers, but even estimates are valuable. Think back — was it thousands of users? Tens of thousands? And what metric improved — engagement, revenue, retention?"
+> "I know it can be hard to remember exact numbers. Is there a source we can check? If not, you may provide a clearly labelled user-supplied estimate, or we can leave the metric unknown; I won't turn a guess into a fact."
 
 **When user undersells:**
 > "Wait, you led a team of 15 people on a $5M project? That's significant! Let's make sure that scope comes through in the bullet point."
@@ -871,17 +872,47 @@ If yes, create achievement files using the template from `System/Templates/Caree
 
 ---
 
+## Evidence, authority, and recovery
+
+- Preserve provenance for every role, date, achievement, quote, and metric:
+  record the source path or user statement, source date, and retrieval or review
+  `as-of` date/time. If a source or date is absent, write `unknown`; if sources
+  contradict one another, show the contradiction and ask the user which version
+  to retain. Never invent metrics, employers, dates, responsibilities, quotes,
+  or outcomes. Do not invent metrics to make a bullet sound stronger.
+- A user-supplied estimate must be labelled in the draft, for example
+  `~30% (user-supplied estimate; not independently verified)`, and must never be
+  presented as a sourced fact. If the user cannot support a metric, use a
+  precise qualitative outcome or `unknown`.
+- Verify pagination only by rendering the exact final export (PDF or the target
+  document preview) and inspecting the rendered page count. Markdown length,
+  character count, or a template claim does not prove two pages; if rendering
+  fails or is unavailable, say pagination is unverified and do not claim a
+  two-page result.
+- Before any save, export, evidence capture, person-page update, project-file
+  note, or other cross-file write, show an exact preview: every destination path
+  and the complete new bytes or patch. Obtain explicit confirmation from the
+  human user for each cross-file write (or for an explicitly enumerated group of
+  writes). Recommendations are not human decisions or authority.
+- After confirmation, read back every destination and compare it with the
+  confirmed preview. If a tool, export, render, write, or read-back fails,
+  surface the exact failure, preserve existing bytes, and do not claim the
+  resume or profile was saved. List any partial confirmed writes and offer a new
+  preview to resume; never retry or overwrite a conflict silently.
+
+---
+
 ## Quality Checks
 
 Before finalizing resume and LinkedIn profile, verify:
 
 ### Resume
-- [ ] Every bullet point has quantifiable metrics
+- [ ] Every metric is supported by a named source or visibly labelled as a user-supplied estimate
 - [ ] Action verbs used consistently (varied, not repetitive)
 - [ ] No vague statements ("helped with", "assisted", "worked on", "responsible for")
 - [ ] Most recent roles have more detail than older roles
 - [ ] Format is ATS-friendly (standard headers, no graphics)
-- [ ] Fits 2 pages (not 1.5, not 2.5 — exactly 2)
+- [ ] Pagination was verified by rendering the final export; if it was not rendered, say pagination is unverified
 - [ ] Dates are consistent format throughout
 - [ ] No typos or grammatical errors
 - [ ] Professional tone throughout
@@ -925,7 +956,7 @@ Before finalizing resume and LinkedIn profile, verify:
 
 **During the session:**
 - Don't rush — take time to remember specific metrics
-- It's okay to estimate if you don't have exact numbers
+- If you provide an estimate, label it as a user-supplied estimate and keep it distinct from verified results
 - Share the context, not just the achievement
 - Mention teammates, stakeholders, and collaborators
 
@@ -938,7 +969,7 @@ Before finalizing resume and LinkedIn profile, verify:
 ### For Dex
 
 **Be persistent:**
-- Don't accept "I improved things" without metrics
+- Don't accept "I improved things" without a concrete outcome; do not invent a metric when none is available
 - Push for scope (team size, budget, timeline, scale)
 - Ask "compared to what?" to establish baseline
 
@@ -1033,7 +1064,9 @@ What were your major accomplishments in this role?
 
 ## Track Usage (Silent)
 
-Update `System/usage_log.md` to mark resume builder as used.
+"Silent" does not bypass the mutation boundary: include the exact
+`System/usage_log.md` patch in the preview, honor analytics opt-in, obtain human
+confirmation, read it back, and surface any failure before claiming it was updated.
 
 **Analytics (Silent):**
 

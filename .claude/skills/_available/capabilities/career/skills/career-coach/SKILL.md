@@ -34,6 +34,13 @@ This command uses **Career MCP tools** for efficient data aggregation:
 
 **How it works:** MCP tools provide structured data → LLM interprets and coaches. This makes assessments faster, more consistent, and enables trend tracking over time.
 
+Before interpreting any result, verify that the Career room is enabled and record
+which Career and Work MCP tools are available, unavailable, or unknown. Preserve
+the source identifier or path, source date, and retrieval `as-of` date/time for
+each claim. A result without provenance is `unknown`; contradictory sources must
+be shown as contradictory and resolved with the user, not silently merged. Never
+invent absent evidence, dates, metrics, intent, or outcomes.
+
 ## Usage
 
 ```
@@ -196,6 +203,27 @@ Which would be most useful? (Or just say "keep talking" if you want to process m
 ```
 
 Wait for their choice, then proceed to the appropriate mode.
+
+---
+
+## Mode scope and honest evaluation
+
+Evaluate all four modes honestly against the evidence they actually received;
+never imply that an unselected mode was run or that a partial source set is
+complete:
+
+- **Weekly Report:** summarize the selected week from the user's session and
+  dated sources; mark missing projects, outcomes, or support requests as unknown.
+- **Monthly Reflection:** use only the stated 30-day evidence window and label
+  patterns as observations, not causal conclusions; disclose unavailable or
+  contradictory entries.
+- **Self-Review:** call the year-wide sources only when they are available and
+  identify gaps in the review period; missing evidence is not missing competency.
+- **Promotion Assessment:** map available evidence to the ladder and state what
+  was not assessed. It is coaching input, not an HR or manager determination.
+
+For every mode, tie confidence to source coverage, source freshness, and
+contradictions. A high evidence count alone is not high confidence.
 
 ---
 
@@ -395,7 +423,7 @@ Specific steps for next month:
 ```markdown
 ## ✅ Monthly Reflection Complete
 
-**Saved to:** `05-Areas/Career/Reflections/YYYY-MM - Monthly Reflection.md`
+**Proposed save path:** `05-Areas/Career/Reflections/YYYY-MM - Monthly Reflection.md` (not written until the user confirms the exact preview)
 
 **Suggested Actions:**
 - Review this at the start of next month
@@ -598,7 +626,7 @@ What I want to develop in the coming year:
 ```markdown
 ## ✅ Self-Review Ready
 
-**Saved to:** `05-Areas/Career/Reviews/YYYY - Self-Review.md`
+**Proposed save path:** `05-Areas/Career/Reviews/YYYY - Self-Review.md` (not written until the user confirms the exact preview)
 
 **Next Steps:**
 - Review and refine before submitting
@@ -620,7 +648,18 @@ Just let me know what to change.
 
 Compare demonstrated competencies against career ladder and assess readiness.
 
+**HR and manager limits:** This is a coaching assessment, not an HR or manager
+decision about promotion, performance rating, compensation, or employment. Only
+the authorized human manager, HR process, and user can make or validate those
+decisions. Do not convert a recommendation into a commitment or imply that a
+missing record proves a competency is absent.
+
 **IMPORTANT: Use Career MCP + Work MCP Tools for Data Aggregation**
+
+Verify both MCP integrations before calling them. If a tool is unavailable,
+continue only with clearly identified local or user-provided sources and mark the
+missing MCP result as unknown; do not silently substitute or claim comprehensive
+coverage.
 
 Before generating the assessment, use MCP tools to gather structured data:
 
@@ -639,7 +678,7 @@ Before generating the assessment, use MCP tools to gather structured data:
 **Why this matters:**
 - Career evidence = What you captured (documented achievements, feedback)
 - Work MCP data = What you delivered (completed goals, shipped priorities)
-- Promotion readiness = Both combined → proof you operate at the next level
+- Promotion readiness = Both combined → evidence to discuss, not proof or an employment decision
 
 These tools provide consistent, structured data that you then interpret for coaching.
 
@@ -770,7 +809,7 @@ To strengthen your promotion case, focus on capturing:
 **Rationale:**
 [Detailed explanation of readiness level based on competency analysis]
 
-**Confidence Level:** [Low / Medium / High]
+**Confidence Level:** [Low / Medium / High] — state source coverage, freshness/as-of, and contradictions behind the level
 
 **Key Considerations:**
 - [Factor 1 influencing readiness]
@@ -843,7 +882,7 @@ When discussing promotion with your manager, emphasize:
 ```markdown
 ## ✅ Promotion Assessment Complete
 
-**Saved to:** `05-Areas/Career/Assessments/YYYY-MM-DD - Promotion Assessment.md`
+**Proposed save path:** `05-Areas/Career/Assessments/YYYY-MM-DD - Promotion Assessment.md` (not written until the user confirms the exact preview)
 
 **This is a snapshot based on current evidence.** As you continue working, Dex will capture more examples that strengthen your case.
 
@@ -886,7 +925,9 @@ Based on what you shared, I noticed:
 This builds your repository for future reviews and promotion discussions.
 ```
 
-If yes, create appropriate files in the evidence folders.
+If yes, show a save preview with the exact evidence path and bytes first, obtain
+explicit human confirmation, then create the file and read it back. If the
+read-back fails, surface the failure and leave existing evidence unchanged.
 
 ---
 
@@ -915,6 +956,30 @@ Want me to append these reflections to `05-Areas/Career/Review_History.md`?
 
 This keeps a timeline of your feedback and progress.
 ```
+
+---
+
+## Evidence, authority, and recovery
+
+- For each claim in any mode, retain the source path or tool result identifier,
+  source date, and retrieval or review `as-of` date/time. If the source or date
+  is absent, label it `unknown`; if sources contradict, present both versions and
+  ask the user which one to carry forward. Never invent absent facts, metrics,
+  dates, quotes, or intent. Missing evidence is not missing competency.
+- Confidence must be sourced: state the source coverage, freshness, and any
+  contradictions that justify Low, Medium, or High. A recommendation is not a
+  human decision, and an MCP mapping is not authority to change a career file.
+- Use a **save preview and explicit confirmation** for every output or follow-up
+  mutation. Show the exact destination path and complete new bytes or patch for
+  each report, evidence file, growth-goal update, review-history append, person
+  page, or other cross-file write. Wait for the human user's clear confirmation;
+  do not infer it from selecting a mode, asking for suggestions, or approving
+  the prose.
+- After a confirmed write, read back every destination and compare it with the
+  confirmed preview. Only then say it was saved. If a write, MCP call, hook, or
+  read-back fails, surface the exact tool/path and failure, preserve existing
+  bytes, and do not claim success. List any partial confirmed writes and offer a
+  new preview to resume; retry or reconcile only after explicit human authority.
 
 ---
 
@@ -1189,7 +1254,9 @@ Before finalizing any mode output:
 
 ## Track Usage (Silent)
 
-Update `System/usage_log.md` to mark career coaching as used.
+"Silent" does not bypass the mutation boundary: include the exact
+`System/usage_log.md` patch in the preview, honor analytics opt-in, obtain human
+confirmation, read it back, and surface any failure before claiming it was updated.
 
 **Analytics (Silent):**
 
