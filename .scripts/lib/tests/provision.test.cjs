@@ -77,6 +77,15 @@ function fileSnapshot(root) {
   return result;
 }
 
+function transactionJournals(vault) {
+  const transactionRoot = path.join(vault, 'System', '.dex', 'tx');
+  if (!fs.existsSync(transactionRoot)) return [];
+  return fs.readdirSync(transactionRoot, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => path.join(transactionRoot, entry.name, 'journal.jsonl'))
+    .filter(journal => fs.existsSync(journal));
+}
+
 function withVault(callback, options) {
   const vault = makeReleaseTree(options);
   try { return callback(vault); } finally { fs.rmSync(vault, { recursive: true, force: true }); }
@@ -373,9 +382,7 @@ test('hard-killed onboarding keeps finalization recoverable and converges on res
       JSON.parse(fs.readFileSync(path.join(vault, 'System', '.onboarding-complete'))).completed,
       true,
     );
-    for (const journal of fs.globSync(
-      path.join(vault, 'System', '.dex', 'tx', '*', 'journal.jsonl'),
-    )) {
+    for (const journal of transactionJournals(vault)) {
       const events = fs.readFileSync(journal, 'utf8');
       assert.match(events, /"event":"(?:COMMITTED|ROLLED-BACK)"/);
     }
