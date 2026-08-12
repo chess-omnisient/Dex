@@ -14,6 +14,8 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
 
+from core.lens_catalog_sources import SkillSourceError, resolve_skill_source
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = REPO_ROOT / "scripts/generate-dex-lens-catalog.py"
 REAL_REGISTRY = REPO_ROOT / "core/lens-catalog/registry.json"
@@ -71,7 +73,7 @@ def _registry(root: Path) -> None:
                     {
                         "id": "daily-plan",
                         "source": {
-                            "kind": "skill",
+                            "kind": "active-skill",
                             "path": ".claude/skills/daily-plan/SKILL.md",
                             "sha256": hashlib.sha256(skill_bytes).hexdigest(),
                             "byte_size": len(skill_bytes),
@@ -98,9 +100,7 @@ def _registry(root: Path) -> None:
                                 "Read today's meetings and open tasks.",
                                 "Choose a short focus list that fits the available time.",
                             ],
-                            "verification_checklist": [
-                                "The output names a bounded set of actions for today."
-                            ],
+                            "verification_checklist": ["The output names a bounded set of actions for today."],
                             "rollback_advice": "Remove the routine or disable the command; it does not need to touch user content.",
                         },
                         "compatibility": {
@@ -175,9 +175,7 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
     assert capability["compatibility"]["needs_mcp"] is True
     assert capability["compatibility"]["host_requirements"] == ["skills-directory"]
     assert "Needs hooks" not in " ".join(capability["compatibility"]["limitations"])
-    assert capability["portable_brief"]["goal"].startswith(
-        "Create a daily planning routine"
-    )
+    assert capability["portable_brief"]["goal"].startswith("Create a daily planning routine")
     assert "adaptation_notes" not in capability["portable_brief"]
     assert capability["portable_brief"]["method_outline"] == [
         "Read today's meetings and open tasks.",
@@ -236,7 +234,115 @@ def test_generator_rejects_unshipped_or_stale_source(tmp_path: Path) -> None:
 
     stale = _generate(tmp_path)
     assert stale.returncode == 1
-    assert "does not match its declared sha256 or byte_size" in stale.stderr
+    assert "do not match the authoritative sha256 or byte_size" in stale.stderr
+
+
+def _adoptable_registry(root: Path, source_kind: str) -> Path:
+    """Turn the synthetic entry into a dormant lifecycle or room capability."""
+    _registry(root)
+    registry_path = root / "core/lens-catalog/registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    entry = registry["entries"][0]
+    if source_kind == "lifecycle-skill":
+        entry_id = "account-plan"
+        relative = ".claude/skills/_available/sales/account-plan/SKILL.md"
+        payload = (
+            "---\nname: account-plan\ndescription: Use when planning a strategic account from sourced evidence.\n---\n"
+        ).encode()
+        _write(root / relative, payload.decode())
+        _write(
+            root / "core/lifecycle/catalog/official-capabilities.json",
+            json.dumps(
+                {
+                    "catalog_source_version": 1,
+                    "items": [
+                        {
+                            "id": entry_id,
+                            "kind": "skill",
+                            "version": "1.0.0",
+                            "files": [
+                                {
+                                    "path": f".claude/skills/{entry_id}/SKILL.md",
+                                    "source_path": relative,
+                                    "sha256": hashlib.sha256(payload).hexdigest(),
+                                    "byte_size": len(payload),
+                                }
+                            ],
+                            "dependencies": [],
+                            "capabilities": [],
+                        }
+                    ],
+                }
+            ),
+        )
+        entry["source"] = {"kind": source_kind, "item_id": entry_id}
+    else:
+        entry_id = "career-setup"
+        relative = ".claude/skills/_available/capabilities/career/skills/career-setup/SKILL.md"
+        payload = (
+            "---\nname: career-setup\ndescription: Use when creating a consented career evidence space.\n---\n"
+        ).encode()
+        _write(root / relative, payload.decode())
+        _write(
+            root / "packages/dex-contracts/dist/portable-vault.contract.json",
+            json.dumps(
+                {
+                    "capabilities": {
+                        "career": {
+                            "folders": ["05-Areas/Career"],
+                            "skills": [entry_id],
+                            "default_enabled": True,
+                            "skill_sources": [
+                                {
+                                    "room": "career",
+                                    "skill": entry_id,
+                                    "source_path": relative,
+                                    "target_path": f".claude/skills/{entry_id}/SKILL.md",
+                                    "sha256": hashlib.sha256(payload).hexdigest(),
+                                    "byte_size": len(payload),
+                                }
+                            ],
+                        }
+                    }
+                }
+            ),
+        )
+        entry["source"] = {
+            "kind": source_kind,
+            "room": "career",
+            "skill": entry_id,
+        }
+    entry["id"] = entry_id
+    _write(registry_path, json.dumps(registry))
+    return root / relative
+
+
+@pytest.mark.parametrize("source_kind", ("lifecycle-skill", "room-skill"))
+def test_generator_resolves_adoptable_source_without_an_active_copy(tmp_path: Path, source_kind: str) -> None:
+    source = _adoptable_registry(tmp_path, source_kind)
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text(encoding="utf-8"))
+    capability = envelope["catalogue"]["capabilities"][0]
+    assert capability["summary"] in source.read_text(encoding="utf-8")
+    assert not (tmp_path / f".claude/skills/{capability['capability_id']}/SKILL.md").exists()
+    assert "source" not in capability
+
+
+def test_generator_rejects_mutated_room_source_before_signing_or_publication(
+    tmp_path: Path, signing_key_b64: str
+) -> None:
+    source = _adoptable_registry(tmp_path, "room-skill")
+    source.write_text("changed after the room authority was pinned\n", encoding="utf-8")
+
+    result = _generate_signed(tmp_path, signing_key_b64)
+
+    assert result.returncode == 1
+    assert "source identity" in result.stderr
+    assert "sha256 or byte_size" in result.stderr
+    assert _lens_artifacts(tmp_path) == []
 
 
 def test_generator_rejects_vendored_third_party_skill_sources(tmp_path: Path) -> None:
@@ -257,7 +363,7 @@ def test_generator_rejects_vendored_third_party_skill_sources(tmp_path: Path) ->
     data = json.loads((tmp_path / "core/lens-catalog/registry.json").read_text())
     data["entries"][0]["id"] = "anthropic-pdf"
     data["entries"][0]["source"] = {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/anthropic-pdf/SKILL.md",
         "sha256": hashlib.sha256(vendored_bytes).hexdigest(),
         "byte_size": len(vendored_bytes),
@@ -267,7 +373,7 @@ def test_generator_rejects_vendored_third_party_skill_sources(tmp_path: Path) ->
     result = _generate(tmp_path)
 
     assert result.returncode == 1
-    assert "must not be a vendored third-party skill" in result.stderr
+    assert "must not be a vendored skill" in result.stderr
     # The guard is the reason, not some other check that happens to fire first.
     assert "must match entry id" not in result.stderr
     assert "must be a shipped skill SKILL.md" not in result.stderr
@@ -390,12 +496,12 @@ def _corrupt_wrong_schema_shape(data: dict) -> str:
 
 def _corrupt_stale_source_sha256(data: dict) -> str:
     data["entries"][0]["source"]["sha256"] = "1" * 64
-    return "does not match its declared sha256 or byte_size"
+    return "do not match the authoritative sha256 or byte_size"
 
 
 def _corrupt_stale_source_byte_size(data: dict) -> str:
     data["entries"][0]["source"]["byte_size"] = 999999
-    return "does not match its declared sha256 or byte_size"
+    return "do not match the authoritative sha256 or byte_size"
 
 
 def _corrupt_unknown_job_reference(data: dict) -> str:
@@ -456,9 +562,7 @@ def _signing_key_b64() -> str:
     return base64.b64encode(private_pem).decode("ascii")
 
 
-def test_signed_release_path_publishes_when_the_registry_is_sound(
-    tmp_path: Path, signing_key_b64: str
-) -> None:
+def test_signed_release_path_publishes_when_the_registry_is_sound(tmp_path: Path, signing_key_b64: str) -> None:
     """Positive control: without this, the fail-closed test below could pass vacuously."""
     _registry(tmp_path)
 
@@ -511,9 +615,7 @@ def test_broken_registry_entry_fails_closed_before_signing_or_publication(
     assert _lens_artifacts(tmp_path) == [], f"{label}: producer left publishable output behind"
 
 
-def test_broken_registry_refusal_is_not_a_signing_failure(
-    tmp_path: Path, signing_key_b64: str
-) -> None:
+def test_broken_registry_refusal_is_not_a_signing_failure(tmp_path: Path, signing_key_b64: str) -> None:
     """The refusal must come from registry validation, not from the signing step.
 
     If validation ever moved after signing, the error text would change and this
@@ -528,7 +630,7 @@ def test_broken_registry_refusal_is_not_a_signing_failure(
     result = _generate_signed(tmp_path, signing_key_b64)
 
     assert result.returncode == 1
-    assert "does not match its declared sha256 or byte_size" in result.stderr
+    assert "do not match the authoritative sha256 or byte_size" in result.stderr
     for signing_error in (
         "environment secret",
         "is not base64",
@@ -557,19 +659,10 @@ def _registry_source_pin_drifts(registry_path: Path, release_root: Path) -> list
 
     drifted = []
     for index, entry in enumerate(entries):
-        source = entry["source"]
-        skill = release_root / source["path"]
-        if not skill.is_file():
-            drifted.append(f"entry {index} ({entry['id']}): {source['path']} is missing")
-            continue
-        content = skill.read_bytes()
-        actual_sha = hashlib.sha256(content).hexdigest()
-        if actual_sha != source["sha256"] or len(content) != source["byte_size"]:
-            drifted.append(
-                f"entry {index} ({entry['id']}): {source['path']} changed after its pin was"
-                f" written -- declared sha256={source['sha256']} byte_size={source['byte_size']},"
-                f" actual sha256={actual_sha} byte_size={len(content)}"
-            )
+        try:
+            resolve_skill_source(entry["source"], release_root)
+        except SkillSourceError as error:
+            drifted.append(f"entry {index} ({entry['id']}): source authority rejected the entry: {error}")
     return drifted
 
 
@@ -583,8 +676,7 @@ def test_real_registry_source_pins_match_the_shipped_skills() -> None:
     drifted = _registry_source_pin_drifts(REAL_REGISTRY, REPO_ROOT)
     assert not drifted, (
         "core/lens-catalog/registry.json source pins are stale, so the release job's Lens"
-        " catalogue generation will refuse. Update the declared sha256 and byte_size for:\n  "
-        + "\n  ".join(drifted)
+        " catalogue generation will refuse. Update the declared sha256 and byte_size for:\n  " + "\n  ".join(drifted)
     )
 
 
@@ -597,7 +689,7 @@ def test_real_registry_pin_check_fails_on_a_deliberately_drifted_pin(tmp_path: P
     drifted = _registry_source_pin_drifts(registry_path, REPO_ROOT)
 
     assert drifted
-    assert "changed after its pin was written" in drifted[0]
+    assert "source authority rejected the entry" in drifted[0]
 
 
 def test_shipped_registry_builds_the_release_catalogue(tmp_path: Path, signing_key_b64: str) -> None:
@@ -766,10 +858,7 @@ def test_real_test_evidence_is_explicit_and_only_behavioral_evidence_verifies(tm
     envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text())
     registry = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
     test_evidence = [
-        (entry["id"], item)
-        for entry in registry["entries"]
-        for item in entry["evidence"]
-        if item["kind"] == "test"
+        (entry["id"], item) for entry in registry["entries"] for item in entry["evidence"] if item["kind"] == "test"
     ]
     invalid_coverage = [
         f"{entry_id}: {item['reference']} ({item.get('coverage')!r})"
@@ -781,9 +870,7 @@ def test_real_test_evidence_is_explicit_and_only_behavioral_evidence_verifies(tm
         f"or only supports a related promise: {invalid_coverage}"
     )
     expected_verified_evidence = {
-        (entry_id, f"test: {item['reference']}")
-        for entry_id, item in test_evidence
-        if item["coverage"] == "behavioral"
+        (entry_id, f"test: {item['reference']}") for entry_id, item in test_evidence if item["coverage"] == "behavioral"
     }
     verified_evidence = {
         (capability["capability_id"], item["source"])

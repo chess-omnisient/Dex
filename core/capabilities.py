@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import os
 import shutil
@@ -20,10 +21,14 @@ from typing import Any, Mapping
 
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CONTRACT_PATH = (
-    REPO_ROOT / "packages/dex-contracts/dist/portable-vault.contract.json"
+from core.lens_catalog_sources import (
+    SkillSourceError,
+    SkillSourcePin,
+    resolve_room_skill_sources,
 )
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_CONTRACT_PATH = REPO_ROOT / "packages/dex-contracts/dist/portable-vault.contract.json"
 DORMANT_CATALOG = Path(".claude/skills/_available/capabilities")
 
 
@@ -104,9 +109,7 @@ def enabled(
     path = Path(profile_path or REPO_ROOT / "System/user-profile.yaml")
     profile = _read_profile(path)
     capability_state = profile.get("capabilities")
-    room_state = (
-        capability_state.get(room) if isinstance(capability_state, Mapping) else None
-    )
+    room_state = capability_state.get(room) if isinstance(capability_state, Mapping) else None
     if isinstance(room_state, Mapping) and isinstance(room_state.get("enabled"), bool):
         return room_state["enabled"]
 
@@ -153,6 +156,12 @@ def _dormant_root(room: str, vault_root: Path) -> Path:
     if brain.is_dir():
         return brain
     return _within(vault_root, (DORMANT_CATALOG / room).as_posix())
+
+
+def _room_release_root(room: str, vault_root: Path) -> Path:
+    """Return the release tree that owns one room's dormant skill payloads."""
+    brain = REPO_ROOT / DORMANT_CATALOG / room
+    return REPO_ROOT.resolve() if brain.is_dir() else vault_root.resolve()
 
 
 def _tracked_file_differs_from_head(root: Path, relative: Path) -> bool | None:
@@ -238,11 +247,7 @@ def _room_has_user_content(
         if folder.is_symlink() or not folder.is_dir():
             continue
         for path in sorted(folder.rglob("*")):
-            if (
-                path.is_symlink()
-                or not path.is_file()
-                or path.name in {".DS_Store", ".gitkeep"}
-            ):
+            if path.is_symlink() or not path.is_file() or path.name in {".DS_Store", ".gitkeep"}:
                 continue
             relative = path.relative_to(root)
             shipped = dormant / "folders" / relative
@@ -291,15 +296,45 @@ def _preflight_room_assets(
     root: Path,
     room: str,
     surfaces: Mapping[str, Any],
-) -> Path:
+    *,
+    contract_path: Path | str | None = None,
+) -> tuple[Path, dict[str, SkillSourcePin]]:
     dormant = _dormant_root(room, root)
-    for skill in surfaces.get("skills", []):
-        source = dormant / "skills" / str(skill)
-        if not source.is_dir():
-            raise CapabilityError(
-                f"Dormant skill is missing for {room}: {source}"
-            )
-    return dormant
+    try:
+        pins = resolve_room_skill_sources(
+            room,
+            _room_release_root(room, root),
+            portable_contract_path=contract_path,
+        )
+    except SkillSourceError as error:
+        raise CapabilityError(f"Dormant skill source identity failed for {room}: {error}") from error
+    by_skill = {Path(pin.target_path).parent.name: pin for pin in pins}
+    expected = tuple(str(skill) for skill in surfaces.get("skills", []))
+    if set(by_skill) != set(expected):
+        raise CapabilityError(f"Dormant skill authority does not match room {room}")
+    return dormant, by_skill
+
+
+def _copy_verified_room_skill(pin: SkillSourcePin, target: Path) -> None:
+    """Surface only the pinned SKILL.md and verify the active bytes after copy."""
+    if target.is_symlink() or (target.exists() and not target.is_dir()):
+        raise CapabilityError(f"Active room skill target is unsafe: {target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staged = Path(tempfile.mkdtemp(prefix=f".{target.name}.", dir=target.parent))
+    try:
+        shutil.copy2(pin.path, staged / "SKILL.md", follow_symlinks=False)
+        payload = (staged / "SKILL.md").read_bytes()
+        if hashlib.sha256(payload).hexdigest() != pin.sha256 or len(payload) != pin.byte_size:
+            raise CapabilityError(f"Staged room skill bytes do not match source identity: {pin.source_path}")
+        if target.exists():
+            shutil.rmtree(target)
+        staged.replace(target)
+        surfaced = (target / "SKILL.md").read_bytes()
+        if hashlib.sha256(surfaced).hexdigest() != pin.sha256 or len(surfaced) != pin.byte_size:
+            raise CapabilityError(f"Surfaced room skill failed identity read-back: {pin.target_path}")
+    finally:
+        if staged.exists():
+            shutil.rmtree(staged)
 
 
 def reconcile_room(
@@ -314,11 +349,11 @@ def reconcile_room(
         raise CapabilityError("enabled state must be true or false")
     root = Path(vault_root).resolve()
     surfaces = surfaces_for(room, contract_path=contract_path)
-    dormant = (
-        _preflight_room_assets(root, room, surfaces)
-        if room_enabled
-        else _dormant_root(room, root)
-    )
+    if room_enabled:
+        dormant, skill_pins = _preflight_room_assets(root, room, surfaces, contract_path=contract_path)
+    else:
+        dormant = _dormant_root(room, root)
+        skill_pins = {}
     created: list[str] = []
     surfaced: list[str] = []
     hidden: list[str] = []
@@ -334,11 +369,8 @@ def reconcile_room(
             _copy_missing(source, target, created, root)
 
         for skill in surfaces.get("skills", []):
-            source = dormant / "skills" / str(skill)
             target = _within(root, f".claude/skills/{skill}")
-            if target.exists():
-                shutil.rmtree(target)
-            shutil.copytree(source, target)
+            _copy_verified_room_skill(skill_pins[str(skill)], target)
             surfaced.append(target.relative_to(root).as_posix())
     else:
         # Capability folders are vault-owned user content.  They are intentionally
@@ -395,24 +427,14 @@ def migrate_legacy_room_state(
     )
     seeded: list[str] = []
     for room in room_ids(contract_path=contract_path):
-        room_state = (
-            capability_state.get(room)
-            if isinstance(capability_state, Mapping)
-            else None
-        )
-        if (
-            isinstance(room_state, Mapping)
-            and isinstance(room_state.get("enabled"), bool)
-        ):
+        room_state = capability_state.get(room) if isinstance(capability_state, Mapping) else None
+        if isinstance(room_state, Mapping) and isinstance(room_state.get("enabled"), bool):
             continue
         surfaces = surfaces_for(room, contract_path=contract_path)
         legacy_config = surfaces.get("config")
         if isinstance(legacy_config, str):
             legacy = profile.get(legacy_config)
-            if (
-                isinstance(legacy, Mapping)
-                and isinstance(legacy.get("enabled"), bool)
-            ):
+            if isinstance(legacy, Mapping) and isinstance(legacy.get("enabled"), bool):
                 continue
         if room not in room_defaults:
             continue
@@ -440,9 +462,7 @@ def reconcile_all(
     """
     root = Path(vault_root).resolve()
     profile = Path(profile_path or root / "System/user-profile.yaml")
-    migrate_legacy_room_state(
-        root, profile_path=profile, contract_path=contract_path
-    )
+    migrate_legacy_room_state(root, profile_path=profile, contract_path=contract_path)
     return [
         reconcile_room(
             room,
@@ -456,9 +476,7 @@ def reconcile_all(
 
 def _atomic_text_write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    file_descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
+    file_descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(file_descriptor, "w", encoding="utf-8") as handle:
             handle.write(content)
@@ -503,10 +521,7 @@ def _set_block_enabled(text: str, block_key: str, room: str | None, value: bool)
         if room is None:
             addition = f"{suffix}{block_key}:{newline}  enabled: {rendered}{newline}"
         else:
-            addition = (
-                f"{suffix}{block_key}:{newline}  {room}:{newline}"
-                f"    enabled: {rendered}{newline}"
-            )
+            addition = f"{suffix}{block_key}:{newline}  {room}:{newline}    enabled: {rendered}{newline}"
         return text + addition
 
     start, end = top
@@ -556,31 +571,20 @@ def render_missing_companies_compatibility_pin(
     capability_state = profile.get("capabilities")
     if capability_state is not None and not isinstance(capability_state, Mapping):
         raise CapabilityError("Profile capabilities must contain an object")
-    company_state = (
-        capability_state.get("companies")
-        if isinstance(capability_state, Mapping)
-        else None
-    )
+    company_state = capability_state.get("companies") if isinstance(capability_state, Mapping) else None
     if company_state is not None and not isinstance(company_state, Mapping):
         raise CapabilityError("Profile capabilities.companies must contain an object")
     if isinstance(company_state, Mapping) and "enabled" in company_state:
         if not isinstance(company_state["enabled"], bool):
-            raise CapabilityError(
-                "Profile capabilities.companies.enabled must be true or false"
-            )
+            raise CapabilityError("Profile capabilities.companies.enabled must be true or false")
         return None
     company_surfaces = surfaces_for("companies", contract_path=contract_path)
     company_legacy_config = company_surfaces.get("config")
     if isinstance(company_legacy_config, str):
         company_legacy_state = profile.get(company_legacy_config)
-        if (
-            isinstance(company_legacy_state, Mapping)
-            and "enabled" in company_legacy_state
-        ):
+        if isinstance(company_legacy_state, Mapping) and "enabled" in company_legacy_state:
             if not isinstance(company_legacy_state["enabled"], bool):
-                raise CapabilityError(
-                    f"Profile {company_legacy_config}.enabled must be true or false"
-                )
+                raise CapabilityError(f"Profile {company_legacy_config}.enabled must be true or false")
             return None
 
     # A vault that never expressed a choice gets these rooms rather than being
@@ -600,16 +604,10 @@ def render_missing_companies_compatibility_pin(
     expected = copy.deepcopy(profile)
     rendered = original
     for room, default in room_defaults.items():
-        room_state = (
-            capability_state.get(room)
-            if isinstance(capability_state, Mapping)
-            else None
-        )
+        room_state = capability_state.get(room) if isinstance(capability_state, Mapping) else None
         if isinstance(room_state, Mapping) and "enabled" in room_state:
             if not isinstance(room_state["enabled"], bool):
-                raise CapabilityError(
-                    f"Profile capabilities.{room}.enabled must be true or false"
-                )
+                raise CapabilityError(f"Profile capabilities.{room}.enabled must be true or false")
             continue
         surfaces = surfaces_for(room, contract_path=contract_path)
         legacy_config = surfaces.get("config")
@@ -617,9 +615,7 @@ def render_missing_companies_compatibility_pin(
             legacy_state = profile.get(legacy_config)
             if isinstance(legacy_state, Mapping) and "enabled" in legacy_state:
                 if not isinstance(legacy_state["enabled"], bool):
-                    raise CapabilityError(
-                        f"Profile {legacy_config}.enabled must be true or false"
-                    )
+                    raise CapabilityError(f"Profile {legacy_config}.enabled must be true or false")
                 continue
         expected.setdefault("capabilities", {})
         expected["capabilities"].setdefault(room, {})
@@ -655,15 +651,13 @@ def set_enabled(
     if room_enabled:
         # Fail before changing profile state or creating the room when a shipped
         # release asset is incomplete.
-        _preflight_room_assets(root, room, surfaces)
+        _preflight_room_assets(root, room, surfaces, contract_path=contract_path)
     profile_file = Path(profile_path or root / "System/user-profile.yaml")
     # Reads may fail safely to "off", but mutations must never replace malformed
     # or unreadable user state with an empty profile. strict=True raises on
     # unreadable YAML before any edit is attempted.
     _read_profile(profile_file, strict=True)
-    original = (
-        profile_file.read_text(encoding="utf-8") if profile_file.exists() else ""
-    )
+    original = profile_file.read_text(encoding="utf-8") if profile_file.exists() else ""
 
     # Surgical line edits: only the enabled flags change; every other byte of
     # the user's profile — comments and formatting included — is preserved.
@@ -677,18 +671,12 @@ def set_enabled(
     try:
         reparsed = yaml.safe_load(updated) or {}
     except yaml.YAMLError as exc:
-        raise CapabilityError(
-            "profile edit produced invalid YAML; refusing to write"
-        ) from exc
+        raise CapabilityError("profile edit produced invalid YAML; refusing to write") from exc
     room_state = (
-        reparsed.get("capabilities", {}).get(room, {})
-        if isinstance(reparsed.get("capabilities"), Mapping)
-        else {}
+        reparsed.get("capabilities", {}).get(room, {}) if isinstance(reparsed.get("capabilities"), Mapping) else {}
     )
     if not isinstance(room_state, Mapping) or room_state.get("enabled") is not room_enabled:
-        raise CapabilityError(
-            "profile edit did not produce the intended room state; refusing to write"
-        )
+        raise CapabilityError("profile edit did not produce the intended room state; refusing to write")
 
     _atomic_text_write(profile_file, updated)
     return reconcile_room(

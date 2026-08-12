@@ -52,7 +52,7 @@
     {
       "id": "daily-plan",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
         "sha256": "311c9cdf45842936cee4a91d1ac116ce9e1eeae576c01aacdce989e44b912221",
         "byte_size": 30797
@@ -94,7 +94,7 @@
     {
       "id": "week-plan",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/week-plan/SKILL.md",
         "sha256": "23b5acf167fb02f41fa31fb75c38c366afab2263a53b0b4a9dcbdc62966b4bf2",
         "byte_size": 12007
@@ -136,7 +136,7 @@
     {
       "id": "process-meetings",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/process-meetings/SKILL.md",
         "sha256": "eb7e819ed4c4e32fb5ec1f5477b249ec4bd6d8805870360107098d893a04642c",
         "byte_size": 19094
@@ -178,7 +178,7 @@
     {
       "id": "dex-doctor",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/dex-doctor/SKILL.md",
         "sha256": "d875ffd44a37489e225ddb0eae06cde12dc146f7e356152320da80f77a0cee08",
         "byte_size": 17600
@@ -220,7 +220,7 @@
     {
       "id": "relationship-radar",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/relationship-radar/SKILL.md",
         "sha256": "e28b91f08f068368a8d66dc51e090fa807ab3f7fa0ec88c62de10344ea44f78e",
         "byte_size": 5811
@@ -262,7 +262,7 @@
     {
       "id": "save-insight",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/save-insight/SKILL.md",
         "sha256": "1fdb8303f5b56ff4f2b95f69fb430ac0821eccd15027bd55476973dce61ce9d1",
         "byte_size": 2658
@@ -304,7 +304,7 @@
     {
       "id": "daily-review",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/daily-review/SKILL.md",
         "sha256": "df2e77a13ccd34cce7c9b34b1d92d99b1c09fbe93ebce60e486bbfa5b878ae8a",
         "byte_size": 19256
@@ -352,7 +352,7 @@
     {
       "id": "week-review",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/week-review/SKILL.md",
         "sha256": "30b052197bb91b3b48d41021789ec577eaab394ec1a910001773c2c8e9319d16",
         "byte_size": 18517
@@ -400,7 +400,7 @@
     {
       "id": "meeting-prep",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/meeting-prep/SKILL.md",
         "sha256": "f0365cfcd014a836429498c306ae9accf71370f2dde06e9049da8334385d49ea",
         "byte_size": 12203
@@ -448,7 +448,7 @@
     {
       "id": "meeting-closeout",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/meeting-closeout/SKILL.md",
         "sha256": "d9b9110fb2f49a3b161c71fbc793ac2738641f1b40bf69c6a765a7d20d3a365b",
         "byte_size": 6690
@@ -490,7 +490,7 @@
     {
       "id": "commitments",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/commitments/SKILL.md",
         "sha256": "8936fea6f6e7a0e8a3f67bbe3fbede95dde26e752f339d86fa34e01d9dfc90b7",
         "byte_size": 6092
@@ -532,7 +532,7 @@
     {
       "id": "delegate-check",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/delegate-check/SKILL.md",
         "sha256": "c4cc8a0bb2c7b48edddf3aa809a0756fa123fb6f6be8c60076357454b96edc34",
         "byte_size": 4435
@@ -574,7 +574,7 @@
     {
       "id": "triage",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/triage/SKILL.md",
         "sha256": "472605767b79c8af009ad4e265fc70c441618f446b3690d0e05a49f086093cb6",
         "byte_size": 14395
@@ -610,7 +610,7 @@
     {
       "id": "project-health",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/project-health/SKILL.md",
         "sha256": "9196c6be1f953775212c6992f0c099d0c80c67cbb47e0a22b20392d168e937ca",
         "byte_size": 2605
@@ -646,7 +646,7 @@
     {
       "id": "decision-log",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/decision-log/SKILL.md",
         "sha256": "e6c5d64940fe7135bfacd06aebcffae7ac40ca0f1971503b6f4a46551c505283",
         "byte_size": 4518
@@ -688,7 +688,7 @@
     {
       "id": "initiative-kickoff",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/initiative-kickoff/SKILL.md",
         "sha256": "0b7db35d2bc39bc85bc94067348b3a3e04066698f7b1886c410e91e11001c9e3",
         "byte_size": 4862
@@ -730,7 +730,7 @@
     {
       "id": "product-brief",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/product-brief/SKILL.md",
         "sha256": "745a0899a364299b0b1b119044e7bdcc0819c8fd8aa4bc64fe276378c8bc14ac",
         "byte_size": 16845
@@ -766,7 +766,7 @@
     {
       "id": "industry-truths",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/industry-truths/SKILL.md",
         "sha256": "b2eb362df0d00962dbdf9fe8a988e499b9f584431e02e585ba3f376453b2b8c0",
         "byte_size": 8712
@@ -802,7 +802,7 @@
     {
       "id": "identity-snapshot",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/identity-snapshot/SKILL.md",
         "sha256": "9aa571d6fe78dfea5c8d78b32d3ec2ba78a7ea40ca5faf9d62be8b6c47922303",
         "byte_size": 3285
@@ -838,7 +838,7 @@
     {
       "id": "weekly-reflection",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/weekly-reflection/SKILL.md",
         "sha256": "7a8fdd0bf4dfb517bcc076d2f9cc899efa1d678c5efa3f0bd6457d9186ef4ffb",
         "byte_size": 3929
@@ -880,7 +880,7 @@
     {
       "id": "enable-semantic-search",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/enable-semantic-search/SKILL.md",
         "sha256": "cfd8cda3a6fd2fbd63129ed59a94db64a9dda24007dce2b488144043ee0459af",
         "byte_size": 18978
@@ -916,7 +916,7 @@
     {
       "id": "xray",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/xray/SKILL.md",
         "sha256": "4ac35ac8c17b738e53210200694e027988f7a92dbda04d28a1285a4b1fd27631",
         "byte_size": 25061
@@ -952,7 +952,7 @@
     {
       "id": "backup-setup",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/backup-setup/SKILL.md",
         "sha256": "bbcec8b57013f56e10d3de80ae5db46d2fe56dd5e77e3f9c68fa5ac8c12167da",
         "byte_size": 5265
@@ -1005,7 +1005,7 @@
     {
       "id": "backup-now",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/backup-now/SKILL.md",
         "sha256": "38b8ab7eff8980521852bc223fcdef9d194f8c35f5647683d08e4d8ff8d556c0",
         "byte_size": 1731
@@ -1047,7 +1047,7 @@
     {
       "id": "backup-restore",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/backup-restore/SKILL.md",
         "sha256": "eae4e6c405acf8f8bba6bfe0a6ef60186e44e136e20501b66d7d7c56a54773bd",
         "byte_size": 2778

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import shutil
 import subprocess
@@ -27,11 +28,7 @@ def _profile(path: Path, **states: bool) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         yaml.safe_dump(
-            {
-                "capabilities": {
-                    room: {"enabled": enabled} for room, enabled in states.items()
-                }
-            },
+            {"capabilities": {room: {"enabled": enabled} for room, enabled in states.items()}},
             sort_keys=False,
         ),
         encoding="utf-8",
@@ -51,14 +48,7 @@ def _fake_vault(tmp_path: Path) -> Path:
 
     for room, skills in ROOM_SKILLS.items():
         for skill in skills:
-            dormant = (
-                vault
-                / ".claude/skills/_available/capabilities"
-                / room
-                / "skills"
-                / skill
-                / "SKILL.md"
-            )
+            dormant = vault / ".claude/skills/_available/capabilities" / room / "skills" / skill / "SKILL.md"
             dormant.parent.mkdir(parents=True, exist_ok=True)
             dormant.write_text(
                 f"---\nname: {skill}\ndescription: Test skill\n---\n",
@@ -76,6 +66,30 @@ def _fake_vault(tmp_path: Path) -> Path:
         seed.parent.mkdir(parents=True, exist_ok=True)
         seed.write_text(f"# {room}\n", encoding="utf-8")
     return vault
+
+
+def _fake_contract_with_skill_pins(tmp_path: Path, vault: Path) -> Path:
+    """Clone the real room declaration and pin the synthetic release payloads."""
+    contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    for room, skills in ROOM_SKILLS.items():
+        pins = []
+        for skill in skills:
+            relative = Path(".claude/skills/_available/capabilities") / room / "skills" / skill / "SKILL.md"
+            payload = (vault / relative).read_bytes()
+            pins.append(
+                {
+                    "room": room,
+                    "skill": skill,
+                    "source_path": relative.as_posix(),
+                    "target_path": f".claude/skills/{skill}/SKILL.md",
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                    "byte_size": len(payload),
+                }
+            )
+        contract["capabilities"][room]["skill_sources"] = pins
+    path = tmp_path / "portable-vault.fixture.json"
+    path.write_text(json.dumps(contract), encoding="utf-8")
+    return path
 
 
 def _decode(result) -> dict:
@@ -111,35 +125,22 @@ def test_no_opinion_rooms_default_on_and_legacy_quarterly_planning_is_a_fallback
     profile_path.parent.mkdir(parents=True)
     profile_path.write_text("quarterly_planning:\n  enabled: true\n", encoding="utf-8")
 
-    assert capabilities.enabled(
-        "career", profile_path=profile_path, contract_path=CONTRACT_PATH
-    ) is True
-    assert capabilities.enabled(
-        "companies", profile_path=profile_path, contract_path=CONTRACT_PATH
-    ) is True
-    assert capabilities.enabled(
-        "quarter_goals", profile_path=profile_path, contract_path=CONTRACT_PATH
-    ) is True
+    assert capabilities.enabled("career", profile_path=profile_path, contract_path=CONTRACT_PATH) is True
+    assert capabilities.enabled("companies", profile_path=profile_path, contract_path=CONTRACT_PATH) is True
+    assert capabilities.enabled("quarter_goals", profile_path=profile_path, contract_path=CONTRACT_PATH) is True
 
     profile_path.write_text(
-        "capabilities:\n  quarter_goals:\n    enabled: false\n"
-        "quarterly_planning:\n  enabled: true\n",
+        "capabilities:\n  quarter_goals:\n    enabled: false\nquarterly_planning:\n  enabled: true\n",
         encoding="utf-8",
     )
-    assert capabilities.enabled(
-        "quarter_goals", profile_path=profile_path, contract_path=CONTRACT_PATH
-    ) is False
+    assert capabilities.enabled("quarter_goals", profile_path=profile_path, contract_path=CONTRACT_PATH) is False
 
     profile_path.write_text("capabilities: malformed\n", encoding="utf-8")
-    assert capabilities.enabled(
-        "career", profile_path=profile_path, contract_path=CONTRACT_PATH
-    ) is True
+    assert capabilities.enabled("career", profile_path=profile_path, contract_path=CONTRACT_PATH) is True
 
 
 def test_profile_template_keeps_quarter_goal_defaults_aligned() -> None:
-    profile = yaml.safe_load(
-        (REPO_ROOT / "System/user-profile-template.yaml").read_text(encoding="utf-8")
-    )
+    profile = yaml.safe_load((REPO_ROOT / "System/user-profile-template.yaml").read_text(encoding="utf-8"))
 
     assert profile["capabilities"]["quarter_goals"]["enabled"] is True
     assert profile["quarterly_planning"]["enabled"] is True
@@ -158,20 +159,14 @@ def test_flipped_rooms_default_on_but_a_recorded_answer_always_wins(
 
     for room in ("career", "quarter_goals"):
         _profile(profile_path, **{room: False})
-        assert capabilities.enabled(
-            room, profile_path=profile_path, contract_path=CONTRACT_PATH
-        ) is False
+        assert capabilities.enabled(room, profile_path=profile_path, contract_path=CONTRACT_PATH) is False
 
         _profile(profile_path, **{room: True})
-        assert capabilities.enabled(
-            room, profile_path=profile_path, contract_path=CONTRACT_PATH
-        ) is True
+        assert capabilities.enabled(room, profile_path=profile_path, contract_path=CONTRACT_PATH) is True
 
     # A map that names one room leaves the other on the contract default.
     _profile(profile_path, quarter_goals=False)
-    assert capabilities.enabled(
-        "career", profile_path=profile_path, contract_path=CONTRACT_PATH
-    ) is True
+    assert capabilities.enabled("career", profile_path=profile_path, contract_path=CONTRACT_PATH) is True
 
 
 def test_off_rooms_stay_dormant_and_leave_the_spine_intact(tmp_path: Path) -> None:
@@ -190,13 +185,9 @@ def test_off_rooms_stay_dormant_and_leave_the_spine_intact(tmp_path: Path) -> No
     )
 
     for room in capabilities.room_ids(contract_path=CONTRACT_PATH):
-        for folder in capabilities.surfaces_for(
-            room, contract_path=CONTRACT_PATH
-        ).get("folders", []):
+        for folder in capabilities.surfaces_for(room, contract_path=CONTRACT_PATH).get("folders", []):
             assert not (vault / folder).exists()
-        for skill in capabilities.surfaces_for(
-            room, contract_path=CONTRACT_PATH
-        ).get("skills", []):
+        for skill in capabilities.surfaces_for(room, contract_path=CONTRACT_PATH).get("skills", []):
             assert not (vault / ".claude/skills" / skill).exists()
 
     assert (vault / "00-Inbox/Meetings").is_dir()
@@ -309,6 +300,7 @@ def test_reconcile_refreshes_enabled_skills_after_a_brain_update(
     # The planted catalog plays the role of the brain (the real repo catalog
     # would otherwise shadow it — brain-first sourcing).
     monkeypatch.setattr(capabilities, "REPO_ROOT", vault)
+    contract_path = _fake_contract_with_skill_pins(tmp_path, vault)
     profile_path = _profile(vault / "System/user-profile.yaml", career=True)
     stale = vault / ".claude/skills/career-setup/SKILL.md"
     stale.parent.mkdir(parents=True, exist_ok=True)
@@ -317,7 +309,7 @@ def test_reconcile_refreshes_enabled_skills_after_a_brain_update(
     capabilities.reconcile_all(
         vault,
         profile_path=profile_path,
-        contract_path=CONTRACT_PATH,
+        contract_path=contract_path,
     )
 
     assert "description: Test skill" in stale.read_text(encoding="utf-8")
@@ -329,6 +321,7 @@ def test_enable_preflights_dormant_assets_before_changing_profile_or_folders(
 ) -> None:
     vault = _fake_vault(tmp_path)
     monkeypatch.setattr(capabilities, "REPO_ROOT", vault)
+    contract_path = _fake_contract_with_skill_pins(tmp_path, vault)
     profile_path = _profile(vault / "System/user-profile.yaml", career=False)
     missing = vault / ".claude/skills/_available/capabilities/career/skills/career-coach"
     shutil.rmtree(missing)
@@ -339,12 +332,68 @@ def test_enable_preflights_dormant_assets_before_changing_profile_or_folders(
             True,
             vault_root=vault,
             profile_path=profile_path,
-            contract_path=CONTRACT_PATH,
+            contract_path=contract_path,
         )
 
     profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
     assert profile["capabilities"]["career"]["enabled"] is False
     assert not (vault / "05-Areas/Career").exists()
+
+
+def test_enable_rejects_pinned_room_drift_without_any_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _fake_vault(tmp_path)
+    monkeypatch.setattr(capabilities, "REPO_ROOT", vault)
+    contract_path = _fake_contract_with_skill_pins(tmp_path, vault)
+    profile_path = _profile(vault / "System/user-profile.yaml", career=False)
+    original_profile = profile_path.read_bytes()
+    active = vault / ".claude/skills/career-setup/SKILL.md"
+    active.parent.mkdir(parents=True, exist_ok=True)
+    active.write_text("existing active payload\n", encoding="utf-8")
+    original_active = active.read_bytes()
+    dormant = vault / ".claude/skills/_available/capabilities/career/skills/career-coach/SKILL.md"
+    dormant.write_text("changed after release pin\n", encoding="utf-8")
+
+    with pytest.raises(capabilities.CapabilityError, match="identity|sha256|byte_size|bytes"):
+        capabilities.set_enabled(
+            "career",
+            True,
+            vault_root=vault,
+            profile_path=profile_path,
+            contract_path=contract_path,
+        )
+
+    assert profile_path.read_bytes() == original_profile
+    assert active.read_bytes() == original_active
+    assert not (vault / "05-Areas/Career").exists()
+    assert not (vault / ".claude/skills/career-coach").exists()
+
+
+def test_enabled_room_targets_read_back_to_the_authoritative_pins(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _fake_vault(tmp_path)
+    monkeypatch.setattr(capabilities, "REPO_ROOT", vault)
+    contract_path = _fake_contract_with_skill_pins(tmp_path, vault)
+    profile_path = _profile(vault / "System/user-profile.yaml", career=False)
+
+    capabilities.set_enabled(
+        "career",
+        True,
+        vault_root=vault,
+        profile_path=profile_path,
+        contract_path=contract_path,
+    )
+
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    for pin in contract["capabilities"]["career"]["skill_sources"]:
+        surfaced = vault / pin["target_path"]
+        payload = surfaced.read_bytes()
+        assert hashlib.sha256(payload).hexdigest() == pin["sha256"]
+        assert len(payload) == pin["byte_size"]
 
 
 def test_career_and_resume_mcps_report_room_off_without_creating_folders(
@@ -397,12 +446,8 @@ def test_company_and_quarter_write_tools_do_not_repair_off_rooms(
     assert not companies_dir.exists()
     assert not goals_file.parent.exists()
 
-    listed_companies = _decode(
-        asyncio.run(work_server.handle_call_tool("list_companies", {}))
-    )
-    listed_goals = _decode(
-        asyncio.run(work_server.handle_call_tool("get_quarterly_goals", {}))
-    )
+    listed_companies = _decode(asyncio.run(work_server.handle_call_tool("list_companies", {})))
+    listed_goals = _decode(asyncio.run(work_server.handle_call_tool("get_quarterly_goals", {})))
     summary = _decode(asyncio.run(work_server.handle_call_tool("get_work_summary", {})))
     assert listed_companies["feature_status"] == "off"
     assert listed_goals["feature_status"] == "off"
@@ -415,12 +460,7 @@ def test_shipped_room_skills_live_only_in_the_dormant_catalog() -> None:
         for skill in skills:
             assert not (REPO_ROOT / ".claude/skills" / skill / "SKILL.md").exists()
             assert (
-                REPO_ROOT
-                / ".claude/skills/_available/capabilities"
-                / room
-                / "skills"
-                / skill
-                / "SKILL.md"
+                REPO_ROOT / ".claude/skills/_available/capabilities" / room / "skills" / skill / "SKILL.md"
             ).is_file()
 
 
@@ -512,10 +552,7 @@ def test_shipped_room_seed_without_identity_is_not_onboarding_evidence(
     profile_path = vault / "System/user-profile.yaml"
     profile_path.parent.mkdir(parents=True, exist_ok=True)
     profile_path.write_text('name: ""\n', encoding="utf-8")
-    shipped_seed = (
-        capabilities._dormant_root("companies", vault)
-        / "folders/05-Areas/Companies/README.md"
-    )
+    shipped_seed = capabilities._dormant_root("companies", vault) / "folders/05-Areas/Companies/README.md"
     active_seed = vault / "05-Areas/Companies/README.md"
     active_seed.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(shipped_seed, active_seed)
@@ -531,10 +568,7 @@ def test_user_edit_to_tracked_room_seed_is_onboarding_evidence(
     profile_path = vault / "System/user-profile.yaml"
     profile_path.parent.mkdir(parents=True, exist_ok=True)
     profile_path.write_text('name: ""\n', encoding="utf-8")
-    shipped_seed = (
-        capabilities._dormant_root("quarter_goals", vault)
-        / "folders/01-Quarter_Goals/Quarter_Goals.md"
-    )
+    shipped_seed = capabilities._dormant_root("quarter_goals", vault) / "folders/01-Quarter_Goals/Quarter_Goals.md"
     active_seed = vault / "01-Quarter_Goals/Quarter_Goals.md"
     active_seed.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(shipped_seed, active_seed)
@@ -632,11 +666,14 @@ def test_partial_capability_map_gains_the_enabled_companies_compatibility_pin(
         "career": {"enabled": False},
         "companies": {"enabled": True},
     }
-    assert capabilities.enabled(
-        "quarter_goals",
-        profile_path=profile_path,
-        contract_path=CONTRACT_PATH,
-    ) is True
+    assert (
+        capabilities.enabled(
+            "quarter_goals",
+            profile_path=profile_path,
+            contract_path=CONTRACT_PATH,
+        )
+        is True
+    )
 
 
 def test_fresh_unonboarded_vault_is_never_migrated(tmp_path):
@@ -657,7 +694,7 @@ def test_toggle_preserves_profile_comments(tmp_path):
     profile = vault / "System" / "user-profile.yaml"
     profile.write_text(
         "# Your name (used to identify you in meetings)\n"
-        "name: \"\"\n"
+        'name: ""\n'
         "\n"
         "# Quarterly planning preferences\n"
         "quarterly_planning:\n"

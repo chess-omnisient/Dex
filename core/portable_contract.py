@@ -340,22 +340,78 @@ RULES: tuple[Rule, ...] = (
 # (vault-owned values). An ABSENT room is a VALID vault state: convergence and
 # repair must never recreate a room the user did not select.
 # ---------------------------------------------------------------------------
+
+
+def _room_skill_source(
+    room: str,
+    skill: str,
+    sha256: str,
+    byte_size: int,
+) -> dict[str, object]:
+    """Declare one release-owned room skill without duplicating its paths."""
+    return {
+        "room": room,
+        "skill": skill,
+        "source_path": (
+            f".claude/skills/_available/capabilities/{room}/skills/{skill}/SKILL.md"
+        ),
+        "target_path": f".claude/skills/{skill}/SKILL.md",
+        "sha256": sha256,
+        "byte_size": byte_size,
+    }
+
+
 CAPABILITIES: dict[str, dict[str, object]] = {
     "career": {
         "folders": ("05-Areas/Career",),
         "skills": ("career-setup", "career-coach", "resume-builder"),
+        "skill_sources": (
+            _room_skill_source(
+                "career",
+                "career-setup",
+                "12784bb4a2c5bb1edc786226b2e4108a34db85583c9d59ea80b1a941fb6b474c",
+                14824,
+            ),
+            _room_skill_source(
+                "career",
+                "career-coach",
+                "356de976657e23a399c19bd09f580e429cc0c3fc7da4a79095345b6ce8c8d352",
+                29547,
+            ),
+            _room_skill_source(
+                "career",
+                "resume-builder",
+                "f759f12154a6b928ad4e16bf2bf82c363d6e9baf9cd9ddfedd639b60fc51d5de",
+                29649,
+            ),
+        ),
         "mcp": ("career_server", "resume_server"),
         "default_enabled": True,
     },
     "companies": {
         "folders": ("05-Areas/Companies",),
         "skills": (),
+        "skill_sources": (),
         "features": ("entity-engine.company-pages",),
         "default_enabled": True,
     },
     "quarter_goals": {
         "folders": ("01-Quarter_Goals",),
         "skills": ("quarter-plan", "quarter-review"),
+        "skill_sources": (
+            _room_skill_source(
+                "quarter_goals",
+                "quarter-plan",
+                "08679c722b1555563e125a7bbc67ef1ccf1dfa367f522a5eb8565cea77fd937f",
+                9406,
+            ),
+            _room_skill_source(
+                "quarter_goals",
+                "quarter-review",
+                "069b339f63aa436b8ae01b16d97756b14f003f9069eb10c11827ed9abf5df794",
+                12851,
+            ),
+        ),
         "config": "quarterly_planning",
         "default_enabled": True,
     },
@@ -833,7 +889,12 @@ def build_contract_schema() -> dict[str, object]:
                 "additionalProperties": {
                     "type": "object",
                     "additionalProperties": False,
-                    "required": ["default_enabled", "folders"],
+                    "required": [
+                        "default_enabled",
+                        "folders",
+                        "skills",
+                        "skill_sources",
+                    ],
                     "properties": {
                         "default_enabled": {"type": "boolean"},
                         "folders": {
@@ -842,6 +903,32 @@ def build_contract_schema() -> dict[str, object]:
                             "minItems": 1,
                         },
                         "skills": {"type": "array", "items": {"type": "string"}},
+                        "skill_sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": [
+                                    "room",
+                                    "skill",
+                                    "source_path",
+                                    "target_path",
+                                    "sha256",
+                                    "byte_size",
+                                ],
+                                "properties": {
+                                    "room": {"type": "string", "minLength": 1},
+                                    "skill": {"type": "string", "minLength": 1},
+                                    "source_path": {"type": "string", "minLength": 1},
+                                    "target_path": {"type": "string", "minLength": 1},
+                                    "sha256": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-f]{64}$",
+                                    },
+                                    "byte_size": {"type": "integer", "minimum": 0},
+                                },
+                            },
+                        },
                         "mcp": {"type": "array", "items": {"type": "string"}},
                         "features": {"type": "array", "items": {"type": "string"}},
                         "config": {"type": "string", "minLength": 1},
