@@ -368,14 +368,14 @@ def _active_room_skill_target(root: Path, pin: SkillSourcePin) -> Path:
     return target
 
 
-def _copy_verified_room_skill(pin: SkillSourcePin, target: Path) -> None:
-    """Surface only the pinned SKILL.md and verify the active bytes after copy."""
+def _copy_verified_room_skill(pin: SkillSourcePin, target: Path) -> bool:
+    """Surface one pinned skill and return whether a target was created."""
     if target.is_symlink() or (target.exists() and not target.is_dir()):
         raise CapabilityError(f"Active room skill target is unsafe: {target}")
     if target.exists():
         # Preflight proved these are already the exact release-owned bytes.
         # Do not replace an intact target just to refresh its metadata.
-        return
+        return False
     target.parent.mkdir(parents=True, exist_ok=True)
     staged = Path(tempfile.mkdtemp(prefix=f".{target.name}.", dir=target.parent))
     try:
@@ -387,6 +387,7 @@ def _copy_verified_room_skill(pin: SkillSourcePin, target: Path) -> None:
         surfaced = (target / "SKILL.md").read_bytes()
         if hashlib.sha256(surfaced).hexdigest() != pin.sha256 or len(surfaced) != pin.byte_size:
             raise CapabilityError(f"Surfaced room skill failed identity read-back: {pin.target_path}")
+        return True
     finally:
         if staged.exists():
             shutil.rmtree(staged)
@@ -427,8 +428,8 @@ def reconcile_room(
         for skill in surfaces.get("skills", []):
             pin = skill_pins[str(skill)]
             target = _active_room_skill_target(root, pin)
-            _copy_verified_room_skill(pin, target)
-            surfaced.append(target.relative_to(root).as_posix())
+            if _copy_verified_room_skill(pin, target):
+                surfaced.append(target.relative_to(root).as_posix())
     else:
         # Capability folders are vault-owned user content.  They are intentionally
         # left untouched.  Only release-owned active skill copies are unsurfaced.
