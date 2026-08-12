@@ -159,20 +159,22 @@ If available, enhance the quarterly review with meaning-based analysis:
    qmd query "learning description" --limit 3
    ```
    against `01-Quarter_Goals/Quarter_Goals.md`. Discover which goals a learning actually impacted, even without explicit tags.
-   - Example: Learning "Realized we need better onboarding docs" semantically matches goal "Improve customer activation rate"
+   - Evidence template: `[learning text from source]` may match `[goal text from the authoritative goal file]`. Label the match `Inferred`, retain `[source ID]`, `[source date]`, `[as-of date]`, and the query result, and do not claim impact from similarity alone.
 
 2. **Detect hidden goal progress:** For each quarterly goal, search across all meeting notes and tasks:
    ```
    qmd query "goal success criteria" --limit 5
    ```
    Find work that advanced the goal but wasn't explicitly linked.
-   - Example: Goal "Expand EMEA presence" — QMD finds 4 meetings about European partnerships and 2 tasks about localization that were never formally linked.
+   - Evidence template: `[goal text from source]` has `[observed result references]` returned by QMD. Cite each result ID/date, deduplicate it, and keep contribution `Unknown` until the underlying source proves that it advanced the goal.
 
 3. **Cross-goal connections:** Search for themes that span multiple goals:
    ```
    qmd query "recurring theme from the quarter" --limit 5
    ```
-   Surface patterns like "Customer feedback kept driving both your product and content goals."
+   Surface a candidate such as `[theme inferred from cited query results]` across
+   `[goal IDs returned by the search]`; label it `Inferred` and retain the same
+   source/date/as-of provenance before asking the user whether it is meaningful.
 
 **Integration:** Add a "Semantic Discoveries" subsection under each goal assessment showing work that contributed but wasn't explicitly tracked. Also add a "Cross-Goal Themes" section to the quarterly review output.
 

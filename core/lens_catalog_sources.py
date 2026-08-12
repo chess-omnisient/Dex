@@ -362,9 +362,61 @@ def _room_authorities(release_root: Path, portable_contract_path: Path) -> dict[
         _strict_json(portable_contract_path, context="portable vault contract"),
         context="portable vault contract",
     )
-    rooms = document.get("capabilities")
-    if not isinstance(rooms, Mapping):
+    declared_rooms = document.get("capabilities")
+    if not isinstance(declared_rooms, Mapping):
         raise SkillSourceError("portable vault contract has no capability rooms")
+
+    contract_version = document.get("contract_version")
+    rooms = declared_rooms
+    if contract_version == 1:
+        # Portable v1 intentionally has no payload pins. Current runtimes still
+        # read its room/folder/config shape, while resolving release-owned skill
+        # bytes through the current release's committed v2 authority. This keeps
+        # one pin owner and prevents an old caller document from becoming a
+        # second, mutable source of executable payload identity.
+        for room, raw_spec in declared_rooms.items():
+            spec = _mapping(raw_spec, context=f"portable v1 room {room!r}")
+            if "skill_sources" in spec:
+                raise SkillSourceError("portable v1 rooms must not declare skill_sources")
+
+        authority_path = release_root / DEFAULT_PORTABLE_CONTRACT
+        try:
+            same_authority = authority_path.resolve() == portable_contract_path.resolve()
+        except OSError:
+            same_authority = authority_path == portable_contract_path
+        if same_authority:
+            raise SkillSourceError(
+                "portable v1 needs the current release's separate v2 room authority"
+            )
+        authority_document = _mapping(
+            _strict_json(authority_path, context="current portable v2 room authority"),
+            context="current portable v2 room authority",
+        )
+        if authority_document.get("contract_version") != 2:
+            raise SkillSourceError("current release room authority must be portable contract v2")
+        authority_rooms = authority_document.get("capabilities")
+        if not isinstance(authority_rooms, Mapping):
+            raise SkillSourceError("current portable v2 room authority has no capability rooms")
+
+        selected_rooms: dict[str, object] = {}
+        for room, raw_spec in declared_rooms.items():
+            if not isinstance(room, str) or not room:
+                raise SkillSourceError("capability room id must be non-empty text")
+            declared_spec = _mapping(raw_spec, context=f"portable v1 room {room!r}")
+            authority_spec = _mapping(
+                authority_rooms.get(room),
+                context=f"current portable v2 room {room!r}",
+            )
+            declared_skills = declared_spec.get("skills", [])
+            authority_skills = authority_spec.get("skills", [])
+            if declared_skills != authority_skills:
+                raise SkillSourceError(
+                    f"portable v1 room {room!r} skills do not match the current release authority"
+                )
+            selected_rooms[room] = authority_spec
+        rooms = selected_rooms
+    elif contract_version not in (None, 2):
+        raise SkillSourceError("portable vault contract version is unsupported")
 
     authorities: dict[tuple[str, str], Mapping[str, object]] = {}
     target_owners: dict[str, tuple[str, str]] = {}

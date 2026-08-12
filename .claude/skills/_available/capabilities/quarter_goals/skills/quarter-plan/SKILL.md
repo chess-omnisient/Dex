@@ -176,10 +176,10 @@ Look for `05-Areas/Career/Growth_Goals.md`:
 
 ### Review Last Quarter (if available)
 
-> "Last quarter (Q4 2025) goals were:
-> 1. [Goal 1] — ✅ Completed
-> 2. [Goal 2] — 🔄 In progress (80%)
-> 3. [Goal 3] — ❌ Didn't finish
+> "Last quarter ([quarter from canonical source]) goals were:
+> 1. [Goal from source] — [observed status; source ID: [source ID]; source date: [source date]; as-of: [as-of date]]
+> 2. [Goal from source] — [observed status or Unknown, with the same provenance fields]
+> 3. [Goal from source] — [observed status or Unknown, with the same provenance fields]
 > 
 > Anything to carry forward into this quarter?"
 

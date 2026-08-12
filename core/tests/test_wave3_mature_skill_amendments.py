@@ -138,6 +138,35 @@ UNSUPPORTED_ASSUMPTIONS: dict[str, tuple[str, ...]] = {
         r"flag if > 14 days old",
         r"\*\*health score:\*\*",
     ),
+    "career-setup": (
+        r"hook may append",
+        r"may append a candidate",
+    ),
+    "career-coach": (
+        r"early career\s*-\s*0-3 years",
+        r"mid-level\s*-\s*3-7 years",
+        r"senior\s*\(7\+ years",
+        r"append to `05-areas/career/review_history\.md` as informal feedback",
+        r"same challenge 3 times",
+    ),
+    "resume-builder": (
+        r"character limit:\s*220 characters",
+        r"character limit:\s*2,600 characters",
+        r"linkedin shows top 3 prominently",
+        r"focus on top 3 most important",
+        r"team of 15 people on a \$5m project",
+        r"headline uses most of 220 character limit",
+        r"skills section prioritized correctly \(top 3 most important\)",
+    ),
+    "pipeline-sync": (
+        r"platform migration \(acme\).*£250k",
+        r"data warehouse \(initech\).*40%",
+    ),
+    "quarter-plan": (r"in progress \(80%\)",),
+    "quarter-review": (
+        r"realized we need better onboarding docs.*improve customer activation rate",
+        r"qmd finds 4 meetings.*2 tasks",
+    ),
 }
 
 CATALOGUE_UNSUPPORTED_CLAIMS: dict[str, tuple[str, ...]] = {
@@ -405,6 +434,92 @@ def test_career_setup_gates_phase_six_and_skip_writes_at_the_point_of_action() -
         assert "before" in lowered or "only after" in lowered
 
 
+def test_career_setup_describes_the_hook_as_a_read_only_candidate_detector() -> None:
+    text = (REPO_ROOT / MATURE_SKILLS["career-setup"]).read_text(encoding="utf-8")
+    lowered = text.lower()
+
+    for forbidden in ("hook may append", "may append a candidate"):
+        assert forbidden not in lowered
+    for required in (
+        "read-only",
+        "candidate only",
+        "nothing was saved",
+        "exact preview",
+        "explicit confirmation",
+        "read back",
+    ):
+        assert required in lowered
+
+
+def test_career_coach_uses_confirmed_criteria_and_gates_every_history_append() -> None:
+    text = (REPO_ROOT / MATURE_SKILLS["career-coach"]).read_text(encoding="utf-8")
+    lowered = text.lower()
+
+    for forbidden in (
+        "0-3 years",
+        "3-7 years",
+        "7+ years",
+        "append to `05-areas/career/review_history.md` as informal feedback",
+        "same challenge 3 times",
+    ):
+        assert forbidden not in lowered
+    for required in (
+        "configured or user-confirmed career level",
+        "configured or user-confirmed recurrence criterion",
+        "review-history append",
+        "exact preview",
+        "explicit confirmation",
+        "read back",
+    ):
+        assert required in lowered
+
+
+def test_resume_linkedin_guidance_uses_sourced_limits_and_provenance_placeholders() -> None:
+    text = (REPO_ROOT / MATURE_SKILLS["resume-builder"]).read_text(encoding="utf-8")
+    lowered = text.lower()
+
+    for forbidden in (
+        "220 characters",
+        "2,600 characters",
+        "top 3",
+        "team of 15 people",
+        "$5m project",
+    ):
+        assert forbidden not in lowered
+    for required in (
+        "current, cited first-party linkedin source",
+        "unknown",
+        "[source id]",
+        "[source date]",
+        "[user-confirmed metric]",
+    ):
+        assert required in lowered
+
+
+@pytest.mark.parametrize(
+    ("skill_id", "fabricated"),
+    (
+        ("pipeline-sync", "Platform Migration (Acme)  value        £250k"),
+        ("quarter-plan", "In progress (80%)"),
+        (
+            "quarter-review",
+            'Learning "Realized we need better onboarding docs" semantically matches goal '
+            '"Improve customer activation rate"',
+        ),
+        ("quarter-review", "QMD finds 4 meetings about European partnerships and 2 tasks"),
+    ),
+)
+def test_operational_examples_do_not_use_realistic_fabricated_facts(
+    skill_id: str,
+    fabricated: str,
+) -> None:
+    text = (REPO_ROOT / MATURE_SKILLS[skill_id]).read_text(encoding="utf-8")
+
+    assert fabricated.lower() not in text.lower()
+    for placeholder in ("[source id]", "[source date]", "[as-of date]"):
+        assert placeholder in text.lower()
+
+
 @pytest.mark.parametrize(
     ("skill_id", "contradiction"),
     (
@@ -412,6 +527,16 @@ def test_career_setup_gates_phase_six_and_skip_writes_at_the_point_of_action() -
         ("deal-review", "Fresh: Updated within last 5 days"),
         ("roadmap", "**Health score:** Good"),
         ("call-prep", "Cost response: pays for itself in 3 months"),
+        ("career-setup", "The hook may append a candidate"),
+        ("career-coach", "Early Career - 0-3 years"),
+        ("resume-builder", "Character limit: 220 characters"),
+        ("pipeline-sync", "Platform Migration (Acme) value £250k"),
+        ("quarter-plan", "In progress (80%)"),
+        (
+            "quarter-review",
+            'Learning "Realized we need better onboarding docs" semantically matches goal '
+            '"Improve customer activation rate"',
+        ),
     ),
 )
 def test_mature_skill_gate_detects_unsupported_rules_and_invented_claims(

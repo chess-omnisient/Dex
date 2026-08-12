@@ -164,6 +164,53 @@ def test_onboarding_refuses_room_source_drift_before_any_vault_mutation(
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_onboarding_fails_closed_when_lifecycle_authority_cannot_start(
+    tmp_path: Path,
+) -> None:
+    vault = _prepare_provision_vault(tmp_path)
+    before = _snapshot_tree(vault)
+
+    completed = _invoke_provision(
+        vault,
+        "--onboard",
+        env={**os.environ, "DEX_LIFECYCLE_PYTHON": "/bin/false"},
+    )
+
+    assert completed.returncode != 0
+    summary = json.loads(completed.stdout)
+    assert summary["ok"] is False
+    assert "lifecycle" in " ".join(summary["errors"]).lower()
+    assert "fallback" not in json.dumps(summary).lower()
+    assert _snapshot_tree(vault) == before
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_onboarding_rolls_back_every_write_when_a_late_target_fails(
+    tmp_path: Path,
+) -> None:
+    vault = _prepare_provision_vault(tmp_path)
+    core_directory = vault / "core"
+    original_mode = core_directory.stat().st_mode & 0o777
+    core_directory.chmod(0o500)
+    before = _snapshot_tree(vault)
+
+    try:
+        completed = _invoke_provision(vault, "--onboard")
+        after = _snapshot_tree(vault)
+    finally:
+        core_directory.chmod(original_mode)
+
+    assert completed.returncode != 0
+    summary = json.loads(completed.stdout)
+    assert summary["ok"] is False
+    assert summary.get("rolled_back") is True
+    assert summary["created"] == []
+    assert summary["removed"] == []
+    assert summary["mutation_receipt"]["declared_paths"] == []
+    assert after == before
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 @pytest.mark.parametrize("unsafe_kind", ("symlink", "custom-bytes"))
 def test_onboarding_refuses_unsafe_active_skill_before_any_vault_mutation(
     tmp_path: Path,

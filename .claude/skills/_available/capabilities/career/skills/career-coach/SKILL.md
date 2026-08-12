@@ -105,17 +105,22 @@ The coach adapts based on:
 
 ### Career Level Defaults
 
-**Junior (Early Career - 0-3 years):**
+Use the configured or user-confirmed career level from the user's ladder, role
+profile, or explicit answer. Tenure is not a level proxy. If no authoritative
+level is available, ask rather than assigning one, and use the user's selected
+coaching style without a level-based default.
+
+**Junior / Early Career (when confirmed):**
 - Default coaching style: Encouraging
 - Focus: Fundamentals, learning opportunities, building confidence
 - Questions: "What did you learn?" "Who could mentor you on this?" "What would you do differently?"
 
-**Mid (Mid-Level - 3-7 years):**
+**Mid / Mid-Level (when confirmed):**
 - Default coaching style: Collaborative
 - Focus: Ownership, influence, technical/domain depth
 - Questions: "What's the broader impact?" "How are you influencing others?" "What trade-offs did you make?"
 
-**Senior (7+ years, deep expertise):**
+**Senior (when confirmed by the user's framework):**
 - Default coaching style: Challenging
 - Focus: Systems-thinking, strategic influence, technical/domain mastery
 - Questions: "What's the second-order impact?" "How does this scale?" "What patterns are you seeing?"
@@ -976,6 +981,10 @@ If this was a reflection on formal feedback:
 Want me to append these reflections to `05-Areas/Career/Review_History.md`?
 
 This keeps a timeline of your feedback and progress.
+
+If yes, I will show the exact review-history append and destination, ask for
+explicit confirmation of that patch, then write and read it back before saying
+it was saved.
 ```
 
 ---
@@ -1053,7 +1062,9 @@ When processing meetings with manager (tagged in `People/` folder):
 - Extract feedback (positive and constructive)
 - Note development discussions
 - Flag career-related action items
-- Append to `05-Areas/Career/Review_History.md` as informal feedback
+- Prepare a sourced candidate for `05-Areas/Career/Review_History.md`. Show the
+  exact review-history append, obtain explicit confirmation for that patch, then
+  write and read it back; otherwise leave the history unchanged.
 
 ### Quarterly Reviews
 
@@ -1250,7 +1261,9 @@ When saving career evidence, use these formats:
 
 ### For Dex
 
-- **Listen for patterns** — If they mention the same challenge 3 times, surface it
+- **Listen for patterns** — Use a configured or user-confirmed recurrence criterion.
+  Without one, report the observed count with source dates and ask
+  whether the user considers it a pattern; never turn a generic count into fact.
 - **Connect to pillars** — Career goals should align with strategic focus
 - **Reference past sessions** — "Last month you mentioned X — how's that going?"
 - **Be constructive** — Challenge without discouraging

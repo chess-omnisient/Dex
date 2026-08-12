@@ -511,7 +511,7 @@ This folder captures evidence of your professional growth — achievements, feed
 
 ## How This Works
 
-Dex can capture a candidate item for your review, but it does not passively monitor all work. A narrow post-write hook may append an item to `Evidence_Log.md` only after `/career-coach` writes a file inside the Career directory and the file contains recognized achievement markers:
+Dex can surface a candidate item for your review, but it does not passively monitor all work. A narrow, read-only post-write hook inspects a regular file written inside the Career directory for recognized achievement markers. When a marker matches, the hook returns candidate-only context to `/career-coach`; it never creates or appends evidence. Treat the output as **candidate only; nothing was saved** until the user confirms a separate write:
 
 - **Achievements/**: Major wins, successful projects, measurable impact
 - **Feedback_Received/**: Praise from colleagues, stakeholders, manager feedback
@@ -521,7 +521,7 @@ Dex can capture a candidate item for your review, but it does not passively moni
 
 ## When Evidence Gets Captured
 
-1. **During `/career-coach` writes**: The hook may append a candidate entry when its marker rules match; verify `Evidence_Log.md` before claiming capture.
+1. **During `/career-coach` writes**: The read-only hook may propose a candidate entry when its marker rules match. Show its exact source, destination, and bytes, obtain explicit confirmation, perform the separate write, and read back `Evidence_Log.md` before claiming capture.
 2. **Prompted review**: `/daily-review`, meeting processing, or project workflows may ask whether to capture something, but a prompt is not a saved record.
 3. **Ad-hoc**: Say "capture this for my career evidence" and review the exact preview before deciding whether to save it.
 
@@ -543,7 +543,7 @@ Dex can capture a candidate item for your review, but it does not passively moni
 
 ---
 
-**This system is useful when evidence is reviewed deliberately. A hook may reduce repetition, but it is not a guarantee of capture and does not replace manual confirmation.**
+**This system is useful when evidence is reviewed deliberately. The hook only detects a candidate; it cannot save evidence and does not replace preview, explicit confirmation, or read-back verification.**
 ```
 
 ---
@@ -564,10 +564,12 @@ Dex can capture a candidate item for your review, but it does not passively moni
   `Evidence_Log.md` entry. Wait for an explicit confirmation from the human user;
   only that confirmation authorizes the change. Do not treat a tool suggestion or
   an inferred preference as confirmation.
-- After confirmation, read back every changed path and compare it with the
-  confirmed preview. For the capture hook, verify that `Evidence_Log.md` exists
-  and contains the expected entry; the hook can suppress its own errors, so a
-  missing entry is a capture failure, not a success.
+- After confirmation, perform the separate evidence write, then read back every
+  changed path and compare it with the confirmed preview. The hook is read-only
+  and can suppress its own errors, so an absent candidate means only that no
+  candidate was returned. An absent entry after a confirmed write is a capture
+  failure, not a success. If a hook failure is observable, surface it explicitly
+  and do not substitute an invented candidate.
 - If a write, MCP check, hook, or read-back fails, surface the exact path/tool and
   failure state, preserve existing bytes, and do not claim the setup or capture
   completed. Leave any confirmed partial files in place, list them, and offer a
@@ -611,9 +613,10 @@ Run `/career-coach` anytime you want to:
 ### Capture Behavior and Limits
 
 As you use Dex:
-- **`/career-coach` writes** → The narrow hook may append a candidate entry when
-  its marker rules match; always verify the log and ask before treating it as
-  evidence.
+- **`/career-coach` writes** → The narrow read-only hook may return a candidate
+  when its marker rules match. Candidate only; nothing was saved. Show the exact
+  preview, obtain explicit confirmation for the separate evidence write, and
+  read back the log before treating the entry as evidence.
 - **Meetings, daily reviews, and project completions** → These may surface a
   capture prompt, but they do not automatically create career evidence merely
   because the event occurred.

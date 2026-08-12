@@ -842,8 +842,8 @@
           "skill": "career-setup",
           "source_path": ".claude/skills/_available/capabilities/career/skills/career-setup/SKILL.md",
           "target_path": ".claude/skills/career-setup/SKILL.md",
-          "sha256": "e9f51f683d3147e8db218bdbcc88c6c9093f1e42520b2084fd8e64c85f4fc1e5",
-          "byte_size": 19820,
+          "sha256": "155890770de4640fade1501881a8963c05751aaf3cdbfb2e9399009ff2bd726f",
+          "byte_size": 20422,
           "previous_payloads": [
             {
               "release": "v1.95.2",
@@ -862,8 +862,8 @@
           "skill": "career-coach",
           "source_path": ".claude/skills/_available/capabilities/career/skills/career-coach/SKILL.md",
           "target_path": ".claude/skills/career-coach/SKILL.md",
-          "sha256": "e3edf8ef49ba577a7f9a01085bb4ee14d9512bd51817509a6dac4413a5fd0608",
-          "byte_size": 35251,
+          "sha256": "ff1997a5eb4092b0993425d57b048d0c8dcf16c1d37d62b2df443eaa6f836a6c",
+          "byte_size": 36036,
           "previous_payloads": [
             {
               "release": "v1.95.2",
@@ -887,8 +887,8 @@
           "skill": "resume-builder",
           "source_path": ".claude/skills/_available/capabilities/career/skills/resume-builder/SKILL.md",
           "target_path": ".claude/skills/resume-builder/SKILL.md",
-          "sha256": "54f88c767a026db711ac33a915b71430c6cd303056563f06affe4c7c08029fac",
-          "byte_size": 33771,
+          "sha256": "383ad20bca80a5594d09b36f5ea0cfaf84d03de3d9da51b78f569b8d56fb8444",
+          "byte_size": 34352,
           "previous_payloads": [
             {
               "release": "v1.95.2",
@@ -927,8 +927,8 @@
           "skill": "quarter-plan",
           "source_path": ".claude/skills/_available/capabilities/quarter_goals/skills/quarter-plan/SKILL.md",
           "target_path": ".claude/skills/quarter-plan/SKILL.md",
-          "sha256": "0c52ce12d9bdfae438bbf17d14d10872af79a60fc9c8c36be85746c7ffdeca0a",
-          "byte_size": 13883,
+          "sha256": "330b61f5e0d7c5a1eecbb3453b102fcdc795e7eaf13adf8a361a93bd0a06dc94",
+          "byte_size": 14097,
           "previous_payloads": [
             {
               "release": "v1.95.2",
@@ -942,8 +942,8 @@
           "skill": "quarter-review",
           "source_path": ".claude/skills/_available/capabilities/quarter_goals/skills/quarter-review/SKILL.md",
           "target_path": ".claude/skills/quarter-review/SKILL.md",
-          "sha256": "679fadd644cd5fee1d9de0b15f4d973b85fe3811eed0ed01e41b254cdcbd93a2",
-          "byte_size": 18787,
+          "sha256": "a55db8afede1a60e7de564610a6110fc418a53a434e5ece59a3fab1074bd4fb1",
+          "byte_size": 19152,
           "previous_payloads": [
             {
               "release": "v1.95.2",

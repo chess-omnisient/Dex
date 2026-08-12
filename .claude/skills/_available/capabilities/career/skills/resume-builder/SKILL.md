@@ -565,6 +565,8 @@ LinkedIn profiles differ from resumes — they're more conversational, searchabl
 
 ### Generate LinkedIn Content
 
+Before drafting, retrieve current field constraints from a current, cited first-party LinkedIn source and record its source ID, source date, and as-of date. If that source is unavailable, mark the relevant limit `Unknown` and do not optimize toward a remembered or guessed threshold.
+
 ```markdown
 # LinkedIn Profile — [User's Name]
 
@@ -579,7 +581,7 @@ LinkedIn profiles differ from resumes — they're more conversational, searchabl
 - "[Leadership scope] | [confirmed expertise] | [user-confirmed metric, if supplied]"
 - "[Discipline] | [target-role keyword from current brief] | [supported domain]"
 
-**Character limit: 220 characters**
+**Current platform limit:** [limit from cited source, or Unknown]
 
 ---
 
@@ -605,7 +607,7 @@ LinkedIn profiles differ from resumes — they're more conversational, searchabl
 >
 > Let's connect if you're interested in [topic/opportunity].
 
-**Character limit: 2,600 characters**
+**Current platform limit:** [limit from cited source, or Unknown]
 
 ---
 
@@ -635,7 +637,7 @@ LinkedIn profiles differ from resumes — they're more conversational, searchabl
 
 ## Skills Section
 
-**Recommended Priority Order (LinkedIn shows top 3 prominently):**
+**Recommended Priority Order (from the user's confirmed target-role priorities):**
 
 **Top Skills (Endorsement-worthy):**
 1. [Most important skill for your brand]
@@ -651,7 +653,7 @@ LinkedIn profiles differ from resumes — they're more conversational, searchabl
 - [Skill 9]
 - [Skill 10]
 
-[Continue with 20-30 total skills]
+[Continue only with source-supported skills the user wants to make public]
 
 **Tips:**
 - Include exact job title keywords you're targeting
@@ -702,7 +704,7 @@ LinkedIn profiles differ from resumes — they're more conversational, searchabl
 1. **Copy the About section** → Paste directly into LinkedIn
 2. **Update your Headline** → Use the suggested format
 3. **Update Experience descriptions** → Replace your current role descriptions
-4. **Add/reorder Skills** → Focus on top 3 most important
+4. **Add/reorder Skills** → Follow the user's confirmed priority order
 5. **Get a professional photo** → If you don't have one already
 6. **Ask for recommendations** → From appropriate colleagues or managers chosen by the user
 
@@ -824,7 +826,7 @@ If user mentions projects that exist in `04-Projects/`:
 > "I know it can be hard to remember exact numbers. Is there a source we can check? If not, you may provide a clearly labelled user-supplied estimate, or we can leave the metric unknown; I won't turn a guess into a fact."
 
 **When user undersells:**
-> "Wait, you led a team of 15 people on a $5M project? That's significant! Let's make sure that scope comes through in the bullet point."
+> "The source ledger ([source ID], [source date]) records [user-confirmed scope] and [user-confirmed metric]. Is that scope accurate as of [as-of date]? If so, let's preserve the sourced wording in the bullet point; otherwise leave it Unknown."
 
 **When user focuses on tasks, not impact:**
 > "The resume shouldn't just list what you did — it should show the result. You built the feature, yes, but what happened because of it? Did adoption go up? Did support tickets go down?"
@@ -943,11 +945,11 @@ Before finalizing resume and LinkedIn profile, verify:
 - [ ] Professional tone throughout
 
 ### LinkedIn Profile
-- [ ] Headline uses most of 220 character limit effectively
+- [ ] Headline fits the current cited platform limit, or the limit is labelled Unknown
 - [ ] About section is first-person, conversational, compelling
 - [ ] Experience descriptions more detailed than resume (appropriate for platform)
 - [ ] Keywords included for target roles (SEO optimized)
-- [ ] Skills section prioritized correctly (top 3 most important)
+- [ ] Skills follow the user's confirmed target-role priorities without an assumed ranking threshold
 - [ ] Tone is professional but personable
 - [ ] Call to action included (connect, reach out, etc.)
 

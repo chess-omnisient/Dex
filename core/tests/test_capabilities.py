@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from core import capabilities
+from core import capabilities, portable_contract
 from core.mcp import career_server, resume_server, work_server
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -647,6 +647,78 @@ def test_reconcile_all_preflights_every_room_before_mutating_an_earlier_room(
     assert not (vault / ".claude/skills/career-setup").exists()
     assert unsafe.is_symlink()
     assert (protected / "sentinel.md").read_text(encoding="utf-8") == "preserve\n"
+
+
+def test_reconcile_all_rolls_back_every_earlier_room_when_the_final_room_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _fake_vault(tmp_path)
+    monkeypatch.setattr(capabilities, "REPO_ROOT", vault)
+    contract_path = _fake_contract_with_skill_pins(tmp_path, vault)
+    profile_path = _profile(
+        vault / "System/user-profile.yaml",
+        career=True,
+        companies=True,
+        quarter_goals=True,
+    )
+    original_profile = profile_path.read_bytes()
+    original_copy = capabilities._copy_verified_room_skill
+
+    def fail_on_final_room(pin, *args, **kwargs):
+        if pin.target_path.endswith("/quarter-review/SKILL.md"):
+            raise OSError("injected final-room failure")
+        return original_copy(pin, *args, **kwargs)
+
+    monkeypatch.setattr(capabilities, "_copy_verified_room_skill", fail_on_final_room)
+
+    with pytest.raises(capabilities.CapabilityError, match="all-room|rollback|final-room"):
+        capabilities.reconcile_all(
+            vault,
+            profile_path=profile_path,
+            contract_path=contract_path,
+        )
+
+    assert profile_path.read_bytes() == original_profile
+    assert not (vault / "05-Areas/Career").exists()
+    assert not (vault / "05-Areas/Companies").exists()
+    assert not (vault / "01-Quarter_Goals").exists()
+    for skills in ROOM_SKILLS.values():
+        for skill in skills:
+            assert not (vault / ".claude/skills" / skill).exists()
+
+
+def test_current_runtime_accepts_a_schema_valid_portable_v1_room_contract(
+    tmp_path: Path,
+) -> None:
+    contract_path = tmp_path / "portable-vault-v1.json"
+    contract_path.write_text(
+        json.dumps(portable_contract.build_contract_document(contract_version=1)),
+        encoding="utf-8",
+    )
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    rooms = capabilities.preflight_all(vault, contract_path=contract_path)
+
+    assert rooms == ("career", "companies", "quarter_goals")
+
+
+def test_portable_v1_room_contract_cannot_redirect_current_skill_authority(
+    tmp_path: Path,
+) -> None:
+    document = portable_contract.build_contract_document(contract_version=1)
+    document["capabilities"]["career"]["skills"] = ["career-setup"]
+    contract_path = tmp_path / "portable-vault-v1-drifted.json"
+    contract_path.write_text(json.dumps(document), encoding="utf-8")
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    with pytest.raises(
+        capabilities.CapabilityError,
+        match="v1.*skills|current release authority|identity",
+    ):
+        capabilities.preflight_all(vault, contract_path=contract_path)
 
 
 def test_enable_preflights_dormant_assets_before_changing_profile_or_folders(

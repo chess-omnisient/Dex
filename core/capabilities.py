@@ -640,6 +640,7 @@ def reconcile_room(
     *,
     vault_root: Path | str,
     contract_path: Path | str | None = None,
+    _journal: _MutationJournal | None = None,
 ) -> dict[str, Any]:
     """Surface or hide a room without ever deleting its user-owned folders."""
     if not isinstance(room_enabled, bool):
@@ -656,7 +657,8 @@ def reconcile_room(
     surfaced: list[str] = []
     hidden: list[str] = []
     mutation_paths: list[str] = []
-    journal = _MutationJournal()
+    owns_journal = _journal is None
+    journal = _journal or _MutationJournal()
 
     try:
         if room_enabled:
@@ -718,15 +720,17 @@ def reconcile_room(
                     )
                     hidden.append(active.target.relative_to(root).as_posix())
     except Exception as error:
-        try:
-            journal.rollback()
-        except Exception as rollback_error:
+        if owns_journal:
+            try:
+                journal.rollback()
+            except Exception as rollback_error:
+                raise CapabilityError(
+                    f"Room {room} reconciliation failed and rollback was incomplete: {rollback_error}"
+                ) from error
             raise CapabilityError(
-                f"Room {room} reconciliation failed and rollback was incomplete: {rollback_error}"
+                f"Room {room} reconciliation failed and was rolled back: {error}"
             ) from error
-        raise CapabilityError(
-            f"Room {room} reconciliation failed and was rolled back: {error}"
-        ) from error
+        raise CapabilityError(f"Room {room} reconciliation failed: {error}") from error
 
     return {
         "room": room,
@@ -888,17 +892,78 @@ def reconcile_all(
     """
     root = Path(vault_root).resolve()
     profile = Path(profile_path or root / "System/user-profile.yaml")
-    preflight_all(root, contract_path=contract_path)
-    migrate_legacy_room_state(root, profile_path=profile, contract_path=contract_path)
-    return [
-        reconcile_room(
-            room,
-            enabled(room, profile_path=profile, contract_path=contract_path),
-            vault_root=root,
+    rooms = preflight_all(root, contract_path=contract_path)
+    _lexical_target(
+        root,
+        profile.absolute().relative_to(root).as_posix(),
+        kind="file",
+    )
+    journal = _MutationJournal()
+    profile_mutation_paths: list[str] = []
+
+    try:
+        if has_onboarding_evidence(
+            root,
+            profile_path=profile,
             contract_path=contract_path,
-        )
-        for room in room_ids(contract_path=contract_path)
-    ]
+        ):
+            original_bytes = profile.read_bytes() if profile.exists() else b""
+            try:
+                original = original_bytes.decode("utf-8")
+            except UnicodeDecodeError as error:
+                raise CapabilityError("Profile must contain UTF-8 text") from error
+            rendered = render_missing_companies_compatibility_pin(
+                original,
+                contract_path=contract_path,
+            )
+            if rendered is not None and rendered != original:
+                rendered_bytes = rendered.encode("utf-8")
+                profile_existed = profile.exists()
+                _mkdir_with_mutation_receipt(
+                    profile.parent,
+                    profile_mutation_paths,
+                    root,
+                    journal,
+                )
+                _atomic_text_write(profile, rendered)
+                if profile_existed:
+                    journal.replaced_file(
+                        profile,
+                        original_bytes,
+                        rendered_bytes,
+                    )
+                else:
+                    journal.created_file(profile, rendered_bytes)
+                profile_mutation_paths.append(profile.relative_to(root).as_posix())
+                if profile.read_bytes() != rendered_bytes:
+                    raise CapabilityError("migrated profile read-back did not match its preview")
+
+        results = [
+            reconcile_room(
+                room,
+                enabled(room, profile_path=profile, contract_path=contract_path),
+                vault_root=root,
+                contract_path=contract_path,
+                _journal=journal,
+            )
+            for room in rooms
+        ]
+        if profile_mutation_paths and results:
+            results[0]["mutation_paths"] = sorted(
+                set(results[0]["mutation_paths"]) | set(profile_mutation_paths)
+            )
+        return results
+    except Exception as error:
+        try:
+            journal.rollback()
+        except Exception as rollback_error:
+            raise CapabilityError(
+                "All-room reconciliation failed and aggregate rollback was incomplete: "
+                f"{rollback_error}"
+            ) from error
+        raise CapabilityError(
+            f"All-room reconciliation failed and aggregate rollback completed: {error}"
+        ) from error
 
 
 def _atomic_text_write(path: Path, content: str) -> None:

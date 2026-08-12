@@ -101,10 +101,14 @@ If the Agent fails, fall back to running the instructions inline.
 **Reconcile mode**: show a compact table:
 
 ```
-Deal                       Field        Tracker        Pipedrive
-Platform Migration (Acme)  value        £250k          £200k          -> [tracker|pipedrive|skip]
-Data Warehouse (Initech)   probability  40%            45%            -> [tracker|pipedrive|skip]
+Deal                                      Field        Tracker                 Pipedrive
+[Deal title] ([account from source])      [field]      [tracker source value]  [Pipedrive source value]  -> [tracker|pipedrive|skip]
+[Second sourced deal, if one exists]      [field]      [tracker source value]  [Pipedrive source value]  -> [tracker|pipedrive|skip]
 ```
+
+Populate every bracket from the reconciliation ledger and retain `[source ID]`,
+`[source date]`, and `[as-of date]` for both sides. If a field lacks evidence,
+display `Unknown`; do not turn the example shape into deal facts.
 
 For each row ask which way to resolve (or batch: "take Pipedrive for all numbers, leave narrative alone").
 

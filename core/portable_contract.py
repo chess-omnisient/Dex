@@ -380,8 +380,8 @@ CAPABILITIES: dict[str, dict[str, object]] = {
             _room_skill_source(
                 "career",
                 "career-setup",
-                "e9f51f683d3147e8db218bdbcc88c6c9093f1e42520b2084fd8e64c85f4fc1e5",
-                19820,
+                "155890770de4640fade1501881a8963c05751aaf3cdbfb2e9399009ff2bd726f",
+                20422,
                 previous_payloads=(
                     (
                         "v1.95.2",
@@ -398,8 +398,8 @@ CAPABILITIES: dict[str, dict[str, object]] = {
             _room_skill_source(
                 "career",
                 "career-coach",
-                "e3edf8ef49ba577a7f9a01085bb4ee14d9512bd51817509a6dac4413a5fd0608",
-                35251,
+                "ff1997a5eb4092b0993425d57b048d0c8dcf16c1d37d62b2df443eaa6f836a6c",
+                36036,
                 previous_payloads=(
                     (
                         "v1.95.2",
@@ -421,8 +421,8 @@ CAPABILITIES: dict[str, dict[str, object]] = {
             _room_skill_source(
                 "career",
                 "resume-builder",
-                "54f88c767a026db711ac33a915b71430c6cd303056563f06affe4c7c08029fac",
-                33771,
+                "383ad20bca80a5594d09b36f5ea0cfaf84d03de3d9da51b78f569b8d56fb8444",
+                34352,
                 previous_payloads=((
                     "v1.95.2",
                     "f759f12154a6b928ad4e16bf2bf82c363d6e9baf9cd9ddfedd639b60fc51d5de",
@@ -447,8 +447,8 @@ CAPABILITIES: dict[str, dict[str, object]] = {
             _room_skill_source(
                 "quarter_goals",
                 "quarter-plan",
-                "0c52ce12d9bdfae438bbf17d14d10872af79a60fc9c8c36be85746c7ffdeca0a",
-                13883,
+                "330b61f5e0d7c5a1eecbb3453b102fcdc795e7eaf13adf8a361a93bd0a06dc94",
+                14097,
                 previous_payloads=((
                     "v1.95.2",
                     "08679c722b1555563e125a7bbc67ef1ccf1dfa367f522a5eb8565cea77fd937f",
@@ -458,8 +458,8 @@ CAPABILITIES: dict[str, dict[str, object]] = {
             _room_skill_source(
                 "quarter_goals",
                 "quarter-review",
-                "679fadd644cd5fee1d9de0b15f4d973b85fe3811eed0ed01e41b254cdcbd93a2",
-                18787,
+                "a55db8afede1a60e7de564610a6110fc418a53a434e5ece59a3fab1074bd4fb1",
+                19152,
                 previous_payloads=((
                     "v1.95.2",
                     "069b339f63aa436b8ae01b16d97756b14f003f9069eb10c11827ed9abf5df794",
