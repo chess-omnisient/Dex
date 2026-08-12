@@ -387,6 +387,50 @@ def test_enable_rejects_pinned_room_drift_without_any_mutation(
     assert not (vault / ".claude/skills/career-coach").exists()
 
 
+@pytest.mark.parametrize("unsafe_kind", ("symlink", "unpinned-file"))
+def test_enable_preflights_every_active_skill_target_before_any_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_kind: str,
+) -> None:
+    vault = _fake_vault(tmp_path)
+    monkeypatch.setattr(capabilities, "REPO_ROOT", vault)
+    contract_path = _fake_contract_with_skill_pins(tmp_path, vault)
+    profile_path = _profile(vault / "System/user-profile.yaml", career=False)
+    original_profile = profile_path.read_bytes()
+
+    # Plant the unsafe state at the final skill so an implementation that only
+    # validates while copying would already have surfaced the first two skills.
+    target = vault / ".claude/skills/resume-builder"
+    if unsafe_kind == "symlink":
+        redirected = vault / "05-Areas/Do-Not-Touch"
+        redirected.mkdir(parents=True)
+        (redirected / "sentinel.md").write_text("preserve\n", encoding="utf-8")
+        target.symlink_to(redirected, target_is_directory=True)
+    else:
+        target.mkdir(parents=True)
+        (target / "UNPINNED.md").write_text("preserve\n", encoding="utf-8")
+
+    with pytest.raises(capabilities.CapabilityError, match="target|symlink|unpinned|unsafe"):
+        capabilities.set_enabled(
+            "career",
+            True,
+            vault_root=vault,
+            profile_path=profile_path,
+            contract_path=contract_path,
+        )
+
+    assert profile_path.read_bytes() == original_profile
+    assert not (vault / "05-Areas/Career").exists()
+    assert not (vault / ".claude/skills/career-setup").exists()
+    assert not (vault / ".claude/skills/career-coach").exists()
+    if unsafe_kind == "symlink":
+        assert target.is_symlink()
+        assert (vault / "05-Areas/Do-Not-Touch/sentinel.md").read_text(encoding="utf-8") == "preserve\n"
+    else:
+        assert (target / "UNPINNED.md").read_text(encoding="utf-8") == "preserve\n"
+
+
 def test_enabled_room_targets_read_back_to_the_authoritative_pins(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -321,7 +321,33 @@ def _preflight_room_assets(
     expected = tuple(str(skill) for skill in surfaces.get("skills", []))
     if set(by_skill) != set(expected):
         raise CapabilityError(f"Dormant skill authority does not match room {room}")
+    for pin in pins:
+        _active_room_skill_target(root, pin)
     return dormant, by_skill
+
+
+def _active_room_skill_target(root: Path, pin: SkillSourcePin) -> Path:
+    """Validate one lexical active target without following any vault symlink."""
+    relative = Path(pin.target_path).parent
+    target = root / relative
+    cursor = root
+    for part in relative.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise CapabilityError(f"Active room skill target contains a symlink: {relative.as_posix()}")
+    if not target.exists():
+        return target
+    if not target.is_dir():
+        raise CapabilityError(f"Active room skill target is unsafe: {relative.as_posix()}")
+    try:
+        entries = tuple(target.iterdir())
+    except OSError as error:
+        raise CapabilityError(f"Active room skill target cannot be inspected: {relative.as_posix()}") from error
+    if any(entry.name != "SKILL.md" or entry.is_symlink() or not entry.is_file() for entry in entries):
+        raise CapabilityError(
+            f"Active room skill target contains unpinned or unsafe entries: {relative.as_posix()}"
+        )
+    return target
 
 
 def _copy_verified_room_skill(pin: SkillSourcePin, target: Path) -> None:
@@ -378,8 +404,9 @@ def reconcile_room(
             _copy_missing(source, target, created, root)
 
         for skill in surfaces.get("skills", []):
-            target = _within(root, f".claude/skills/{skill}")
-            _copy_verified_room_skill(skill_pins[str(skill)], target)
+            pin = skill_pins[str(skill)]
+            target = _active_room_skill_target(root, pin)
+            _copy_verified_room_skill(pin, target)
             surfaced.append(target.relative_to(root).as_posix())
     else:
         # Capability folders are vault-owned user content.  They are intentionally
