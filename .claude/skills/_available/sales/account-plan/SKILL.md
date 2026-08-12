@@ -20,6 +20,41 @@ Create a comprehensive strategic account plan by gathering all context on an acc
 
 ---
 
+## Evidence, authority, and recovery
+
+Treat the account plan as a decision aid, not as a source of truth. Set an
+`as-of` timestamp when gathering context. Add per-field provenance to every
+material fact or claim: the source path or record, the source date (the date of
+the event or assertion, or `undated`), and the `as-of` time when it was read.
+Do not silently use a file modified date as the event date. A compact notation
+is: `Annual value: £... (source: 04-Projects/..., source date: 2026-08-01,
+as-of: 2026-08-12T10:30Z)`.
+
+- Keep absent data as `Unknown — not found`. For any unknown field, do not infer
+  a stakeholder role, relationship strength, budget, renewal date, adoption
+  number, intent, or outcome from a title, pattern, or template. Never invent
+  absent facts. If sources contradict one another, list each source and date,
+  show the contradiction, and leave the field unresolved until an authorized
+  human resolves it.
+- Separate observed facts from customer-stated facts and recommendations.
+  Recommendations are not human decisions: do not turn a suggested owner,
+  status, priority, or next action into a saved fact or create follow-up work
+  without the user's decision.
+- Keep gathering read-only. Before creating or updating
+  `05-Areas/Companies/[Company-Name]_Account_Plan.md`, show an exact write preview:
+  the target path and complete proposed content, or an exact before/after diff,
+  including every provenance and `Unknown` label. Require explicit confirmation
+  from the authorized human account owner; a recommendation, a prior plan, or
+  an implied yes is not authority. Do not write before that confirmation.
+- After writing, read back the saved plan from disk and compare it with the
+  approved preview, including the path, content, and key field annotations.
+  Report the read-back result. If the write fails, times out, or the read-back
+  differs, say that the plan is not verified and may be partially changed;
+  preserve the prior copy where possible, re-read the file, show the
+  discrepancy, and wait for explicit human direction before repairing or
+  retrying. Never claim the plan was created or updated from a tool response
+  alone.
+
 ## Step 1: Gather Account Context
 
 Collect information from multiple sources:

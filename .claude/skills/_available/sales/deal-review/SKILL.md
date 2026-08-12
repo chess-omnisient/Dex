@@ -22,6 +22,40 @@ Get a comprehensive view of your deal pipeline health - identify at-risk deals, 
 
 ---
 
+## Evidence, authority, and recovery
+
+Set the report `as-of` timestamp before assessing staleness. Use the canonical
+activity date: the actual date/time on the meeting, call, email, CRM activity,
+or other source record. Record its source path or record and source date. A
+file's modified date is not a canonical activity date; if it is the only clue,
+label it as a weak proxy and do not silently treat it as an activity.
+
+- Keep an explicit **Unchecked deals** section. List every discovered deal that
+  could not be fully read or lacks a canonical activity date, stage, or other
+  required field, with the reason and source. Never silently drop an unchecked
+  deal from the review or call it healthy.
+- Keep missing values distinct from zero. Exclude unknown value from pipeline
+  totals, amount shares, and any denominator that requires a known value; do
+  not substitute zero. For unknown stage, date, or risk evidence, say
+  `Unknown` and avoid a stale/on-track classification. If evidence is
+  contradictory, show the conflicting sources and dates rather than choosing
+  one silently. Never invent absent facts.
+- Disclose denominator coverage: report discovered, fully checked, and
+  unchecked deal counts, plus the eligible numerator/denominator (`n/N`) for
+  each rate, percentage, or health count. State which unknown-value deals or
+  activities were excluded, so a small covered sample cannot look like the
+  whole pipeline.
+- Keep the review read-only by default. A recommended follow-up is not a human
+  decision. Before any requested deal or task change, show an exact write
+  preview of the target, exact payload or before/after diff, and resulting
+  fields; require explicit confirmation from the authorized human before
+  writing.
+- After an approved write, read back the saved record and reconcile it with the
+  confirmed preview. If a write fails, times out, or read-back differs, report
+  the failure and possible partial state, preserve the prior content where
+  possible, re-read the target, and wait for explicit human direction before
+  retrying or repairing. Never claim a change succeeded without verification.
+
 ## Step 1: Identify Deal Files
 
 Search for deal-related files:

@@ -27,6 +27,40 @@ Requires the Pipedrive integration. If `System/integrations/config.yaml -> piped
 
 ---
 
+## Evidence, authority, and recovery
+
+Treat catalogue-visible companion skills and Pipedrive prerequisites as gates,
+not optional context. Before gathering, verify that the catalogue exposes the
+`pipedrive-setup` companion, that the Pipedrive integration is enabled and
+connected, and that the configured tracker path is readable. If a required
+companion or prerequisite is missing, unavailable, or contradictory, name it
+and stop or degrade to a clearly labelled local-only report; never fake a live
+CRM view.
+
+- Record provenance for every drift row and total: source path or Pipedrive
+  record, source date/updated time, and the `as-of` time of the read. Keep
+  tracker and CRM values side by side. If they conflict, show both sources and
+  dates; keep missing data as `Unknown`, never invent absent facts, or silently
+  choose a direction.
+- A partial read is an incomplete read. When `complete` is false, a warning is
+  present, or a companion returns only part of the catalogue, list every
+  unchecked deal and the missing scope, disclose denominator coverage, and do
+  not report "no drift" or write based on the partial result.
+- Keep reconciliation read-only until an authorized human decides. A mapping,
+  recommendation, or drift direction is not a human decision. Before any
+  tracker or Pipedrive change, show an exact write preview: target, exact
+  before/after content or payload, and all derived total changes. Require the
+  authorized human's explicit confirmation; do not rely on implied approval.
+- After every confirmed write, read back the changed record and tracker and
+  reconcile the read-back with the approved preview. Report success only when
+  the values match. If a write fails, times out, or read-back is incomplete or
+  differs, state what may have changed, re-read the authoritative source, and
+  wait for explicit human direction before repairing or retrying.
+- Retry idempotency must be proved rather than assumed. A network error after
+  Pipedrive accepts a write is ambiguous; do not silently retry. Check the
+  deal's notes/activities or other authoritative record first, then show a
+  fresh exact preview and obtain confirmation before sending a new write.
+
 ## Step 0: Gate
 
 1. Check `pipedrive.enabled` in `System/integrations/config.yaml`. If not enabled -> "Pipedrive isn't connected yet, run `/pipedrive-setup` first." and stop.
@@ -79,7 +113,7 @@ After completing, ask: "Quick rating (1-5, 5 = great)?" If a number comes back, 
 - Names may be dictated by voice; resolve owner names against `owner_mapping` and the People Index before mapping, and don't create duplicates from spelling variants.
 - A focus deal owned by a colleague is in scope: the tracker can hold the whole team's book. A 403 on a write means the token can't edit that deal; surface it honestly and offer to note the change on the tracker side only.
 
-## Known limitation: a retried write can duplicate
+## Known limitation: retry idempotency must be proved, not assumed
 
 If the connection drops after Pipedrive accepts a note or activity but before
 its reply arrives, the write succeeded and Dex cannot tell. Pipedrive's API

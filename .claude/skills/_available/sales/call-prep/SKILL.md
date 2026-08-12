@@ -20,6 +20,36 @@ Quickly gather all relevant context before a call - recent conversations, open a
 
 ---
 
+## Evidence, authority, and recovery
+
+Make freshness explicit. Set the brief's `as-of` timestamp and, for every
+interaction, task, signal, and account field, record the source path or record,
+the source date (the event date, not merely the file modified date), and the
+date/time as-of which it was read. Label undated or stale evidence rather than
+presenting it as current.
+
+- Treat an unknown objective and unknown objection as unknown. If the caller
+  has not supplied a goal or the notes contain no evidence, write
+  `Unknown — ask` and offer a discovery question separately. Do not infer intent,
+  buying stage, priorities, sentiment, or likely objections from a job title,
+  company, silence, or generic sales pattern. If notes contradict one another,
+  show both sources and dates and keep the conflict visible.
+- Never invent absent facts, quotes, commitments, dates, or outcomes to make
+  the brief feel complete. Separate sourced context from suggested questions,
+  talking points, and desired outcomes. Recommendations are not human
+  decisions.
+- Keep call prep read-only by default. Do not update a person page, account,
+  deal, or task merely because the brief recommends it. Before any requested
+  change, show an exact write preview (target path or tool, exact content or
+  payload, and before/after values), then require explicit confirmation from
+  the authorized human. Do not treat a recommendation or implied approval as
+  authority.
+- After an approved change, read back the saved file or returned record and
+  compare it with the confirmed preview. If the write fails, times out, or the
+  read-back differs, report the failure and any possible partial change, keep
+  the prep unchanged where possible, re-read the target, and wait for explicit
+  human direction before retrying. Never claim success without that read-back.
+
 ## Step 1: Identify the Person/Account
 
 1. Search People/ directory for person page

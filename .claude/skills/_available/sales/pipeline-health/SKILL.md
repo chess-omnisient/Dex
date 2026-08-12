@@ -22,6 +22,44 @@ Analyze pipeline coverage, conversion rates, velocity, and forecast accuracy to 
 
 ---
 
+## Evidence, authority, and recovery
+
+Set a report `as-of` timestamp and attach provenance to every target, deal
+value, stage, probability, date, benchmark, and calculated claim: source path or
+record, source date, and the time as-of which it was read. Distinguish the
+source's event date from a file modified date. Show contradictory sources and
+dates side by side and leave the value unresolved until an authorized human
+decides; never invent an absent fact or silently select the more convenient
+number.
+
+- Use only configured stages, targets, and probabilities that are confirmed for
+  the current report period. Show the configured value, its source/date/as-of,
+  and its confirmation status before calculating. If a stage, target, or
+  probability is not configured and confirmed, mark it `Unknown` and do not
+  substitute the example values in this skill.
+- Missing differs from zero. Treat a blank, absent, unreadable, or conflicting
+  value as `Unknown`; use zero only when the source explicitly records zero.
+  Exclude unknown deal values and unconfirmed probabilities from weighted
+  totals, and do not divide by an unknown or zero denominator.
+- Use sourced benchmarks only. Record each benchmark's source, source date,
+  and as-of time; if no suitable benchmark exists, show `Unknown — no sourced
+  benchmark` and do not label the result good or bad by intuition.
+- Verify denominators and arithmetic. Show the raw numerator and denominator
+  for coverage, weighted totals, conversion rates, shares, and gaps; report
+  denominator coverage as eligible `n/N` and list excluded unknown rows.
+  Cross-check stage subtotals, forecast totals, percentages, and gap signs
+  before presenting the report.
+- Keep analysis read-only by default. Recommendations are not human
+  decisions. Before any requested pipeline/configuration change, show an exact
+  write preview with the target and exact payload or before/after diff, then
+  require explicit confirmation from the authorized human. Do not write from
+  a recommendation or implied approval.
+- After an approved change, read back the saved record/configuration and
+  reconcile it with the confirmed preview. If a write fails, times out, or
+  read-back differs, report the failure and any possible partial state, re-read
+  the authoritative source, and wait for explicit human direction before
+  retrying. Never claim a corrected metric or saved change without read-back.
+
 ## Step 1: Gather Pipeline Data
 
 Collect deal information from 04-Projects/:
@@ -34,10 +72,14 @@ Collect deal information from 04-Projects/:
 - Close date (if specified)
 - Confidence level (if mentioned)
 
-### Read Targets:
+### Read Targets and Configured Assumptions:
 - Check 01-Quarter_Goals/Quarter_Goals.md or user files for revenue targets
 - Check for quota information
 - Typical sales cycle length (or calculate from historical data)
+- Read the configured stage list, stage probabilities, and any configured
+  benchmark source. Treat each as provisional until the user confirms it
+  applies to the requested period; do not silently use the template's example
+  percentages.
 
 ---
 
@@ -51,11 +93,9 @@ Collect deal information from 04-Projects/:
 - <2x coverage = At Risk
 
 **Weighted pipeline** = Sum of (Deal value × Stage probability)
-- Discovery: 10%
-- Demo: 25%
-- Proposal: 50%
-- Negotiation: 75%
-- Contract: 90%
+- Use the probability configured and confirmed for each current stage. If it is
+  missing, contradictory, or unconfirmed, leave that deal's weighted value
+  unknown and disclose its exclusion instead of guessing.
 
 ### Velocity Metrics
 
@@ -186,7 +226,7 @@ Present findings in this format:
 
 **Stage conversion rates:**
 
-| From Stage | To Stage | Rate | Benchmark | Status |
+| From Stage | To Stage | Rate | Sourced benchmark | Status |
 |------------|----------|------|-----------|--------|
 | Discovery | Demo | XX% | ~50% | ✅/⚠️/🚨 |
 | Demo | Proposal | XX% | ~50% | ✅/⚠️/🚨 |
@@ -195,6 +235,10 @@ Present findings in this format:
 | Contract | Close | XX% | ~90% | ✅/⚠️/🚨 |
 
 **Bottleneck stages:** [Stages with low conversion]
+
+**Denominator coverage:** [Eligible deals `n/N`; excluded unknown or unchecked rows; source/date/as-of for each benchmark]
+
+> The example below is illustrative only. It is not a configured or confirmed target, stage probability, or sourced benchmark; do not copy its assumptions into a live report.
 
 ---
 
