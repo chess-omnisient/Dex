@@ -246,7 +246,8 @@
                 "source_path",
                 "target_path",
                 "sha256",
-                "byte_size"
+                "byte_size",
+                "previous_payloads"
               ],
               "properties": {
                 "room": {
@@ -272,6 +273,33 @@
                 "byte_size": {
                   "type": "integer",
                   "minimum": 0
+                },
+                "previous_payloads": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "release",
+                      "sha256",
+                      "byte_size"
+                    ],
+                    "properties": {
+                      "release": {
+                        "type": "string",
+                        "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+                      },
+                      "sha256": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      "byte_size": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
                 }
               }
             }

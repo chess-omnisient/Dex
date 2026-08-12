@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -187,6 +188,62 @@ def test_onboarding_refuses_unsafe_active_skill_before_any_vault_mutation(
     errors = " ".join(json.loads(completed.stdout)["errors"]).lower()
     assert "target" in errors or "symlink" in errors
     assert _snapshot_tree(vault) == before
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_onboarding_refuses_non_directory_skill_ancestor_before_any_vault_mutation(
+    tmp_path: Path,
+) -> None:
+    vault = _prepare_provision_vault(tmp_path)
+    claude = vault / ".claude"
+    claude.mkdir(exist_ok=True)
+    (claude / "skills").write_text("not a directory\n", encoding="utf-8")
+    before = _snapshot_tree(vault)
+
+    completed = _invoke_provision(vault, "--onboard")
+
+    assert completed.returncode != 0
+    errors = " ".join(json.loads(completed.stdout)["errors"]).lower()
+    assert "ancestor" in errors or "directory" in errors or "target" in errors
+    assert _snapshot_tree(vault) == before
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_onboarding_dry_run_and_apply_upgrade_one_known_prior_room_payload(
+    tmp_path: Path,
+) -> None:
+    vault = _prepare_provision_vault(tmp_path)
+    contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    pin = contract["capabilities"]["career"]["skill_sources"][0]
+    previous = b"---\nname: career-setup\ndescription: Published fixture release.\n---\n"
+    pin["previous_payloads"].append(
+        {
+            "release": "v1.95.0",
+            "sha256": hashlib.sha256(previous).hexdigest(),
+            "byte_size": len(previous),
+        }
+    )
+    fixture_contract = tmp_path / "previous-room-payload-contract.json"
+    fixture_contract.write_text(json.dumps(contract), encoding="utf-8")
+    target = vault / pin["target_path"]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(previous)
+    environment = {
+        **os.environ,
+        "DEX_CAPABILITY_CONTRACT_PATH": str(fixture_contract),
+    }
+
+    preview = _invoke_provision(vault, "--onboard", "--dry-run", env=environment)
+
+    assert preview.returncode == 0, preview.stderr
+    preview_summary = json.loads(preview.stdout)
+    assert pin["target_path"] in preview_summary["created"]
+    assert target.read_bytes() == previous
+
+    applied = _invoke_provision(vault, "--onboard", env=environment)
+
+    assert applied.returncode == 0, applied.stderr
+    assert target.read_bytes() == (REPO_ROOT / pin["source_path"]).read_bytes()
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")

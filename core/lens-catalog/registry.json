@@ -1431,7 +1431,7 @@
         "kind": "lifecycle-skill",
         "item_id": "roadmap"
       },
-      "value": "Builds a roadmap view from canonical dated status evidence, with honest health denominators and unknowns.",
+      "value": "Builds a roadmap view from canonical dated status evidence, with disclosed status coverage and honest unknowns.",
       "jobs_served": ["run-my-role", "plan-my-work"],
       "foundation_capabilities": ["context-orientation", "honest-health-observability", "durable-memory-provenance"],
       "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
@@ -1456,8 +1456,8 @@
         }
       ],
       "brief": {
-        "goal": "Builds a roadmap view from canonical dated status evidence, with honest health denominators and unknowns.",
-        "method_outline": ["Read canonical goals, initiatives and status dates.", "Keep unknown distinct from blocked.", "Calculate health over a declared denominator and cite the evidence."],
+        "goal": "Builds a roadmap view from canonical dated status evidence, with disclosed status coverage and honest unknowns.",
+        "method_outline": ["Read canonical goals, initiatives and status dates.", "Keep unknown distinct from blocked.", "Reconcile status counts over a declared cohort and cite the evidence."],
         "verification_checklist": ["Every status has a source and freshness date.", "Excluded or unknown work is shown beside the denominator."],
         "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
       },

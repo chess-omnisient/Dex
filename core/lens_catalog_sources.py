@@ -21,10 +21,20 @@ from typing import Mapping
 DEFAULT_LIFECYCLE_CATALOG = Path("core/lifecycle/catalog/official-capabilities.json")
 DEFAULT_PORTABLE_CONTRACT = Path("packages/dex-contracts/dist/portable-vault.contract.json")
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+RELEASE_VERSION = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
 
 
 class SkillSourceError(ValueError):
     """A skill reference cannot be resolved to release-owned bytes."""
+
+
+@dataclass(frozen=True)
+class SkillPayloadPin:
+    """One historical release payload that Dex may safely replace."""
+
+    release: str
+    sha256: str
+    byte_size: int
 
 
 @dataclass(frozen=True)
@@ -37,6 +47,18 @@ class SkillSourcePin:
     sha256: str
     byte_size: int
     path: Path
+    previous_payloads: tuple[SkillPayloadPin, ...] = ()
+
+    def identify_payload(self, payload: bytes) -> str | None:
+        """Return ``current`` or the owning prior release for trusted bytes."""
+        sha256 = hashlib.sha256(payload).hexdigest()
+        byte_size = len(payload)
+        if sha256 == self.sha256 and byte_size == self.byte_size:
+            return "current"
+        for previous in self.previous_payloads:
+            if sha256 == previous.sha256 and byte_size == previous.byte_size:
+                return previous.release
+        return None
 
 
 def _mapping(value: object, *, context: str) -> Mapping[str, object]:
@@ -109,6 +131,34 @@ def _byte_size(value: object, *, context: str) -> int:
     return value
 
 
+def _previous_payloads(value: object, *, context: str) -> tuple[SkillPayloadPin, ...]:
+    if not isinstance(value, list):
+        raise SkillSourceError(f"{context} must be an array")
+    result: list[SkillPayloadPin] = []
+    releases: set[str] = set()
+    identities: set[tuple[str, int]] = set()
+    for index, raw in enumerate(value):
+        item_context = f"{context} {index}"
+        item = _mapping(raw, context=item_context)
+        _exact_fields(
+            item,
+            {"release", "sha256", "byte_size"},
+            context=item_context,
+        )
+        release = item.get("release")
+        if not isinstance(release, str) or RELEASE_VERSION.fullmatch(release) is None:
+            raise SkillSourceError(f"{item_context} release must be a stable vMAJOR.MINOR.PATCH tag")
+        sha256 = _digest(item.get("sha256"), context=f"{item_context} sha256")
+        byte_size = _byte_size(item.get("byte_size"), context=f"{item_context} byte_size")
+        identity = (sha256, byte_size)
+        if release in releases or identity in identities:
+            raise SkillSourceError(f"{context} contains duplicate release or payload identity")
+        releases.add(release)
+        identities.add(identity)
+        result.append(SkillPayloadPin(release, sha256, byte_size))
+    return tuple(result)
+
+
 def _release_file(release_root: Path, relative: str, *, context: str) -> Path:
     root = release_root.resolve()
     candidate = root / relative
@@ -159,6 +209,7 @@ def _verify_pin(
     byte_size: int,
     context: str,
     exact_room_directory: bool = False,
+    previous_payloads: tuple[SkillPayloadPin, ...] = (),
 ) -> SkillSourcePin:
     source = _release_file(release_root, source_path, context=context)
     _require_tracked(release_root, source_path, context=context)
@@ -174,6 +225,11 @@ def _verify_pin(
             f"(declared sha256={sha256} byte_size={byte_size}; "
             f"actual sha256={actual_sha} byte_size={len(payload)})"
         )
+    if any(
+        previous.sha256 == actual_sha and previous.byte_size == len(payload)
+        for previous in previous_payloads
+    ):
+        raise SkillSourceError(f"{context} repeats the current payload as a previous payload")
     return SkillSourcePin(
         kind=kind,
         source_path=source_path,
@@ -181,6 +237,7 @@ def _verify_pin(
         sha256=actual_sha,
         byte_size=len(payload),
         path=source,
+        previous_payloads=previous_payloads,
     )
 
 
@@ -337,6 +394,7 @@ def _room_authorities(release_root: Path, portable_contract_path: Path) -> dict[
                     "target_path",
                     "sha256",
                     "byte_size",
+                    "previous_payloads",
                 },
                 context=context,
             )
@@ -357,6 +415,10 @@ def _room_authorities(release_root: Path, portable_contract_path: Path) -> dict[
                 raise SkillSourceError(f"room authorities duplicate active target {target!r}")
             _digest(pin.get("sha256"), context=f"{context} sha256")
             _byte_size(pin.get("byte_size"), context=f"{context} byte_size")
+            _previous_payloads(
+                pin.get("previous_payloads"),
+                context=f"{context} previous_payloads",
+            )
             authorities[key] = pin
             room_skills.add(skill)
 
@@ -396,6 +458,10 @@ def resolve_room_skill_sources(
                 byte_size=int(raw["byte_size"]),
                 context=f"room {room!r} skill {skill!r} source identity",
                 exact_room_directory=True,
+                previous_payloads=_previous_payloads(
+                    raw.get("previous_payloads"),
+                    context=f"room {room!r} skill {skill!r} previous_payloads",
+                ),
             )
         )
     return tuple(result)

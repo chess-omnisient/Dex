@@ -410,259 +410,41 @@ If account plan already exists:
 
 ## Example Output
 
+This is a schema example, not a fictional account. Replace bracketed values only
+with evidence from the source ledger; leave missing values as `Unknown`.
+
 ```markdown
-# Account Plan: Acme Corp
-
-**Plan date:** 2026-01-28
-**Account owner:** You
-**Annual value:** $180,000
-**Renewal date:** July 15, 2026
-
----
-
-## 📋 Executive Summary
-
-**Account status:** Strategic (Top-tier customer, high growth potential)
-**Primary goal:** Expand from Product team (current) to Engineering + Marketing (3x ARR potential)
-**Top priority:** Build relationship with CTO (Jennifer) to unlock Engineering adoption
-
-**Quick facts:**
-- Customer since: Aug 2024
-- Products using: Core Platform, Analytics Module
-- Team size: 45 users (Product + Data teams)
-- Industry: B2B SaaS
-- Company size: 250 employees
-
----
-
-## 👥 Stakeholder Map
-
-### Key Champions
-
-**Sarah Chen - VP Product**
-- **Role:** Champion (Power User)
-- **Influence:** High (reports to CEO)
-- **Support:** Very High (vocal advocate)
-- **Relationship:** Strong (monthly calls, quick Slack responses)
-- **Last contact:** Yesterday (Contract review call)
-- **Key interests:** Product strategy, customer insights, data-driven decisions
-- **How to engage:** Quarterly roadmap previews, beta access to new features
-
-### Economic Buyers
-
-**Tom Martinez - CFO**
-- **Role:** Economic Buyer
-- **Influence:** Very High (budget authority)
-- **Support:** Medium (neutral, data-driven)
-- **Relationship:** Moderate (met once at QBR)
-- **Last contact:** Oct 15 (Quarterly business review)
-- **Key concerns:** ROI, cost efficiency, tool consolidation
-- **How to engage:** Show usage metrics, cost savings from efficiency gains
-
-### Potential Champions (Not Yet Engaged)
-
-**Jennifer Park - CTO**
-- **Role:** Technical Buyer for Engineering expansion
-- **Influence:** Very High (peer to Sarah)
-- **Support:** Unknown (no relationship yet)
-- **Relationship:** None
-- **Key interests:** [Need to discover] Likely: developer experience, API quality, integrations
-- **How to engage:** **PRIORITY** - Intro from Sarah, technical deep-dive
-
-### Users
-
-- Product team (30 users) - High adoption
-- Data team (15 users) - Medium adoption
-- Engineering team (50+ potential users) - Not yet using
-
-### Gaps
-
-- **Missing relationships:** CTO (Jennifer), CMO (unidentified), Engineering leadership
-- **Weak relationships:** CFO (Tom) - only formal QBR interactions
-
----
-
-## 📊 Current State
-
-### Product Adoption
-
-**What they're using:**
-- Core Platform - High adoption (40/45 seats active daily)
-- Analytics Module - Medium adoption (25/45 users monthly)
-- API - Low usage (Dev team not engaged yet)
-
-**Usage insights:**
-- Sarah's team are power users - using advanced features
-- Data team struggling with custom report creation
-- Mentioned wanting real-time dashboards (recorded in customer intel)
-
-### Health Indicators
-
-- **Engagement:** High - Daily active usage, regular communication
-- **Satisfaction:** High - Positive feedback, vocal advocacy, willing to be reference
-- **Advocacy:** High - Referred 2 companies this quarter, case study participant
-
-**Recent feedback:**
-- ✅ "Love the product" - Sarah, multiple times
-- ✅ "Best tool our team uses" - Data analyst quote
-- ⚠️ "Reporting takes too long" - Pain point (opportunity for Analytics upgrade)
-
----
-
-## 🎯 Growth Opportunities
-
-### Near-term (This Quarter)
-
-**1. Engineering Team Expansion**
-- **Type:** Expansion
-- **Potential value:** $180,000 (2x current ARR)
-- **Why now:** Engineering team growing (10 new hires this quarter), need better workflow tools
-- **Requirements:** 
-  - Build relationship with CTO Jennifer
-  - Technical demo for engineering use cases
-  - Integration with their GitHub/Jira setup
-- **Owner:** You
-- **Timeline:** Target close by end of Q1
-
-**2. Analytics Module Upgrade**
-- **Type:** Upsell
-- **Potential value:** $36,000/year (+20% ARR)
-- **Why now:** Real-time dashboard pain point expressed 3x in last month
-- **Requirements:**
-  - Show new dashboard capabilities
-  - ROI case for time savings
-  - Budget approval from Tom (CFO)
-- **Owner:** You
-- **Timeline:** Proposal by Feb 10
-
-### Medium-term (2-3 Quarters)
-
-**1. Marketing Team Expansion**
-- **Type:** Cross-sell
-- **Potential value:** $90,000/year
-- **Trigger conditions:** Hire new CMO (they're recruiting), marketing team expansion
-
----
-
-## 🚨 Risk Factors
-
-### Active Risks
-
-**1. Contract renewal in 6 months with no executive relationship**
-- **Type:** Relationship Risk
-- **Severity:** Medium
-- **Evidence:** Only deep relationship is with Sarah (VP Product). CFO is budget-focused, CTO unknown.
-- **Mitigation:** 
-  - Build relationship with Jennifer (CTO) now
-  - Strengthen relationship with Tom (CFO) via ROI storytelling
-  - Secure multi-year renewal before July
-- **Owner:** You
-- **Status:** In progress (Jennifer intro scheduled via Sarah)
-
-**2. Reporting pain point unaddressed**
-- **Type:** Churn Risk (low but growing)
-- **Severity:** Low (currently) → Medium (if unaddressed)
-- **Evidence:** Mentioned 3x in past month, called "frustrating"
-- **Mitigation:** Analytics upgrade proposal, show real-time dashboard solution
-- **Owner:** You
-- **Status:** Planned (proposal in works)
-
-### Risk Indicators to Monitor
-
-- Sarah leaving (she's key champion) - Check quarterly
-- Budget cuts at Acme (CFO mindset) - Watch for signals
-
----
-
-## 💡 Strategic Initiatives
-
-### This Quarter
-
-**1. Unlock Engineering Expansion**
-- **Goal:** Build relationship with CTO Jennifer, position for 50+ seat expansion
-- **Actions:**
-  - [x] Request intro from Sarah - DONE
-  - [ ] Coffee meeting with Jennifer - Scheduled Feb 2
-  - [ ] Technical deep-dive demo for engineering use case - Feb 9
-  - [ ] Proposal for engineering package - Feb 16
-- **Success metrics:** Jennifer meeting happens, technical demo goes well, proposal sent
-
-**2. Close Analytics Upgrade**
-- **Goal:** Upsell Analytics Module upgrade to address reporting pain
-- **Actions:**
-  - [ ] Build ROI case (time savings) - By Feb 5
-  - [ ] Demo real-time dashboards - Feb 8 (with Sarah)
-  - [ ] Present to CFO Tom - Feb 12
-  - [ ] Close by Feb 28
-- **Success metrics:** $36K upsell closes, reporting pain resolved
-
----
-
-## 📅 Engagement Plan
-
-### Regular Touchpoints
-
-- **Weekly:** Support tickets (data team), product questions (Slack with Sarah)
-- **Monthly:** Sarah sync (product feedback, roadmap preview)
-- **Quarterly:** Executive business review (Sarah, Tom, ideally Jennifer)
-- **Annual:** Contract renewal (July), strategic planning session
-
-### Upcoming Events
-
-- **Feb 2** - Coffee with Jennifer (CTO) - Build relationship, understand engineering needs
-- **Feb 8** - Dashboard demo with Sarah - Show Analytics upgrade
-- **Feb 9** - Technical demo for Jennifer - Engineering use case positioning
-- **Feb 12** - ROI presentation with Tom (CFO) - Analytics upgrade approval
-
----
-
-## 📚 Account History
-
-### Key Milestones
-
-- **Aug 2024** - Initial deal closed ($90K) - Product team adoption
-- **Oct 2024** - Added Analytics Module ($90K total ARR)
-- **Nov 2024** - Sarah became vocal advocate, participated in case study
-- **Jan 2025** - Contract expansion conversation, Jennifer intro secured
-
-### Major Decisions
-
-- **Oct 2024** - Chose us over Competitor Y based on ease of use and Sarah's recommendation
-- **Jan 2025** - Decided to explore engineering expansion (Sarah's push)
-
-### Lessons Learned
-
-- Sarah is an amazing champion - give her early access to features, she drives internal adoption
-- Data team needs more training - they're not using advanced features effectively
-- ROI storytelling resonates with Tom (CFO) - lead with metrics, not features
-
----
-
-## 🎯 Success Metrics
-
-**Primary metrics:**
-- Revenue: $180K → $396K (2.2x) by end of Q2
-- Users: 45 → 100+ (Product + Engineering + Marketing) by end of year
-- Adoption: 89% → 95% (get data team to advanced features)
-
-**Relationship metrics:**
-- Executive contacts: 2 (Sarah, Tom) → 4 (add Jennifer, CMO when hired)
-- Meeting frequency: Monthly with Sarah → Add monthly with Jennifer
-- Advocacy: Case study done → Video testimonial by mid-year
-
----
-
-## 📝 Next Actions
-
-**Immediate (This Week):**
-- [ ] Confirm Feb 2 coffee with Jennifer - You - Jan 29
-- [ ] Build Analytics upgrade ROI deck - You - Feb 1
-
-**Short-term (This Month):**
-- [ ] Jennifer meeting - You - Feb 2
-- [ ] Dashboard demo - You - Feb 8
-- [ ] Engineering technical demo - You - Feb 9
-- [ ] CFO ROI presentation - You - Feb 12
-
-**Review date:** April 1 (after Q1 initiatives complete)
+# Account Plan: [Account name or Unknown]
+
+**As-of date:** [As-of date]
+**Account owner:** [Owner or Unknown]
+**Plan status:** Draft for human review
+
+## Source ledger
+| Source ID | Source date | Scope | Freshness / limits |
+|---|---|---|---|
+| [Source ID] | [Source date] | [Contract, CRM record, meeting, or usage report] | [Limit or Unknown] |
+
+## Account facts
+| Field | Value | Source ID | Source date |
+|---|---|---|---|
+| Contract value | [Exact sourced value or Unknown] | [Source ID] | [Source date] |
+| Renewal date | [Exact sourced date or Unknown] | [Source ID] | [Source date] |
+| Adoption | [Configured measure or Unknown] | [Source ID] | [Source date] |
+
+## Stakeholders
+| Person | Evidence-backed role | Relationship | Last confirmed contact |
+|---|---|---|---|
+| [Name or Unknown] | [Role or Unknown] | [Observed state or Unknown] | [Date / Source ID / Unknown] |
+
+## Opportunities, risks, and actions
+- Opportunity: [Observed need and evidence, or Unknown]
+- Risk: [Observed signal and evidence, or Unknown]
+- Proposed action: [Owner / due date / evidence needed]
+- Decision authority: [Human owner]
+
+## Save boundary
+- Exact target: [path]
+- Preview confirmed by: [human / timestamp]
+- Read-back result: [matched preview or failed; recovery action]
 ```

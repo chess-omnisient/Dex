@@ -1644,9 +1644,13 @@ def test_doctor_heal_reconciles_room_assets_and_preserves_user_content(
     user_note = context.vault_root / "05-Areas/Career/private-review.md"
     user_note.parent.mkdir(parents=True, exist_ok=True)
     user_note.write_text("Keep this forever.\n", encoding="utf-8")
-    stale_skill = context.vault_root / ".claude/skills/quarter-plan/SKILL.md"
-    stale_skill.parent.mkdir(parents=True, exist_ok=True)
-    stale_skill.write_text("---\nname: quarter-plan\n---\n", encoding="utf-8")
+    existing_skill = context.vault_root / ".claude/skills/quarter-plan/SKILL.md"
+    existing_skill.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        REPO_ROOT
+        / ".claude/skills/_available/capabilities/quarter_goals/skills/quarter-plan/SKILL.md",
+        existing_skill,
+    )
     context.paths_json_path.parent.mkdir(parents=True, exist_ok=True)
     context.paths_json_path.write_text(
         json.dumps(doctor._paths_export_for(context)),

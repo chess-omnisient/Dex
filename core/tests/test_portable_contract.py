@@ -43,6 +43,73 @@ def test_portable_contract_v2_versions_the_new_room_pin_wire_shape() -> None:
     assert all("skill_sources" in room for room in v2_document["capabilities"].values())
 
 
+def test_room_upgrade_ledger_preserves_all_published_payload_identities() -> None:
+    expected = {
+        "career-setup": {
+            (
+                "v1.95.2",
+                "12784bb4a2c5bb1edc786226b2e4108a34db85583c9d59ea80b1a941fb6b474c",
+                14824,
+            ),
+            (
+                "v1.70.0",
+                "06bfbd6de60a204449eb793508201431587d7c0b34b57d4b5c4a4421847e1f59",
+                14812,
+            ),
+        },
+        "career-coach": {
+            (
+                "v1.95.2",
+                "356de976657e23a399c19bd09f580e429cc0c3fc7da4a79095345b6ce8c8d352",
+                29547,
+            ),
+            (
+                "v1.83.0",
+                "ae9b0e67688e45a8e24233c28781a18a8b527eee0ab49e3999c8a4d5bc1fd26a",
+                29185,
+            ),
+            (
+                "v1.70.0",
+                "0bda287205a5f1674dcaada2f596e61505d63443518cab5dd350b0ec1b2885dd",
+                29179,
+            ),
+        },
+        "resume-builder": {
+            (
+                "v1.95.2",
+                "f759f12154a6b928ad4e16bf2bf82c363d6e9baf9cd9ddfedd639b60fc51d5de",
+                29649,
+            ),
+        },
+        "quarter-plan": {
+            (
+                "v1.95.2",
+                "08679c722b1555563e125a7bbc67ef1ccf1dfa367f522a5eb8565cea77fd937f",
+                9406,
+            ),
+        },
+        "quarter-review": {
+            (
+                "v1.95.2",
+                "069b339f63aa436b8ae01b16d97756b14f003f9069eb10c11827ed9abf5df794",
+                12851,
+            ),
+        },
+    }
+    document = portable_contract.build_contract_document(contract_version=2)
+    observed = {
+        pin["skill"]: {
+            (previous["release"], previous["sha256"], previous["byte_size"])
+            for previous in pin["previous_payloads"]
+        }
+        for room in document["capabilities"].values()
+        for pin in room["skill_sources"]
+        if pin["previous_payloads"]
+    }
+
+    assert observed == expected
+
+
 def _tracked_paths() -> list[str]:
     output = subprocess.run(
         ["git", "ls-files"],

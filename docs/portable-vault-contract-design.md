@@ -76,6 +76,22 @@ State lives in `System/user-profile.yaml` → `capabilities:` (vault-owned value
 the portability audit — reusing the existing `quarterly_planning.enabled` precedent.
 Contract rule: an absent room is VALID (repair/convergence must not recreate it).
 
+### Current room-skill wire contract (v2)
+
+Contract v1 remains readable with its historical room shape and no payload pins.
+Contract v2 adds one closed `skill_sources` authority per room skill. Each entry
+pins the dormant source path, active target path, current SHA-256 and byte size,
+plus `previous_payloads` containing the release tag, SHA-256 and byte size of
+published older Dex payloads that may be upgraded. The pin set must exactly equal
+the room's `skills` list; Lens refers only to the room and skill and does not
+duplicate these paths or hashes.
+
+Before a toggle or onboarding run mutates the vault, Core verifies every source,
+every lexical target ancestor, and every existing active payload. Current bytes
+are left alone, exact prior published bytes may be replaced, and all other bytes are
+treated as user-owned and refused. Room reconciliation records every file and
+directory mutation and rolls its bounded changes back on failure.
+
 ## vault_schema
 The contract JSON carries `vault_schema_supported: ">=1 <2"`. The migration must
 not stamp or rewrite `System/user-profile.yaml` to record this: that file belongs to

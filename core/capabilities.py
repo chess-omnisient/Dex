@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -141,16 +142,218 @@ def _within(root: Path, relative_path: str) -> Path:
     return candidate
 
 
-def _copy_missing(source: Path, target: Path, created: list[str], vault_root: Path) -> None:
+def _lexical_target(root: Path, relative_path: str, *, kind: str) -> Path:
+    """Resolve a vault-relative target without following any path component."""
+    relative = Path(relative_path)
+    if (
+        relative.is_absolute()
+        or not relative.parts
+        or any(part in {"", ".", ".."} for part in relative.parts)
+    ):
+        raise CapabilityError(f"Capability path is not a safe relative path: {relative_path}")
+    target = root.joinpath(*relative.parts)
+    cursor = root
+    for index, part in enumerate(relative.parts):
+        cursor = cursor / part
+        final = index == len(relative.parts) - 1
+        if cursor.is_symlink():
+            raise CapabilityError(f"Capability target contains a symlink: {relative.as_posix()}")
+        if not cursor.exists():
+            continue
+        expects_directory = not final or kind == "directory"
+        if expects_directory and not cursor.is_dir():
+            raise CapabilityError(
+                f"Capability target ancestor is not a directory: {relative.as_posix()}"
+            )
+        if final and kind == "file" and not cursor.is_file():
+            raise CapabilityError(f"Capability target is not a regular file: {relative.as_posix()}")
+    return target
+
+
+def _preflight_seed_overlay(source: Path, target: Path, root: Path) -> None:
+    """Prove a write-if-absent overlay can complete before any mutation."""
+    if source.is_symlink():
+        raise CapabilityError(f"Dormant room asset is a symlink: {source}")
     if source.is_dir():
-        target.mkdir(parents=True, exist_ok=True)
-        for child in source.iterdir():
-            _copy_missing(child, target / child.name, created, vault_root)
+        _lexical_target(
+            root,
+            target.relative_to(root).as_posix(),
+            kind="directory",
+        )
+        try:
+            children = sorted(source.iterdir(), key=lambda child: child.name)
+        except OSError as error:
+            raise CapabilityError(f"Dormant room asset cannot be inspected: {source}") from error
+        for child in children:
+            _preflight_seed_overlay(child, target / child.name, root)
+        return
+    if source.is_file():
+        _lexical_target(
+            root,
+            target.relative_to(root).as_posix(),
+            kind="file",
+        )
+        return
+    raise CapabilityError(f"Dormant room asset is missing or unsafe: {source}")
+
+
+def _atomic_bytes_write(path: Path, payload: bytes) -> None:
+    file_descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    try:
+        with os.fdopen(file_descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, path)
+    except Exception:
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+@dataclass(frozen=True)
+class _UndoMutation:
+    kind: str
+    path: Path
+    payload: bytes | None = None
+    expected: bytes | None = None
+
+
+class _MutationJournal:
+    """A bounded undo log for release-owned room mutations."""
+
+    def __init__(self) -> None:
+        self._actions: list[_UndoMutation] = []
+
+    def created_directory(self, path: Path) -> None:
+        self._actions.append(_UndoMutation("remove-directory", path))
+
+    def created_file(self, path: Path, payload: bytes) -> None:
+        self._actions.append(_UndoMutation("remove-file", path, payload=payload))
+
+    def replaced_file(self, path: Path, original: bytes, replacement: bytes) -> None:
+        self._actions.append(
+            _UndoMutation(
+                "restore-file",
+                path,
+                payload=original,
+                expected=replacement,
+            )
+        )
+
+    def removed_skill(self, target: Path, payload: bytes) -> None:
+        # Rollback runs in reverse: restore the directory, then its one pinned file.
+        self._actions.append(
+            _UndoMutation("restore-file", target / "SKILL.md", payload=payload)
+        )
+        self._actions.append(_UndoMutation("restore-directory", target))
+
+    def rollback(self) -> None:
+        errors: list[str] = []
+        for action in reversed(self._actions):
+            try:
+                self._undo(action)
+            except Exception as error:  # preserve every unsafe or concurrent change
+                errors.append(f"{action.path}: {error}")
+        if errors:
+            raise CapabilityError("room rollback could not safely restore: " + "; ".join(errors))
+
+    @staticmethod
+    def _undo(action: _UndoMutation) -> None:
+        path = action.path
+        if action.kind == "remove-file":
+            if not path.exists():
+                return
+            if path.is_symlink() or not path.is_file() or path.read_bytes() != action.payload:
+                raise CapabilityError("created file changed before rollback")
+            path.unlink()
+            return
+        if action.kind == "remove-directory":
+            if not path.exists():
+                return
+            if path.is_symlink() or not path.is_dir():
+                raise CapabilityError("created directory changed before rollback")
+            path.rmdir()
+            return
+        if action.kind == "restore-directory":
+            if path.exists():
+                if path.is_symlink() or not path.is_dir():
+                    raise CapabilityError("removed directory target became unsafe")
+                return
+            path.mkdir()
+            return
+        if action.kind == "restore-file":
+            if action.payload is None:
+                raise CapabilityError("rollback payload is missing")
+            if path.exists():
+                if path.is_symlink() or not path.is_file():
+                    raise CapabilityError("replaced file target became unsafe")
+                current = path.read_bytes()
+                if current == action.payload:
+                    return
+                if action.expected is None or current != action.expected:
+                    raise CapabilityError("replaced file changed before rollback")
+            _atomic_bytes_write(path, action.payload)
+            return
+        raise CapabilityError(f"unknown rollback action: {action.kind}")
+
+
+def _mkdir_with_mutation_receipt(
+    target: Path,
+    mutation_paths: list[str],
+    vault_root: Path,
+    journal: _MutationJournal,
+) -> None:
+    missing: list[Path] = []
+    cursor = target
+    while cursor != vault_root and not cursor.exists():
+        missing.append(cursor)
+        cursor = cursor.parent
+    for path in reversed(missing):
+        path.mkdir()
+        journal.created_directory(path)
+        mutation_paths.append(path.relative_to(vault_root).as_posix())
+
+
+def _copy_missing(
+    source: Path,
+    target: Path,
+    created: list[str],
+    mutation_paths: list[str],
+    vault_root: Path,
+    journal: _MutationJournal,
+) -> None:
+    if source.is_dir():
+        _mkdir_with_mutation_receipt(target, mutation_paths, vault_root, journal)
+        for child in sorted(source.iterdir(), key=lambda item: item.name):
+            _copy_missing(
+                child,
+                target / child.name,
+                created,
+                mutation_paths,
+                vault_root,
+                journal,
+            )
         return
     if source.is_file() and not target.exists():
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-        created.append(target.relative_to(vault_root).as_posix())
+        _mkdir_with_mutation_receipt(
+            target.parent,
+            mutation_paths,
+            vault_root,
+            journal,
+        )
+        payload = source.read_bytes()
+        _atomic_bytes_write(target, payload)
+        journal.created_file(target, payload)
+        relative = target.relative_to(vault_root).as_posix()
+        created.append(relative)
+        mutation_paths.append(relative)
 
 
 def _dormant_root(room: str, vault_root: Path) -> Path:
@@ -301,13 +504,24 @@ def has_onboarding_evidence(
     )
 
 
+@dataclass(frozen=True)
+class _ActiveRoomSkill:
+    target: Path
+    identity: str
+    payload: bytes | None
+
+
 def _preflight_room_assets(
     root: Path,
     room: str,
     surfaces: Mapping[str, Any],
     *,
     contract_path: Path | str | None = None,
-) -> tuple[Path, dict[str, SkillSourcePin]]:
+) -> tuple[
+    Path,
+    dict[str, SkillSourcePin],
+    dict[str, _ActiveRoomSkill],
+]:
     dormant = _dormant_root(room, root)
     try:
         pins = resolve_room_skill_sources(
@@ -321,12 +535,18 @@ def _preflight_room_assets(
     expected = tuple(str(skill) for skill in surfaces.get("skills", []))
     if set(by_skill) != set(expected):
         raise CapabilityError(f"Dormant skill authority does not match room {room}")
+    for relative_folder in surfaces.get("folders", []):
+        relative = str(relative_folder)
+        target = _lexical_target(root, relative, kind="directory")
+        _preflight_seed_overlay(dormant / "folders" / relative, target, root)
+    active: dict[str, _ActiveRoomSkill] = {}
     for pin in pins:
-        _active_room_skill_target(root, pin)
-    return dormant, by_skill
+        skill = Path(pin.target_path).parent.name
+        active[skill] = _active_room_skill_target(root, pin)
+    return dormant, by_skill, active
 
 
-def _active_room_skill_target(root: Path, pin: SkillSourcePin) -> Path:
+def _active_room_skill_target(root: Path, pin: SkillSourcePin) -> _ActiveRoomSkill:
     """Validate one lexical active target without following any vault symlink.
 
     An existing target is safe only when it is the exact release-owned payload.
@@ -334,16 +554,9 @@ def _active_room_skill_target(root: Path, pin: SkillSourcePin) -> Path:
     or removed by a room toggle.
     """
     relative = Path(pin.target_path).parent
-    target = root / relative
-    cursor = root
-    for part in relative.parts:
-        cursor = cursor / part
-        if cursor.is_symlink():
-            raise CapabilityError(f"Active room skill target contains a symlink: {relative.as_posix()}")
+    target = _lexical_target(root, relative.as_posix(), kind="directory")
     if not target.exists():
-        return target
-    if not target.is_dir():
-        raise CapabilityError(f"Active room skill target is unsafe: {relative.as_posix()}")
+        return _ActiveRoomSkill(target, "missing", None)
     try:
         entries = tuple(target.iterdir())
     except OSError as error:
@@ -361,22 +574,42 @@ def _active_room_skill_target(root: Path, pin: SkillSourcePin) -> Path:
         raise CapabilityError(
             f"Active room skill target cannot be read: {relative.as_posix()}"
         ) from error
-    if hashlib.sha256(payload).hexdigest() != pin.sha256 or len(payload) != pin.byte_size:
+    identity = pin.identify_payload(payload)
+    if identity is None:
         raise CapabilityError(
             f"Active room skill target does not match its authoritative pin: {relative.as_posix()}"
         )
-    return target
+    return _ActiveRoomSkill(target, identity, payload)
 
 
-def _copy_verified_room_skill(pin: SkillSourcePin, target: Path) -> bool:
-    """Surface one pinned skill and return whether a target was created."""
+def _copy_verified_room_skill(
+    pin: SkillSourcePin,
+    active: _ActiveRoomSkill,
+    root: Path,
+    mutation_paths: list[str],
+    journal: _MutationJournal,
+) -> bool:
+    """Surface or safely upgrade one pinned skill."""
+    target = active.target
+    observed = _active_room_skill_target(root, pin)
+    if observed.identity != active.identity or observed.payload != active.payload:
+        raise CapabilityError(f"Active room skill changed after preflight: {pin.target_path}")
     if target.is_symlink() or (target.exists() and not target.is_dir()):
         raise CapabilityError(f"Active room skill target is unsafe: {target}")
-    if target.exists():
-        # Preflight proved these are already the exact release-owned bytes.
-        # Do not replace an intact target just to refresh its metadata.
+    if active.identity == "current":
         return False
-    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = pin.path.read_bytes()
+    if active.identity != "missing":
+        if active.payload is None:
+            raise CapabilityError(f"Previous room skill payload is unavailable: {pin.target_path}")
+        journal.replaced_file(target / "SKILL.md", active.payload, payload)
+        _atomic_bytes_write(target / "SKILL.md", payload)
+        if _active_room_skill_target(root, pin).identity != "current":
+            raise CapabilityError(f"Upgraded room skill failed identity read-back: {pin.target_path}")
+        mutation_paths.append((target / "SKILL.md").relative_to(root).as_posix())
+        return True
+
+    _mkdir_with_mutation_receipt(target.parent, mutation_paths, root, journal)
     staged = Path(tempfile.mkdtemp(prefix=f".{target.name}.", dir=target.parent))
     try:
         shutil.copy2(pin.path, staged / "SKILL.md", follow_symlinks=False)
@@ -384,9 +617,17 @@ def _copy_verified_room_skill(pin: SkillSourcePin, target: Path) -> bool:
         if hashlib.sha256(payload).hexdigest() != pin.sha256 or len(payload) != pin.byte_size:
             raise CapabilityError(f"Staged room skill bytes do not match source identity: {pin.source_path}")
         staged.replace(target)
+        journal.created_directory(target)
+        journal.created_file(target / "SKILL.md", payload)
         surfaced = (target / "SKILL.md").read_bytes()
         if hashlib.sha256(surfaced).hexdigest() != pin.sha256 or len(surfaced) != pin.byte_size:
             raise CapabilityError(f"Surfaced room skill failed identity read-back: {pin.target_path}")
+        mutation_paths.extend(
+            (
+                target.relative_to(root).as_posix(),
+                (target / "SKILL.md").relative_to(root).as_posix(),
+            )
+        )
         return True
     finally:
         if staged.exists():
@@ -405,7 +646,7 @@ def reconcile_room(
         raise CapabilityError("enabled state must be true or false")
     root = Path(vault_root).resolve()
     surfaces = surfaces_for(room, contract_path=contract_path)
-    dormant, skill_pins = _preflight_room_assets(
+    dormant, skill_pins, active_skills = _preflight_room_assets(
         root,
         room,
         surfaces,
@@ -414,31 +655,78 @@ def reconcile_room(
     created: list[str] = []
     surfaced: list[str] = []
     hidden: list[str] = []
+    mutation_paths: list[str] = []
+    journal = _MutationJournal()
 
-    if room_enabled:
-        for relative_folder in surfaces.get("folders", []):
-            target = _within(root, str(relative_folder))
-            source = dormant / "folders" / str(relative_folder)
-            existed = target.exists()
-            target.mkdir(parents=True, exist_ok=True)
-            if not existed:
-                created.append(target.relative_to(root).as_posix())
-            _copy_missing(source, target, created, root)
+    try:
+        if room_enabled:
+            for relative_folder in surfaces.get("folders", []):
+                relative = str(relative_folder)
+                target = _lexical_target(root, relative, kind="directory")
+                source = dormant / "folders" / relative
+                existed = target.exists()
+                _mkdir_with_mutation_receipt(target, mutation_paths, root, journal)
+                if not existed:
+                    created.append(target.relative_to(root).as_posix())
+                _copy_missing(
+                    source,
+                    target,
+                    created,
+                    mutation_paths,
+                    root,
+                    journal,
+                )
 
-        for skill in surfaces.get("skills", []):
-            pin = skill_pins[str(skill)]
-            target = _active_room_skill_target(root, pin)
-            if _copy_verified_room_skill(pin, target):
-                surfaced.append(target.relative_to(root).as_posix())
-    else:
-        # Capability folders are vault-owned user content.  They are intentionally
-        # left untouched.  Only release-owned active skill copies are unsurfaced.
-        for skill in surfaces.get("skills", []):
-            pin = skill_pins[str(skill)]
-            target = _active_room_skill_target(root, pin)
-            if target.exists():
-                shutil.rmtree(target)
-                hidden.append(target.relative_to(root).as_posix())
+            for skill in surfaces.get("skills", []):
+                skill_id = str(skill)
+                pin = skill_pins[skill_id]
+                active = active_skills[skill_id]
+                if _copy_verified_room_skill(
+                    pin,
+                    active,
+                    root,
+                    mutation_paths,
+                    journal,
+                ):
+                    surfaced.append(active.target.relative_to(root).as_posix())
+        else:
+            # Capability folders are vault-owned user content. Only release-owned
+            # active skill copies are unsurfaced, one lexical file and directory.
+            for skill in surfaces.get("skills", []):
+                skill_id = str(skill)
+                pin = skill_pins[skill_id]
+                active = active_skills[skill_id]
+                observed = _active_room_skill_target(root, pin)
+                if observed.identity != active.identity or observed.payload != active.payload:
+                    raise CapabilityError(
+                        f"Active room skill changed after preflight: {pin.target_path}"
+                    )
+                if active.identity != "missing":
+                    if active.payload is None:
+                        raise CapabilityError(
+                            f"Active room skill payload is unavailable: {pin.target_path}"
+                        )
+                    journal.removed_skill(active.target, active.payload)
+                    skill_file = active.target / "SKILL.md"
+                    skill_file.unlink()
+                    active.target.rmdir()
+                    mutation_paths.extend(
+                        (
+                            active.target.relative_to(root).as_posix(),
+                            skill_file.relative_to(root).as_posix(),
+                        )
+                    )
+                    hidden.append(active.target.relative_to(root).as_posix())
+    except Exception as error:
+        try:
+            journal.rollback()
+        except Exception as rollback_error:
+            raise CapabilityError(
+                f"Room {room} reconciliation failed and rollback was incomplete: {rollback_error}"
+            ) from error
+        raise CapabilityError(
+            f"Room {room} reconciliation failed and was rolled back: {error}"
+        ) from error
 
     return {
         "room": room,
@@ -446,6 +734,7 @@ def reconcile_room(
         "created": created,
         "skills_surfaced": surfaced,
         "skills_hidden": hidden,
+        "mutation_paths": sorted(set(mutation_paths)),
         "user_content_deleted": False,
     }
 
@@ -524,6 +813,33 @@ def preflight_all(
             contract_path=contract_path,
         )
     return rooms
+
+
+def preflight_skill_targets(
+    vault_root: Path | str,
+    *,
+    contract_path: Path | str | None = None,
+) -> dict[str, list[dict[str, str]]]:
+    """Return the already-validated active payload state for dry-run consumers."""
+    root = Path(vault_root).resolve()
+    report: dict[str, list[dict[str, str]]] = {}
+    for room in room_ids(contract_path=contract_path):
+        surfaces = surfaces_for(room, contract_path=contract_path)
+        _, pins, active = _preflight_room_assets(
+            root,
+            room,
+            surfaces,
+            contract_path=contract_path,
+        )
+        report[room] = [
+            {
+                "skill": skill,
+                "target_path": pins[skill].target_path,
+                "state": active[skill].identity,
+            }
+            for skill in surfaces.get("skills", [])
+        ]
+    return report
 
 
 def reconcile_all(
@@ -730,6 +1046,12 @@ def set_enabled(
     # and every existing target before changing profile state or room assets.
     _preflight_room_assets(root, room, surfaces, contract_path=contract_path)
     profile_file = Path(profile_path or root / "System/user-profile.yaml")
+    try:
+        profile_relative = profile_file.absolute().relative_to(root)
+    except ValueError:
+        profile_relative = None
+    if profile_relative is not None:
+        _lexical_target(root, profile_relative.as_posix(), kind="file")
     # Reads may fail safely to "off", but mutations must never replace malformed
     # or unreadable user state with an empty profile. strict=True raises on
     # unreadable YAML before any edit is attempted.
@@ -755,13 +1077,71 @@ def set_enabled(
     if not isinstance(room_state, Mapping) or room_state.get("enabled") is not room_enabled:
         raise CapabilityError("profile edit did not produce the intended room state; refusing to write")
 
-    _atomic_text_write(profile_file, updated)
-    return reconcile_room(
-        room,
-        room_enabled,
-        vault_root=root,
-        contract_path=contract_path,
-    )
+    profile_existed = profile_file.exists()
+    profile_written = not profile_existed or updated != original
+    missing_profile_directories: list[Path] = []
+    cursor = profile_file.parent
+    while not cursor.exists():
+        missing_profile_directories.append(cursor)
+        parent = cursor.parent
+        if parent == cursor:
+            break
+        cursor = parent
+
+    if profile_written:
+        if profile_existed:
+            if (
+                profile_file.is_symlink()
+                or not profile_file.is_file()
+                or profile_file.read_text(encoding="utf-8") != original
+            ):
+                raise CapabilityError("profile changed after preview; refusing to write")
+        elif profile_file.exists() or profile_file.is_symlink():
+            raise CapabilityError("profile target appeared after preview; refusing to write")
+        try:
+            _atomic_text_write(profile_file, updated)
+        except Exception as error:
+            for directory in missing_profile_directories:
+                try:
+                    directory.rmdir()
+                except OSError:
+                    break
+            raise CapabilityError(f"profile write failed before room reconciliation: {error}") from error
+    try:
+        return reconcile_room(
+            room,
+            room_enabled,
+            vault_root=root,
+            contract_path=contract_path,
+        )
+    except Exception as error:
+        try:
+            if profile_written and profile_existed:
+                if (
+                    profile_file.is_symlink()
+                    or not profile_file.is_file()
+                    or profile_file.read_text(encoding="utf-8") != updated
+                ):
+                    raise CapabilityError("profile changed before rollback")
+                _atomic_text_write(profile_file, original)
+            elif profile_written:
+                if profile_file.is_symlink() or not profile_file.is_file():
+                    raise CapabilityError("new profile target became unsafe during rollback")
+                if profile_file.read_text(encoding="utf-8") != updated:
+                    raise CapabilityError("new profile changed before rollback")
+                profile_file.unlink()
+                for directory in missing_profile_directories:
+                    directory.rmdir()
+        except Exception as rollback_error:
+            raise CapabilityError(
+                f"Room {room} reconciliation failed and profile rollback was incomplete: "
+                f"{rollback_error}"
+            ) from error
+        if isinstance(error, CapabilityError):
+            raise
+        raise CapabilityError(
+            f"Room {room} reconciliation failed and was rolled back: {error}"
+        ) from error
 
 
 def _main() -> int:
@@ -799,7 +1179,19 @@ def _main() -> int:
         return 0
     if args.preflight:
         rooms = preflight_all(Path(args.vault), contract_path=args.contract)
-        print(json.dumps({"preflight": "passed", "rooms": rooms}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "preflight": "passed",
+                    "rooms": rooms,
+                    "skill_targets": preflight_skill_targets(
+                        Path(args.vault),
+                        contract_path=args.contract,
+                    ),
+                },
+                indent=2,
+            )
+        )
         return 0
     if args.reconcile:
         results = reconcile_all(Path(args.vault), contract_path=args.contract)

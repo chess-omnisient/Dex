@@ -135,10 +135,13 @@ priority source is missing, ask which source governs it.
 - [dated source and quote-safe summary; relationship to project]
 
 ## Evidence summary
+Render one row per observed canonical status, including `Completed` when it is
+observed. Do not force projects into a fixed list. Add `Unknown` for projects
+without canonical status evidence, and reconcile every row to the checked cohort.
+
 | Status | Count | Eligible denominator | Exclusions |
 |---|---:|---:|---|
-| In progress | [n] | [n/N] | [unknown/unchecked] |
-| Blocked | [n] | [n/N] | [unknown/unchecked] |
+| [Observed canonical status, for example Completed] | [n] | [n/N] | [unknown/unchecked] |
 | Unknown | [n] | [N] | [reasons] |
 
 ## Recommended actions

@@ -318,110 +318,42 @@ Offer to help with next steps:
 
 ---
 
-## Example: Real-time Dashboards Decision
+## Example: Evidence-bounded decision template
+
+This is a decision-record schema, not a worked fictional case. A recommendation
+must remain separate from the human decision, and missing inputs remain `Unknown`.
 
 ```markdown
-# Feature Decision: Real-time Dashboards
+# Feature Decision: [Feature name]
 
-**Date:** 2026-01-28
-**Decision:** Go - Q1 Priority
-**Owner:** You
+**As-of date:** [As-of date]
+**Status:** Proposed — awaiting human decision
+**Decision authority:** [Named human or Unknown]
 
----
+## Source ledger
+| Source ID | Source date | Claim supported | Limits / contradiction |
+|---|---|---|---|
+| [Source ID] | [Source date] | [Customer need, strategy, effort, or capacity] | [Limit or Unknown] |
 
-## Overview
+## Assessment
+- Customer impact: [Evidence and denominator, or Unknown]
+- Business impact: [Sourced value, or Unknown — never estimated here]
+- Strategic fit: [Goal source and date, or Unknown]
+- Engineering effort: [Owner-supplied estimate and confidence, or Unknown]
+- Capacity: [Canonical planning source and date, or Unknown]
+- Contradictory evidence: [Source IDs, or None observed]
 
-**Feature:** Real-time dashboards that auto-refresh every 5 minutes, eliminating manual report compilation
-**Origin:** Customer request (repeated pattern from 4 customers)
-**Requested by:** Acme Corp (Sarah), TechStart (Mike), GlobalCo (Lisa), DataFlow
+## Recommendation
+[Recommend Go / No-Go / More evidence, with cited rationale.]
 
----
+## Human decision
+**Decision:** [Not yet made / human-entered decision]
+**Decided by:** [Name]
+**Decision date:** [Date]
+**Trade-offs accepted:** [Human-confirmed text or Unknown]
 
-## Decision Framework
-
-### Impact Assessment
-
-**Customer Impact:** High
-- Who benefits: All customers with reporting workflows (60% of user base)
-- Problem solved: Manual report compilation taking 2 days/month per customer
-- Users affected: ~500 users across our customer base
-
-**Business Impact:** High
-- Revenue effect: Unblocks 2 pending deals (TechStart, NewCorp) - $180K ARR
-- Competitive position: ProductX has this, we don't - closing gap
-- Deal impact: Sales team reports dashboards are #3 objection in demos
-
-**Strategic Fit:** High
-- Pillar: Product Quality
-- Quarterly goal: Q1-2 (Reduce customer effort)
-- Long-term value: Platform capability, enables future dashboard types
-
-### Effort Assessment
-
-**Engineering:** Medium (3-4 weeks)
-- Size: 3-4 weeks
-- Complexity: Medium (real-time data pipeline + UI refresh)
-- Dependencies: Data infrastructure team (capacity confirmed)
-- Risk: Medium (performance at scale needs testing)
-
-**Design:** Small (1 week) - using existing components
-**GTM/Support:** Medium - training needed, support documentation
-
----
-
-## Decision Rationale
-
-**Why Go:**
-
-1. **Strong customer signal** - 4 customers in 30 days, increasing trend, 2 called it blocker
-2. **Business impact** - Unblocks $180K in pipeline, closes competitive gap
-3. **Strategic alignment** - Directly advances Q1 goal (reduce customer effort)
-4. **Feasible scope** - 3-4 weeks, no major blockers, team has capacity
-
-**Trade-offs accepted:**
-- Deprioritizing: Mobile app performance improvements slide from Feb to March
-- Risk: Need to validate performance at scale during beta
-
----
-
-## Supporting Evidence
-
-**Customer quotes:**
-- "Takes 2 days/month to compile reports manually. Need real-time dashboards." - Sarah (Acme), Jan 24
-- "Reporting pain is my team's #1 complaint. They avoid the system because of it." - Lisa (GlobalCo), Jan 15
-
-**Competitive intel:**
-- "ProductX's dashboards are way ahead of yours. We're evaluating a switch." - Mike (TechStart), Jan 20
-
-**Related conversations:**
-- 00-Inbox/Meetings/2026-01-24_Acme_Quarterly_Review.md
-- People/External/Sarah_Chen_Acme.md
-
----
-
-## Stakeholder Alignment
-
-**Consulted:**
-- Mike (Engineering Lead) - Feasible, 3-4 weeks, needs data team sync
-- Sarah (Design Lead) - Can use existing components, 1 week effort
-- John (Sales VP) - Would unblock 2 deals, closes demo objection
-
-**Concerns raised:**
-- Performance at scale (Mike) - Addressed: Beta test with 3 high-volume customers before general launch
-
----
-
-## Next Steps
-
-- [x] Create project in 04-Projects/Real_Time_Dashboards.md
-- [ ] Add to roadmap (Q1 priority)
-- [ ] Schedule kickoff for Feb 1
-- [ ] Update stakeholders (Acme, TechStart, GlobalCo, NewCorp)
-- [ ] Communicate timeline to sales team
-
----
-
-## Decision Log
-
-This decision is logged for future reference. Run `/decision-log` to see all major product decisions.
+## Controlled save
+- Exact target and diff: [preview]
+- Explicit confirmation: [human / timestamp]
+- Read-back: [matched preview or failed; recovery action]
 ```

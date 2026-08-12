@@ -88,6 +88,7 @@ def _fixture(root: Path) -> dict[str, object]:
                                 "target_path": ".claude/skills/career-setup/SKILL.md",
                                 "sha256": room_sha,
                                 "byte_size": room_size,
+                                "previous_payloads": [],
                             }
                         ],
                     }
@@ -260,6 +261,60 @@ def test_room_source_payload_identity_is_verified(tmp_path: Path, mutation: str)
         source.symlink_to(original.name)
 
     with pytest.raises(SkillSourceError):
+        _resolve(tmp_path, fixture["room"], fixture)
+
+
+def test_room_source_identifies_one_exact_previous_release_payload(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    contract_path = fixture["contract"]
+    document = json.loads(contract_path.read_text(encoding="utf-8"))
+    previous = b"---\nname: career-setup\ndescription: Prior published release.\n---\n"
+    previous_sha256, previous_byte_size = _pin(previous)
+    document["capabilities"]["career"]["skill_sources"][0]["previous_payloads"] = [
+        {
+            "release": "v1.95.2",
+            "sha256": previous_sha256,
+            "byte_size": previous_byte_size,
+        }
+    ]
+    contract_path.write_text(json.dumps(document), encoding="utf-8")
+
+    resolved = _resolve(tmp_path, fixture["room"], fixture)
+
+    assert resolved.identify_payload(resolved.path.read_bytes()) == "current"
+    assert resolved.identify_payload(previous) == "v1.95.2"
+    assert resolved.identify_payload(b"user-owned custom bytes") is None
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("missing-field", "extra-field", "bad-release", "boolean-size", "current-payload"),
+)
+def test_previous_room_payload_authority_is_closed(tmp_path: Path, mutation: str) -> None:
+    fixture = _fixture(tmp_path)
+    contract_path = fixture["contract"]
+    document = json.loads(contract_path.read_text(encoding="utf-8"))
+    current = document["capabilities"]["career"]["skill_sources"][0]
+    previous = {
+        "release": "v1.95.2",
+        "sha256": "1" * 64,
+        "byte_size": 42,
+    }
+    if mutation == "missing-field":
+        previous.pop("byte_size")
+    elif mutation == "extra-field":
+        previous["path"] = "not-authoritative"
+    elif mutation == "bad-release":
+        previous["release"] = "latest"
+    elif mutation == "boolean-size":
+        previous["byte_size"] = True
+    else:
+        previous["sha256"] = current["sha256"]
+        previous["byte_size"] = current["byte_size"]
+    current["previous_payloads"] = [previous]
+    contract_path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(SkillSourceError, match="previous|fields|release|byte_size|payload"):
         _resolve(tmp_path, fixture["room"], fixture)
 
 

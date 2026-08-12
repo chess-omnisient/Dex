@@ -150,6 +150,39 @@ test('fresh provision creates the full profile, seeds, MCP config, paths, and by
     assert.equal(second.status, 0, second.stderr);
     assert.deepEqual(second.summary.created, []);
     assert.deepEqual(fileSnapshot(vault), before);
+
+    const repeatedDryRun = runProvision(vault, ['--profile', profilePath, '--dry-run']);
+    assert.equal(repeatedDryRun.status, 0, repeatedDryRun.stderr);
+    assert.deepEqual(repeatedDryRun.summary.created, []);
+    assert.deepEqual(fileSnapshot(vault), before);
+  });
+});
+
+test('provision receipt preserves every mutation path reported by the room authority', () => {
+  withVault(vault => {
+    const fakePython = path.join(vault, 'fake-capability-python');
+    fs.writeFileSync(
+      fakePython,
+      '#!/bin/sh\n'
+      + 'if [ "$2" = "--preflight" ]; then\n'
+      + '  printf \'{"preflight":"passed","rooms":["career"]}\\n\'\n'
+      + 'else\n'
+      + '  printf \'{"rooms":[{"room":"career","enabled":true,"mutation_paths":[".claude",".claude/skills/career-setup/SKILL.md"]}]}\\n\'\n'
+      + 'fi\n',
+    );
+    fs.chmodSync(fakePython, 0o755);
+
+    const result = runProvision(vault, [], { DEX_CAPABILITY_PYTHON: fakePython });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(result.summary.created.includes('.claude'));
+    assert.ok(result.summary.created.includes('.claude/skills/career-setup/SKILL.md'));
+    assert.ok(result.summary.mutation_receipt.declared_paths.includes('.claude'));
+    assert.ok(
+      result.summary.mutation_receipt.declared_paths.includes(
+        '.claude/skills/career-setup/SKILL.md',
+      ),
+    );
   });
 });
 

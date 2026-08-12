@@ -233,119 +233,38 @@ When user specifies a customer:
 
 ## Example Output
 
+This template demonstrates traceability, not sample customer claims. Keep every
+unsupported count, trend, quote, and roadmap relationship as `Unknown`.
+
 ```markdown
-# 🎯 Customer Intelligence Report
+# Customer Intelligence Report
 
-**Period:** Last 30 days (Dec 29 - Jan 28)
-**Sources analyzed:** 23 meetings, 12 person pages, 5 feedback captures
-**Customers represented:** 18
+**As-of date:** [As-of date]
+**Cohort and timeframe:** [Definition or Unknown]
+**Evidence completeness:** [Checked / eligible / Unknown]
 
----
+## Source ledger
+| Source ID | Source date | Customer | Evidence type | Included once? |
+|---|---|---|---|---|
+| [Source ID] | [Source date] | [Customer ID or redacted] | [Meeting, feedback, person page] | [Yes / duplicate of Source ID / Unknown] |
 
-## 🔥 Top Pain Points
+## Theme
+**Theme:** [Evidence-backed label or Unknown]
+**Distinct customers:** [Count with denominator, or Unknown]
+**Trend:** [Comparable-period calculation, or Unknown]
+**Contradictory evidence:** [Source IDs on each side, or None observed]
 
-### Reporting Takes Too Long
-**Mentioned by:** 4 customers (Acme Corp, TechStart, GlobalCo, DataFlow)
-**Frequency:** 7 mentions in last 30 days
-**Urgency:** High (2 customers called it a "blocker")
-**Trend:** ↑ Increasing (3 mentions this week vs 1/week prior)
+### Quote-safe evidence
+- “[Exact excerpt or faithful summary]” — [Source ID], [Source date]
+- Missing context: [Unknown or named gap]
 
-**Details:**
-- "Takes 2 days/month to compile reports manually. Need real-time dashboards." - Sarah (Acme), Jan 24
-- "Our team wastes hours every week on reporting. This should be automated." - Mike (TechStart), Jan 20
-- "Reporting pain is my team's #1 complaint. They avoid the system because of it." - Lisa (GlobalCo), Jan 15
+### Product relationship
+- Roadmap status: [Canonical source / date / Unknown]
+- Related project: [Exact path / source / Unknown]
 
-**Roadmap status:** Not planned
-**Related project:** None
+## Recommendations
+1. [Evidence-backed follow-up, owner, and source]
+2. [Question required before a conclusion can be made]
 
----
-
-### Mobile App Performance
-**Mentioned by:** 3 customers (Acme Corp, StartupX, InnovateCo)
-**Frequency:** 5 mentions in last 30 days
-**Urgency:** Medium
-**Trend:** → Stable
-
-**Details:**
-- "Mobile app is slow to load. Team doesn't use it in the field." - John (StartupX), Jan 18
-- "Love the desktop experience but mobile needs work" - Sarah (Acme), Jan 12
-
-**Roadmap status:** On roadmap (Mobile App Refresh project)
-**Related project:** 04-Projects/Mobile_App_Refresh.md
-
----
-
-## ✨ Feature Requests
-
-### Real-time Notifications
-**Mentioned by:** 5 customers (Acme, TechStart, GlobalCo, StartupX, FastGrow)
-**Frequency:** 8 mentions in last 30 days
-**Urgency:** Medium
-**Trend:** ↑ Increasing
-
-**Details:**
-- "We miss important updates because we don't check the app constantly" - Sarah (Acme), Jan 24
-- "Push notifications would be game-changing for our workflow" - FastGrow team, Jan 19
-
-**Roadmap status:** On roadmap (Q1 beta launch Feb 5)
-**Related project:** 04-Projects/Real_Time_Notifications.md
-
----
-
-## 🏆 Competitive Mentions
-
-### Competitor ProductX Has Better Dashboard
-**Mentioned by:** 2 customers (TechStart, DataFlow)
-**Frequency:** 3 mentions
-**Urgency:** High (1 customer evaluating switch)
-**Trend:** ↑ Increasing (new threat)
-
-**Details:**
-- "ProductX's dashboards are way ahead of yours. We're evaluating a switch." - Mike (TechStart), Jan 20
-- "Showed us ProductX demo. Their reporting is impressive." - DataFlow, Jan 16
-
-**Roadmap status:** Not planned
-**Related project:** None
-
----
-
-## 💚 What's Working
-
-### API Integration
-**Mentioned by:** 6 customers
-**Frequency:** 9 positive mentions
-
-**Details:**
-- "API is rock solid. Never had integration issues." - Multiple customers
-- "API docs are best-in-class" - Developer at InnovateCo
-
----
-
-## 🎯 Recommendations
-
-### Immediate Actions
-1. **Address reporting pain** - 4 customers, increasing trend, 2 calling it blocker
-2. **Respond to ProductX competitive threat** - TechStart evaluating switch
-
-### Product Opportunities
-1. **Real-time dashboards** - Strong demand (7 mentions), no roadmap coverage, competitive gap
-2. **Automated reporting** - Clear pain point, affects multiple workflows
-
-### Customer Follow-Ups
-1. **TechStart (Mike)** - At-risk due to ProductX evaluation, needs reporting solution
-2. **Acme Corp (Sarah)** - Consistent high-value feedback, strong champion, engage on roadmap
-
----
-
-## 📊 Summary
-
-**High-urgency items:** 3
-**Feature requests:** 12 unique requests
-**Competitive threats:** 2 mentions
-**Customers needing follow-up:** 2
-
-**Top 3 insights:**
-1. **Reporting pain is accelerating** - Went from background complaint to blocker status
-2. **ProductX emerging as competitive threat** - New mentions this month, dashboard focus
-3. **Mobile performance preventing adoption** - 3 customers, but already on roadmap
+**Insufficient-evidence state:** [What cannot yet be concluded and why]
 ```

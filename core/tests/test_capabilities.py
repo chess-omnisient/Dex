@@ -69,7 +69,12 @@ def _fake_vault(tmp_path: Path) -> Path:
     return vault
 
 
-def _fake_contract_with_skill_pins(tmp_path: Path, vault: Path) -> Path:
+def _fake_contract_with_skill_pins(
+    tmp_path: Path,
+    vault: Path,
+    *,
+    previous_payloads: dict[str, tuple[str, bytes]] | None = None,
+) -> Path:
     """Clone the real room declaration and pin the synthetic release payloads."""
     contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
     for room, skills in ROOM_SKILLS.items():
@@ -85,6 +90,17 @@ def _fake_contract_with_skill_pins(tmp_path: Path, vault: Path) -> Path:
                     "target_path": f".claude/skills/{skill}/SKILL.md",
                     "sha256": hashlib.sha256(payload).hexdigest(),
                     "byte_size": len(payload),
+                    "previous_payloads": (
+                        [
+                            {
+                                "release": previous_payloads[skill][0],
+                                "sha256": hashlib.sha256(previous_payloads[skill][1]).hexdigest(),
+                                "byte_size": len(previous_payloads[skill][1]),
+                            }
+                        ]
+                        if previous_payloads and skill in previous_payloads
+                        else []
+                    ),
                 }
             )
         contract["capabilities"][room]["skill_sources"] = pins
@@ -259,6 +275,44 @@ def test_enabling_later_provisions_declared_folders_and_skills(tmp_path: Path) -
     assert profile["capabilities"]["career"]["enabled"] is True
 
 
+def test_room_reconcile_reports_every_persistent_mutation_and_then_reports_none(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    first = capabilities.reconcile_room(
+        "career",
+        True,
+        vault_root=vault,
+        contract_path=CONTRACT_PATH,
+    )
+
+    assert first["mutation_paths"] == [
+        ".claude",
+        ".claude/skills",
+        ".claude/skills/career-coach",
+        ".claude/skills/career-coach/SKILL.md",
+        ".claude/skills/career-setup",
+        ".claude/skills/career-setup/SKILL.md",
+        ".claude/skills/resume-builder",
+        ".claude/skills/resume-builder/SKILL.md",
+        "05-Areas",
+        "05-Areas/Career",
+        "05-Areas/Career/Evidence",
+        "05-Areas/Career/Evidence/README.md",
+    ]
+
+    second = capabilities.reconcile_room(
+        "career",
+        True,
+        vault_root=vault,
+        contract_path=CONTRACT_PATH,
+    )
+
+    assert second["mutation_paths"] == []
+
+
 def test_disabling_stops_skill_surfacing_but_never_deletes_user_content(
     tmp_path: Path,
 ) -> None:
@@ -360,6 +414,143 @@ def test_reconcile_refuses_to_overwrite_unrecognized_active_skill_bytes(
 
     assert profile_path.read_bytes() == original_profile
     assert custom.read_text(encoding="utf-8") == "user-owned custom skill\n"
+    assert not (vault / "05-Areas/Career").exists()
+    assert not (vault / ".claude/skills/career-coach").exists()
+
+
+def test_reconcile_upgrades_an_authoritative_previous_release_room_skill(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _fake_vault(tmp_path)
+    monkeypatch.setattr(capabilities, "REPO_ROOT", vault)
+    previous = b"---\nname: career-setup\ndescription: Prior Dex release.\n---\n"
+    contract_path = _fake_contract_with_skill_pins(
+        tmp_path,
+        vault,
+        previous_payloads={"career-setup": ("v1.95.2", previous)},
+    )
+    profile_path = _profile(vault / "System/user-profile.yaml", career=True)
+    target = vault / ".claude/skills/career-setup/SKILL.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(previous)
+    current = (
+        vault
+        / ".claude/skills/_available/capabilities/career/skills/career-setup/SKILL.md"
+    ).read_bytes()
+
+    result = capabilities.reconcile_room(
+        "career",
+        True,
+        vault_root=vault,
+        contract_path=contract_path,
+    )
+
+    assert profile_path.is_file()
+    assert target.read_bytes() == current
+    assert ".claude/skills/career-setup/SKILL.md" in result["mutation_paths"]
+
+
+def test_enable_rejects_a_non_directory_skill_ancestor_before_any_mutation(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    profile_path = _profile(vault / "System/user-profile.yaml", career=False)
+    original_profile = profile_path.read_bytes()
+    claude = vault / ".claude"
+    claude.mkdir()
+    (claude / "skills").write_text("not a directory\n", encoding="utf-8")
+
+    with pytest.raises(capabilities.CapabilityError, match="ancestor|directory|target"):
+        capabilities.set_enabled(
+            "career",
+            True,
+            vault_root=vault,
+            profile_path=profile_path,
+            contract_path=CONTRACT_PATH,
+        )
+
+    assert profile_path.read_bytes() == original_profile
+    assert not (vault / "05-Areas/Career").exists()
+
+
+def test_enable_rolls_back_profile_and_room_assets_when_reconciliation_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = tmp_path / "vault"
+    profile_path = _profile(vault / "System/user-profile.yaml", career=False)
+    original_profile = profile_path.read_bytes()
+    original_copy = capabilities._copy_verified_room_skill
+    calls = 0
+
+    def fail_during_second_skill(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected room reconciliation failure")
+        return original_copy(*args, **kwargs)
+
+    monkeypatch.setattr(
+        capabilities,
+        "_copy_verified_room_skill",
+        fail_during_second_skill,
+    )
+
+    with pytest.raises(capabilities.CapabilityError, match="reconciliation|rollback|injected"):
+        capabilities.set_enabled(
+            "career",
+            True,
+            vault_root=vault,
+            profile_path=profile_path,
+            contract_path=CONTRACT_PATH,
+        )
+
+    assert profile_path.read_bytes() == original_profile
+    assert not (vault / "05-Areas/Career").exists()
+    assert not (vault / ".claude").exists()
+
+
+def test_failed_room_upgrade_restores_the_exact_previous_release_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _fake_vault(tmp_path)
+    monkeypatch.setattr(capabilities, "REPO_ROOT", vault)
+    previous = b"---\nname: career-setup\ndescription: Previous release.\n---\n"
+    contract_path = _fake_contract_with_skill_pins(
+        tmp_path,
+        vault,
+        previous_payloads={"career-setup": ("v1.95.2", previous)},
+    )
+    profile_path = _profile(vault / "System/user-profile.yaml", career=False)
+    original_profile = profile_path.read_bytes()
+    target = vault / ".claude/skills/career-setup/SKILL.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(previous)
+    original_copy = capabilities._copy_verified_room_skill
+    calls = 0
+
+    def fail_during_second_skill(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected failure after prior payload upgrade")
+        return original_copy(*args, **kwargs)
+
+    monkeypatch.setattr(capabilities, "_copy_verified_room_skill", fail_during_second_skill)
+
+    with pytest.raises(capabilities.CapabilityError, match="rolled back|injected"):
+        capabilities.set_enabled(
+            "career",
+            True,
+            vault_root=vault,
+            profile_path=profile_path,
+            contract_path=contract_path,
+        )
+
+    assert profile_path.read_bytes() == original_profile
+    assert target.read_bytes() == previous
     assert not (vault / "05-Areas/Career").exists()
     assert not (vault / ".claude/skills/career-coach").exists()
 

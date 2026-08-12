@@ -228,15 +228,17 @@ function copyMissing(source, target, reporter, dryRun) {
   } else reporter.skipped(target);
 }
 
-function reconcileCapabilities(vaultRoot, profile, reporter, dryRun) {
+function reconcileCapabilities(vaultRoot, profile, reporter, dryRun, authority = null) {
   if (!dryRun) {
     const result = routeCapabilityAuthority(vaultRoot, { preflightOnly: false });
     for (const room of result.rooms || []) {
-      for (const relativePath of [...(room.created || []), ...(room.skills_surfaced || [])]) {
-        reporter.created(path.join(vaultRoot, ...relativePath.split('/')));
-      }
-      for (const relativePath of room.skills_hidden || []) {
-        reporter.removed(path.join(vaultRoot, ...relativePath.split('/')));
+      const mutationPaths = Array.isArray(room.mutation_paths)
+        ? room.mutation_paths
+        : [...(room.created || []), ...(room.skills_surfaced || []), ...(room.skills_hidden || [])];
+      for (const relativePath of mutationPaths) {
+        const target = path.join(vaultRoot, ...relativePath.split('/'));
+        if (room.enabled === true) reporter.created(target);
+        else reporter.removed(target);
       }
     }
     return result;
@@ -260,15 +262,35 @@ function reconcileCapabilities(vaultRoot, profile, reporter, dryRun) {
       }
       for (const skill of definition.skills || []) {
         const target = path.join(vaultRoot, '.claude', 'skills', skill);
-        ensureDirectory(path.dirname(target), reporter, true);
-        reporter.created(target);
+        const skillFile = path.join(target, 'SKILL.md');
+        const state = authority?.skill_targets?.[room]
+          ?.find(item => item.skill === skill)?.state;
+        if (typeof state !== 'string') {
+          throw new Error(`Capability authority omitted dry-run state for ${room}/${skill}`);
+        }
+        if (state === 'missing') {
+          ensureDirectory(target, reporter, true);
+          reporter.created(skillFile);
+        } else if (state === 'current') {
+          reporter.skipped(target);
+          reporter.skipped(skillFile);
+        } else {
+          reporter.created(skillFile);
+        }
       }
     } else {
       // Room folders contain user content and are never deleted. Only release-owned
       // active skill copies are hidden when a room is switched off.
       for (const skill of definition.skills || []) {
         const target = path.join(vaultRoot, '.claude', 'skills', skill);
-        if (fs.existsSync(target)) {
+        const skillFile = path.join(target, 'SKILL.md');
+        const state = authority?.skill_targets?.[room]
+          ?.find(item => item.skill === skill)?.state;
+        if (typeof state !== 'string') {
+          throw new Error(`Capability authority omitted dry-run state for ${room}/${skill}`);
+        }
+        if (state !== 'missing') {
+          reporter.removed(skillFile);
           reporter.removed(target);
         }
       }
@@ -632,10 +654,11 @@ function provision(options) {
   }
 
   try {
-    reporter.summary.capability_authority = routeCapabilityAuthority(
+    const capabilityAuthority = routeCapabilityAuthority(
       vaultRoot,
       { preflightOnly: true },
     );
+    reporter.summary.capability_authority = capabilityAuthority;
     if (options.adopt || options.onboard) {
       try {
         reporter.summary.lifecycle_executor = routeAdoptionThroughLifecycleService(
@@ -718,7 +741,13 @@ function provision(options) {
       ensureDirectory(path.join(vaultRoot, ...relativePath.split('/')), reporter, options.dryRun);
     }
 
-    reconcileCapabilities(vaultRoot, profile, reporter, options.dryRun);
+    reconcileCapabilities(
+      vaultRoot,
+      profile,
+      reporter,
+      options.dryRun,
+      capabilityAuthority,
+    );
 
     const tasksPath = path.join(vaultRoot, ...contract.seed_files.tasks.split('/'));
     writeIfMissing(tasksPath, tasksContent(profile.pillars), reporter, options.dryRun);

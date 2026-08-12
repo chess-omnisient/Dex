@@ -9,8 +9,8 @@
         {
           "path": ".claude/skills/account-plan/SKILL.md",
           "source_path": ".claude/skills/_available/sales/account-plan/SKILL.md",
-          "sha256": "146a6f3763ad0d9c11d16f08600cfc8aed46c939ed425dc0daa513bf5c805696",
-          "byte_size": 19075
+          "sha256": "781ddc9f7d6f3a0f9bd2be8c7a40289069140815ce2e2d286327e718e12604ae",
+          "byte_size": 12165
         }
       ],
       "dependencies": [],
@@ -129,8 +129,8 @@
         {
           "path": ".claude/skills/customer-intel/SKILL.md",
           "source_path": ".claude/skills/_available/product/customer-intel/SKILL.md",
-          "sha256": "584a31c185f21459476fdfae28391fe4c1eccb7325f70f83f298904948fbbda1",
-          "byte_size": 12026
+          "sha256": "86afc10dc3c44e82f0429e13f58c4c4ac96bf31129b8e90f78eb2c359a4fdf79",
+          "byte_size": 9610
         }
       ],
       "dependencies": [],
@@ -234,8 +234,8 @@
         {
           "path": ".claude/skills/feature-decision/SKILL.md",
           "source_path": ".claude/skills/_available/product/feature-decision/SKILL.md",
-          "sha256": "c46eccb99cc76f7181c6a09d555a3d716a56a738e0cc5a286500c7ccab61ddcd",
-          "byte_size": 13232
+          "sha256": "a7af8859d3c919fc81a504cee43a83a1451d21de7c231e5468711e8756a68fc3",
+          "byte_size": 11346
         }
       ],
       "dependencies": [],
@@ -354,8 +354,8 @@
         {
           "path": ".claude/skills/roadmap/SKILL.md",
           "source_path": ".claude/skills/_available/product/roadmap/SKILL.md",
-          "sha256": "6b29b0544e6c1bfaa854ebb81ab5700cf2022728fd78e7e254da4168b3925261",
-          "byte_size": 6062
+          "sha256": "9c343ee7112057bbe8f2ca591334e7eb0a8916bb0112957018f8d9a43ca6fe35",
+          "byte_size": 6293
         }
       ],
       "dependencies": [],

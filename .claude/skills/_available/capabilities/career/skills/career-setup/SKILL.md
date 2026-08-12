@@ -230,14 +230,21 @@ Great. So your growth direction:
 
 ---
 
-**All set! Let me create your Career folder and save this context.**
+**All set. Before any write, I will show an exact preview of every folder and
+file, then wait for your explicit confirmation. Nothing is created yet.**
 ```
 
 ---
 
 ### Phase 6: Create Files & Summary
 
-Create the folder structure and files:
+Do not create anything on entry to this phase. First show an **exact preview**
+of every path and complete file body below, identify any existing targets, and
+ask for **explicit confirmation**. Only after that confirmation may you create
+the approved folder structure and files. A confirmation from an earlier phase
+does not authorize these writes.
+
+After confirmation, create only the approved folder structure and files:
 
 **1. Create folder:** `05-Areas/Career/`
 
@@ -646,7 +653,10 @@ That's enough to make the system useful.
 ```markdown
 No problem — we can fill that in later.
 
-For now, I'll create the folder structure and you can update files when you're ready. The system still works without everything filled in.
+Before creating even the empty structure, I will show an exact preview of every
+folder and placeholder file and ask for explicit confirmation. Only after you
+confirm that preview will I write it. The system still works if you choose not
+to create anything yet.
 ```
 
 ---

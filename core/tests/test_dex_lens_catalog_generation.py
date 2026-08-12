@@ -338,6 +338,7 @@ def _adoptable_registry(root: Path, source_kind: str) -> Path:
                                     "target_path": f".claude/skills/{entry_id}/SKILL.md",
                                     "sha256": hashlib.sha256(payload).hexdigest(),
                                     "byte_size": len(payload),
+                                    "previous_payloads": [],
                                 }
                             ],
                         }

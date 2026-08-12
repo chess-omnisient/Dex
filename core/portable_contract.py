@@ -348,8 +348,10 @@ def _room_skill_source(
     skill: str,
     sha256: str,
     byte_size: int,
+    *,
+    previous_payloads: tuple[tuple[str, str, int], ...] = (),
 ) -> dict[str, object]:
-    """Declare one release-owned room skill without duplicating its paths."""
+    """Declare current and safely replaceable prior release-owned payloads."""
     return {
         "room": room,
         "skill": skill,
@@ -359,6 +361,14 @@ def _room_skill_source(
         "target_path": f".claude/skills/{skill}/SKILL.md",
         "sha256": sha256,
         "byte_size": byte_size,
+        "previous_payloads": [
+            {
+                "release": release,
+                "sha256": previous_sha256,
+                "byte_size": previous_byte_size,
+            }
+            for release, previous_sha256, previous_byte_size in previous_payloads
+        ],
     }
 
 
@@ -370,20 +380,54 @@ CAPABILITIES: dict[str, dict[str, object]] = {
             _room_skill_source(
                 "career",
                 "career-setup",
-                "9907a00d6238c567e12be61be550414e5baf4c9c63018c689ebd1b3ae3522091",
-                18010,
+                "c111c73bdbdc7abdabb1768b6cc387165107d564f34df848b3fa1492509e73ad",
+                18598,
+                previous_payloads=(
+                    (
+                        "v1.95.2",
+                        "12784bb4a2c5bb1edc786226b2e4108a34db85583c9d59ea80b1a941fb6b474c",
+                        14824,
+                    ),
+                    (
+                        "v1.70.0",
+                        "06bfbd6de60a204449eb793508201431587d7c0b34b57d4b5c4a4421847e1f59",
+                        14812,
+                    ),
+                ),
             ),
             _room_skill_source(
                 "career",
                 "career-coach",
                 "4b791fd32ea88fac498612ef3e028b7d714a4c0e384e507da16d1c10030bd398",
                 33757,
+                previous_payloads=(
+                    (
+                        "v1.95.2",
+                        "356de976657e23a399c19bd09f580e429cc0c3fc7da4a79095345b6ce8c8d352",
+                        29547,
+                    ),
+                    (
+                        "v1.83.0",
+                        "ae9b0e67688e45a8e24233c28781a18a8b527eee0ab49e3999c8a4d5bc1fd26a",
+                        29185,
+                    ),
+                    (
+                        "v1.70.0",
+                        "0bda287205a5f1674dcaada2f596e61505d63443518cab5dd350b0ec1b2885dd",
+                        29179,
+                    ),
+                ),
             ),
             _room_skill_source(
                 "career",
                 "resume-builder",
                 "36014b7241b62b1cb6d0ca8269a6524e3643befdc034082c7ead34962d54b10c",
                 32051,
+                previous_payloads=((
+                    "v1.95.2",
+                    "f759f12154a6b928ad4e16bf2bf82c363d6e9baf9cd9ddfedd639b60fc51d5de",
+                    29649,
+                ),),
             ),
         ),
         "mcp": ("career_server", "resume_server"),
@@ -405,12 +449,22 @@ CAPABILITIES: dict[str, dict[str, object]] = {
                 "quarter-plan",
                 "12b476c110114d7f99afd992fd94ec17e1ead7347bb3c8429d77626080adc1b8",
                 12657,
+                previous_payloads=((
+                    "v1.95.2",
+                    "08679c722b1555563e125a7bbc67ef1ccf1dfa367f522a5eb8565cea77fd937f",
+                    9406,
+                ),),
             ),
             _room_skill_source(
                 "quarter_goals",
                 "quarter-review",
                 "a29b491a217f1e5f129ce1ff94b57feda9b0069b338d389e4336f10236fcbdd2",
                 16847,
+                previous_payloads=((
+                    "v1.95.2",
+                    "069b339f63aa436b8ae01b16d97756b14f003f9069eb10c11827ed9abf5df794",
+                    12851,
+                ),),
             ),
         ),
         "config": "quarterly_planning",
@@ -820,6 +874,7 @@ def build_contract_schema(
                     "target_path",
                     "sha256",
                     "byte_size",
+                    "previous_payloads",
                 ],
                 "properties": {
                     "room": {"type": "string", "minLength": 1},
@@ -831,6 +886,26 @@ def build_contract_schema(
                         "pattern": "^[0-9a-f]{64}$",
                     },
                     "byte_size": {"type": "integer", "minimum": 0},
+                    "previous_payloads": {
+                        "type": "array",
+                        "uniqueItems": True,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["release", "sha256", "byte_size"],
+                            "properties": {
+                                "release": {
+                                    "type": "string",
+                                    "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
+                                },
+                                "sha256": {
+                                    "type": "string",
+                                    "pattern": "^[0-9a-f]{64}$",
+                                },
+                                "byte_size": {"type": "integer", "minimum": 0},
+                            },
+                        },
+                    },
                 },
             },
         }
