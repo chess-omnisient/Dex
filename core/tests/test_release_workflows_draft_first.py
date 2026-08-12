@@ -177,6 +177,54 @@ def test_the_stable_lane_keeps_the_non_cancelling_publish_lock() -> None:
     }
 
 
+def test_lens_catalog_release_environment_has_a_pr_dry_run() -> None:
+    """The release-only Lens step must be exercised before it can burn a version."""
+    workflow = _load(CI_WORKFLOW)
+    triggers = _triggers(workflow)
+    assert "workflow_dispatch" in triggers
+
+    dry_run = workflow["jobs"]["lens-catalog-release-dry-run"]
+    assert dry_run["runs-on"] == "macos-latest"
+    assert dry_run["permissions"] == {"contents": "read"}
+    assert dry_run["if"] == (
+        "github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'"
+    )
+
+    steps = {s["name"]: s for s in dry_run["steps"] if "name" in s}
+    changed = steps["Decide whether the Lens catalogue release path changed"]["run"]
+    assert r"\.github/workflows/ci\.yml" in changed
+    assert r"scripts/generate-dex-lens-catalog\.py" in changed
+    assert "core/lens-catalog/" in changed
+
+    run = steps["Dry-run the Lens catalogue release environment"]["run"]
+    assert "python3 -m venv .lens-venv" in run
+    assert ".lens-venv/bin/python -m pip install --quiet 'cryptography>=42' jsonschema" in run
+    assert ".lens-venv/bin/python scripts/generate-dex-lens-catalog.py" in run
+    assert "--release-root \"$PWD\"" in run
+    assert "--output-dir \"$OUTPUT_DIR\"" in run
+    assert "--sign" not in run
+    assert "dex-lens-catalog-latest.json" in run
+
+
+def test_lens_catalog_is_generated_before_the_immutable_release_tag_is_pushed() -> None:
+    """A catalogue failure must fail the run before a version marker is burned."""
+    workflow = _load(CI_WORKFLOW)
+    steps = [
+        step["name"]
+        for step in workflow["jobs"]["build-release"]["steps"]
+        if "name" in step
+    ]
+    assert steps.index("Build self-contained vault bundle") < steps.index(
+        "Push release branch and immutable tag"
+    )
+    assert steps.index("Generate signed Dex Lens catalog") < steps.index(
+        "Push release branch and immutable tag"
+    )
+    assert steps.index("Push release branch and immutable tag") < steps.index(
+        "Attach assets, verify them, then make the release public"
+    )
+
+
 def test_the_draft_explains_the_queue_when_the_fleet_proof_holds_the_lock() -> None:
     """A release waiting hours behind the proof must say so, not look stalled."""
     source = PUBLISH_SCRIPT.read_text(encoding="utf-8")
