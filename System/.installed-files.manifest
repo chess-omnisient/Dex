@@ -39,6 +39,7 @@
 .claude/hooks/tests/data-safety-instructions.test.cjs
 .claude/hooks/tests/first-run-directive.test.cjs
 .claude/hooks/tests/health-pulse.test.cjs
+.claude/hooks/tests/hook-command-paths.test.cjs
 .claude/hooks/tests/hook-harness.test.cjs
 .claude/hooks/tests/input-contract.test.cjs
 .claude/hooks/tests/integration-concierge.test.cjs
@@ -520,6 +521,9 @@
 .claude/skills/anthropic-xlsx/SKILL.md
 .claude/skills/anthropic-xlsx/recalc.py
 .claude/skills/atlassian-setup/SKILL.md
+.claude/skills/backup-now/SKILL.md
+.claude/skills/backup-restore/SKILL.md
+.claude/skills/backup-setup/SKILL.md
 .claude/skills/calendar-setup/SKILL.md
 .claude/skills/commitments/SKILL.md
 .claude/skills/commitments/evals/trigger-cases.yaml
@@ -528,7 +532,9 @@
 .claude/skills/create-skill/SKILL.md
 .claude/skills/create-skill/evals/trigger-cases.yaml
 .claude/skills/create-skill/references/dex-skill-standard.md
+.claude/skills/daily-plan/AGENT_INSTRUCTIONS.md
 .claude/skills/daily-plan/SKILL.md
+.claude/skills/daily-review/AGENT_INSTRUCTIONS.md
 .claude/skills/daily-review/SKILL.md
 .claude/skills/decision-log/SKILL.md
 .claude/skills/delegate-check/SKILL.md
@@ -570,8 +576,13 @@
 .claude/skills/manage-capabilities/SKILL.md
 .claude/skills/meeting-closeout/SKILL.md
 .claude/skills/meeting-closeout/evals/trigger-cases.yaml
+.claude/skills/meeting-prep/AGENT_INSTRUCTIONS.md
 .claude/skills/meeting-prep/SKILL.md
 .claude/skills/ms-teams-setup/SKILL.md
+.claude/skills/pipedrive-setup/SKILL.md
+.claude/skills/pipeline-sync/AGENT_INSTRUCTIONS.md
+.claude/skills/pipeline-sync/SKILL.md
+.claude/skills/process-meetings/AGENT_INSTRUCTIONS.md
 .claude/skills/process-meetings/SKILL.md
 .claude/skills/product-brief/SKILL.md
 .claude/skills/project-health/SKILL.md
@@ -591,6 +602,7 @@
 .claude/skills/trello-setup/SKILL.md
 .claude/skills/triage/SKILL.md
 .claude/skills/week-plan/SKILL.md
+.claude/skills/week-review/AGENT_INSTRUCTIONS.md
 .claude/skills/week-review/SKILL.md
 .claude/skills/weekly-reflection/SKILL.md
 .claude/skills/xray/SKILL.md
@@ -604,6 +616,7 @@
 .github/workflows/ci.yml
 .github/workflows/historic-fleet-darwin.yml
 .github/workflows/nightly-quality.yml
+.github/workflows/release-asset-prober.yml
 .github/workflows/release.yml
 .gitignore
 .obsidian/app.json
@@ -719,12 +732,17 @@ System/Templates/Person_Page.md
 System/Templates/README.md
 System/claude-code-state.json
 System/integrations/config.yaml
+System/integrations/pipedrive.yaml.example
 System/pillars.example.yaml
 System/pillars.yaml
 System/trusted-mcps.example.yaml
 System/usage_log.md
 System/user-profile-template.yaml
 core/__init__.py
+core/backup/__init__.py
+core/backup/backup_vault.py
+core/backup/install_backup_job.py
+core/backup/restore_vault.py
 core/capabilities.py
 core/customization_migration/__init__.py
 core/customization_migration/activation.py
@@ -806,6 +824,8 @@ core/integrations/notion/setup.py
 core/integrations/post_update_check.py
 core/integrations/slack/setup.py
 core/integrations/task_sync.py
+core/lens-catalog/registry.json
+core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json
 core/lifecycle/__init__.py
 core/lifecycle/bridge.py
 core/lifecycle/catalog.py
@@ -842,6 +862,7 @@ core/mcp/customization_migration_server.py
 core/mcp/dex_improvements_server.py
 core/mcp/granola_server.py
 core/mcp/onboarding_server.py
+core/mcp/pipedrive_server.py
 core/mcp/requirements.txt
 core/mcp/resume_parser.py
 core/mcp/resume_server.py
@@ -997,10 +1018,12 @@ core/tests/test_adoption_sqlite_snapshot.py
 core/tests/test_adoption_transaction.py
 core/tests/test_apply_update.py
 core/tests/test_architecture_inventory.py
+core/tests/test_backup_vault.py
 core/tests/test_branch_protection_script.py
 core/tests/test_calendar_eventkit_script.py
 core/tests/test_calendar_server.py
 core/tests/test_capabilities.py
+core/tests/test_ci_concurrency_never_cancels_main.py
 core/tests/test_ci_shard_durations.py
 core/tests/test_commitments_skill.py
 core/tests/test_company_domains.py
@@ -1029,7 +1052,9 @@ core/tests/test_customization_regeneration_planning.py
 core/tests/test_customization_staging.py
 core/tests/test_customization_verification.py
 core/tests/test_daily_plan_relationships_surface.py
+core/tests/test_detect_flaky_tests_gate.py
 core/tests/test_dex_improvements_server.py
+core/tests/test_dex_lens_catalog_generation.py
 core/tests/test_dex_state.py
 core/tests/test_dex_update_bridge.py
 core/tests/test_dexdiff_adopt_profile_script.py
@@ -1098,6 +1123,7 @@ core/tests/test_path_contract.py
 core/tests/test_paths.py
 core/tests/test_people_index_v2.py
 core/tests/test_pii_gate.py
+core/tests/test_pipedrive_server.py
 core/tests/test_portable_contract.py
 core/tests/test_pr_report.py
 core/tests/test_preflight_paths.py
@@ -1106,6 +1132,7 @@ core/tests/test_provision_parity.py
 core/tests/test_qmd_query_grep_fallback.py
 core/tests/test_relationship_radar_skill.py
 core/tests/test_relationships_feed.py
+core/tests/test_release_asset_prober.py
 core/tests/test_release_catalog.py
 core/tests/test_release_catalog_generation.py
 core/tests/test_release_channel.py
@@ -1115,7 +1142,9 @@ core/tests/test_release_fleet_acceptance.py
 core/tests/test_release_fleet_executor.py
 core/tests/test_release_fleet_failure_diagnostics.py
 core/tests/test_release_notes_sweep.py
+core/tests/test_release_publish_draft_first.py
 core/tests/test_release_tag_uniqueness.py
+core/tests/test_release_workflows_draft_first.py
 core/tests/test_review_retirement.py
 core/tests/test_ritual_intelligence_entrypoints.py
 core/tests/test_ritual_intelligence_runtime.py
@@ -1125,6 +1154,7 @@ core/tests/test_security_gate.py
 core/tests/test_session_health.py
 core/tests/test_setup_credential_disclosure.py
 core/tests/test_shipped_seed_policy.py
+core/tests/test_skill_delegated_gathering.py
 core/tests/test_skill_integrity.py
 core/tests/test_smoke.py
 core/tests/test_smoke_automation.py
@@ -1222,6 +1252,7 @@ docs/architecture/HEALTH-PROMISES.md
 docs/architecture/INVENTORY.md
 docs/architecture/STATE.md
 docs/assets/dex-hero.gif
+docs/backup-restore.md
 docs/calendar-performance.md
 docs/credential-remediation.md
 docs/customization-migration-threat-model.md
@@ -1302,6 +1333,7 @@ scripts/check-release-tag-uniqueness.sh
 scripts/check-tau-removal.py
 scripts/check-test-delta.sh
 scripts/check-tracked-ignored.py
+scripts/check_release_assets.py
 scripts/configure-branch-protection.sh
 scripts/connections-consumer-smoke.mjs
 scripts/connections-contract-validation.mjs
@@ -1311,6 +1343,7 @@ scripts/dex_update_bridge.py
 scripts/founder-content-allowlist.txt
 scripts/generate-architecture-inventory.py
 scripts/generate-connections-contract.mjs
+scripts/generate-dex-lens-catalog.py
 scripts/generate-health-promises.py
 scripts/generate-manifest.sh
 scripts/generate-path-contracts.py
@@ -1328,6 +1361,7 @@ scripts/release.sh
 scripts/release_fleet.py
 scripts/release_fleet_acceptance.py
 scripts/release_fleet_executor.py
+scripts/release_publish.py
 scripts/render-health-page.py
 scripts/resolve-distignore-files.sh
 scripts/run-historic-fleet-darwin.sh
