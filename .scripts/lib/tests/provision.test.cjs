@@ -165,7 +165,7 @@ test('provision receipt preserves every mutation path reported by the room autho
       fakePython,
       '#!/bin/sh\n'
       + 'if [ "$2" = "--preflight" ]; then\n'
-      + '  printf \'{"preflight":"passed","rooms":["career"]}\\n\'\n'
+      + '  printf \'{"preflight":"passed","rooms":["career","companies","quarter_goals"],"skill_targets":{"career":[{"skill":"career-setup","target_path":".claude/skills/career-setup/SKILL.md","state":"missing"},{"skill":"career-coach","target_path":".claude/skills/career-coach/SKILL.md","state":"missing"},{"skill":"resume-builder","target_path":".claude/skills/resume-builder/SKILL.md","state":"missing"}],"companies":[],"quarter_goals":[{"skill":"quarter-plan","target_path":".claude/skills/quarter-plan/SKILL.md","state":"missing"},{"skill":"quarter-review","target_path":".claude/skills/quarter-review/SKILL.md","state":"missing"}]}}\\n\'\n'
       + 'else\n'
       + '  printf \'{"rooms":[{"room":"career","enabled":true,"mutation_paths":[".claude",".claude/skills/career-setup/SKILL.md"]}]}\\n\'\n'
       + 'fi\n',
