@@ -605,27 +605,47 @@ def test_a_beta_release_that_comes_back_unmarked_is_corrected(tmp_path) -> None:
 
 
 def test_a_stable_release_is_marked_latest_and_not_a_prerelease(tmp_path) -> None:
-    """Flags are set while the release is still hidden, then it is flipped.
+    """Stable releases become latest only after they are public.
 
     Setting them in the same call as `--draft=false` silently dropped the
     prerelease flag against real GitHub on 2026-08-12, so these are separate
-    operations and the order matters.
+    operations and the order matters. GitHub also rejects `--latest` while a
+    release is still a draft, so the latest flag must follow the public flip.
     """
     dist = _write_dist(tmp_path)
-    gh = FakeGh(releases={TAG: FakeRelease(draft=True)})
+
+    class RejectsLatestWhileDraftGh(FakeGh):
+        def release(self, args, *, check=True):
+            if (
+                args[0] == "edit"
+                and "--latest" in args
+                and self.releases[args[1]].draft
+            ):
+                self.calls.append(["release"] + list(args))
+                return self._result(
+                    1, err="Latest release cannot be draft or prerelease."
+                )
+            return super().release(args, check=check)
+
+    gh = RejectsLatestWhileDraftGh(releases={TAG: FakeRelease(draft=True)})
 
     assert _publish(_publish_args(dist), gh) == 0
 
-    flags_at = gh.index_of(
+    prerelease_at = gh.index_of(
         lambda c: c[:2] == ["release", "edit"]
         and "--prerelease=false" in c
-        and "--latest" in c
     )
     flip_at = gh.index_of(lambda c: c[:2] == ["release", "edit"] and "--draft=false" in c)
-    assert flags_at >= 0, "a stable release must be marked latest and not a prerelease"
+    latest_at = gh.index_of(
+        lambda c: c[:2] == ["release", "edit"] and "--latest" in c
+    )
+    assert prerelease_at >= 0, "a stable release must not be a prerelease"
     assert flip_at >= 0
-    assert flags_at < flip_at, "flags must be set before the release becomes visible"
-    assert "--draft=false" not in gh.calls[flags_at], (
+    assert latest_at >= 0, "a stable release must be marked latest"
+    assert prerelease_at < flip_at < latest_at, (
+        "GitHub requires the release to be public before it can become latest"
+    )
+    assert "--draft=false" not in gh.calls[prerelease_at], (
         "the flag call must not also publish; combining the two loses the flag"
     )
 
