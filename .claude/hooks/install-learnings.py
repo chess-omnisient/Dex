@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Stop hook: force one install pass when unused session learnings pile up.
 
-Capture stays in `/daily-review` and session-end. This hook never writes a
-learning. When the pending pile crosses the shipped volume+age threshold, it
-blocks Stop once per UTC day so the model routes existing entries (or honestly
-drops them) instead of only archiving them.
+Capture stays in `/daily-review` and session-end. This hook never writes a learning.
+When the pending pile crosses the shipped volume+age threshold, it blocks Stop
+once per UTC day so the model routes existing entries (or honestly drops them)
+instead of only archiving them.
 
 Fail-open: invalid stdin, missing Python deps, unwritable vault, or a missing
 interpreter all exit 0 with no output. Unwritable dedup degrades to silence,
@@ -18,7 +18,6 @@ import os
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
-
 
 _HOOK_REPO = Path(__file__).resolve().parents[2]
 
