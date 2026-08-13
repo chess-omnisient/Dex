@@ -41,7 +41,7 @@ def _git(root: Path, *arguments: str) -> str:
 
 def _split_release_tree(root: Path, *, source_tracked: bool = True) -> str:
     _git(root, "init", "-q")
-    _git(root, "config", "user.email", "tests@example.invalid")
+    _git(root, "config", "user.email", "tests@example.com")
     _git(root, "config", "user.name", "Dex tests")
     _git(root, "add", ".")
     _git(root, "commit", "-qm", "release")
