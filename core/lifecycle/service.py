@@ -76,7 +76,10 @@ _ANALYTICS_RECEIPT_REASONS = frozenset(
     }
 )
 _ANALYTICS_EVENT_NAME = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
-_MAX_ANALYTICS_RECEIPT_BYTES = (
+_MAX_ANALYTICS_RECEIPT_INPUT_BYTES = (
+    portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
+)
+_MAX_RETAINED_ANALYTICS_RECEIPT_BYTES = (
     portable_contract.ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES
 )
 _ANALYTICS_RECEIPT_APPEND_ATTEMPTS = 2
@@ -390,6 +393,35 @@ def _validated_analytics_receipt_prefix(raw: bytes) -> bytes:
     return raw
 
 
+def _retain_newest_analytics_receipt_records(
+    existing: bytes,
+    record: bytes,
+) -> bytes:
+    """Keep a bounded rolling receipt without splitting or skipping records.
+
+    ``existing`` has already been fully validated, including every record that
+    may be dropped.  That makes retention safe: an old malformed or unsafe
+    line fails closed instead of being silently hidden by truncation.
+    """
+    combined = existing + record
+    if len(combined) <= _MAX_RETAINED_ANALYTICS_RECEIPT_BYTES:
+        return combined
+
+    lines = combined.splitlines(keepends=True)
+    retained_size = len(combined)
+    first_retained = 0
+    while retained_size > _MAX_RETAINED_ANALYTICS_RECEIPT_BYTES:
+        retained_size -= len(lines[first_retained])
+        first_retained += 1
+
+    retained = b"".join(lines[first_retained:])
+    if not retained or not retained.endswith(b"\n"):
+        raise PlanRejected("analytics receipt retention must keep complete records")
+    if len(retained) != retained_size:
+        raise PlanRejected("analytics receipt retention size is inconsistent")
+    return retained
+
+
 def _is_stale_analytics_receipt_plan(error: PlanRejected) -> bool:
     """Recognize only a stale precondition for this one local receipt file."""
     message = str(error)
@@ -453,7 +485,7 @@ def _append_analytics_attempt_receipt(
             bounded_read(
                 root,
                 _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE,
-                max_bytes=_MAX_ANALYTICS_RECEIPT_BYTES,
+                max_bytes=_MAX_ANALYTICS_RECEIPT_INPUT_BYTES,
             )
             if target_exists
             else b""
@@ -461,7 +493,7 @@ def _append_analytics_attempt_receipt(
         prefix = _validated_analytics_receipt_prefix(existing)
         entry = PlanEntry(
             _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE,
-            prefix + record_bytes,
+            _retain_newest_analytics_receipt_records(prefix, record_bytes),
             mode=0o600,
             expected_current_sha256=(
                 hashlib.sha256(existing).hexdigest() if target_exists else None

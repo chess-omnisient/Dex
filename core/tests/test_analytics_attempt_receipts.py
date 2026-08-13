@@ -37,6 +37,51 @@ def _read_receipts(vault: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in receipt_path.read_text(encoding="utf-8").splitlines()]
 
 
+def _safe_receipt_line(
+    index: int,
+    *,
+    event: str = "task_created",
+    outcome: str = "not_sent",
+    reason: str = "analytics_disabled",
+) -> bytes:
+    return (
+        json.dumps(
+            {
+                "timestamp": f"2026-08-13T12:00:00.{index:06d}+00:00",
+                "event": event,
+                "outcome": outcome,
+                "reason": reason,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def _receipt_lines_just_over_retention_cap(
+    first_line: bytes | None = None,
+) -> list[bytes]:
+    lines = [] if first_line is None else [first_line]
+    size = sum(len(line) for line in lines)
+    index = 0
+    while size <= portable_contract.ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES:
+        line = _safe_receipt_line(index)
+        assert len(line) <= portable_contract.ANALYTICS_ATTEMPT_RECEIPT_MAX_RECORD_BYTES
+        lines.append(line)
+        size += len(line)
+        index += 1
+    assert size <= portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
+    return lines
+
+
+def _newest_receipt_lines_within_cap(lines: list[bytes]) -> list[bytes]:
+    retained = list(lines)
+    while sum(len(line) for line in retained) > portable_contract.ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES:
+        retained.pop(0)
+    return retained
+
+
 def _configure_enabled_delivery(monkeypatch, post) -> None:
     monkeypatch.setattr(analytics_helper, "is_analytics_enabled", lambda: True)
     monkeypatch.setattr(analytics_helper, "HAS_REQUESTS", True)
@@ -856,17 +901,112 @@ def test_symlinked_receipt_parent_is_rejected_before_any_direct_read(
     )
 
 
-def test_existing_receipt_uses_the_bounded_reader(
+def test_saturated_valid_receipt_keeps_whole_newest_records_under_the_cap(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     vault = tmp_path / "vault"
     receipt_path = vault / RECEIPT_RELATIVE
     receipt_path.parent.mkdir(parents=True)
-    receipt_path.write_bytes(b"x" * (analytics_helper.lifecycle_service._MAX_ANALYTICS_RECEIPT_BYTES + 1))
+    existing_lines = _receipt_lines_just_over_retention_cap()
+    receipt_path.write_bytes(b"".join(existing_lines))
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    monkeypatch.setattr(analytics_helper, "is_analytics_enabled", lambda: False)
+    monkeypatch.setattr(lifecycle_service, "datetime", _FixedReceiptDatetime)
+
+    result = analytics_helper.fire_event("task_created")
+
+    assert result == {
+        "fired": False,
+        "reason": "analytics_disabled",
+        "receipt_written": True,
+    }
+    actual = receipt_path.read_bytes()
+    expected_new_line = (
+        json.dumps(
+            {
+                "timestamp": "2026-08-13T13:50:30.503000+00:00",
+                "event": "task_created",
+                "outcome": "not_sent",
+                "reason": "analytics_disabled",
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    expected_lines = _newest_receipt_lines_within_cap(existing_lines + [expected_new_line])
+
+    assert len(actual) <= portable_contract.ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES
+    assert actual == b"".join(expected_lines)
+    assert actual.endswith(b"\n")
+    assert len(expected_lines) < len(existing_lines) + 1
+    assert _read_receipts(vault)[-1] == json.loads(expected_new_line)
+
+
+def test_saturation_validates_an_oldest_record_before_it_can_be_trimmed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vault = tmp_path / "vault"
+    receipt_path = vault / RECEIPT_RELATIVE
+    receipt_path.parent.mkdir(parents=True)
+    unsafe_oldest_line = (
+        json.dumps(
+            {
+                "timestamp": "2026-08-13T12:00:00.999999+00:00",
+                "event": "task_created",
+                "outcome": "not_sent",
+                "reason": "analytics_disabled",
+                "visitor_id": "must-not-survive",
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    existing = b"".join(_receipt_lines_just_over_retention_cap(unsafe_oldest_line))
+    receipt_path.write_bytes(existing)
+    validated: list[bytes] = []
+    original_validate = lifecycle_service._validated_analytics_receipt_prefix
+
+    def record_validation(raw: bytes) -> bytes:
+        validated.append(raw)
+        return original_validate(raw)
+
+    monkeypatch.setattr(
+        lifecycle_service,
+        "_validated_analytics_receipt_prefix",
+        record_validation,
+    )
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    monkeypatch.setattr(analytics_helper, "is_analytics_enabled", lambda: False)
+
+    result = analytics_helper.fire_event("task_created")
+
+    assert result == {
+        "fired": False,
+        "reason": "analytics_disabled",
+        "receipt_written": False,
+        "receipt_reason": "receipt_write_failed",
+    }
+    assert validated == [existing]
+    assert receipt_path.read_bytes() == existing
+
+
+def test_receipt_above_the_recovery_bound_is_rejected_by_the_bounded_reader(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vault = tmp_path / "vault"
+    receipt_path = vault / RECEIPT_RELATIVE
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_bytes(
+        b"x" * (portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES + 1)
+    )
     bounded_reads: list[tuple[Path, str, int]] = []
     direct_reads: list[Path] = []
-    original_bounded_read = analytics_helper.lifecycle_service.bounded_read
+    original_bounded_read = lifecycle_service.bounded_read
     original_read_bytes = Path.read_bytes
 
     def record_bounded_read(root: Path, relative: str, *, max_bytes: int) -> bytes:
@@ -878,11 +1018,7 @@ def test_existing_receipt_uses_the_bounded_reader(
             direct_reads.append(path)
         return original_read_bytes(path)
 
-    monkeypatch.setattr(
-        analytics_helper.lifecycle_service,
-        "bounded_read",
-        record_bounded_read,
-    )
+    monkeypatch.setattr(lifecycle_service, "bounded_read", record_bounded_read)
     monkeypatch.setattr(Path, "read_bytes", record_direct_read)
     monkeypatch.setenv("VAULT_PATH", str(vault))
     monkeypatch.setattr(analytics_helper, "is_analytics_enabled", lambda: False)
@@ -901,7 +1037,7 @@ def test_existing_receipt_uses_the_bounded_reader(
         == (
             vault,
             RECEIPT_RELATIVE.as_posix(),
-            analytics_helper.lifecycle_service._MAX_ANALYTICS_RECEIPT_BYTES,
+            portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES,
         )
         for read in bounded_reads
     )

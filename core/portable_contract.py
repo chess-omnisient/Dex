@@ -42,9 +42,10 @@ CONTRACT_VERSION = 2
 SUPPORTED_CONTRACT_VERSIONS = (1, CONTRACT_VERSION)
 VAULT_SCHEMA_SUPPORTED = ">=1 <2"
 ANALYTICS_ATTEMPT_RECEIPT_RELATIVE = "System/.dex/analytics-attempts.jsonl"
-# A receipt is deliberately small and bounded twice: existing content is read
-# under the smaller cap, while the transaction has room for precisely one new
-# safe record to verify and recover the atomic append.
+# A receipt retains a bounded rolling history. A prior release could write one
+# safe record beyond the retained cap, so the transaction has exactly that
+# extra recovery room to validate the full existing file before it keeps whole
+# newest records under the retained cap.
 ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES = 256 * 1024
 ANALYTICS_ATTEMPT_RECEIPT_MAX_RECORD_BYTES = 256
 ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES = (
