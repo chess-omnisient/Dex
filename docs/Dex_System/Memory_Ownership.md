@@ -6,18 +6,6 @@
 **How it works:** Automatically captured by Claude. Persists across all sessions and harnesses.
 **Dex action:** Don't duplicate. Don't capture preferences in learning-heartbeat.
 
-Per-project auto-memory lives outside the vault, at Claude Code's
-`~/.claude/projects/<encoded>/memory/` folder. Dex copies that folder into
-`System/memory-mirror/` at the end of a Claude Code session so it rides the
-vault's history and backups. Deletions in the live folder are mirrored; git
-history is the recovery path. A dated `_MANIFEST.md` in the copy is how a
-stopped copy becomes visible, and `/dex-doctor` flags a missing or stale copy.
-
-User-level memory — `~/.claude/CLAUDE.md` and anything else that applies to
-every project on the machine — is not copied into this vault. Dumping it here
-would mix global personal context into a tree that can be shared or backed up
-with this vault alone.
-
 ## Agent Memory (frontmatter, `memory: project`)
 **Owns:** Per-agent operational state across sessions
 **Examples:** "deal-attention flagged Acme Corp 3 times", "cracks-detector: pricing follow-up resolved"

@@ -660,13 +660,6 @@
       "note": "SR1 #150: tracked reference-schema templates carrying env-var references; installed if absent, never overwritten once user-owned"
     },
     {
-      "id": "vault-memory-mirror",
-      "path": "System/memory-mirror",
-      "kind": "dir",
-      "ownership": "vault",
-      "note": "user-owned Claude Code per-project memory copy; machine state under System/, never a shared PARA folder; updates never write it"
-    },
-    {
       "id": "seed-pillars-example",
       "path": "System/pillars.example.yaml",
       "kind": "file",
@@ -849,8 +842,8 @@
           "skill": "career-setup",
           "source_path": ".claude/skills/_available/capabilities/career/skills/career-setup/SKILL.md",
           "target_path": ".claude/skills/career-setup/SKILL.md",
-          "sha256": "aad122c355ee951f090f8b4d01ef747f1cad2b23d8349bc30ffe3795fa4dc701",
-          "byte_size": 20629,
+          "sha256": "155890770de4640fade1501881a8963c05751aaf3cdbfb2e9399009ff2bd726f",
+          "byte_size": 20422,
           "previous_payloads": [
             {
               "release": "v1.95.2",
@@ -869,8 +862,8 @@
           "skill": "career-coach",
           "source_path": ".claude/skills/_available/capabilities/career/skills/career-coach/SKILL.md",
           "target_path": ".claude/skills/career-coach/SKILL.md",
-          "sha256": "a865f9838a09f19dc3b52b2840016d9b2ed1362761de1ae1556b239781eef356",
-          "byte_size": 36053,
+          "sha256": "ff1997a5eb4092b0993425d57b048d0c8dcf16c1d37d62b2df443eaa6f836a6c",
+          "byte_size": 36036,
           "previous_payloads": [
             {
               "release": "v1.95.2",

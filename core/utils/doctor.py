@@ -37,14 +37,7 @@ from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
 from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry, PlanRejected
 from core.transaction.journal import Journal, JournalCorruptError
-from core.utils import (
-    apple_mail_health,
-    dex_logger,
-    launch_agents,
-    memory_mirror,
-    preflight,
-    release_channel,
-)
+from core.utils import apple_mail_health, dex_logger, launch_agents, preflight, release_channel
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
@@ -604,11 +597,6 @@ QUICK_CHECKS = (
     ),
     CheckDefinition("vault.auto-commit", "Vault auto-commit", "_probe_vault_auto_commit"),
     CheckDefinition(
-        "memory.mirror",
-        "Claude project memory backup",
-        "_probe_memory_mirror",
-    ),
-    CheckDefinition(
         "topology.migration-pending",
         "Brain/vault topology",
         "_probe_migration_pending",
@@ -620,11 +608,6 @@ QUICK_CHECKS = (
     CheckDefinition("mcp.orphans", "MCP server registration", "_probe_mcp_orphans"),
     CheckDefinition("python.env", "Python environment", "_probe_python_env"),
     CheckDefinition("hooks.wired", "Claude hooks", "_probe_hooks_wired"),
-    CheckDefinition(
-        "career.evidence_capture",
-        "Career evidence capture",
-        "_probe_career_evidence_capture",
-    ),
     CheckDefinition("jobs.loaded", "Background jobs", "_probe_jobs_loaded"),
     CheckDefinition("jobs.fresh", "Background job freshness", "_probe_jobs_fresh"),
     CheckDefinition("preflight.queue", "Preflight health", "_probe_preflight_queue"),
@@ -2403,129 +2386,6 @@ def _probe_hooks_wired(context: DoctorContext) -> ProbeResult:
     return ProbeResult("OK", "Every configured hook command points at an existing file")
 
 
-def _post_tool_use_entries(settings: object) -> list[tuple[str, str]]:
-    """Return (matcher, command) pairs from PostToolUse hook entries."""
-    if not isinstance(settings, dict):
-        return []
-    hooks = settings.get("hooks")
-    if not isinstance(hooks, dict):
-        return []
-    entries = hooks.get("PostToolUse")
-    if not isinstance(entries, list):
-        return []
-    pairs: list[tuple[str, str]] = []
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        matcher = entry.get("matcher")
-        matcher_text = matcher if isinstance(matcher, str) and matcher else ".*"
-        commands: list[str] = []
-        nested = entry.get("hooks")
-        if isinstance(nested, list):
-            for hook in nested:
-                if isinstance(hook, dict) and isinstance(hook.get("command"), str):
-                    commands.append(hook["command"])
-        command = entry.get("command")
-        if isinstance(command, str):
-            commands.append(command)
-        for item in commands:
-            pairs.append((matcher_text, item))
-    return pairs
-
-
-def _matcher_covers_write_and_edit(matcher: str) -> bool:
-    try:
-        pattern = re.compile(f"^(?:{matcher})$")
-    except re.error:
-        return False
-    return bool(pattern.match("Write") and pattern.match("Edit"))
-
-
-def _career_evidence_skip_summary(context: DoctorContext) -> str:
-    path = context.vault_root / "System" / ".dex" / "career-evidence-skip.jsonl"
-    if path.is_symlink() or not path.is_file():
-        return ""
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except OSError:
-        return ""
-    counts: dict[str, int] = {}
-    recent = [line for line in raw.splitlines() if line.strip()][-50:]
-    for line in recent:
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(payload, dict):
-            continue
-        reason = payload.get("reason")
-        if isinstance(reason, str) and reason:
-            counts[reason] = counts.get(reason, 0) + 1
-    if not counts:
-        return ""
-    parts = ", ".join(f"{reason} ({count})" for reason, count in sorted(counts.items()))
-    return f" Recent skips: {parts}."
-
-
-def _probe_career_evidence_capture(context: DoctorContext) -> ProbeResult:
-    from core import capabilities
-
-    profile_path = context.vault_root / "System/user-profile.yaml"
-    try:
-        career_on = capabilities.enabled("career", profile_path=profile_path)
-    except capabilities.CapabilityError as exc:
-        return ProbeResult("UNKNOWN", f"Could not read Career room state: {exc}")
-
-    if not career_on:
-        return ProbeResult("OFF", "Career room is off, so evidence capture is idle")
-
-    settings_path = context.vault_root / ".claude" / "settings.json"
-    if settings_path.is_symlink() or not settings_path.is_file():
-        return ProbeResult(
-            "BROKEN",
-            "Career evidence capture is not wired: .claude/settings.json is missing",
-            Heal(
-                tier=2,
-                action="Restore the Career evidence capture hook for Write and Edit.",
-                applied=False,
-            ),
-        )
-    settings = json.loads(settings_path.read_text())
-    wired = [
-        (matcher, command)
-        for matcher, command in _post_tool_use_entries(settings)
-        if "career-evidence-capture.cjs" in command
-    ]
-    missing_heal = Heal(
-        tier=2,
-        action="Restore the Career evidence capture hook for Write and Edit.",
-        applied=False,
-    )
-    if not wired:
-        return ProbeResult(
-            "BROKEN",
-            "Career evidence capture is not wired for file writes. "
-            "Writes to the Career Evidence folder will not be offered as candidates.",
-            missing_heal,
-        )
-    if not any(_matcher_covers_write_and_edit(matcher) for matcher, _command in wired):
-        return ProbeResult(
-            "BROKEN",
-            "Career evidence capture is wired but does not watch both Write and Edit, "
-            "so some evidence files are missed.",
-            Heal(
-                tier=2,
-                action="Watch both Write and Edit for Career evidence capture.",
-                applied=False,
-            ),
-        )
-    detail = (
-        "Career evidence capture watches Write and Edit on the Career Evidence folder "
-        "and offers unconfirmed candidates, including notes with no metric."
-    )
-    return ProbeResult("OK", detail + _career_evidence_skip_summary(context))
-
-
 def _is_macos() -> bool:
     return sys.platform == "darwin"
 
@@ -3890,19 +3750,6 @@ def _probe_pre_split_archive(context: DoctorContext) -> ProbeResult:
         "It is the one-command undo for the brain/vault conversion. Keep it for one full "
         "release cycle after conversion, then Dex can offer its receipted removal.",
     )
-
-
-def _probe_memory_mirror(context: DoctorContext) -> ProbeResult:
-    outcome = memory_mirror.inspect(
-        vault_root=context.vault_root,
-        home=context.home,
-        now=context.now,
-        env=os.environ,
-    )
-    heal = None
-    if outcome.heal_action:
-        heal = Heal(tier=2, action=outcome.heal_action, applied=False)
-    return ProbeResult(outcome.verdict, outcome.detail, heal)
 
 
 def _probe_vault_auto_commit(context: DoctorContext) -> ProbeResult:

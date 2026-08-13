@@ -41,7 +41,6 @@ QUICK_IDS = [
     "brain.git",
     "topology.pre-split-archive",
     "vault.auto-commit",
-    "memory.mirror",
     "topology.migration-pending",
     "release.catalog",
     "adoption.plan",
@@ -50,7 +49,6 @@ QUICK_IDS = [
     "mcp.orphans",
     "python.env",
     "hooks.wired",
-    "career.evidence_capture",
     "jobs.loaded",
     "jobs.fresh",
     "preflight.queue",
@@ -1947,85 +1945,6 @@ def test_hooks_invalid_settings_becomes_unknown_in_the_runner(monkeypatch, conte
 
     assert _check(report, "hooks.wired")["verdict"] == "UNKNOWN"
     assert report["instruments"]["failed"][0]["id"] == "hooks.wired"
-
-
-def _write_career_evidence_settings(context, *, matcher="Write|Edit"):
-    settings = context.vault_root / ".claude" / "settings.json"
-    settings.parent.mkdir(parents=True, exist_ok=True)
-    settings.write_text(
-        json.dumps(
-            {
-                "hooks": {
-                    "PostToolUse": [
-                        {
-                            "matcher": matcher,
-                            "hooks": [
-                                {
-                                    "type": "command",
-                                    "command": (
-                                        'node "$CLAUDE_PROJECT_DIR"/.claude/hooks/'
-                                        "career-evidence-capture.cjs"
-                                    ),
-                                }
-                            ],
-                        }
-                    ]
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-
-def test_career_evidence_capture_is_off_when_the_career_room_is_off(context):
-    (context.vault_root / "System" / "user-profile.yaml").write_text(
-        "capabilities:\n  career:\n    enabled: false\n",
-        encoding="utf-8",
-    )
-    _write_career_evidence_settings(context)
-
-    result = doctor._probe_career_evidence_capture(context)
-
-    assert result.verdict == "OFF"
-    assert "idle" in result.detail
-
-
-def test_career_evidence_capture_is_broken_when_the_hook_is_not_wired(context):
-    settings = context.vault_root / ".claude" / "settings.json"
-    settings.parent.mkdir(parents=True, exist_ok=True)
-    settings.write_text('{"hooks": {}}\n', encoding="utf-8")
-
-    result = doctor._probe_career_evidence_capture(context)
-
-    assert result.verdict == "BROKEN"
-    assert "not wired" in result.detail
-    assert result.heal.tier == 2
-
-
-def test_career_evidence_capture_is_broken_when_edit_is_not_watched(context):
-    _write_career_evidence_settings(context, matcher="Write")
-
-    result = doctor._probe_career_evidence_capture(context)
-
-    assert result.verdict == "BROKEN"
-    assert "Write and Edit" in result.detail
-
-
-def test_career_evidence_capture_reports_recent_skips_when_wired(context):
-    _write_career_evidence_settings(context)
-    skip_log = context.vault_root / "System" / ".dex" / "career-evidence-skip.jsonl"
-    skip_log.parent.mkdir(parents=True, exist_ok=True)
-    skip_log.write_text(
-        json.dumps({"ts": "2026-08-13T12:00:00Z", "reason": "not-evidence-folder"}) + "\n",
-        encoding="utf-8",
-    )
-
-    result = doctor._probe_career_evidence_capture(context)
-
-    assert result.verdict == "OK"
-    assert "Write and Edit" in result.detail
-    assert "not-evidence-folder (1)" in result.detail
-    assert "Alice" not in result.detail
 
 
 def test_jobs_loaded_distinguishes_not_installed_from_unloaded(monkeypatch, context):

@@ -1,6 +1,6 @@
 # Claude Code hooks
 
-These hooks provide deterministic lifecycle behavior for Claude Code (**Tier 3 Full**). Cursor, Codex, and other Agent Skills harnesses do not run Claude Code hooks; they stop at **Tier 2 Skills**. The honest split of in-turn hooks vs already-scheduled jobs is in [`docs/architecture/HARNESS-CAPABILITY.md`](../../docs/architecture/HARNESS-CAPABILITY.md). Do not mass-migrate hooks off Claude without that investigation.
+These hooks provide deterministic lifecycle behavior for Claude Code. Cursor does not run Claude Code hooks.
 
 The wiring sources of truth are:
 
@@ -25,13 +25,10 @@ These commands are wired in `.claude/settings.json` and run independently of any
 | `PreToolUse` | `Bash` | `bash .claude/hooks/dex-safety-guard.sh` | Block unsafe shell commands and redirect disallowed MCP usage. |
 | `PreToolUse` | `Bash` | `node .claude/hooks/ensure-mcp-user-scope.cjs` | Require an explicit scope for `claude mcp add`. |
 | `PreToolUse` | `mcp__.*` | `bash .claude/hooks/dex-safety-guard.sh` | Apply the MCP safety rules before MCP calls. |
-| `PostToolUse` | `Write\|Edit` | `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/career-evidence-capture.cjs` | After a Career Evidence file is written or edited, return a provenance-bearing, unconfirmed candidate. The hook never writes evidence. Skipped Career files leave a one-line reason. |
-| `Stop` | all | `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/install-learnings.sh"` | When unused session learnings have piled up (8 pending and the oldest is at least 14 days), block Stop once per day so they get installed or honestly dropped. Capture stays separate. |
 | `SessionEnd` | all | `"$CLAUDE_PROJECT_DIR"/.claude/hooks/session-end.sh "$transcript_path"` | Record the session-end marker and transcript reference. |
-| `SessionEnd` | all | `python3 "$CLAUDE_PROJECT_DIR/core/utils/memory_mirror.py" --vault "$CLAUDE_PROJECT_DIR"` | Copy Claude Code's per-project memory into `System/memory-mirror/` so it rides vault history and backups. |
 | `SessionEnd` | all | `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/vault-autocommit.cjs` | Safely checkpoint eligible vault changes when no mutation is active. |
 
-Settings also uses the macOS system ping for `Stop` and permission/elicitation `Notification` events. The ping entries do not invoke repository hook files. The `Stop` install-learnings wrapper above does.
+Settings also uses the macOS system ping for `Stop` and permission/elicitation `Notification` events. Those entries do not invoke repository hook files.
 
 ## Skill-scoped wiring
 
@@ -41,8 +38,9 @@ These hooks are declared in skill frontmatter and exist only while that skill ru
 |---|---|---|---|---|
 | `/process-meetings` | `PostToolUse` | `Write` | `post-meeting-person-update.cjs` | Update recent interactions on existing person pages after a meeting note is written. |
 | `/daily-plan` | `Stop` | all | `daily-plan-quick-ref.cjs` | Generate `00-Inbox/Daily_Prep/YYYY-MM-DD-quickref.md` from the daily plan. |
+| `/career-coach` | `PostToolUse` | `Write` | `career-evidence-capture.cjs` | Detect possible career evidence and return a provenance-bearing, unconfirmed candidate; the hook never writes evidence. |
 
-`post-meeting-person-update.cjs` is not a global `PostToolUse` hook. `career-evidence-capture.cjs` is repository-wide and path-filters to the Career Evidence folder.
+`post-meeting-person-update.cjs` and `career-evidence-capture.cjs` are not global `PostToolUse` hooks.
 
 ## Direct and script callers
 

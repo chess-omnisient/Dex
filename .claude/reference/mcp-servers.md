@@ -376,10 +376,8 @@ node .scripts/check-anthropic-changelog.cjs --dry-run  # Preview mode
 2. Counts learnings with `**Status:** pending`
 3. If 5+ pending learnings:
    - Writes reminder to `System/learning-review-pending.md`
-   - Session start hook displays count and suggests `/dex-whats-new --learnings` to review, and `/install-learnings` to apply
+   - Session start hook displays count and suggests `/dex-whats-new --learnings`
 4. If <5 pending, removes any existing reminder file
-
-Installing is a separate path from this reminder. `/install-learnings` and the Stop hook (8 pending, oldest at least 14 days) route unused entries into the file that changes next-session behaviour. Routing table: `.claude/reference/session-learnings-routing.md`.
 
 **Manual testing:**
 ```bash

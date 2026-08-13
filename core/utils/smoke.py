@@ -12,6 +12,7 @@ import re
 import secrets
 import shlex
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -30,7 +31,7 @@ if str(RUNNER_ROOT) in sys.path:
     sys.path.remove(str(RUNNER_ROOT))
 sys.path.insert(0, str(RUNNER_ROOT))
 
-from core.utils import dex_logger, process_isolation, release_channel
+from core.utils import dex_logger, release_channel
 
 SCHEMA_VERSION = 1
 HISTORY_LIMIT = 120
@@ -95,7 +96,6 @@ RUNNER_FALLBACK_RELATIVES = (
     Path("core/utils/__init__.py"),
     Path("core/utils/dex_logger.py"),
     Path("core/utils/release_channel.py"),
-    Path("core/utils/process_isolation.py"),
     Path("core/utils/smoke.py"),
     Path("core/utils/trust_registry.py"),
     Path("core/utils/update_verifier.py"),
@@ -1089,15 +1089,7 @@ def _set_runtime_path_writable(path: Path, *, writable: bool) -> None:
             or stat.S_IFMT(opened_stat.st_mode) != stat.S_IFMT(path_stat.st_mode)
         ):
             raise JourneySafetySkip(f"runtime tree path changed during chmod: {path}")
-        try:
-            os.fchmod(descriptor, mode)
-        except OSError as exc:
-            detail = process_isolation.format_os_error(exc, operation="chmod", path=path)
-            if process_isolation.sandbox_refused(exc):
-                raise JourneySafetySkip(
-                    process_isolation.sandbox_skip_detail(exc, operation="chmod", path=path)
-                ) from exc
-            raise JourneySafetySkip(f"runtime tree path could not be chmod'd: {detail}") from exc
+        os.fchmod(descriptor, mode)
     finally:
         os.close(descriptor)
 
@@ -1240,8 +1232,26 @@ def _preparation_command(
     return command
 
 
-def _terminate_process_group(process: subprocess.Popen[str], *, pgid: int | None = None) -> None:
-    process_isolation.terminate_process_group(process, pgid=pgid)
+def _terminate_process_group(process: subprocess.Popen[str]) -> None:
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+        if process.poll() is None:
+            try:
+                process.wait(timeout=0.2)
+            except subprocess.TimeoutExpired:
+                pass
+        return
+
+    if process.poll() is not None:
+        return
+    process.kill()
+    try:
+        process.wait(timeout=0.2)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def _decode_child_result(stdout: str) -> dict[str, str]:
@@ -1267,38 +1277,22 @@ def _run_json_process(
     label: str,
 ) -> tuple[dict[str, str], bool]:
     process: subprocess.Popen[str] | None = None
-    pgid: int | None = None
     try:
-        try:
-            process = subprocess.Popen(
-                list(command),
-                cwd=cwd,
-                env=dict(env),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                start_new_session=True,
-            )
-        except OSError as exc:
-            detail = process_isolation.format_os_error(exc, operation="start_new_session")
-            if process_isolation.sandbox_refused(exc):
-                return {
-                    "verdict": "UNKNOWN",
-                    "detail": process_isolation.sandbox_skip_detail(
-                        exc, operation="start_new_session"
-                    ),
-                }, False
-            return {
-                "verdict": "UNKNOWN",
-                "detail": f"{label} harness failed: {detail}",
-            }, True
-        pgid = process_isolation.capture_process_group(process)
+        process = subprocess.Popen(
+            list(command),
+            cwd=cwd,
+            env=dict(env),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            start_new_session=True,
+        )
         try:
             stdout, stderr = process.communicate(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
-            _terminate_process_group(process, pgid=pgid)
+            _terminate_process_group(process)
             if process.stdout is not None:
                 process.stdout.close()
             if process.stderr is not None:
@@ -1310,7 +1304,7 @@ def _run_json_process(
                 },
                 True,
             )
-        _terminate_process_group(process, pgid=pgid)
+        _terminate_process_group(process)
         if process.returncode != 0:
             diagnostic = _one_line(stderr or stdout or f"exit {process.returncode}")[-500:]
             return (
@@ -1320,18 +1314,8 @@ def _run_json_process(
         return _decode_child_result(stdout), False
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         if process is not None:
-            _terminate_process_group(process, pgid=pgid)
-        if isinstance(exc, OSError) and process_isolation.sandbox_refused(exc):
-            return {
-                "verdict": "UNKNOWN",
-                "detail": process_isolation.sandbox_skip_detail(exc, operation=label),
-            }, False
-        detail = (
-            process_isolation.format_os_error(exc, operation=label)
-            if isinstance(exc, OSError)
-            else _one_line(exc)
-        )
-        return {"verdict": "UNKNOWN", "detail": f"{label} harness failed: {detail}"}, True
+            _terminate_process_group(process)
+        return {"verdict": "UNKNOWN", "detail": f"{label} harness failed: {_one_line(exc)}"}, True
 
 
 def _run_journey_process(
@@ -1380,34 +1364,6 @@ def _harness_failure_run(
         },
         harness_failed=True,
     )
-
-
-def _named_skip_run(
-    journey_definitions: Sequence[JourneyDefinition],
-    error: object,
-) -> SmokeRun:
-    detail = _one_line(error)
-    journeys = [
-        {"id": definition.id, "verdict": "UNKNOWN", "detail": detail, "duration_ms": 0}
-        for definition in journey_definitions
-    ]
-    return SmokeRun(
-        {
-            "schema_version": SCHEMA_VERSION,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "journeys": journeys,
-            "summary": _summary(journeys),
-        },
-        harness_failed=False,
-    )
-
-
-def _smoke_run_identity() -> str:
-    """Stable per-pytest-xdist-worker (or per-process) temp namespace."""
-    worker = os.environ.get("PYTEST_XDIST_WORKER", "")
-    if re.fullmatch(r"[A-Za-z0-9._-]{1,32}", worker):
-        return worker
-    return f"pid{os.getpid()}"
 
 
 def _safe_temporary_parent(source: Path) -> Path:
@@ -1705,23 +1661,6 @@ def _run_smoke_journeys(
                 finally:
                     if release_root is not None:
                         _set_runtime_tree_writable(release_root, writable=True)
-        except JourneySafetySkip as exc:
-            result = {"verdict": "UNKNOWN", "detail": _one_line(exc)}
-        except OSError as exc:
-            if process_isolation.sandbox_refused(exc):
-                result = {
-                    "verdict": "UNKNOWN",
-                    "detail": process_isolation.sandbox_skip_detail(exc, operation="journey-harness"),
-                }
-            else:
-                result = {
-                    "verdict": "UNKNOWN",
-                    "detail": (
-                        "journey harness failed: "
-                        f"{process_isolation.format_os_error(exc, operation='journey-harness')}"
-                    ),
-                }
-                harness_failed = True
         except Exception as exc:
             result = {"verdict": "UNKNOWN", "detail": f"journey harness failed: {_one_line(exc)}"}
             harness_failed = True
@@ -1754,42 +1693,24 @@ def run_smoke(
 
     started = time.monotonic()
     try:
-        system_temp = temporary_parent
         with tempfile.TemporaryDirectory(
-            prefix=f"dex-smoke-{_smoke_run_identity()}-run-",
-            dir=system_temp,
-        ) as run_home:
-            isolated_parent = Path(run_home)
-            with tempfile.TemporaryDirectory(
-                prefix="dex-smoke-runner-",
-                dir=isolated_parent,
-            ) as temporary:
-                runner_root = _materialize_runner(Path(temporary) / "runner")
-                try:
-                    _set_runtime_tree_writable(runner_root, writable=False)
-                    results, harness_failed = _run_smoke_journeys(
-                        source=source,
-                        repository=repository,
-                        temporary_parent=isolated_parent,
-                        runner_root=runner_root,
-                        journey_definitions=journey_definitions,
-                        global_timeout_seconds=global_timeout_seconds,
-                        started=started,
-                    )
-                finally:
-                    _set_runtime_tree_writable(runner_root, writable=True)
-    except JourneySafetySkip as exc:
-        return _named_skip_run(journey_definitions, exc)
-    except OSError as exc:
-        if process_isolation.sandbox_refused(exc):
-            return _named_skip_run(
-                journey_definitions,
-                process_isolation.sandbox_skip_detail(exc, operation="smoke-harness"),
-            )
-        return _harness_failure_run(
-            journey_definitions,
-            process_isolation.format_os_error(exc, operation="smoke-harness"),
-        )
+            prefix="dex-smoke-runner-",
+            dir=temporary_parent,
+        ) as temporary:
+            runner_root = _materialize_runner(Path(temporary) / "runner")
+            try:
+                _set_runtime_tree_writable(runner_root, writable=False)
+                results, harness_failed = _run_smoke_journeys(
+                    source=source,
+                    repository=repository,
+                    temporary_parent=temporary_parent,
+                    runner_root=runner_root,
+                    journey_definitions=journey_definitions,
+                    global_timeout_seconds=global_timeout_seconds,
+                    started=started,
+                )
+            finally:
+                _set_runtime_tree_writable(runner_root, writable=True)
     except Exception as exc:
         return _harness_failure_run(journey_definitions, exc)
 
@@ -2654,21 +2575,6 @@ INTERNAL_JOURNEYS: dict[str, Callable[[Path, Path], dict[str, str]]] = {
 }
 
 
-def _sandbox_skip_result(exc: BaseException, *, operation: str) -> dict[str, str] | None:
-    if isinstance(exc, OSError) and process_isolation.sandbox_refused(exc):
-        return {
-            "verdict": "UNKNOWN",
-            "detail": process_isolation.sandbox_skip_detail(exc, operation=operation),
-        }
-    return None
-
-
-def _internal_refusal_detail(exc: BaseException, *, operation: str) -> str:
-    if isinstance(exc, OSError):
-        return process_isolation.format_os_error(exc, operation=operation)
-    return _one_line(exc)
-
-
 def _print_human(report: Mapping[str, object]) -> None:
     for journey in report["journeys"]:
         print(
@@ -2808,15 +2714,8 @@ def main(
         except ModuleNotFoundError as error:
             result = {"verdict": "UNKNOWN", "detail": _missing_module_detail(error)}
         except (OSError, PermissionError) as exc:
-            skip = _sandbox_skip_result(exc, operation="smoke-preparation")
-            if skip is not None:
-                result = skip
-            else:
-                print(
-                    f"smoke preparation refused: {_internal_refusal_detail(exc, operation='smoke-preparation')}",
-                    file=sys.stderr,
-                )
-                return 2
+            print(f"smoke preparation refused: {_one_line(exc)}", file=sys.stderr)
+            return 2
         else:
             result = {"verdict": "OK", "detail": "journey vault prepared safely"}
         print(json.dumps(result, separators=(",", ":")))
@@ -2829,20 +2728,11 @@ def main(
             _block_python_network()
             release_root = _internal_release_root(args.run_marker, args.release_root)
             result = INTERNAL_JOURNEYS[args._journey](vault, release_root)
-        except JourneySafetySkip as exc:
-            result = {"verdict": "UNKNOWN", "detail": _one_line(exc)}
         except ModuleNotFoundError as error:
             result = {"verdict": "UNKNOWN", "detail": _missing_module_detail(error)}
         except (KeyError, OSError, PermissionError) as exc:
-            skip = _sandbox_skip_result(exc, operation="internal-journey")
-            if skip is not None:
-                result = skip
-            else:
-                print(
-                    f"internal smoke journey refused: {_internal_refusal_detail(exc, operation='internal-journey')}",
-                    file=sys.stderr,
-                )
-                return 2
+            print(f"internal smoke journey refused: {_one_line(exc)}", file=sys.stderr)
+            return 2
         print(json.dumps(result, separators=(",", ":")))
         return 0
 

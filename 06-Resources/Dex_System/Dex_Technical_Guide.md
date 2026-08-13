@@ -21,7 +21,7 @@
 10. [Design Constraints](#design-constraints)
 
 **Related Guides:**
-- [What each assistant can do](../../README.md#what-you-get-with-each-assistant) — capability tiers (Tier 0 Vault through Tier 3 Full). Claude Code is the Tier 3 reference.
+- [Cursor Compatibility](Cursor_Compatibility.md) - Working with both Cursor and Claude Code
 
 ---
 
@@ -900,8 +900,6 @@ Focus on architecture questions, not syntax nitpicks. I trust the team on detail
    - Move to appropriate file (`Mistake_Patterns.md`, `Working_Preferences.md`, or fix immediately)
    - Mark as resolved in session learnings
 
-5. **Install (separate from capture):** `/install-learnings` routes still-pending entries into the file that changes next-session behaviour, or marks them `dropped` with a reason. A Stop hook asks for this pass when there are 8 pending entries and the oldest is at least 14 days old. Routing table: `.claude/reference/session-learnings-routing.md`. Do not fabricate an edit to make the count drop. Do not delete an obsolete entry.
-
 ### Background Automation Setup
 
 Dex runs self-learning checks automatically through two mechanisms:
@@ -1042,11 +1040,6 @@ read-only snapshot of the installed release. Unmodified Dex-owned local Python M
 are started automatically. Custom commands, remote or npm servers, symlinks, and modified
 shipped servers remain structural-only unless a custom local Python server has the exact
 user-owned trust record described below.
-
-If the operating system refuses to isolate or stop a helper process — GitHub-hosted
-runners do this intermittently — the journey records `isolation unavailable` together with
-the error number, the operation, and the path, and skips that journey rather than reporting the
-checkup as failed. A real product failure still fails the check.
 
 ### Trusting your own servers
 

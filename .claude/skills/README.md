@@ -46,7 +46,7 @@ Skills transform Claude from general-purpose assistant into specialized agent:
 
 ### Skills Format
 
-Skills follow the [Agent Skills](https://agentskills.io) standard — a universal format that works across AI assistants at **Tier 2 Skills**. Canonical copies live here; harness-neutral adapters are generated into `.agents/skills/`. Claude-only hooks stay **Tier 3 Full**.
+Skills follow the [Agent Skills](https://agentskills.io) standard - a universal format that works across AI assistants.
 
 **Two parts:**
 
@@ -76,7 +76,7 @@ description: Generate context-aware daily plan with calendar and tasks
 - **Reusable** - run the same workflow anytime
 - **Consistent** - same result every time
 - **Organized** - each skill has its own space
-- **Shareable** - works across AI assistants following the Agent Skills standard (**Tier 2 Skills**; Claude Code hooks remain **Tier 3 Full**)
+- **Shareable** - works across AI assistants following Agent Skills standard
 
 ### Skills vs Agents
 
@@ -249,7 +249,6 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/dex-backlog` - AI-powered idea ranking
 - `/dex-improve` - Workshop improvement ideas
 - `/dex-whats-new` - Check for system improvements (learnings + Claude updates)
-- `/install-learnings` - Route unused session learnings into next-session behaviour, or drop them with a reason
 - `/dex-update` - Update Dex automatically (shows what's new, updates if confirmed, no technical knowledge needed)
 - `/dex-rollback` - Undo last update if something went wrong
 - `/dex-obsidian-setup` - Enable Obsidian integration and migrate vault to wiki links

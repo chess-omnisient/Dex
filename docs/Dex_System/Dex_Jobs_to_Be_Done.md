@@ -130,7 +130,6 @@ For organization-level context, check company pages in `05-Areas/Companies/`. Sh
 | `/week` command | Weekly pattern recognition and planning |
 | Background changelog monitor | Checks every 6 hours for Claude updates, alerts you automatically |
 | Learning review prompts | Daily check: when 5+ learnings pending, reminds you to review |
-| `/install-learnings` | Routes unused session learnings into the file that changes next time, or drops them with a reason |
 | `Mistake_Patterns.md` | Logged mistakes become rules that prevent repetition |
 | `Working_Preferences.md` | Collaboration style captured and applied consistently |
 | Session learnings capture | Automatic logging in `System/Session_Learnings/` |
@@ -141,7 +140,7 @@ For organization-level context, check company pages in `05-Areas/Companies/`. Sh
 
 During the week, you mentioned "I prefer summaries in bullet points." Dex captured this in Session_Learnings and now asks: "You've mentioned this preference 3 times. Add to Working_Preferences.md so all future summaries use bullets?"
 
-**Why automation matters**: Next week, when you start a session at 5pm, Dex notices: "📚 You have 7 pending learnings from this week" and prompts a review. If those notes have sat unused long enough, session end asks for `/install-learnings` so they actually change next time. You also see: "🆕 New Claude Code features detected!" because background monitoring found updates. The system improves itself quietly.
+**Why automation matters**: Next week, when you start a session at 5pm, Dex notices: "📚 You have 7 pending learnings from this week" and prompts a review. You also see: "🆕 New Claude Code features detected!" because background monitoring found updates. The system improves itself quietly.
 
 ---
 

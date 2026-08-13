@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PROCESS = ROOT / ".claude/skills/process-meetings/AGENT_INSTRUCTIONS.md"
 DAILY = ROOT / ".claude/skills/daily-review/AGENT_INSTRUCTIONS.md"
 PREP = ROOT / ".claude/skills/meeting-prep/AGENT_INSTRUCTIONS.md"
-CODEX_PROCESS = ROOT / ".agents/skills/process-meetings/AGENT_INSTRUCTIONS.md"
+CODEX_PROCESS = ROOT / ".agents/skills/process-meetings/SKILL.md"
 
 
 def test_process_meetings_calls_calendar_and_deterministic_matcher() -> None:

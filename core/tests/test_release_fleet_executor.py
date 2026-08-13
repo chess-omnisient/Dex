@@ -8,31 +8,15 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-from core.tests.process_isolation import (
-    assert_executor_isolation,
-    last_completed_nodeid,
-    session_baseline_backoff,
-)
 from core.update.journey_protocol import load_update_journey_protocol
-from scripts import dex_update_bridge as controller_bridge
 from scripts import release_fleet
 from scripts import release_fleet_executor as executor
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-
-
-@pytest.fixture(autouse=True)
-def _executor_process_isolation() -> None:
-    """Fail if a shard neighbor left executor or process bindings behind."""
-
-    assert_executor_isolation(executor, "before test")
-    yield
-    assert_executor_isolation(executor, "after test")
 
 
 def _production_runtime() -> executor._ProductionRuntime:
@@ -875,18 +859,13 @@ def test_runtime_loads_the_verified_asset_instead_of_the_controller_module(
 
     monkeypatch.setattr(Path, "read_bytes", replace_after_read)
 
-    try:
-        loaded = executor._load_released_bridge(asset, digest)
+    loaded = executor._load_released_bridge(asset, digest)
 
-        assert loaded is not executor.dex_update_bridge
-        assert Path(loaded.__file__).resolve() == asset.resolve()
-        assert loaded.MARKER == "verified"
-        with pytest.raises(executor.ExecutorError, match="changed before execution"):
-            executor._load_released_bridge(asset, digest)
-    finally:
-        if sys.modules.get(executor._RELEASED_BRIDGE_MODULE_NAME) is not controller_bridge:
-            sys.modules.pop(executor._RELEASED_BRIDGE_MODULE_NAME, None)
-        assert executor.dex_update_bridge is controller_bridge
+    assert loaded is not executor.dex_update_bridge
+    assert Path(loaded.__file__).resolve() == asset.resolve()
+    assert loaded.MARKER == "verified"
+    with pytest.raises(executor.ExecutorError, match="changed before execution"):
+        executor._load_released_bridge(asset, digest)
 
 
 def test_executor_accepts_an_exact_legacy_starting_tag_without_widening_targets(
@@ -1693,87 +1672,3 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
         else [{}]
     )
     assert cleaned == expected_cleaned
-
-
-def test_runtime_server_restores_controller_bridge_when_released_asset_cannot_serve(
-    tmp_path: Path,
-) -> None:
-    """In-process fixture runtime must not leave a released copy bound on the module."""
-
-    asset = tmp_path / "dex-update-bridge.py"
-    asset.write_bytes(b"MARKER = 'incomplete-released-copy'\n")
-    digest = hashlib.sha256(asset.read_bytes()).hexdigest()
-
-    with pytest.raises(AttributeError):
-        executor._runtime_server(
-            tmp_path / "vault",
-            bridge_asset=asset,
-            bridge_sha256=digest,
-        )
-
-    assert executor.dex_update_bridge is controller_bridge
-    assert executor._RELEASED_BRIDGE_MODULE_NAME not in sys.modules
-    assert_executor_isolation(executor, "after incomplete runtime-server load")
-
-
-def test_non_network_delivery_is_not_retried_after_a_retrying_neighbor(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Shard workers reuse a process; a retry test must not arm backoff for the next one."""
-
-    source_repo, source_commit = _executor_source_commit(tmp_path)
-    slept = _recorded_backoff(monkeypatch)
-
-    class BlippedDeliveryRuntime(_Runtime):
-        delivery_attempts = 0
-
-        def deliver_latest_release(self, vault: Path) -> dict[str, object]:
-            self.delivery_attempts += 1
-            if self.delivery_attempts < 3:
-                return {
-                    "status": "not-delivered",
-                    "evidence": {"reason": "network-unavailable"},
-                }
-            return super().deliver_latest_release(vault)
-
-    retry_run = _execute(
-        tmp_path / "retry",
-        BlippedDeliveryRuntime(_identity("1.81.0", "b")),
-        source_repo=source_repo,
-        source_commit=source_commit,
-    )
-    assert retry_run.case["reached_follow_up"] is True
-    assert slept == list(executor._TRANSIENT_DELIVERY_BACKOFF_SECONDS)
-
-    monkeypatch.undo()
-    assert (
-        executor._transient_delivery_backoff is session_baseline_backoff(executor)
-    ), last_completed_nodeid
-    _forbid_backoff(monkeypatch, "a non-network delivery failure must not back off")
-
-    class BrokenDeliveryRuntime(_Runtime):
-        def deliver_latest_release(self, vault: Path) -> dict[str, object]:
-            self.calls.append("deliver_latest_release")
-            return {
-                "status": "not-delivered",
-                "evidence": {"reason": "evidence-invalid"},
-            }
-
-    runtime = BrokenDeliveryRuntime(_identity("1.81.0", "b"))
-    with pytest.raises(executor.ExecutorError, match="did not prove"):
-        _execute(
-            tmp_path / "non-network",
-            runtime,
-            source_repo=source_repo,
-            source_commit=source_commit,
-        )
-
-    assert runtime.calls.count("deliver_latest_release") == 1
-
-
-def test_executor_module_state_is_the_controller_baseline() -> None:
-    """Named proof that this worker has no leftover executor or env substitutions."""
-
-    assert_executor_isolation(executor, "named isolation check")
-    assert executor._transient_delivery_backoff is session_baseline_backoff(executor)

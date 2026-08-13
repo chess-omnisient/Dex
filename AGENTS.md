@@ -65,13 +65,6 @@ only when a host or credential change genuinely needs it.
    servers/tools, skill catalog + trigger analysis, ownership-class path tables.
    Never hand-edit it; regenerate with `python3 scripts/generate-architecture-inventory.py`.
 4. `CHANGELOG.md` — the single source of release truth, written in house voice.
-5. `docs/architecture/HARNESS-CAPABILITY.md` — harness/model contract.
-   Claude Code is the **Tier 3 Full** reference (hooks / injectors /
-   self-learning). Cursor, Codex, and other Agent Skills harnesses are
-   **Tier 2 Skills**: generated `.agents/` adapters, not a hand-mirror.
-   Do not describe Dex as Claude-only, and do not promise those other
-   harnesses hooks they do not run. Non-goals: multi-model routing and
-   reviving `/ai-setup`.
 
 ## Merged is not shipped, and shipped is not always live
 
@@ -88,8 +81,7 @@ only when a host or credential change genuinely needs it.
   `core/lifecycle/service.py` → transaction core → portable ownership contract.
   Never add a code path that writes vault files directly.
 - **Generated files are never hand-edited**: `docs/architecture/INVENTORY.md`,
-  `core/paths.json`, `packages/dex-contracts/dist/*`, `System/.release-catalog.json`,
-  `.agents/skills/` (except `*-custom/`).
+  `core/paths.json`, `packages/dex-contracts/dist/*`, `System/.release-catalog.json`.
   Change the source, re-run the generator (`scripts/generate-*.{py,mjs}`).
 - **New top-level paths must be classified** in `core/portable_contract.py`
   (brain/seed/generated/vault/runtime) or CI fails — this is deliberate.

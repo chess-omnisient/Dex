@@ -914,18 +914,6 @@ def _runtime_server_answer(prompt: str) -> str:
     return response["answer"]
 
 
-_RELEASED_BRIDGE_MODULE_NAME = "dex_released_update_bridge"
-
-
-def _restore_released_bridge_module(previous: ModuleType | None) -> None:
-    """Put the process-wide released-bridge slot back after an in-process load."""
-
-    if previous is None:
-        sys.modules.pop(_RELEASED_BRIDGE_MODULE_NAME, None)
-        return
-    sys.modules[_RELEASED_BRIDGE_MODULE_NAME] = previous
-
-
 def _load_released_bridge(bridge_asset: Path, bridge_sha256: str):
     """Load only the standalone bridge bytes already bound to the release."""
 
@@ -934,18 +922,13 @@ def _load_released_bridge(bridge_asset: Path, bridge_sha256: str):
     bridge_bytes = bridge_asset.read_bytes()
     if hashlib.sha256(bridge_bytes).hexdigest() != bridge_sha256:
         raise ExecutorError("standalone released bridge asset changed before execution")
-    module_name = _RELEASED_BRIDGE_MODULE_NAME
+    module_name = "dex_released_update_bridge"
     released_bridge = ModuleType(module_name)
     released_bridge.__file__ = str(bridge_asset)
     released_bridge.__package__ = ""
-    previous = sys.modules.get(module_name)
     sys.modules[module_name] = released_bridge
-    try:
-        code = compile(bridge_bytes, str(bridge_asset), "exec", dont_inherit=True)
-        exec(code, released_bridge.__dict__)
-    except Exception:
-        _restore_released_bridge_module(previous)
-        raise
+    code = compile(bridge_bytes, str(bridge_asset), "exec", dont_inherit=True)
+    exec(code, released_bridge.__dict__)
     return released_bridge
 
 
@@ -961,26 +944,25 @@ def _runtime_server(
     """Serve the fixed lifecycle vocabulary from the fixture virtualenv."""
 
     global dex_update_bridge
-    previous_bridge = dex_update_bridge
-    previous_released = sys.modules.get(_RELEASED_BRIDGE_MODULE_NAME)
     dex_update_bridge = _load_released_bridge(bridge_asset, bridge_sha256)
-    temporary: tempfile.TemporaryDirectory[str] | None = None
-    try:
-        if (follow_up_cache is None) != (follow_up_release is None):
-            raise ExecutorError(
-                "follow-up cache and release identity must be supplied together"
-            )
-        verified_follow_up_cache = (
-            _validate_follow_up_cache(follow_up_cache, follow_up_release)
-            if follow_up_cache is not None and follow_up_release is not None
-            else None
-        )
 
-        root = dex_update_bridge._validate_vault(vault)
-        cached_fetch: Callable[
-            [Path, dex_update_bridge.ReleasePin],
-            None,
-        ] | None = None
+    if (follow_up_cache is None) != (follow_up_release is None):
+        raise ExecutorError(
+            "follow-up cache and release identity must be supplied together"
+        )
+    verified_follow_up_cache = (
+        _validate_follow_up_cache(follow_up_cache, follow_up_release)
+        if follow_up_cache is not None and follow_up_release is not None
+        else None
+    )
+
+    root = dex_update_bridge._validate_vault(vault)
+    temporary: tempfile.TemporaryDirectory[str] | None = None
+    cached_fetch: Callable[
+        [Path, dex_update_bridge.ReleasePin],
+        None,
+    ] | None = None
+    try:
         if dex_update_bridge._foundation_is_installed(
             root,
             dex_update_bridge.FOUNDATION,
@@ -1083,8 +1065,6 @@ def _runtime_server(
             except Exception as error:  # noqa: BLE001
                 _runtime_server_emit({"kind": "error", "message": str(error)})
     finally:
-        dex_update_bridge = previous_bridge
-        _restore_released_bridge_module(previous_released)
         if temporary is not None:
             temporary.cleanup()
     return 1

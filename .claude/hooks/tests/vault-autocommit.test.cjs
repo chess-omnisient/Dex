@@ -77,15 +77,6 @@ test('enabled hook commits only contract-owned vault and seed changes locally', 
   fs.writeFileSync(path.join(root, 'core', 'brain.py'), 'BRAIN = true\n');
   fs.mkdirSync(path.join(root, 'System', '.dex'), { recursive: true });
   fs.writeFileSync(path.join(root, 'System', '.dex', 'runtime.json'), '{}\n');
-  fs.mkdirSync(path.join(root, 'System', 'memory-mirror'), { recursive: true });
-  fs.writeFileSync(
-    path.join(root, 'System', 'memory-mirror', '_MANIFEST.md'),
-    '# fixture mirror record\n',
-  );
-  fs.writeFileSync(
-    path.join(root, 'System', 'memory-mirror', 'MEMORY.md'),
-    '# fixture project memory\n',
-  );
 
   const result = hook.run({ root, now: new Date('2026-07-13T10:00:00Z') });
 
@@ -94,8 +85,6 @@ test('enabled hook commits only contract-owned vault and seed changes locally', 
   assert.equal(git(root, 'log', '-1', '--format=%s'), 'Dex vault 2026-07-13');
   assert.equal(git(root, 'show', 'HEAD:04-Projects/private.md'), 'private note');
   assert.equal(git(root, 'show', 'HEAD:03-Tasks/Tasks.md'), '# edited seed');
-  assert.equal(git(root, 'show', 'HEAD:System/memory-mirror/MEMORY.md'), '# fixture project memory');
-  assert.equal(git(root, 'show', 'HEAD:System/memory-mirror/_MANIFEST.md'), '# fixture mirror record');
   for (const relative of ['note.md', 'core/brain.py', 'System/.dex/runtime.json']) {
     assert.equal(git(root, 'ls-tree', '--name-only', 'HEAD', '--', relative), '', relative);
   }
@@ -266,8 +255,7 @@ test('settings wires the opt-in hook after session-end and the shipped profile d
   const settings = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, '.claude', 'settings.json'), 'utf8'));
   const commands = settings.hooks.SessionEnd[0].hooks.map((entry) => entry.command);
   assert.match(commands[0], /session-end\.sh/);
-  assert.match(commands[1], /memory_mirror\.py/);
-  assert.match(commands[2], /vault-autocommit\.cjs/);
+  assert.match(commands[1], /vault-autocommit\.cjs/);
   const profile = fs.readFileSync(path.join(REPO_ROOT, 'System', 'user-profile-template.yaml'), 'utf8');
   assert.match(profile, /^vault:\n  auto_commit: false$/m);
 });

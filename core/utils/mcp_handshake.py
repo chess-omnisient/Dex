@@ -13,8 +13,6 @@ from queue import Empty, Queue
 from threading import Thread
 from typing import Any, Mapping, Sequence
 
-from core.utils.process_isolation import capture_process_group, terminate_process_group
-
 INITIALIZE_REQUEST = {
     "jsonrpc": "2.0",
     "id": 1,
@@ -52,39 +50,38 @@ def _response_error(response: object) -> str | None:
     return None
 
 
-def _close_stdin(process: subprocess.Popen[str]) -> None:
-    if process.stdin is None:
-        return
-    try:
-        process.stdin.close()
-    except OSError:
-        pass
-
-
-def _terminate_process_group(process: subprocess.Popen[str], *, pgid: int | None = None) -> None:
-    """Stop the server and any children, escalating when it ignores SIGTERM.
-
-    Darwin returns EPERM for killpg on a zombie session leader; that must not
-    unwind a successful handshake into ``internal smoke journey refused``.
-    """
-    _close_stdin(process)
+def _terminate_process_group(process: subprocess.Popen[str]) -> None:
+    """Stop the server and any children, escalating when it ignores SIGTERM."""
+    if process.stdin is not None:
+        try:
+            process.stdin.close()
+        except OSError:
+            pass
     if process.poll() is not None:
-        # Leader already reaped. Still reap any descendants that outlived it.
-        terminate_process_group(process, pgid=pgid, sig=signal.SIGKILL)
         return
 
-    terminate_process_group(process, pgid=pgid, sig=signal.SIGTERM)
+    try:
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGTERM)
+        else:
+            process.terminate()
+    except ProcessLookupError:
+        return
+
     try:
         process.wait(timeout=1)
-        terminate_process_group(process, pgid=pgid, sig=signal.SIGKILL)
         return
     except subprocess.TimeoutExpired:
         pass
-    terminate_process_group(process, pgid=pgid, sig=signal.SIGKILL)
+
     try:
-        process.wait(timeout=1)
-    except subprocess.TimeoutExpired:
-        pass
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+    except ProcessLookupError:
+        return
+    process.wait(timeout=1)
 
 
 def mcp_stdio_handshake(
@@ -105,7 +102,6 @@ def mcp_stdio_handshake(
         raise ValueError("timeout must be greater than zero")
 
     process: subprocess.Popen[str] | None = None
-    pgid: int | None = None
     response: dict[str, Any] | None = None
     error: str | None = None
     stderr = ""
@@ -125,7 +121,6 @@ def mcp_stdio_handshake(
                 errors="replace",
                 start_new_session=True,
             )
-            pgid = capture_process_group(process)
             if process.stdin is None or process.stdout is None:
                 error = "could not open server stdio pipes"
             else:
@@ -159,7 +154,7 @@ def mcp_stdio_handshake(
             error = f"could not complete initialize handshake: {exc}"
         finally:
             if process is not None:
-                _terminate_process_group(process, pgid=pgid)
+                _terminate_process_group(process)
                 returncode = process.returncode
             stderr_file.flush()
             stderr_file.seek(0)

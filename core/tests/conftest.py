@@ -26,8 +26,6 @@ shutil.copytree(SOURCE_FIXTURE_VAULT, RUNTIME_FIXTURE_VAULT)
 # disposable copy here before collection imports any product modules.
 os.environ["VAULT_PATH"] = str(RUNTIME_FIXTURE_VAULT)
 
-from core.tests import process_isolation
-
 for relative in (
     "05-Areas/Meetings",
     "05-Areas/Meetings/Daily_Log",
@@ -74,13 +72,3 @@ def pytest_unconfigure(config: pytest.Config) -> None:
     if os.getpid() != _CREATOR_PID:
         return
     shutil.rmtree(_RUNTIME_ROOT, ignore_errors=True)
-
-
-def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> None:
-    """Remember the test that just finished on this worker.
-
-    Isolation assertions in the shard-sensitive suites name this nodeid when a
-    later test finds leftover process or executor state.
-    """
-    del nextitem
-    process_isolation.note_completed(item.nodeid)

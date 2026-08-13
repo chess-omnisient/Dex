@@ -16,8 +16,7 @@ Configuration and system files for Dex.
 ## Subfolders
 
 - **Templates/** — Note templates for consistent formatting
-- **Session_Learnings/** — Daily learning capture from `/daily-review`; `/install-learnings` routes unused notes so the next session changes
-- **memory-mirror/** — Copy of this vault's Claude Code per-project memory (created automatically; do not edit)
+- **Session_Learnings/** — Daily learning capture from `/daily-review` sessions
 
 ## What to Edit
 
@@ -30,7 +29,6 @@ Configuration and system files for Dex.
 - usage_log.md — Auto-updated by system
 - .last-learning-check — Auto-updated by learning prompt system
 - claude-code-state.json — Auto-updated by changelog monitoring
-- memory-mirror/ — Auto-copied from Claude Code at session end
 
 ## Key Concepts
 

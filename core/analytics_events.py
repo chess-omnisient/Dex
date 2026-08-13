@@ -27,7 +27,6 @@ SAFE_ANALYTICS_EVENT_NAMES = frozenset(
         "integration_notion_completed",
         "integration_slack_completed",
         "journal_entry_created",
-        "learnings_installed",
         "level_up_viewed",
         "mcp_added",
         "mcp_created",

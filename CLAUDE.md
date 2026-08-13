@@ -65,8 +65,8 @@ Read these files when users ask about system details, features, or setup.
 Other capability surfaces to know about (read on demand, don't preload):
 - **Hooks** — automatic behaviors (session context, person/company context injection,
   safety guards, release awareness, the mid-session health pulse, session-end
-  project-memory backup, session-end autocommit) are wired in `.claude/settings.json`;
-  `.claude/hooks/README.md` documents them.
+  autocommit) are wired in `.claude/settings.json`; `.claude/hooks/README.md`
+  documents them.
 - **Optional capability rooms** — role-specific skill packs live in
   `.claude/skills/_available/` and are switched on via `/manage-capabilities`
   (registry: `core/capabilities.py`). If a user asks for sales/product/marketing/
@@ -369,13 +369,9 @@ When the user says they completed a task (any phrasing):
 - Don't require exact task title - use fuzzy matching on keywords
 
 ### Career Evidence Capture
-If `05-Areas/Career/` folder exists, Dex helps collect career development evidence.
-
-**Automatic (file writes):** When a file is written or edited under `05-Areas/Career/Evidence/`, a hook offers it as an unconfirmed evidence candidate — whether or not `/career-coach` is running, and whether or not the note contains a metric. Nothing is saved until the user confirms. Skipped Career files leave a one-line reason that `/dex-doctor` can see.
-
-The other channels prompt; they do not write the evidence log on their own:
+If `05-Areas/Career/` folder exists, the system automatically captures career development evidence:
 - **During `/daily-review`**: Prompt for achievements worth capturing for career growth
-- **During `/career-coach`**: Coaching can surface achievements from the conversation; evidence-folder writes still go through the same confirm-gated hook
+- **During `/career-coach`**: Achievements with quantifiable metrics are auto-detected and captured as evidence without manual prompting
 - **From Granola meetings**: Extract feedback and development discussions from manager 1:1s
 - **Project completions**: Suggest capturing impact and skills demonstrated
 - **Skill tracking**: Tag tasks/goals with `# Career: [skill]` to track skill development over time. **If QMD is available**, the Career MCP also detects skill demonstration *without* explicit tags — semantically matching achievements to competencies (e.g., a task about "designing the API migration strategy" matches the "System Design" competency even without a `# Career: System Design` tag).
@@ -444,15 +440,7 @@ Learnings are captured during the daily review process. When the user runs `/dai
 
 3. **Tell the user** how many learnings you captured, then ask if they want to add more
 
-Leave status as `pending`. Applying those notes so the next session changes is a separate step: `/install-learnings`. Do not install, rewrite skills, or edit user-extensions during capture.
-
 This happens during `/daily-review` - you don't need to capture learnings silently during the session. The review process handles it systematically.
-
-### Learning Install via `/install-learnings`
-
-Pending session learnings stay an archive until they are routed into a file the next session will follow. When the unused pile is large (8 pending and the oldest is at least 14 days), a session-end hook asks for one install pass. The user can also run `/install-learnings` at any time.
-
-Follow `.claude/reference/session-learnings-routing.md`. Prefer one rule covering a cluster. Rewrite status to `implemented (YYYY-MM-DD — where)` or `dropped (YYYY-MM-DD — reason)`. Never fabricate an edit to make the count drop. Never delete an entry to hide it.
 
 ### Background Self-Learning Automation
 
@@ -461,7 +449,6 @@ Dex continuously learns from usage and external sources through automatic checks
 - Checks bounded release evidence from the pinned Dex repository (at most daily)
 - Tracks pending learnings in `System/Session_Learnings/` (daily)
 - Surfaces alerts during session start and `/daily-plan`
-- Asks for an install pass at session end when unused learnings have piled up
 - Pattern recognition during weekly reviews
 
 **Setup details:** See `06-Resources/Dex_System/Dex_Technical_Guide.md` for installation and configuration.
@@ -577,7 +564,6 @@ Skills extend Dex capabilities and are invoked with `/skill-name`. Common skills
 - `/enable-semantic-search` - Enable local AI-powered semantic search with smart collection discovery
 - `/xray` - AI education: understand what just happened under the hood (context, MCPs, hooks)
 - `/dex-level-up`, `/dex-backlog`, `/dex-improve` - System improvements
-- `/install-learnings` - Turn unused session learnings into next-session behaviour, or drop them with a reason
 - `/dex-doctor` - Full system checkup: finds what's broken, fixes what's safe, guides you through the rest
 - `/feedback` - Report a Dex bug to the Dex team with zero homework; Dex investigates, you approve, and you hear back when it's fixed
 - `/dex-update` - Update Dex automatically (shows what's new, updates if confirmed, no technical knowledge needed)

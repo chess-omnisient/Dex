@@ -1,37 +1,29 @@
-# .agents/ — cross-harness skill surface (Tier 2)
+# .agents/ — cross-harness skill surface
 
-This directory is the **Tier 2 Skills** adapter: Agent Skills layout for
-harnesses that do not read `.claude/skills/` (Cursor, Codex, Gemini CLI, and
-others that follow the Agent Skills standard).
+This directory ships a small subset of Dex skills in the harness-neutral
+Agent Skills layout, so AI coding harnesses that don't read `.claude/skills/`
+can still run the core journeys:
 
-It is generated. Do not edit files under `skills/` by hand.
+- `skills/getting-started/` — post-onboarding tour
+- `skills/process-meetings/` — meeting processing
+- `skills/industry-truths/` — strategic context capture
 
-```bash
-python3 scripts/generate-agents-skills.py          # write adapters
-python3 scripts/generate-agents-skills.py --check  # CI drift gate
-```
+## Relationship to `.claude/skills/`
 
-Canonical skills live in `.claude/skills/`. The generator copies each
-`SKILL.md` (and instruction companions such as `AGENT_INSTRUCTIONS.md`) here,
-strips Claude-only frontmatter (`hooks:`, `context:`, `model_routing:`), and
-leaves user-authored `skills/*-custom/` directories untouched.
+`.claude/skills/` is the canonical, fully-maintained skill set (74 skills).
+The copies here are **adapters**, not a second source of truth: when a skill
+that exists in both places changes in `.claude/skills/`, the change should be
+mirrored here in the same PR.
 
-These copies are **adapters, not a second source of truth.** A 3-skill
-hand-mirror cannot stay current; generation is how this surface stays at
-parity with the canonical set.
-
-Claude Code remains the **Tier 3 Full** reference (hooks, injectors,
-self-learning). That is a stated position — see
-[`docs/architecture/HARNESS-CAPABILITY.md`](../docs/architecture/HARNESS-CAPABILITY.md)
-and the tier table in the root README.
-
-Instruction-honesty and configuration-truth tests still cover the generated
-files (`core/tests/test_instruction_honesty.py`,
-`core/tests/test_granola_configuration_truth.py`,
-`core/tests/test_harness_capability_contract.py`,
-`scripts/check-instructed-tools.py`). Change a canonical skill, regenerate,
-re-run those tests.
+> Last synced 2026-08-13 (`process-meetings` source selection mirrored; the
+> adapter remains harness-neutral and omits Claude-only delegation/frontmatter).
+> These files are covered by
+> instruction-honesty and configuration-truth tests
+> (`core/tests/test_instruction_honesty.py`,
+> `core/tests/test_granola_configuration_truth.py`,
+> `scripts/check-instructed-tools.py`) — always sync via a reviewed change and
+> re-run those, never a blind copy.
 
 This directory is `brain`-classed in the portable ownership contract and is
-provisioned into installs (`core/provision-contract.json`). User-authored
+provisioned into installs (`core/provision-contract.json`); user-authored
 variants belong in `.agents/skills/*-custom/`, which updates never touch.

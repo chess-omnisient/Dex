@@ -2,7 +2,7 @@
 
 [![Latest release](https://img.shields.io/github/v/release/davekilleen/dex?label=release&color=2ea44f)](https://github.com/davekilleen/dex/releases) [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE) [![Built for non-engineers](https://img.shields.io/badge/coding%20required-none-ff69b4)](https://heydex.ai/help/)
 
-**A personal operating system for your work.** Strategic work management, meeting intelligence, relationship tracking, daily planning — all configured for your specific role. No coding required. Claude Code is the full-experience reference; other assistants run the same vault and a documented slice of Dex.
+**A personal operating system powered by Claude.** Strategic work management, meeting intelligence, relationship tracking, daily planning — all configured for your specific role. No coding required.
 
 <p align="center">
   <img src="docs/assets/dex-hero.gif" alt='Dex in action: "plan my day" scans your calendar, Slack, Salesforce, Granola and goals, then protects your morning — "what do I owe people?" finds every open promise and drafts the replies.' width="960">
@@ -27,28 +27,15 @@
 
 **Pick one of these to get started:**
 
-| Option | Cost | What It Is | Dex tier |
-|--------|------|------------|----------|
-| **[Cursor](https://cursor.com)** | Free tier works, or $20/month for Pro | An app with a built-in AI assistant. No separate Claude account needed. | **Tier 2 Skills** — vault, tools, and the named journeys |
-| **[Claude Code Desktop](https://claude.ai/download)** | Claude Pro $20/month | Anthropic's own app. The full Dex experience — hooks, automatic context, self-learning. | **Tier 3 Full** — the reference implementation |
-| **Claude Code Terminal** | Claude Pro $20/month | Same as Desktop but runs in Terminal (Mac) or PowerShell (Windows). | **Tier 3 Full** |
+| Option | Cost | What It Is |
+|--------|------|------------|
+| **[Cursor](https://cursor.com)** | Free tier works, or $20/month for Pro | An app with a built-in AI assistant (Claude). No separate Claude account needed. |
+| **[Claude Code Desktop](https://claude.ai/download)** | Claude Pro $20/month | Anthropic's own app. Better experience — guaranteed self-learning hooks, automatic context loading. |
+| **Claude Code Terminal** | Claude Pro $20/month | Same as Desktop but runs in Terminal (Mac) or PowerShell (Windows). |
 
-> **You do NOT go to claude.ai and type commands.** You need one of the apps above. Cursor is the easiest starting point. Claude Code (Desktop or Terminal) is the full Dex — setup for those is [further down this page](#want-guaranteed-hooks-use-claude-code-cli-or-desktop-app).
+> **You do NOT go to claude.ai and type commands.** You need one of the apps above. Cursor is the easiest starting point. Claude Code (Desktop or Terminal) gives you a better experience with self-learning hooks — setup instructions for those are [further down this page](#want-guaranteed-hooks-use-claude-code-cli-or-desktop-app).
 
-**Not sure which?** Start with Cursor — it's free and gets you running in minutes. You can add Claude Code later if you want the automatic behaviors.
-
-### What you get with each assistant
-
-Dex is the vault and the tools. The app you talk to is a **harness**. What you get depends on which harness you use — that is a documented contract, not a silent subset.
-
-| Tier | Name | What you get | Who it's for |
-|------|------|--------------|--------------|
-| **Tier 0 Vault** | Your notes | Markdown folders (inbox, projects, people, tasks). Dex is just files. | Any editor. No AI required. |
-| **Tier 1 Core** | Tools + background jobs | Tasks, people index, meeting sync, search. Jobs like meeting sync already run on a schedule. | Any assistant that can run Dex's MCP tools |
-| **Tier 2 Skills** | Named journeys | `/daily-plan`, `/process-meetings`, and the rest of the skill surface, generated into `.agents/` so Cursor, Codex, and similar apps can run them. | Any assistant that reads Agent Skills |
-| **Tier 3 Full** | Automatic in-chat behavior | Person context when you open a file, safety gates, session learning, the mid-session health pulse. | **Claude Code today** — this is a stated choice, not an accident |
-
-Cursor is **Tier 2**. Claude Code is **Tier 3**. Codex, Gemini CLI, and other Agent Skills harnesses are **Tier 2** as well. The vault is always **Tier 0**. A longer write-up of the split — including which hooks are truly in-the-moment vs already scheduled — lives in [`docs/architecture/HARNESS-CAPABILITY.md`](docs/architecture/HARNESS-CAPABILITY.md).
+**Not sure which?** Start with Cursor — it's free and gets you running in minutes. You can add or switch to Claude Code later.
 
 ---
 
@@ -396,13 +383,13 @@ Just type your answers like you're texting a colleague. Takes about 2 minutes to
 
 You just used **Cursor** to run setup. That works great for daily use.
 
-There's also **Claude Code** - a more powerful option available via command line or Desktop app. Both give you **Tier 3** — **guaranteed hooks** (automatic behaviors that run deterministically, unlike CLAUDE.md which Claude might skip). Cursor stays **Tier 2**: the vault, the tools, and the named journeys, without those in-chat hooks.
+There's also **Claude Code** - a more powerful option available via command line or Desktop app. Both give you **guaranteed hooks** (automatic behaviors that run deterministically, unlike CLAUDE.md which Claude might skip).
 
-| Access Method | Dex tier | What You Get | Hooks? | Setup |
-|--------------|----------|--------------|--------|-------|
-| **Cursor** | Tier 2 Skills | Easy, already working | No | Already done |
-| **Claude Code** (command line) | Tier 3 Full | Guaranteed hooks, persistent learning | Yes | 5 min install |
-| **Claude Code** (Desktop app) | Tier 3 Full | Guaranteed hooks, persistent learning | Yes | 5 min install |
+| Access Method | What You Get | Hooks? | Setup |
+|--------------|--------------|--------|-------|
+| **Cursor** | Easy, already working | No | Already done |
+| **Claude Code** (command line) | Guaranteed hooks, persistent learning | Yes | 5 min install |
+| **Claude Code** (Desktop app) | Guaranteed hooks, persistent learning | Yes | 5 min install |
 
 **What are hooks?** Automatic behaviors triggered by events (session start, file read, etc.). They're deterministic - they ALWAYS run. Context loads guaranteed, learnings surface guaranteed, person details inject guaranteed.
 
@@ -566,7 +553,7 @@ Eight jobs that happen reliably every day:
 | **Start Each Day Focused** | One command gives you three priorities. Heavy meeting day? Drops to two. Won't let you overcommit. |
 | **Never Miss a Commitment** | Promises made in meetings extracted automatically. Three days old? Flagged. You can't forget. |
 | **Track Relationships** | Before any call: what you discussed last time, open items, what they care about. Never walk in cold. |
-| **Accelerate Career Growth** | When you save a note in Career Evidence, Dex offers it for the evidence log — including influence and judgement notes with no numbers. Reviews and 1:1s still prompt you to capture. Review-ready when you need it. |
+| **Accelerate Career Growth** | Captures evidence automatically. Feedback from 1:1s, achievements, skills growth. Review-ready when you need it. |
 | **Manage Tasks Reliably** | Work MCP syncs tasks with unique IDs across all files. Check off once, updates everywhere. Deduplication prevents doubles. Priority limits stop overcommit. Strategic alignment required. |
 | **Reflect & Improve** | Captures mistakes → rules. Learns preferences. Each session makes the next better. |
 | **Keep Projects Moving** | Auto-detects stalls (12+ days no update). Surfaces blockers. You know what needs attention. |
@@ -736,7 +723,6 @@ The system teaches you progressively. You learn what you need, when you need it.
 The system captures learnings and improves over time:
 
 - Run `/daily-review` - captures learnings to `System/Session_Learnings/`
-- Run `/install-learnings` - routes unused notes into the place that changes next time, or drops them with a reason
 - Weekly synthesis (`/week-review`) - turns learnings into system improvements
 - Background automation - checks for new Claude Code features daily
 - Run `/dex-whats-new` - surfaces learnings and new capabilities you can use

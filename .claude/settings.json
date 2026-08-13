@@ -81,27 +81,12 @@
         ]
       }
     ],
-    "PostToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/career-evidence-capture.cjs"
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "hooks": [
           {
             "type": "command",
             "command": "sh -c 'command -v afplay >/dev/null 2>&1 || exit 0; exec afplay /System/Library/Sounds/Ping.aiff'"
-          },
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/install-learnings.sh\""
           }
         ]
       }
@@ -123,10 +108,6 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-end.sh \"$transcript_path\""
-          },
-          {
-            "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/memory_mirror.py\" --vault \"$CLAUDE_PROJECT_DIR\""
           },
           {
             "type": "command",

@@ -159,8 +159,6 @@ def _tracked_paths() -> list[str]:
         ("System/.dex/gardener.json", "runtime", False),
         ("System/.onboarding-session.json", "runtime", False),
         ("System/Session_Learnings/2026-05-01.md", "runtime", False),
-        ("System/memory-mirror/_MANIFEST.md", "vault", False),
-        ("System/memory-mirror/MEMORY.md", "vault", False),
     ],
 )
 def test_resolution_semantics(path: str, ownership: str, denied: bool) -> None:

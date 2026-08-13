@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 28ee80f968cbd9e9cedb5bf2273400b36cc37cd7edf28bb0eb204296a99b50c4 -->
+<!-- Content SHA-256: 6672cd77e728d5e48d9ca33f1c8aebd1db91101c6bdf8d61707e38e71fcba74a -->
 
 # Architecture Inventory
 
@@ -26,7 +26,7 @@ This inventory is derived only from repository code and shipped skill files.
 
 ## Skills
 
-**Skill count:** 83<br>
+**Skill count:** 82<br>
 **Discoverability-risk count:** 4
 
 A description has a trigger when its frontmatter contains the word `when` or `whenever` (case-insensitive). Length is measured in characters.
@@ -87,7 +87,6 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `identity-snapshot` | `.claude/skills/identity-snapshot/SKILL.md` | Generate a living profile of the user's working patterns, decision tendencies and quality preferences from their Dex data. Use when the user says 'what are my patterns', 'how do I work', or during `week-review`. Also use proactively when the model (older than 7 days) is stale. Not for planning a week; use `week-plan`. | 319 | when |
 | `industry-truths` | `.claude/skills/industry-truths/SKILL.md` | Define time-horizoned assumptions about your industry (today / 6mo / 12mo) that ground strategic thinking. Use when the user is making roadmap, positioning or investment calls, or says 'what am I assuming about the market'. Also use proactively before a big strategic recommendation. Not for capturing a single decision; use `decision-log`. | 340 | when |
 | `initiative-kickoff` | `.claude/skills/initiative-kickoff/SKILL.md` | Turn a decision to start something new — a hire, a partnership, a go-to-market push, an internal bet — into a real initiative: the outcome and why now, what success looks like, who's involved, the first concrete steps, and a project page that ladders to your pillars and goals. Use when the user says 'let's kick off X', 'I'm starting a new initiative', 'set up a project for this', or 'we've decided to do Y'. Also use proactively when the user commits to a new effort mid-conversation. Not for spec'ing a product feature or writing a PRD; use `product-brief`. Not for checking the status of projects already underway; use `project-health`. | 641 | when |
-| `install-learnings` | `.claude/skills/install-learnings/SKILL.md` | Turn unused session learnings into changes that affect the next session — or honestly drop them with a reason. Use when the user says 'install the learnings', 'apply pending learnings', 'the learnings never get used', 'session learnings are piling up', or when a session-end notice reports the unused pile crossed the install threshold. Also use proactively when `/dex-whats-new` finds pending learnings the user wants applied. Not for capturing a new learning from today's work; use `daily-review`. Not for ranking product ideas; use `dex-backlog`. | 549 | when |
 | `integrate-mcp` | `.claude/skills/integrate-mcp/SKILL.md` | Install and wire up an existing MCP server from Smithery.ai or a GitHub repo. Use when the user names a tool that already has a server — 'add the Notion MCP', 'install this Smithery server'. Not for building a new integration from nothing; use `create-mcp`. Not for adding one already-known server safely; use `dex-add-mcp`. | 324 | when |
 | `journal` | `.claude/skills/journal/SKILL.md` | Toggle journaling or start a morning/evening/weekly journal entry. Use when the user says 'journal', 'morning pages', 'evening reflection'. Also use proactively when a journaling-enabled user starts/ends the day. Not for a structured end-of-day work review; use `daily-review`. | 277 | when |
 | `manage-capabilities` | `.claude/skills/manage-capabilities/SKILL.md` | Turn optional Dex rooms/features on or off without deleting any content. Use when the user says 'turn off X', 'enable the career room', 'hide a feature I don't use'. Not for diagnosing breakage; use `dex-doctor`. Not for a full role restructure; use `reset`. | 258 | when |
@@ -123,12 +122,12 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 
 | Server | Referencing skill count | Surface status | Skills (referenced tools) |
 | --- | ---: | --- | --- |
-| `dex-analytics` | 29 | **over-surfaced** | `commitments` (`track_event`); `create-mcp` (`track_event`); `create-skill` (`track_event`); `daily-plan` (`track_event`); `daily-review` (`track_event`); `dex-add-mcp` (`track_event`); `dex-backlog` (`track_event`); `dex-improve` (`track_event`); `dex-level-up` (`track_event`); `dex-obsidian-setup` (`track_event`); `dex-whats-new` (`track_event`); `getting-started` (`track_event`); `initiative-kickoff` (`track_event`); `install-learnings` (`track_event`); `integrate-mcp` (`track_event`); `journal` (`track_event`); `meeting-closeout` (`track_event`); `meeting-prep` (`track_event`); `process-meetings` (`track_event`); `product-brief` (`track_event`); `project-health` (`track_event`); `prompt-improver` (`track_event`); `relationship-radar` (`track_event`); `reset` (`track_event`); `save-insight` (`track_event`); `triage` (`track_event`); `week-plan` (`track_event`); `week-review` (`track_event`); `xray` (`track_event`) |
+| `dex-analytics` | 28 | **over-surfaced** | `commitments` (`track_event`); `create-mcp` (`track_event`); `create-skill` (`track_event`); `daily-plan` (`track_event`); `daily-review` (`track_event`); `dex-add-mcp` (`track_event`); `dex-backlog` (`track_event`); `dex-improve` (`track_event`); `dex-level-up` (`track_event`); `dex-obsidian-setup` (`track_event`); `dex-whats-new` (`track_event`); `getting-started` (`track_event`); `initiative-kickoff` (`track_event`); `integrate-mcp` (`track_event`); `journal` (`track_event`); `meeting-closeout` (`track_event`); `meeting-prep` (`track_event`); `process-meetings` (`track_event`); `product-brief` (`track_event`); `project-health` (`track_event`); `prompt-improver` (`track_event`); `relationship-radar` (`track_event`); `reset` (`track_event`); `save-insight` (`track_event`); `triage` (`track_event`); `week-plan` (`track_event`); `week-review` (`track_event`); `xray` (`track_event`) |
 | `dex-calendar-mcp` | 6 | normal | `daily-plan` (`calendar_get_events_with_attendees`, `calendar_get_today`, `reminders_clear_completed`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `daily-review` (`calendar_get_events_with_attendees`, `calendar_get_today`, `reminders_clear_completed`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `meeting-prep` (`calendar_get_events_with_attendees`); `process-meetings` (`calendar_get_events_with_attendees`); `week-plan` (`calendar_get_events_with_attendees`); `week-review` (`calendar_get_events_with_attendees`, `reminders_list_items`) |
 | `dex-career-mcp` | 0 | **under-surfaced** | — |
 | `dex-customization-migration-mcp` | 1 | normal | `dex-update` (`read_customization_capsule_blob`, `read_customization_capsule_section`) |
 | `dex-granola-mcp` | 4 | normal | `daily-plan` (`granola_get_recent_meetings`); `getting-started` (`granola_check_available`, `granola_get_recent_meetings`); `week-plan` (`granola_get_today_meetings`); `zoom-setup` (`granola_check_available`) |
-| `dex-improvements-mcp` | 8 | normal | `daily-plan` (`list_ideas`, `synthesize_changelog`, `synthesize_learnings`); `daily-review` (`list_ideas`); `dex-backlog` (`capture_idea`, `mark_implemented`); `dex-doctor` (`capture_idea`); `dex-level-up` (`capture_idea`); `dex-whats-new` (`synthesize_changelog`, `synthesize_learnings`); `install-learnings` (`capture_idea`); `week-review` (`list_ideas`) |
+| `dex-improvements-mcp` | 7 | normal | `daily-plan` (`list_ideas`, `synthesize_changelog`, `synthesize_learnings`); `daily-review` (`list_ideas`); `dex-backlog` (`capture_idea`, `mark_implemented`); `dex-doctor` (`capture_idea`); `dex-level-up` (`capture_idea`); `dex-whats-new` (`synthesize_changelog`, `synthesize_learnings`); `week-review` (`list_ideas`) |
 | `dex-onboarding-mcp` | 3 | normal | `getting-started` (`check_onboarding_complete`); `reset` (`finalize_onboarding`, `start_onboarding_session`); `setup` (`start_onboarding_session`) |
 | `dex-pipedrive-mcp` | 2 | normal | `pipedrive-setup` (`pipedrive_list_stages`, `pipedrive_list_users`, `pipedrive_status`); `pipeline-sync` (`pipedrive_add_deal_activity`, `pipedrive_add_deal_note`, `pipedrive_create_deal`, `pipedrive_create_org`, `pipedrive_find_deal`, `pipedrive_find_org`, `pipedrive_get_deal`, `pipedrive_get_mapping`, `pipedrive_get_pipeline_snapshot`, `pipedrive_list_deals`, `pipedrive_save_mapping`, `pipedrive_status`, `pipedrive_update_deal`) |
 | `dex-resume-mcp` | 0 | **under-surfaced** | — |
@@ -143,7 +142,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 
 ### Over-surfaced servers
 
-- `dex-analytics` — 29 skills reference its tools.
+- `dex-analytics` — 28 skills reference its tools.
 - `dex-work-mcp` — 12 skills reference its tools.
 
 ## Portable ownership classes
@@ -155,7 +154,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 | `brain` | 45 | `replace` |
 | `seed` | 38 | `write-if-absent` |
 | `generated` | 9 | `regenerate` |
-| `vault` | 18 | `never` |
+| `vault` | 17 | `never` |
 | `runtime` | 14 | `never` |
 
 <details><summary><code>brain</code> declared paths (45)</summary>
@@ -265,7 +264,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 </details>
 
-<details><summary><code>vault</code> declared paths (18)</summary>
+<details><summary><code>vault</code> declared paths (17)</summary>
 
 - `.claude/skills-custom` (dir; `vault-skills-custom`)
 - `.env` (file; `vault-env`)
@@ -281,7 +280,6 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `CLAUDE-custom.md` (file; `vault-claude-custom`)
 - `System/credentials` (dir; `vault-credentials`)
 - `System/folder-paths.yaml` (file; `vault-folder-paths`)
-- `System/memory-mirror` (dir; `vault-memory-mirror`)
 - `System/trusted-mcps.yaml` (file; `vault-trusted-mcps`)
 - `core/mcp-custom` (dir; `vault-mcp-custom`)
 - `core/mcp-premium` (dir; `vault-mcp-premium`)

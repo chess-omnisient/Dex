@@ -328,14 +328,6 @@ RULES: tuple[Rule, ...] = (
     # ownership — these rules give denied paths their owner).
     _r("vault-env", ".env", "file", "vault", "raw secret authority (SR1 #150 model)"),
     _r("vault-credentials", "System/credentials", "dir", "vault", "secrets; hard-denied"),
-    _r(
-        "vault-memory-mirror",
-        "System/memory-mirror",
-        "dir",
-        "vault",
-        "user-owned Claude Code per-project memory copy; machine state under "
-        "System/, never a shared PARA folder; updates never write it",
-    ),
     _r("vault-mcp-json", ".mcp.json", "file", "vault",
        "REPORT-ONLY except the explicitly previewed, user-approved, add-only "
        "mcp-registration lifecycle transaction and the sole bridge-only "
@@ -412,8 +404,8 @@ CAPABILITIES: dict[str, dict[str, object]] = {
             _room_skill_source(
                 "career",
                 "career-setup",
-                "aad122c355ee951f090f8b4d01ef747f1cad2b23d8349bc30ffe3795fa4dc701",
-                20629,
+                "155890770de4640fade1501881a8963c05751aaf3cdbfb2e9399009ff2bd726f",
+                20422,
                 previous_payloads=(
                     (
                         "v1.95.2",
@@ -430,8 +422,8 @@ CAPABILITIES: dict[str, dict[str, object]] = {
             _room_skill_source(
                 "career",
                 "career-coach",
-                "a865f9838a09f19dc3b52b2840016d9b2ed1362761de1ae1556b239781eef356",
-                36053,
+                "ff1997a5eb4092b0993425d57b048d0c8dcf16c1d37d62b2df443eaa6f836a6c",
+                36036,
                 previous_payloads=(
                     (
                         "v1.95.2",

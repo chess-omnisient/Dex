@@ -76,7 +76,6 @@ Reference docs should:
 
 - **mcp-servers.md** - MCP setup, troubleshooting, and integration patterns
 - **meeting-intel.md** - Meeting processing pipeline details
-- **session-learnings-routing.md** - Where a pending session learning has to go so the next session actually changes
 
 ## Related
 

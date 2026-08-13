@@ -47,10 +47,6 @@
 ^README\.md:.*:pendo$
 
 # --- Cursor: a first-class supported coding harness (not a stale/founder ref) ---
-^AGENTS\.md:.*:cursor$
-^\.agents/README\.md:.*:cursor$
-# Generated DexDiff adapters keep the same worked-example handle as the canonical skills.
-^\.agents/skills/diff-.*:.*:(dave|killeen)$
 ^\.cursor/.*:.*:cursor$
 ^\.claude/hooks/.*:.*:cursor$
 ^\.claude/skills/.*:.*:cursor$
