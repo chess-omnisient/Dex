@@ -52,10 +52,11 @@ def test_real_apple_mail_status_and_full_disk_access_denial(tmp_path):
                 'db.execute("INSERT INTO emails '
                 "(message_id,account,mailbox,subject,sender,content,date_received,emlx_path) "
                 "VALUES (1,'Fixture','INBOX','Runtime proof','fixture@example.com',"
-                "'searchable body','2026-08-13T10:00:00+00:00','fixture.emlx')\"); "
+                "'searchable body','2026-08-13T10:00:00','fixture.emlx')\"); "
                 'db.execute("INSERT INTO sync_state '
                 "(account,mailbox,last_sync,message_count) "
-                "VALUES ('Fixture','INBOX','2026-08-13T10:00:00+00:00',1)\"); "
+                # Pinned upstream 0.4.3 writes/parses last_sync as naive local ISO.
+                "VALUES ('Fixture','INBOX','2026-08-13T10:00:00',1)\"); "
                 "db.commit(); db.close()"
             ),
         ],

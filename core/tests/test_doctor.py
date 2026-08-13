@@ -4361,6 +4361,32 @@ def test_apple_mail_search_uses_configured_sync_freshness_not_file_mtime(
 
 
 @pytest.mark.parametrize(
+    "last_sync",
+    [
+        pytest.param("2026-07-11T11:00:00", id="upstream-naive-local-iso"),
+        pytest.param("2026-07-11T12:00:00+01:00", id="offset-aware-iso"),
+    ],
+)
+def test_apple_mail_search_accepts_upstream_and_offset_sync_timestamps(
+    monkeypatch,
+    context,
+    last_sync,
+):
+    _register_apple_mail_user_scope(context)
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: True)
+    _write_real_apple_mail_index(
+        context.home / ".apple-mail-mcp" / "index.db",
+        last_sync=last_sync,
+    )
+
+    result = doctor._probe_apple_mail_search(context)
+
+    assert result.verdict == "OK"
+    assert "last synced 1 hour ago" in result.detail
+
+
+@pytest.mark.parametrize(
     ("sidecar", "mode"),
     [("", 0o644), ("-wal", 0o644), ("-shm", 0o644), ("", 0o700)],
 )
