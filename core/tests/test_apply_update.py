@@ -1671,6 +1671,41 @@ def test_composed_gitignore_reincludes_every_vault_region() -> None:
     assert composed.index("04-Projects/") < composed.index("!/04-Projects/")
 
 
+def test_composed_gitignore_reignores_product_files_inside_vault_regions() -> None:
+    """The release delivers reference docs into 06-Resources, a vault region.
+
+    Tracking them would put product churn in the user's private history and
+    re-dirty the working tree on every update. The re-ignore must come AFTER
+    the region negation or last-match keeps them tracked.
+    """
+    composed = apply_update._compose_gitignore(b"# rules\n", Path("/unused")).decode()
+    section = composed.split(apply_update.GITIGNORE_SECTION_BEGIN, 1)[1]
+
+    nested = [
+        rule.path for rule in portable_contract.RULES
+        if rule.ownership == "brain"
+        and rule.path.startswith(
+            tuple(f"{region}/" for region in portable_contract.VAULT_REGIONS)
+        )
+    ]
+    assert nested, "expected the contract to declare product files inside a vault region"
+
+    for path in nested:
+        assert f"\n/{path}\n" in section, path
+        region = path.split("/", 1)[0]
+        # ordering is the whole point: the negation first, the re-ignore after
+        assert section.index(f"!/{region}/") < section.index(f"/{path}")
+
+
+def test_composed_gitignore_leaves_user_files_in_a_vault_region_tracked() -> None:
+    """Per-file, not per-directory: a note the user writes stays theirs."""
+    composed = apply_update._compose_gitignore(b"# rules\n", Path("/unused")).decode()
+    section = composed.split(apply_update.GITIGNORE_SECTION_BEGIN, 1)[1]
+
+    # a blanket directory ignore would sweep up anything the user put alongside
+    assert "\n/06-Resources/Dex_System/\n" not in section
+
+
 def test_composed_gitignore_vault_regions_track_the_contract() -> None:
     """Derived from the contract, so a new region cannot be forgotten here."""
     composed = apply_update._compose_gitignore(b"# rules\n", Path("/unused")).decode()

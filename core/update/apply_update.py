@@ -181,6 +181,22 @@ def _vault_mode_gitignore_section() -> str:
     lines.append("# Vault regions are the user's own content and stay tracked.")
     lines.extend(f"!/{region}/" for region in sorted(portable_contract.VAULT_REGIONS))
 
+    # Mirror of the brain-with-vault-children case above. The release also
+    # delivers product files INTO vault regions (the Dex_System reference docs
+    # under 06-Resources), and those are refreshed by every update, so tracking
+    # them puts product churn in the user's private history. Re-ignore them
+    # after the region negation, or last-match keeps them tracked. Emitted
+    # per file rather than per directory: the contract declares individual
+    # files, so a note the user writes alongside them stays theirs.
+    brain_in_regions = sorted(
+        rule.path for rule in portable_contract.RULES
+        if rule.ownership == "brain"
+        and rule.path.startswith(tuple(f"{region}/" for region in portable_contract.VAULT_REGIONS))
+    )
+    if brain_in_regions:
+        lines.append("# Product files delivered inside a vault region stay untracked.")
+        lines.extend(f"/{path}" for path in brain_in_regions)
+
     lines.append(GITIGNORE_SECTION_END)
     return "\n".join(lines)
 
