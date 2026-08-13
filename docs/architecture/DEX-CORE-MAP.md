@@ -171,7 +171,7 @@ therefore remains false.
 - PreToolUse/Read → `person-context-injector.cjs`, `company-context-injector.cjs`.
 - PreToolUse/Bash → `dex-safety-guard.sh`, `ensure-mcp-user-scope.cjs`.
 - PreToolUse/`mcp__.*` → `dex-safety-guard.sh`.
-- SessionEnd → `session-end.sh`, `vault-autocommit.cjs`.
+- SessionEnd → `session-end.sh`, `memory_mirror.py`, `vault-autocommit.cjs`.
 - Stop / Notification → a sound (`afplay`).
 
 **Dead weight / audit findings.**

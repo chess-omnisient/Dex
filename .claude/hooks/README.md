@@ -26,6 +26,7 @@ These commands are wired in `.claude/settings.json` and run independently of any
 | `PreToolUse` | `Bash` | `node .claude/hooks/ensure-mcp-user-scope.cjs` | Require an explicit scope for `claude mcp add`. |
 | `PreToolUse` | `mcp__.*` | `bash .claude/hooks/dex-safety-guard.sh` | Apply the MCP safety rules before MCP calls. |
 | `SessionEnd` | all | `"$CLAUDE_PROJECT_DIR"/.claude/hooks/session-end.sh "$transcript_path"` | Record the session-end marker and transcript reference. |
+| `SessionEnd` | all | `python3 "$CLAUDE_PROJECT_DIR/core/utils/memory_mirror.py" --vault "$CLAUDE_PROJECT_DIR"` | Copy Claude Code's per-project memory into `System/memory-mirror/` so it rides vault history and backups. |
 | `SessionEnd` | all | `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/vault-autocommit.cjs` | Safely checkpoint eligible vault changes when no mutation is active. |
 
 Settings also uses the macOS system ping for `Stop` and permission/elicitation `Notification` events. Those entries do not invoke repository hook files.

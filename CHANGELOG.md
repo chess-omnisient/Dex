@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.0] — 🧠 Claude's project notes now live in your vault (2026-08-13)
+
+Claude Code keeps a private notes folder outside Dex — every correction and local convention it has learned about your work. That folder was never saved with your vault. If it disappeared, nothing would error; sessions would just get quietly worse.
+
+**What this fixes for you:**
+
+* **Those notes are copied into your vault at the end of a Claude Code session.** They sit under System, with your other machine state, not in a folder you might share. Your existing vault history and backups cover them.
+* **If the copy stops, Dex can tell you.** A dated record in the vault is how you notice, and a checkup flags a missing or old copy instead of failing silently.
+* **A sudden wipe is not copied over.** If the live notes folder shrinks sharply, Dex leaves the vault copy alone so earlier files remain the recovery path.
+* **Notes that apply to every project on your machine stay out of this vault.** Only this project's learned notes are copied.
+
+Thanks to Josh, who found the gap and prototyped the copy.
+
 ## [1.96.2] — 🛡️ Your history saves again, and company networks get an honest answer (2026-08-13)
 
 If you're on a corporate network that intercepts secure connections — Zscaler, Netskope, most large enterprises — or on a hotel or airport captive portal, Dex's daily update check could fail and report that the release evidence was **invalid**. That wording means something specific and alarming: that the version of Dex being offered looks tampered with. It was never true. What had actually happened is that Dex couldn't verify it was really talking to GitHub, because something on your network was sitting in the middle of the connection. Worse, Dex treated it as a permanent verdict and didn't try again, so the check stayed broken for exactly the people most likely to hit it.

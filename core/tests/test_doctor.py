@@ -41,6 +41,7 @@ QUICK_IDS = [
     "brain.git",
     "topology.pre-split-archive",
     "vault.auto-commit",
+    "memory.mirror",
     "topology.migration-pending",
     "release.catalog",
     "adoption.plan",

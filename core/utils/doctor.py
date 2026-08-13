@@ -37,7 +37,14 @@ from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
 from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry, PlanRejected
 from core.transaction.journal import Journal, JournalCorruptError
-from core.utils import apple_mail_health, dex_logger, launch_agents, preflight, release_channel
+from core.utils import (
+    apple_mail_health,
+    dex_logger,
+    launch_agents,
+    memory_mirror,
+    preflight,
+    release_channel,
+)
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
@@ -596,6 +603,11 @@ QUICK_CHECKS = (
         "_probe_pre_split_archive",
     ),
     CheckDefinition("vault.auto-commit", "Vault auto-commit", "_probe_vault_auto_commit"),
+    CheckDefinition(
+        "memory.mirror",
+        "Claude project memory backup",
+        "_probe_memory_mirror",
+    ),
     CheckDefinition(
         "topology.migration-pending",
         "Brain/vault topology",
@@ -3750,6 +3762,19 @@ def _probe_pre_split_archive(context: DoctorContext) -> ProbeResult:
         "It is the one-command undo for the brain/vault conversion. Keep it for one full "
         "release cycle after conversion, then Dex can offer its receipted removal.",
     )
+
+
+def _probe_memory_mirror(context: DoctorContext) -> ProbeResult:
+    outcome = memory_mirror.inspect(
+        vault_root=context.vault_root,
+        home=context.home,
+        now=context.now,
+        env=os.environ,
+    )
+    heal = None
+    if outcome.heal_action:
+        heal = Heal(tier=2, action=outcome.heal_action, applied=False)
+    return ProbeResult(outcome.verdict, outcome.detail, heal)
 
 
 def _probe_vault_auto_commit(context: DoctorContext) -> ProbeResult:

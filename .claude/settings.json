@@ -111,6 +111,10 @@
           },
           {
             "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/memory_mirror.py\" --vault \"$CLAUDE_PROJECT_DIR\""
+          },
+          {
+            "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/vault-autocommit.cjs"
           }
         ]
