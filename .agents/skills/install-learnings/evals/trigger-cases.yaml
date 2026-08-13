@@ -1,0 +1,38 @@
+# Trigger evals for /install-learnings.
+# Capture vs apply stay separate: positives are apply/routing; capture and
+# idea-ranking must not fire this skill.
+
+skill: install-learnings
+
+positive:
+  - utterance: "Install the pending session learnings so they actually change next time."
+    expect: fire
+  - utterance: "Those session learnings are just sitting there unused — apply them."
+    expect: fire
+  - utterance: "The learnings never get used. Route the pending pile."
+    expect: fire
+
+negative:
+  - utterance: "Wrap up my day and capture what I learned."
+    expect: no-fire
+    route_to: daily-review
+    why: capture is daily-review; this skill only installs already-pending entries.
+  - utterance: "Show my Dex improvement ideas and what we should build next."
+    expect: no-fire
+    route_to: dex-backlog
+    why: product ideas are the backlog, not session-learning routing.
+
+ambiguous:
+  - utterance: "Do something with the learnings."
+    expect: ask
+    why: could mean capture (daily-review), review (dex-whats-new), or install.
+
+missing_prerequisite:
+  - utterance: "Install the pending session learnings."
+    expect: degrade
+    why: System/Session_Learnings/ is missing — say so and stop; do not invent entries.
+
+failure_recovery:
+  - utterance: "Install the pending session learnings."
+    expect: honest-failure
+    why: destination write failed or read-back lacks the rule — do not mark implemented.

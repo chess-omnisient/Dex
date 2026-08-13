@@ -80,6 +80,8 @@ Based on what you've learned, here's how to improve Dex:
 Want me to implement any of these? (Enter number)
 ```
 
+**Applying is a separate step.** Reviewing here does not install anything. If the user wants pending learnings to change next-session behaviour, run `/install-learnings` (routing table: `.claude/reference/session-learnings-routing.md`). Do not extract new learnings in that pass.
+
 **If no learnings:**
 Skip this section or show: "No session learnings captured yet. The system will learn as you use it."
 

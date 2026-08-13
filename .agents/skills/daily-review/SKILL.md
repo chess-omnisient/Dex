@@ -325,7 +325,7 @@ Scan today's conversation for learnings:
 3. **Documentation gaps** — Were there questions about how the system works?
 4. **Workflow inefficiencies** — Did any task take longer than it should?
 
-Write to `System/Session_Learnings/YYYY-MM-DD.md`.
+Write to `System/Session_Learnings/YYYY-MM-DD.md` with `**Status:** pending`. Capture only — do not install, rewrite skills, or edit `CLAUDE.md` in this step. Applying pending learnings is `/install-learnings`.
 
 Then ask: "I captured [N] learnings from today's session. Anything else you'd like to add?"
 

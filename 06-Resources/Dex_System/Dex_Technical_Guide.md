@@ -1044,8 +1044,8 @@ shipped servers remain structural-only unless a custom local Python server has t
 user-owned trust record described below.
 
 If the operating system refuses to isolate or stop a helper process — GitHub-hosted
-runners do this intermittently — the journey records `sandbox unavailable` together with
-the errno, the operation, and the path, and skips that journey rather than reporting the
+runners do this intermittently — the journey records `isolation unavailable` together with
+the error number, the operation, and the path, and skips that journey rather than reporting the
 checkup as failed. A real product failure still fails the check.
 
 ### Trusting your own servers

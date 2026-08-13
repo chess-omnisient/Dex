@@ -7,7 +7,11 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.96.3] — 📝 Unused session notes now change how Dex works next time (2026-08-13)
+## [1.97.0] — 📝 Session notes get used, career evidence is kept, and Cursor gets the same named journeys (2026-08-13)
+
+A larger release than usual: session lessons actually get installed, career evidence is kept even without a number, Claude's private project notes are copied into the vault, other assistants get an honest account of what they can run, and a checkup that used to cry wolf now says what it means. Each is written up in full below.
+
+### 📝 Unused session notes now change how Dex works next time
 
 Dex was already good at writing down what went wrong in a session. Those notes landed in a folder marked pending and stayed there. One person reached eighty-seven unused notes, the oldest ten weeks old. Every one was a real lesson. None of them changed what Dex did the next day.
 
@@ -19,7 +23,7 @@ Dex was already good at writing down what went wrong in a session. Those notes l
 
 Thanks to Josh, who showed that writing the notes down is not the same as using them, and that a routing pass is what actually moves the number.
 
-## [1.96.3] — 📒 Career evidence notes are kept, even without a number (2026-08-13)
+### 📒 Career evidence notes are kept, even without a number
 
 Career evidence was supposed to accumulate as you worked. In practice the detector only ran during `/career-coach`, only on new files, and only if the note contained a percentage, a dollar figure, a multiplier, or a short list of verbs. Influence and judgement — the kind of evidence you cannot reconstruct a year later — was dropped with no message. `/dex-doctor` had nothing to say about it.
 
@@ -32,7 +36,7 @@ Career evidence was supposed to accumulate as you worked. In practice the detect
 
 Thanks to Josh M, who found both the missing wiring and the silent metric filter.
 
-## [1.97.0] — 🧠 Claude's project notes now live in your vault (2026-08-13)
+### 🧠 Claude's project notes now live in your vault
 
 Claude Code keeps a private notes folder outside Dex — every correction and local convention it has learned about your work. That folder was never saved with your vault. If it disappeared, nothing would error; sessions would just get quietly worse.
 
@@ -44,6 +48,37 @@ Claude Code keeps a private notes folder outside Dex — every correction and lo
 * **Notes that apply to every project on your machine stay out of this vault.** Only this project's learned notes are copied.
 
 Thanks to Josh, who found the gap and prototyped the copy.
+
+### 🧭 Cursor and Codex get the named journeys — and Dex says so
+
+The README used to read as if the whole of Dex lived in Claude Code. People opening Dex in Cursor or Codex then hit a quieter product and had no way to know that was on purpose.
+
+**What this changes for you:**
+
+* **The README tells the truth about what each assistant actually gets.** Cursor, Codex, and similar apps get the vault, the tools, and the named journeys — `/daily-plan`, `/process-meetings`, and the rest. Claude Code also gets the automatic in-chat behaviour: person context when you open a file, safety gates, session learning. That fuller layer is a stated choice, not an accident.
+* **Those named journeys are generated for the other assistants.** They stay in lockstep with the Claude copies, so a new command is not Claude-only by forgetfulness.
+* **Nothing is silently missing.** If a write-up claims another assistant can do something, it has to name which layer that is. A checkup fails the release if the copies drift.
+
+### 🩺 A checkup that cried wolf now says what it means
+
+Two honesty bugs were already on the main line and belong in this release even though they landed just after v1.96.2.
+
+**What this fixes for you:**
+
+* **A missing Dex file is reported as a missing Dex file.** The checkup was replacing that diagnosis with generic packaging advice, so the useful next step disappeared.
+* **A slow search-index status check is no longer called broken.** The ten-second wait Dex already expects is treated as “could not tell,” not as a failure. A real failure still fails.
+* **Apple Mail search health is proved from the real local index.** List and read can work while search returns nothing because a separate index was never built or stopped updating. The checkup now looks at that index itself, rather than trusting one file's size and date.
+
+Thanks to Chris Jackson, who traced both the remaining doctor false alarms and the Mail search gap.
+
+### 🧪 The checks before a release can be trusted again
+
+Two failures in the pre-release checks had nothing to do with Dex and were failing real work about one run in three.
+
+**What this fixes for you:**
+
+* **A checkup journey that cannot isolate a helper process no longer fails the whole run.** When the machine hosting the check refuses to isolate or stop a helper, that one journey is skipped with a reason. A real product failure still fails the check.
+* **One test can no longer poison the next.** Leftover process state from an earlier check was making a later, unrelated check fail on the same run. That leak is closed, so a green run means the product is actually fine.
 
 ## [1.96.2] — 🛡️ Your history saves again, and company networks get an honest answer (2026-08-13)
 
