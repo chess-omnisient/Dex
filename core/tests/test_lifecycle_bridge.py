@@ -463,7 +463,7 @@ def test_lifecycle_1_2_callers_resolve_unchanged_operations() -> None:
         ),
     }
 
-    assert service.api_version == "1.4.0"
+    assert service.api_version == "1.5.0"
     assert {
         name: str(inspect.signature(getattr(service, name)))
         for name in expected_signatures
