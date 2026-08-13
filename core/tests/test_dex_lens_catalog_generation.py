@@ -242,6 +242,37 @@ def test_generator_rejects_unknown_fields_in_registry(tmp_path: Path) -> None:
     assert "unknown capabilities" in result.stderr
 
 
+def test_generator_rejects_non_kebab_host_requirement_ids(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    registry_path = tmp_path / "core/lens-catalog/registry.json"
+    data = json.loads(registry_path.read_text())
+    data["entries"][0]["compatibility"]["host_requirements"] = [
+        "quarter_goals-room-enabled"
+    ]
+    _write(registry_path, json.dumps(data))
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 1
+    assert "host_requirements item must be kebab-case" in result.stderr
+
+
+def test_generator_rejects_duplicate_host_requirement_ids(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    registry_path = tmp_path / "core/lens-catalog/registry.json"
+    data = json.loads(registry_path.read_text())
+    data["entries"][0]["compatibility"]["host_requirements"] = [
+        "skills-directory",
+        "skills-directory",
+    ]
+    _write(registry_path, json.dumps(data))
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 1
+    assert "host_requirements contains duplicate Lens catalogue ids" in result.stderr
+
+
 def test_generator_rejects_unknown_job_and_foundation_references(tmp_path: Path) -> None:
     _registry(tmp_path)
     data = json.loads((tmp_path / "core/lens-catalog/registry.json").read_text())
@@ -696,7 +727,7 @@ def test_wave3_source_partition_is_exact_and_resolves_to_unique_targets() -> Non
     registry = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
     wave3 = registry["entries"][-len(WAVE3_IDS) :]
 
-    assert registry["catalog_version"] == 2
+    assert registry["catalog_version"] == 3
     assert len(registry["jobs"]) == 11
     assert [job["job_id"] for job in registry["jobs"][-2:]] == [
         "run-my-role",

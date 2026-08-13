@@ -33,6 +33,7 @@ MINIMUM_LENS_CONTRACT = "0.1.0"
 REGISTRY_VERSION = 1
 SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+)?$")
 KEBAB = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
+CATALOG_ID = re.compile(r"^[a-z][a-z0-9-]{2,80}$")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 FOUNDATION_CAPABILITIES = frozenset(
     {
@@ -121,6 +122,16 @@ def _text_tuple(value: object, *, context: str, max_length: int = 512) -> tuple[
     if not isinstance(value, list) or not value:
         raise LensCatalogError(f"{context} must be a non-empty array")
     return tuple(_text(item, context=f"{context} item", max_length=max_length) for item in value)
+
+
+def _catalog_id_tuple(value: object, *, context: str) -> tuple[str, ...]:
+    identifiers = _text_tuple(value, context=context, max_length=81)
+    for identifier in identifiers:
+        if CATALOG_ID.fullmatch(identifier) is None:
+            raise LensCatalogError(f"{context} item must be kebab-case Lens catalogue id")
+    if len(set(identifiers)) != len(identifiers):
+        raise LensCatalogError(f"{context} contains duplicate Lens catalogue ids")
+    return identifiers
 
 
 def _relative_path(raw_path: object, *, context: str) -> str:
@@ -314,7 +325,7 @@ def _compatibility(value: object, *, context: str) -> dict[str, object]:
         "platforms": platforms,
         "needs_hooks": raw["needs_hooks"],
         "needs_mcp": raw["needs_mcp"],
-        "host_requirements": _text_tuple(
+        "host_requirements": _catalog_id_tuple(
             raw.get("host_requirements"),
             context=f"{context} compatibility host_requirements",
         ),

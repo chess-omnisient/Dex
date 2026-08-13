@@ -1,6 +1,6 @@
 {
   "registry_version": 1,
-  "catalog_version": 2,
+  "catalog_version": 3,
   "jobs": [
     {
       "job_id": "plan-my-work",
@@ -2432,7 +2432,7 @@
         "rollback_advice": "Disable the room through the capability manager; preserve the person's room content and remove only release-owned surfaced skill copies."
       },
       "compatibility": {
-        "host_requirements": ["skills-directory", "quarter_goals-room-enabled", "room-capability-manager"],
+        "host_requirements": ["skills-directory", "quarter-goals-room-enabled", "room-capability-manager"],
         "needs_hooks": false,
         "needs_mcp": true,
         "platforms": ["macos", "linux", "windows"]
@@ -2479,7 +2479,7 @@
         "rollback_advice": "Disable the room through the capability manager; preserve the person's room content and remove only release-owned surfaced skill copies."
       },
       "compatibility": {
-        "host_requirements": ["skills-directory", "quarter_goals-room-enabled", "room-capability-manager"],
+        "host_requirements": ["skills-directory", "quarter-goals-room-enabled", "room-capability-manager"],
         "needs_hooks": false,
         "needs_mcp": true,
         "platforms": ["macos", "linux", "windows"]
