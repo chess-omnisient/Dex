@@ -1,11 +1,6 @@
 ---
 name: career-coach
 description: "Personal career coach with 4 modes: weekly reports, monthly reflections, self-reviews, promotion assessments"
-hooks:
-  PostToolUse:
-    - matcher: Write
-      type: command
-      command: "node .claude/hooks/career-evidence-capture.cjs"
 ---
 
 ## Execution mode
@@ -60,7 +55,9 @@ Career and Work sources before analysis. Build a dated evidence ledger and repor
 coverage for that period; missing evidence is not missing competency. Keep facts,
 user reflections, inferences, contradictions, and coaching recommendations
 separate, with confidence tied to source coverage and freshness. Respect HR and
-manager decision boundaries. Hook output is only an unconfirmed candidate: show
+manager decision boundaries. A repository-wide Write/Edit hook may inject a
+candidate after any file written under `05-Areas/Career/Evidence/`, including
+during this skill. Hook output is only an unconfirmed candidate: show
 the exact evidence bytes and ask separately before saving. Read back every
 confirmed report, goal, history, or evidence mutation before claiming success.
 

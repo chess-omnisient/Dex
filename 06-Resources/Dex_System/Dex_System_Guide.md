@@ -586,14 +586,15 @@ You control what happens next with `entity_creation` in `System/user-profile.yam
 
 After every sync, Dex checks that each eligible attendee and company has the expected page or suggestion. `/dex-doctor` includes the same entity-engine check when you want to inspect it yourself. In Obsidian mode, meeting notes also link names to their person pages.
 
-### `/career-coach` — Auto Evidence Capture
+### Career evidence capture
 
-When `/career-coach` detects achievements during a session, it automatically captures career evidence without requiring a separate step.
+When you write or edit a file under `05-Areas/Career/Evidence/`, Dex offers it as an evidence candidate — during `/career-coach` or any other command. Notes without a percentage or dollar figure still count. Nothing is added to the evidence log until you confirm the exact preview.
 
 **What happens:**
-- Achievements mentioned during coaching are saved to `05-Areas/Career/Evidence/`
-- Evidence is tagged with relevant competencies
-- No need to run a separate capture step after the session
+- The candidate names the source file, a proposed log line, and what is uncertain
+- Influence, judgement, and stewardship notes are kept, not dropped for lacking a metric
+- `/daily-review`, weekly reviews, and 1:1 processing may ask whether to capture something; a prompt is not a saved record
+- If a Career file is skipped, Dex leaves a one-line reason; `/dex-doctor` reports recent skips
 
 ### `/daily-plan` — Quickref Generation
 

@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.96.3] — 📒 Career evidence notes are kept, even without a number (2026-08-13)
+
+Career evidence was supposed to accumulate as you worked. In practice the detector only ran during `/career-coach`, only on new files, and only if the note contained a percentage, a dollar figure, a multiplier, or a short list of verbs. Influence and judgement — the kind of evidence you cannot reconstruct a year later — was dropped with no message. `/dex-doctor` had nothing to say about it.
+
+**What this fixes for you:**
+
+* **A Career Evidence note is treated as evidence.** If you save it in that folder, Dex offers it for the evidence log whether or not you are in `/career-coach`, and whether or not it contains a number.
+* **Edits count too.** Updating an existing evidence file is no longer invisible.
+* **A skipped file leaves a reason.** If Dex does not offer a candidate, it writes a one-line explanation, and `/dex-doctor` can show recent skips instead of staying silent.
+* **The write-up now matches the behaviour.** Dex no longer says it “automatically captures” from seven channels when only evidence-folder writes are automatic, and confirmation is still required before anything is added to the log.
+
+Thanks to Josh M, who found both the missing wiring and the silent metric filter.
+
+
 ## [1.96.2] — 🛡️ Your history saves again, and company networks get an honest answer (2026-08-13)
 
 If you're on a corporate network that intercepts secure connections — Zscaler, Netskope, most large enterprises — or on a hotel or airport captive portal, Dex's daily update check could fail and report that the release evidence was **invalid**. That wording means something specific and alarming: that the version of Dex being offered looks tampered with. It was never true. What had actually happened is that Dex couldn't verify it was really talking to GitHub, because something on your network was sitting in the middle of the connection. Worse, Dex treated it as a permanent verdict and didn't try again, so the check stayed broken for exactly the people most likely to hit it.

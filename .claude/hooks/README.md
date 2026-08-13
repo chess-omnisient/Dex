@@ -25,6 +25,7 @@ These commands are wired in `.claude/settings.json` and run independently of any
 | `PreToolUse` | `Bash` | `bash .claude/hooks/dex-safety-guard.sh` | Block unsafe shell commands and redirect disallowed MCP usage. |
 | `PreToolUse` | `Bash` | `node .claude/hooks/ensure-mcp-user-scope.cjs` | Require an explicit scope for `claude mcp add`. |
 | `PreToolUse` | `mcp__.*` | `bash .claude/hooks/dex-safety-guard.sh` | Apply the MCP safety rules before MCP calls. |
+| `PostToolUse` | `Write\|Edit` | `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/career-evidence-capture.cjs` | After a Career Evidence file is written or edited, return a provenance-bearing, unconfirmed candidate. The hook never writes evidence. Skipped Career files leave a one-line reason. |
 | `SessionEnd` | all | `"$CLAUDE_PROJECT_DIR"/.claude/hooks/session-end.sh "$transcript_path"` | Record the session-end marker and transcript reference. |
 | `SessionEnd` | all | `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/vault-autocommit.cjs` | Safely checkpoint eligible vault changes when no mutation is active. |
 
@@ -38,9 +39,8 @@ These hooks are declared in skill frontmatter and exist only while that skill ru
 |---|---|---|---|---|
 | `/process-meetings` | `PostToolUse` | `Write` | `post-meeting-person-update.cjs` | Update recent interactions on existing person pages after a meeting note is written. |
 | `/daily-plan` | `Stop` | all | `daily-plan-quick-ref.cjs` | Generate `00-Inbox/Daily_Prep/YYYY-MM-DD-quickref.md` from the daily plan. |
-| `/career-coach` | `PostToolUse` | `Write` | `career-evidence-capture.cjs` | Detect possible career evidence and return a provenance-bearing, unconfirmed candidate; the hook never writes evidence. |
 
-`post-meeting-person-update.cjs` and `career-evidence-capture.cjs` are not global `PostToolUse` hooks.
+`post-meeting-person-update.cjs` is not a global `PostToolUse` hook. `career-evidence-capture.cjs` is repository-wide and path-filters to the Career Evidence folder.
 
 ## Direct and script callers
 
