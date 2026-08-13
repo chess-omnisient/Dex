@@ -22,6 +22,8 @@ Dex uses repository-enforced quality gates so unsafe changes cannot merge.
 - Hook harness tests pass.
 - Security gate passes (secret leakage detection).
 - Large-vault performance budget passes.
+- The package version matches the newest changelog entry, so a green main build
+  cannot silently skip the release its notes promise.
 
 The PII gate is merge-base-aware and diff-scoped. Fake email addresses under
 `core/tests/fixtures/**` are allowed, but tracked personal-config shapes remain blocked
