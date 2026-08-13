@@ -77,13 +77,22 @@ def _integration_status(*, installed: bool, recommended: bool = False) -> dict:
 
 
 def test_retired_pi_model_setup_is_not_shipped_or_advertised() -> None:
-    assert not [path for path in RETIRED_PI_ARTIFACTS if (REPO_ROOT / path).exists()]
+    assert not [
+        path for path in RETIRED_PI_ARTIFACTS if (REPO_ROOT / path).exists()
+    ]
 
     retired_commands = ("/ai-" + "setup", "/ai-" + "status")
-    offenders = {path: command for path in LIVE_AI_GUIDANCE for command in retired_commands if command in _read(path)}
+    offenders = {
+        path: command
+        for path in LIVE_AI_GUIDANCE
+        for command in retired_commands
+        if command in _read(path)
+    }
     assert offenders == {}
     assert ".env" in _read("core/utils/dex_logger.py")
-    assert r"LLM API key to \`.env\`" in _read(".scripts/meeting-intel/sync-from-granola.cjs")
+    assert r"LLM API key to \`.env\`" in _read(
+        ".scripts/meeting-intel/sync-from-granola.cjs"
+    )
 
 
 def test_retired_pi_usage_metrics_are_removed() -> None:
@@ -101,7 +110,10 @@ def test_retired_pi_usage_metrics_are_removed() -> None:
 
 def test_live_usage_signals_preserve_the_55_point_journey_score(monkeypatch) -> None:
     usage_log = _read("System/usage_log.md")
-    feature_names = {match.group(1) for match in re.finditer(r"- \[[ x]\] (.+)", usage_log)}
+    feature_names = {
+        match.group(1)
+        for match in re.finditer(r"- \[[ x]\] (.+)", usage_log)
+    }
     monkeypatch.setattr(
         analytics_helper,
         "load_usage_log",
@@ -130,27 +142,23 @@ def test_mcp_added_counts_as_integration_adoption(monkeypatch) -> None:
 
 
 def test_parked_rollout_and_dev_only_scripts_are_not_shipped() -> None:
-    assert not [path for path in PARKED_OR_DEV_ONLY_ARTIFACTS if (REPO_ROOT / path).exists()]
+    assert not [
+        path
+        for path in PARKED_OR_DEV_ONLY_ARTIFACTS
+        if (REPO_ROOT / path).exists()
+    ]
     assert "ritual" not in _read(".claude/skills/daily-plan/SKILL.md").lower()
 
 
-def test_email_aware_plans_do_not_silently_skip_a_broken_mail_index() -> None:
-    for relative in (
-        ".claude/skills/daily-plan/SKILL.md",
-        ".claude/skills/daily-plan/AGENT_INSTRUCTIONS.md",
-        ".claude/skills/week-review/SKILL.md",
-        ".claude/skills/week-review/AGENT_INSTRUCTIONS.md",
-    ):
-        instructions = _read(relative)
-        assert "mail.apple-search" in instructions, relative
-        assert "do not silently skip" in instructions.lower(), relative
-        assert "python3 core/utils/doctor.py --deep" in instructions, relative
-
-
 def test_live_integration_guidance_only_names_the_shipped_entrypoint() -> None:
-    dead_commands = tuple("/integrate-" + service for service in ("notion", "slack", "google"))
+    dead_commands = tuple(
+        "/integrate-" + service for service in ("notion", "slack", "google")
+    )
     offenders = {
-        path: command for path in LIVE_INTEGRATION_GUIDANCE for command in dead_commands if command in _read(path)
+        path: command
+        for path in LIVE_INTEGRATION_GUIDANCE
+        for command in dead_commands
+        if command in _read(path)
     }
     assert offenders == {}
     for path in LIVE_INTEGRATION_GUIDANCE:
@@ -198,7 +206,9 @@ def test_post_update_upgrade_points_to_integrate_mcp(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize("setup_module", (notion_setup, slack_setup, google_setup))
-def test_integration_connection_failures_point_to_integrate_mcp(monkeypatch, setup_module) -> None:
+def test_integration_connection_failures_point_to_integrate_mcp(
+    monkeypatch, setup_module
+) -> None:
     monkeypatch.setattr(setup_module, "is_installed", lambda: False)
 
     success, message = setup_module.test_connection()
@@ -208,15 +218,16 @@ def test_integration_connection_failures_point_to_integrate_mcp(monkeypatch, set
 
 
 def test_missing_anthropic_key_points_to_env_file() -> None:
-    assert (
-        dex_logger._generate_human_message("Meeting sync", "ANTHROPIC_API_KEY is missing")
-        == "API key missing — add it to your .env file"
-    )
+    assert dex_logger._generate_human_message(
+        "Meeting sync", "ANTHROPIC_API_KEY is missing"
+    ) == "API key missing — add it to your .env file"
 
 
 def test_onboarding_skips_calendar_cleanly_on_non_macos() -> None:
     flow = _read(".claude/flows/onboarding.md")
-    calendar_step = flow.split("## Calendar First (Before Step 1)", 1)[1].split("## Step 1:", 1)[0]
+    calendar_step = flow.split("## Calendar First (Before Step 1)", 1)[1].split(
+        "## Step 1:", 1
+    )[0]
 
     assert "uname -s" in calendar_step
     assert "non-macOS" in calendar_step
@@ -226,13 +237,17 @@ def test_onboarding_skips_calendar_cleanly_on_non_macos() -> None:
     assert "Do not call `calendar_list_calendars`" in calendar_step
     assert "show macOS settings guidance" in calendar_step
     assert "block onboarding" in calendar_step
-    assert calendar_step.index("uname -s") < calendar_step.index("calendar_list_calendars")
+    assert calendar_step.index("uname -s") < calendar_step.index(
+        "calendar_list_calendars"
+    )
     assert flow.index("## Calendar First (Before Step 1)") < flow.index("## Step 1:")
 
 
 def test_onboarding_confirms_calendar_identity_through_existing_validation() -> None:
     flow = _read(".claude/flows/onboarding.md")
-    calendar_step = flow.split("## Calendar First (Before Step 1)", 1)[1].split("## Step 1:", 1)[0]
+    calendar_step = flow.split("## Calendar First (Before Step 1)", 1)[1].split(
+        "## Step 1:", 1
+    )[0]
 
     assert "Before I ask you anything" in calendar_step
     assert "your actual week, organised" in calendar_step
@@ -241,14 +256,22 @@ def test_onboarding_confirms_calendar_identity_through_existing_validation() -> 
     assert "You're [name], at [domain] — right?" in calendar_step
     assert "Yes, that's right" in calendar_step
     assert "Let me correct that" in calendar_step
-    assert 'validate_and_save_step(step_number=1, step_data={"name": "[confirmed name]"})' in calendar_step
-    assert 'validate_and_save_step(step_number=4, step_data={"email_domain": "[confirmed domain]"})' in calendar_step
+    assert (
+        'validate_and_save_step(step_number=1, step_data={"name": "[confirmed name]"})'
+        in calendar_step
+    )
+    assert (
+        'validate_and_save_step(step_number=4, step_data={"email_domain": '
+        '"[confirmed domain]"})' in calendar_step
+    )
     assert "Do not bypass either validation call" in calendar_step
 
 
 def test_onboarding_keeps_conservative_identity_fallbacks() -> None:
     flow = _read(".claude/flows/onboarding.md")
-    calendar_step = flow.split("## Calendar First (Before Step 1)", 1)[1].split("## Step 1:", 1)[0]
+    calendar_step = flow.split("## Calendar First (Before Step 1)", 1)[1].split(
+        "## Step 1:", 1
+    )[0]
     name_step = flow.split("## Step 1:", 1)[1].split("## Step 2:", 1)[0]
     domain_step = flow.split("## Step 4:", 1)[1].split("## Step 5:", 1)[0]
 
@@ -278,8 +301,13 @@ def test_onboarding_narrows_roles_by_area_before_saving_existing_role_number() -
         "Something else",
     ):
         assert area in role_step
-    assert role_step.index("First ask for their AREA") < role_step.index("Then ask for their ROLE")
-    assert 'validate_and_save_step(step_number=2, step_data={"role_number": [selected id as integer]})' in role_step
+    assert role_step.index("First ask for their AREA") < role_step.index(
+        "Then ask for their ROLE"
+    )
+    assert (
+        'validate_and_save_step(step_number=2, step_data={"role_number": '
+        "[selected id as integer]})" in role_step
+    )
     assert (
         'validate_and_save_step(step_number=2, step_data={"role": '
         '"[their description]", "role_group": "Custom"})' in role_step
@@ -290,11 +318,14 @@ def test_onboarding_keeps_pillars_intentional_and_grounds_them_in_calendar_evide
     flow = _read(".claude/flows/onboarding.md")
     pillar_step = flow.split("## Step 5:", 1)[1].split("## Step 6:", 1)[0]
     unchanged_question = (
-        'Ask: "What are the 2-3 long-term areas of focus for your role? Think broad themes, not specific goals.'
+        'Ask: "What are the 2-3 long-term areas of focus for your role? '
+        "Think broad themes, not specific goals."
     )
 
     assert "run_first_week_analysis()" in pillar_step
-    assert pillar_step.index("run_first_week_analysis()") < pillar_step.index(unchanged_question)
+    assert pillar_step.index("run_first_week_analysis()") < pillar_step.index(
+        unchanged_question
+    )
     assert "`recurring_commitments`" in pillar_step
     assert "`internal_external_split`" in pillar_step
     assert "`observations`" in pillar_step
@@ -392,7 +423,10 @@ def test_onboarding_confirms_working_days_and_allows_correction() -> None:
     assert "Which days do you work?" in working_week_step
     assert "Monday to Friday" in working_week_step
     assert "confirm" in working_week_step.lower()
-    assert 'validate_and_save_step(step_number=7, step_data={"working_week": {"days": [...]}})' in working_week_step
+    assert (
+        'validate_and_save_step(step_number=7, step_data={"working_week": '
+        '{"days": [...]}})' in working_week_step
+    )
 
 
 def test_week_skills_read_the_users_working_week_for_timing() -> None:
@@ -443,7 +477,9 @@ def test_onboarding_connect_step_explains_connect_without_overpromising() -> Non
     assert "google and linear" in lowered
     assert "--allow-unvetted" in connect_step
     assert "explicit opt-in" in lowered
-    assert connect_step.index("get explicit opt-in") < connect_step.index("--allow-unvetted")
+    assert connect_step.index("get explicit opt-in") < connect_step.index(
+        "--allow-unvetted"
+    )
     for forbidden_claim in ("secure", "safe", "malware"):
         assert forbidden_claim not in lowered
 
@@ -468,7 +504,8 @@ def test_onboarding_completion_offers_the_optional_nudge_calendar() -> None:
         "Want me to put a few gentle nudges in your calendar for your first "
         "few weeks? One a day, each with something to try. They're all-day "
         "reminders marked private and free, so they never block your time or "
-        "make you look busy — and you can delete the whole thing in one tap." in completion
+        "make you look busy — and you can delete the whole thing in one tap."
+        in completion
     )
     assert "**Yes, add them**" in completion
     assert "**No thanks**" in completion
@@ -511,17 +548,6 @@ def test_core_behavior_defines_feature_status_rendering() -> None:
     assert "never invent" in section.lower()
 
 
-def test_apple_mail_setup_installs_only_the_runtime_mac_ci_proves() -> None:
-    supported_runtime = "apple-mail-mcp==0.4.3"
-    setup = _read(".claude/skills/apple-mail-setup/SKILL.md")
-    requirements = _read("requirements-dev.txt")
-
-    assert f"pipx install '{supported_runtime}'" in setup
-    assert supported_runtime in requirements
-    assert "community-maintained" in setup
-    assert "health checks and macOS CI prove compatibility" in setup
-
-
 @pytest.mark.parametrize(
     "skill_path",
     (
@@ -532,3 +558,27 @@ def test_apple_mail_setup_installs_only_the_runtime_mac_ci_proves() -> None:
 )
 def test_high_traffic_skills_follow_feature_status_rendering(skill_path: str) -> None:
     assert "`feature_status` rendering convention" in _read(skill_path)
+
+
+def test_email_aware_plans_do_not_silently_skip_a_broken_mail_index() -> None:
+    for relative in (
+        ".claude/skills/daily-plan/SKILL.md",
+        ".claude/skills/daily-plan/AGENT_INSTRUCTIONS.md",
+        ".claude/skills/week-review/SKILL.md",
+        ".claude/skills/week-review/AGENT_INSTRUCTIONS.md",
+    ):
+        instructions = _read(relative)
+        assert "mail.apple-search" in instructions, relative
+        assert "do not silently skip" in instructions.lower(), relative
+        assert "python3 core/utils/doctor.py --deep" in instructions, relative
+
+
+def test_apple_mail_setup_installs_only_the_runtime_mac_ci_proves() -> None:
+    supported_runtime = "apple-mail-mcp==0.4.3"
+    setup = _read(".claude/skills/apple-mail-setup/SKILL.md")
+    requirements = _read("requirements-dev.txt")
+
+    assert f"pipx install '{supported_runtime}'" in setup
+    assert supported_runtime in requirements
+    assert "community-maintained" in setup
+    assert "health checks and macOS CI prove compatibility" in setup
