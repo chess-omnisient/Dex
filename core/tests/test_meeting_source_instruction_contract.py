@@ -85,10 +85,12 @@ def test_meeting_source_instruction_journey_matches_the_profile_contract() -> No
         "## Step 1:",
         "## Step 3: Update Person Pages",
     )
-    adapter_step = _section(
-        PROCESS_ADAPTER.read_text(encoding="utf-8"),
-        "### Step 1:",
-        "### Step 3: Update Person Pages",
+    adapter_step = (
+        PROCESS_ADAPTER.read_text(encoding="utf-8")
+        + "\n"
+        + (REPO_ROOT / ".agents/skills/process-meetings/AGENT_INSTRUCTIONS.md").read_text(
+            encoding="utf-8"
+        )
     )
     _assert_local_source_contract(process_step)
     _assert_local_source_contract(adapter_step)

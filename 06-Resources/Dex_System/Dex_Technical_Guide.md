@@ -21,7 +21,7 @@
 10. [Design Constraints](#design-constraints)
 
 **Related Guides:**
-- [Cursor Compatibility](Cursor_Compatibility.md) - Working with both Cursor and Claude Code
+- [What each assistant can do](../../README.md#what-you-get-with-each-assistant) — capability tiers (Tier 0 Vault through Tier 3 Full). Claude Code is the Tier 3 reference.
 
 ---
 

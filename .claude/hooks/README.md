@@ -1,6 +1,6 @@
 # Claude Code hooks
 
-These hooks provide deterministic lifecycle behavior for Claude Code. Cursor does not run Claude Code hooks.
+These hooks provide deterministic lifecycle behavior for Claude Code (**Tier 3 Full**). Cursor, Codex, and other Agent Skills harnesses do not run Claude Code hooks; they stop at **Tier 2 Skills**. The honest split of in-turn hooks vs already-scheduled jobs is in [`docs/architecture/HARNESS-CAPABILITY.md`](../../docs/architecture/HARNESS-CAPABILITY.md). Do not mass-migrate hooks off Claude without that investigation.
 
 The wiring sources of truth are:
 
