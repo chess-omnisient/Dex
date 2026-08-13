@@ -58,6 +58,7 @@ RELEASE_BUILD_INPUTS = (
     ".scripts/lib/tests/entity-pages.test.cjs",
     "06-Resources/Dex_System/Dex_Technical_Guide.md",
     *DOCS_BRIDGE_PATHS,
+    "docs/UPDATE-RESCUE.md",
     "package.json",
     "requirements.txt",
     "requirements-dev.txt",

@@ -7,6 +7,16 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.96.1] — 🔎 Lens can read every role and planning capability (2026-08-13)
+
+The v1.96.0 catalogue was correctly signed but Lens refused it before deployment: two quarterly-planning requirements used Dex's internal underscore spelling instead of the public catalogue's hyphenated ID format. The canonical Lens URL stayed on the already-proven v1.95.2 catalogue, so nobody received the rejected file.
+
+**What this fixes for you:**
+
+* **The complete 55-capability catalogue now uses the exact contract Lens reads.** Quarterly planning and review keep their real room dependency, expressed as the valid `quarter-goals-room-enabled` requirement.
+* **The producer now catches this class of mismatch before signing.** Host requirements must use Lens catalogue IDs, duplicates are refused, and the exported cross-repository schema carries the same identifier and uniqueness rules as Lens's runtime verifier.
+* **The correction supersedes the rejected signed file honestly.** Catalogue version 3 replaces version 2 rather than rewriting the published v1.96.0 artifact.
+
 ## [1.96.0] — 🧭 Lens can now find the Dex built for your role (2026-08-12)
 
 Dex Lens is the private guide that looks at your own AI setup and suggests useful Dex capabilities without changing anything. Its first expansion covered the everyday work almost everyone shares. This release adds the next layer: thirty adoptable capabilities for sales, product, marketing, engineering, finance, customer success, operations, design, career development, and quarterly planning.

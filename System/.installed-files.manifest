@@ -908,6 +908,7 @@ core/paths.py
 core/portable_contract.py
 core/provision-contract.json
 core/provision.cjs
+core/provision_transaction.py
 core/ritual_intelligence/__init__.py
 core/ritual_intelligence/__main__.py
 core/ritual_intelligence/actions.py
@@ -1133,6 +1134,7 @@ core/tests/test_pr_report.py
 core/tests/test_preflight_paths.py
 core/tests/test_process_meetings_soft_commitment_wiring.py
 core/tests/test_provision_parity.py
+core/tests/test_provision_transaction.py
 core/tests/test_qmd_query_grep_fallback.py
 core/tests/test_relationship_radar_skill.py
 core/tests/test_relationships_feed.py
