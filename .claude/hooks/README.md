@@ -28,6 +28,7 @@ These commands are wired in `.claude/settings.json` and run independently of any
 | `PostToolUse` | `Write\|Edit` | `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/career-evidence-capture.cjs` | After a Career Evidence file is written or edited, return a provenance-bearing, unconfirmed candidate. The hook never writes evidence. Skipped Career files leave a one-line reason. |
 | `Stop` | all | `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/install-learnings.sh"` | When unused session learnings have piled up (8 pending and the oldest is at least 14 days), block Stop once per day so they get installed or honestly dropped. Capture stays separate. |
 | `SessionEnd` | all | `"$CLAUDE_PROJECT_DIR"/.claude/hooks/session-end.sh "$transcript_path"` | Record the session-end marker and transcript reference. |
+| `SessionEnd` | all | `python3 "$CLAUDE_PROJECT_DIR/core/utils/memory_mirror.py" --vault "$CLAUDE_PROJECT_DIR"` | Copy Claude Code's per-project memory into `System/memory-mirror/` so it rides vault history and backups. |
 | `SessionEnd` | all | `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/vault-autocommit.cjs` | Safely checkpoint eligible vault changes when no mutation is active. |
 
 Settings also uses the macOS system ping for `Stop` and permission/elicitation `Notification` events. The ping entries do not invoke repository hook files. The `Stop` install-learnings wrapper above does.

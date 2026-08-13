@@ -660,6 +660,13 @@
       "note": "SR1 #150: tracked reference-schema templates carrying env-var references; installed if absent, never overwritten once user-owned"
     },
     {
+      "id": "vault-memory-mirror",
+      "path": "System/memory-mirror",
+      "kind": "dir",
+      "ownership": "vault",
+      "note": "user-owned Claude Code per-project memory copy; machine state under System/, never a shared PARA folder; updates never write it"
+    },
+    {
       "id": "seed-pillars-example",
       "path": "System/pillars.example.yaml",
       "kind": "file",

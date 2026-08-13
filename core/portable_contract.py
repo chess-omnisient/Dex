@@ -328,6 +328,14 @@ RULES: tuple[Rule, ...] = (
     # ownership — these rules give denied paths their owner).
     _r("vault-env", ".env", "file", "vault", "raw secret authority (SR1 #150 model)"),
     _r("vault-credentials", "System/credentials", "dir", "vault", "secrets; hard-denied"),
+    _r(
+        "vault-memory-mirror",
+        "System/memory-mirror",
+        "dir",
+        "vault",
+        "user-owned Claude Code per-project memory copy; machine state under "
+        "System/, never a shared PARA folder; updates never write it",
+    ),
     _r("vault-mcp-json", ".mcp.json", "file", "vault",
        "REPORT-ONLY except the explicitly previewed, user-approved, add-only "
        "mcp-registration lifecycle transaction and the sole bridge-only "

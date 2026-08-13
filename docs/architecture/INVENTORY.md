@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 4d2be43c1032ae721a9b1d7f61ef19b4af427c93bfd03530befe2e0e922fc06a -->
+<!-- Content SHA-256: REGENERATE -->
 
 # Architecture Inventory
 
@@ -155,7 +155,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 | `brain` | 45 | `replace` |
 | `seed` | 38 | `write-if-absent` |
 | `generated` | 9 | `regenerate` |
-| `vault` | 17 | `never` |
+| `vault` | 18 | `never` |
 | `runtime` | 14 | `never` |
 
 <details><summary><code>brain</code> declared paths (45)</summary>
@@ -265,7 +265,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 </details>
 
-<details><summary><code>vault</code> declared paths (17)</summary>
+<details><summary><code>vault</code> declared paths (18)</summary>
 
 - `.claude/skills-custom` (dir; `vault-skills-custom`)
 - `.env` (file; `vault-env`)
@@ -281,6 +281,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `CLAUDE-custom.md` (file; `vault-claude-custom`)
 - `System/credentials` (dir; `vault-credentials`)
 - `System/folder-paths.yaml` (file; `vault-folder-paths`)
+- `System/memory-mirror` (dir; `vault-memory-mirror`)
 - `System/trusted-mcps.yaml` (file; `vault-trusted-mcps`)
 - `core/mcp-custom` (dir; `vault-mcp-custom`)
 - `core/mcp-premium` (dir; `vault-mcp-premium`)
