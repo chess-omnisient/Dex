@@ -1651,6 +1651,56 @@ def test_composed_gitignore_appends_contract_derived_vault_section() -> None:
     assert "\n/.claude/\n" not in section
 
 
+def test_composed_shipped_gitignore_saves_user_files_and_excludes_product_files(
+    tmp_path: Path,
+) -> None:
+    """Exercise the installed vault contract through Git, not generated text."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _git(vault, "init", "--quiet")
+    _write(
+        vault,
+        ".gitignore",
+        apply_update.COMPOSERS[".gitignore"](
+            (REPO_ROOT / ".gitignore").read_bytes(),
+            vault,
+        ),
+    )
+
+    user_files = {
+        f"{region}/user-note.md" for region in portable_contract.VAULT_REGIONS
+    }
+    for relative in user_files:
+        _write(vault, relative, b"user-owned\n")
+
+    product_file = "06-Resources/Dex_System/Dex_System_Guide.md"
+    customization = ".claude/skills-custom/mine/SKILL.md"
+    secret = ".env"
+    _write(vault, product_file, b"release-owned\n")
+    _write(vault, customization, b"user customization\n")
+    _write(vault, secret, b"API_KEY=never-stage\n")
+
+    _git(vault, "add", "-A", "--", *portable_contract.VAULT_REGIONS)
+    _git(vault, "add", "-A", "--", customization)
+    staged = set(_git(vault, "diff", "--cached", "--name-only").splitlines())
+
+    assert user_files <= staged
+    assert customization in staged
+    assert product_file not in staged
+    assert secret not in staged
+
+    product_ignored = subprocess.run(
+        ["git", "-C", str(vault), "check-ignore", "--quiet", "--", product_file],
+        check=False,
+    )
+    secret_ignored = subprocess.run(
+        ["git", "-C", str(vault), "check-ignore", "--quiet", "--", secret],
+        check=False,
+    )
+    assert product_ignored.returncode == 0
+    assert secret_ignored.returncode == 0
+
+
 def test_composed_gitignore_reincludes_every_vault_region() -> None:
     """The distribution file ignores the PARA folders; a vault must track them.
 
