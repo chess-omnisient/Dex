@@ -123,7 +123,8 @@ Report findings:
 #### Match capture identity to Calendar
 
 For a synced note with an aware ISO `capture_started_at`, call
-`calendar_get_events_with_attendees` for that date, then call the Work MCP
+`calendar_get_events_with_attendees` for that date after applying CLAUDE.md's
+**Calendar response confidence contract**, then call the Work MCP
 `match_capture_to_calendar` tool with the capture title, start time, attendees,
 and the Calendar response's `events` array as `calendar_events` (not the whole
 response object). Use a matched result's **identity only** (title, normalized

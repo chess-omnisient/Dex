@@ -19,6 +19,9 @@ CALENDAR_EXECUTION_FILES = {
     "daily-plan": REPO_ROOT / ".claude/skills/daily-plan/AGENT_INSTRUCTIONS.md",
     "daily-review": REPO_ROOT / ".claude/skills/daily-review/AGENT_INSTRUCTIONS.md",
     "meeting-prep": REPO_ROOT / ".claude/skills/meeting-prep/SKILL.md",
+    "process-meetings": (
+        REPO_ROOT / ".claude/skills/process-meetings/AGENT_INSTRUCTIONS.md"
+    ),
     "week-plan": REPO_ROOT / ".claude/skills/week-plan/SKILL.md",
     "week-review": REPO_ROOT / ".claude/skills/week-review/AGENT_INSTRUCTIONS.md",
 }
@@ -39,9 +42,6 @@ DELEGATED_CALENDAR_SKILLS = {
 NON_CALENDAR_EXECUTION_FILES = {
     "meeting-prep delegated gathering": (
         REPO_ROOT / ".claude/skills/meeting-prep/AGENT_INSTRUCTIONS.md"
-    ),
-    "process-meetings delegated processing": (
-        REPO_ROOT / ".claude/skills/process-meetings/AGENT_INSTRUCTIONS.md"
     ),
 }
 

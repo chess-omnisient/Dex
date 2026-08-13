@@ -15,6 +15,7 @@ def test_process_meetings_calls_calendar_and_deterministic_matcher() -> None:
     assert "capture_started_at" in text
     assert "calendar_get_events_with_attendees" in text
     assert "match_capture_to_calendar" in text
+    assert "Calendar response confidence contract" in text
     assert "`events` array" in text
     assert "identity only" in text.casefold()
     assert "join URLs" in text
@@ -33,6 +34,7 @@ def test_codex_adapter_calls_the_same_matcher_with_identity_only() -> None:
     assert "capture_started_at" in text
     assert "calendar_get_events_with_attendees" in text
     assert "match_capture_to_calendar" in text
+    assert "Calendar response confidence contract" in text
     assert "`events` array" in text
     assert "identity only" in text.casefold()
     assert "join URLs" in text

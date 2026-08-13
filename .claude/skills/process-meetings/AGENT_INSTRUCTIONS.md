@@ -121,7 +121,8 @@ policy.
 For each synced note with an ISO `capture_started_at` value that includes `Z`
 or a numeric UTC offset:
 
-1. Call `calendar_get_events_with_attendees` for that calendar date (fetch once
+1. Apply CLAUDE.md's **Calendar response confidence contract**, then call
+   `calendar_get_events_with_attendees` for that calendar date (fetch once
    per date and reuse the result).
 2. Call `match_capture_to_calendar` with a `capture` containing only the note's
    `title`, `capture_started_at` as `start_time`, and attendee identities, plus
