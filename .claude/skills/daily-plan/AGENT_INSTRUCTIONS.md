@@ -111,15 +111,22 @@ from them; triage is an interactive step in the main conversation.
 
 ### 1.9 Email Intelligence (if connected)
 
-Check `System/integrations/config.yaml`. If an email integration is enabled
-(for example `google-workspace.enabled: true`) and its MCP is healthy:
+Check `System/integrations/config.yaml`. Also treat a registered `apple-mail-mcp`
+server as connected. Before querying any connected email source, run
+`python3 core/utils/doctor.py --deep`; Apple Mail search is usable only when the
+`mail.apple-search` check reports `OK` / `feature_status: ok`.
+
+If the source is connected and healthy:
 
 - Get unread count and priority emails
 - Flag emails needing reply (received more than 48 hours ago, from key contacts
   in `05-Areas/People/`)
 - Surface threads involving the target date's meeting attendees
 
-If not connected or unhealthy, skip silently.
+For Apple Mail, do not interpret an empty search as an empty mailbox unless that
+check is OK. If a connected source is broken or unknown, **do not silently skip**:
+report it under `Sources skipped` with Doctor's `user_message` or fix path. If the
+source is not connected (`OFF`), omit it without noise.
 
 ### 1.10 Chat Intelligence (if connected)
 

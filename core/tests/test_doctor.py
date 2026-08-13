@@ -68,6 +68,7 @@ DEEP_IDS = [
     "config.meeting_sources",
     "update.post-canary",
     "calendar.access",
+    "mail.apple-search",
     "qmd.live",
     "integrations.enabled",
     "mcp.importable",
@@ -4025,6 +4026,44 @@ def test_calendar_sandbox_failure_is_unknown(monkeypatch, context):
     )
 
     assert doctor._probe_calendar_access(context).verdict == "UNKNOWN"
+
+
+def test_apple_mail_search_is_a_deep_check_and_adapts_the_focused_probe(
+    monkeypatch,
+    context,
+):
+    assert "mail.apple-search" in DEEP_IDS
+    definition = next(check for check in doctor.DEEP_CHECKS if check.id == "mail.apple-search")
+    assert definition.probe == "_probe_apple_mail_search"
+
+    observed = {}
+
+    def probe(adapter_context):
+        observed["context"] = adapter_context
+        return doctor.apple_mail_health.Result(
+            "BROKEN",
+            "Index cannot answer searches",
+            action="Rebuild it",
+            feature_status="broken",
+            user_message="Mail search needs attention.",
+        )
+
+    monkeypatch.setattr(doctor.apple_mail_health, "probe", probe)
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: True)
+
+    result = doctor._probe_apple_mail_search(context)
+
+    assert result.verdict == "BROKEN"
+    assert result.detail == "Index cannot answer searches"
+    assert result.feature_status == "broken"
+    assert result.user_message == "Mail search needs attention."
+    assert result.heal.action == "Rebuild it"
+    assert observed["context"].home == context.home
+    assert observed["context"].vault_root == context.vault_root
+    assert observed["context"].project_config_path == context.vault_root / ".mcp.json"
+    assert observed["context"].macos is True
+    assert observed["context"].cli_present is True
 
 
 def test_calendar_permission_adapter_preserves_eventkit_status(monkeypatch, context):
