@@ -1252,13 +1252,28 @@ def test_raising_probe_becomes_unknown_and_main_still_returns_valid_json(monkeyp
 
 
 @pytest.mark.parametrize(
-    "error",
+    ("error", "guidance"),
     [
-        ModuleNotFoundError("No module named 'yaml'"),
-        RuntimeError("subprocess failed: ModuleNotFoundError: No module named 'EventKit'"),
+        (
+            ModuleNotFoundError("No module named 'yaml'"),
+            "Python packages not installed (missing module 'yaml') — run /dex-update "
+            "(or pip install -r requirements.txt) then re-run /dex-doctor",
+        ),
+        (
+            RuntimeError("subprocess failed: ModuleNotFoundError: No module named 'EventKit'"),
+            "Python packages not installed (missing module 'EventKit') — run /dex-update "
+            "(or pip install -r requirements.txt) then re-run /dex-doctor",
+        ),
+        (
+            RuntimeError("subprocess failed: ModuleNotFoundError: No module named 'core.paths'"),
+            "Dex's own code could not be loaded (missing module 'core.paths'). "
+            "This is a Dex checkup fault, not a missing Python package.",
+        ),
     ],
 )
-def test_missing_optional_packages_have_actionable_unknown_detail(monkeypatch, context, error):
+def test_missing_modules_have_truthful_actionable_unknown_detail(
+    monkeypatch, context, error, guidance
+):
     _stub_probes(monkeypatch)
 
     def missing_dependency(_context):
@@ -1268,12 +1283,9 @@ def test_missing_optional_packages_have_actionable_unknown_detail(monkeypatch, c
 
     report = doctor.collect(context=context)
 
-    guidance = (
-        "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
-        "then re-run /dex-doctor"
-    )
     assert _check(report, "vault.configs")["verdict"] == "UNKNOWN"
-    assert _check(report, "vault.configs")["detail"] == guidance + "."
+    expected_detail = guidance if guidance.endswith(".") else guidance + "."
+    assert _check(report, "vault.configs")["detail"] == expected_detail
     assert report["instruments"]["failed"] == [{"id": "vault.configs", "error": guidance}]
 
 
@@ -1291,7 +1303,8 @@ def test_probe_owned_unknown_missing_package_detail_is_actionable(monkeypatch, c
     report = doctor.collect(deep=True, context=context)
 
     assert _check(report, "calendar.access")["detail"] == (
-        "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
+        "Python packages not installed (missing module 'EventKit') — run /dex-update "
+        "(or pip install -r requirements.txt) "
         "then re-run /dex-doctor."
     )
     assert report["instruments"]["failed"] == []
@@ -1518,7 +1531,8 @@ def test_cli_still_emits_json_when_yaml_is_not_importable(tmp_path):
     assert result.returncode == 0
     report = json.loads(result.stdout)
     guidance = (
-        "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
+        "Python packages not installed (missing module 'yaml') — run /dex-update "
+        "(or pip install -r requirements.txt) "
         "then re-run /dex-doctor."
     )
     for check_id in ("vault.configs", "customizations.skills", "customizations.mcp"):
@@ -3756,6 +3770,43 @@ def test_smoke_harness_exit_two_becomes_an_unknown_failed_instrument(monkeypatch
     assert _check(report, "doctor.self")["verdict"] == "BROKEN"
 
 
+def test_collect_preserves_smokes_missing_dex_module_diagnosis(monkeypatch, context):
+    _stub_probes(monkeypatch, exclude={"smoke.journeys"})
+    payload = {
+        "schema_version": 1,
+        "generated_at": NOW.isoformat(),
+        "journeys": [
+            {
+                "id": "configs",
+                "verdict": "UNKNOWN",
+                "detail": "Dex's own code could not be loaded (No module named 'core'). "
+                "This is a Dex checkup fault, not a missing Python package.",
+                "duration_ms": 1,
+            }
+        ],
+        "summary": {"ok": 0, "broken": 0, "unknown": 1, "off": 0},
+    }
+    monkeypatch.setattr(
+        doctor.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(payload),
+            stderr="",
+        ),
+    )
+
+    report = doctor.collect(deep=True, context=context)
+
+    assert _check(report, "smoke.journeys")["detail"] == (
+        "configs [UNKNOWN]: Dex's own code could not be loaded (No module named 'core'). "
+        "This is a Dex checkup fault, not a missing Python package."
+    )
+    assert report["instruments"]["failed"] == []
+    assert _check(report, "doctor.self")["verdict"] == "OK"
+
+
 def test_granola_no_key_is_off_and_api_400_is_broken(monkeypatch, context):
     monkeypatch.setattr(doctor, "_granola_api_key", lambda _context: None)
     monkeypatch.setattr(
@@ -4104,6 +4155,61 @@ def test_qmd_respects_opt_in_and_reports_live_status_failures(monkeypatch, conte
     assert doctor._probe_qmd_live(context).verdict == "OK"
 
 
+def test_qmd_timeout_is_unknown_without_breaking_doctor_self(monkeypatch, context):
+    _stub_probes(monkeypatch, exclude={"qmd.live"})
+    _write_mcp_config(context, {"qmd": {"command": "qmd", "args": ["mcp"]}})
+    monkeypatch.setattr(doctor, "_qmd_binary", lambda _context: "/tmp/qmd")
+
+    def time_out(_binary):
+        raise subprocess.TimeoutExpired(["/tmp/qmd", "status"], timeout=10)
+
+    monkeypatch.setattr(doctor, "_qmd_status", time_out)
+
+    report = doctor.collect(deep=True, context=context)
+
+    qmd = _check(report, "qmd.live")
+    assert qmd["verdict"] == "UNKNOWN"
+    assert "10 seconds" in qmd["detail"]
+    assert report["instruments"]["failed"] == []
+    assert _check(report, "doctor.self")["verdict"] == "OK"
+
+
+def test_qmd_unexpected_exception_still_breaks_doctor_self(monkeypatch, context):
+    _stub_probes(monkeypatch, exclude={"qmd.live"})
+    _write_mcp_config(context, {"qmd": {"command": "qmd", "args": ["mcp"]}})
+    monkeypatch.setattr(doctor, "_qmd_binary", lambda _context: "/tmp/qmd")
+    monkeypatch.setattr(
+        doctor,
+        "_qmd_status",
+        lambda _binary: (_ for _ in ()).throw(RuntimeError("unexpected qmd adapter failure")),
+    )
+
+    report = doctor.collect(deep=True, context=context)
+
+    assert _check(report, "qmd.live")["verdict"] == "UNKNOWN"
+    assert report["instruments"]["failed"] == [
+        {"id": "qmd.live", "error": "unexpected qmd adapter failure"}
+    ]
+    assert _check(report, "doctor.self")["verdict"] == "BROKEN"
+
+
+def test_qmd_nonzero_status_is_broken_without_breaking_doctor_self(monkeypatch, context):
+    _stub_probes(monkeypatch, exclude={"qmd.live"})
+    _write_mcp_config(context, {"qmd": {"command": "qmd", "args": ["mcp"]}})
+    monkeypatch.setattr(doctor, "_qmd_binary", lambda _context: "/tmp/qmd")
+    monkeypatch.setattr(
+        doctor,
+        "_qmd_status",
+        lambda _binary: (False, "index metadata is corrupt"),
+    )
+
+    report = doctor.collect(deep=True, context=context)
+
+    assert _check(report, "qmd.live")["verdict"] == "BROKEN"
+    assert report["instruments"]["failed"] == []
+    assert _check(report, "doctor.self")["verdict"] == "OK"
+
+
 def test_qmd_adapters_use_existing_discovery_and_status_command(monkeypatch, context):
     from core.utils import qmd_query
 
@@ -4292,14 +4398,45 @@ def test_mcp_importable_runs_registered_core_servers_in_subprocess(monkeypatch, 
     assert doctor._probe_mcp_importable(context).verdict == "OK"
     assert calls == [("core.mcp.work_server", sys.executable)]
 
+
+@pytest.mark.parametrize(
+    ("subprocess_detail", "expected_detail", "expected_heal"),
+    [
+        (
+            "ModuleNotFoundError: No module named 'core.paths'",
+            "Dex's own code could not be loaded (missing module 'core.paths')",
+            "Run /dex-update to restore Dex's own code, then re-run /dex-doctor.",
+        ),
+        (
+            "ModuleNotFoundError: No module named 'yaml'",
+            "missing module 'yaml'",
+            "Reinstall missing MCP dependency 'yaml' into the vault .venv, then re-run /dex-doctor.",
+        ),
+    ],
+)
+def test_mcp_importable_gives_truthful_missing_module_remediation(
+    monkeypatch, context, subprocess_detail, expected_detail, expected_heal
+):
+    mcp_dir = context.vault_root / "core" / "mcp"
+    mcp_dir.mkdir(parents=True)
+    server = mcp_dir / "work_server.py"
+    server.touch()
+    _write_mcp_config(
+        context,
+        {"work-mcp": {"command": sys.executable, "args": [str(server)]}},
+    )
     monkeypatch.setattr(
         doctor,
         "_mcp_import_check",
-        lambda _context, _module, _interpreter: (False, "ImportError: missing package"),
+        lambda _context, _module, _interpreter: (False, subprocess_detail),
     )
+
     result = doctor._probe_mcp_importable(context)
+
     assert result.verdict == "BROKEN"
-    assert "ImportError" in result.detail
+    assert expected_detail in result.detail
+    assert result.heal is not None
+    assert result.heal.action == expected_heal
 
 
 def test_mcp_import_subprocess_uses_an_ephemeral_vault(monkeypatch, context):

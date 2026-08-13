@@ -223,6 +223,24 @@ def test_missing_anthropic_key_points_to_env_file() -> None:
     ) == "API key missing — add it to your .env file"
 
 
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        (
+            "subprocess failed: ModuleNotFoundError: No module named 'core.paths'",
+            "Work MCP can't start: Dex's own code could not be loaded "
+            "(missing module 'core.paths'); this is a Dex fault, not a missing Python package",
+        ),
+        (
+            "subprocess failed: ModuleNotFoundError: No module named 'yaml'",
+            "Work MCP can't start: missing Python package 'yaml'",
+        ),
+    ],
+)
+def test_logger_names_missing_modules_truthfully(message: str, expected: str) -> None:
+    assert dex_logger._generate_human_message("Work MCP", message) == expected
+
+
 def test_onboarding_skips_calendar_cleanly_on_non_macos() -> None:
     flow = _read(".claude/flows/onboarding.md")
     calendar_step = flow.split("## Calendar First (Before Step 1)", 1)[1].split(
