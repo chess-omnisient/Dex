@@ -191,6 +191,7 @@ def test_claim_executes_only_through_transaction_and_is_idempotent(
         ("automation_id", "../smoke", "automation_id"),
         ("owner_id", "another-app", "Dex Solo"),
         ("plist_relative_path", "/Library/LaunchAgents/x.plist", "relative"),
+        ("plist_relative_path", "Library/LaunchAgents/..plist", "canonical"),
         ("plist_sha256", "A" * 64, "sha256"),
         ("launchd_state", "loaded", "unloaded"),
     ],

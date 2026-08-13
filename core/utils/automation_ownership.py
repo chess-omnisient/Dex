@@ -79,6 +79,7 @@ def _plist_relative(value: object) -> str:
         or candidate.parts[:2] != ("Library", "LaunchAgents")
         or any(part in {"", ".", ".."} for part in candidate.parts)
         or not candidate.name.endswith(".plist")
+        or _ID.fullmatch(candidate.name.removesuffix(".plist")) is None
     ):
         raise AutomationOwnershipError("automation plist path must be a canonical relative Library/LaunchAgents path")
     return value

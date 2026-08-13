@@ -1045,8 +1045,6 @@ def render_missing_companies_compatibility_pin(
     *,
     contract_path: Path | str | None = None,
 ) -> str | None:
-    import yaml
-
     """Render the one-time Companies compatibility pin without rewriting profile prose.
 
     ``None`` means the profile already has an explicit or legacy opinion.
@@ -1055,6 +1053,8 @@ def render_missing_companies_compatibility_pin(
     map also retain the earlier Career/Quarter bridge defaults in the same
     transaction; partial maps gain only the Companies pin.
     """
+    import yaml
+
     try:
         profile = yaml.safe_load(original) or {}
     except yaml.YAMLError as exc:
@@ -1137,9 +1137,9 @@ def set_enabled(
     profile_path: Path | str | None = None,
     contract_path: Path | str | None = None,
 ) -> dict[str, Any]:
+    """Persist one room state and immediately reconcile its surfaced assets."""
     import yaml
 
-    """Persist one room state and immediately reconcile its surfaced assets."""
     if not isinstance(room_enabled, bool):
         raise CapabilityError("enabled state must be true or false")
     surfaces = surfaces_for(room, contract_path=contract_path)
