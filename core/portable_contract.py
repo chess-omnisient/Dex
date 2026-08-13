@@ -334,6 +334,19 @@ RULES: tuple[Rule, ...] = (
     _r("vault-trusted-mcps", "System/trusted-mcps.yaml", "file", "vault"),
 )
 
+
+def brain_paths_inside_vault_regions() -> tuple[str, ...]:
+    """Release-owned paths nested inside otherwise user-owned vault regions."""
+    region_prefixes = tuple(f"{region}/" for region in VAULT_REGIONS)
+    return tuple(
+        sorted(
+            rule.path
+            for rule in RULES
+            if rule.ownership == "brain" and rule.path.startswith(region_prefixes)
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # Capability rooms (Decision C, Option 2). The meetings/people/tasks spine is
 # NOT a capability — it is always on and has no registry entry by design.

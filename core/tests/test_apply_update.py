@@ -1731,16 +1731,10 @@ def test_composed_gitignore_reignores_product_files_inside_vault_regions() -> No
     composed = apply_update._compose_gitignore(b"# rules\n", Path("/unused")).decode()
     section = composed.split(apply_update.GITIGNORE_SECTION_BEGIN, 1)[1]
 
-    nested = [
-        rule.path for rule in portable_contract.RULES
-        if rule.ownership == "brain"
-        and rule.path.startswith(
-            tuple(f"{region}/" for region in portable_contract.VAULT_REGIONS)
-        )
-    ]
-    assert nested, "expected the contract to declare product files inside a vault region"
+    brain_paths = portable_contract.brain_paths_inside_vault_regions()
+    assert brain_paths, "expected product files inside a vault region"
 
-    for path in nested:
+    for path in brain_paths:
         assert f"\n/{path}\n" in section, path
         region = path.split("/", 1)[0]
         # ordering is the whole point: the negation first, the re-ignore after
