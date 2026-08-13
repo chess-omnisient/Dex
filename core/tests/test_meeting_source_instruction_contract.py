@@ -52,6 +52,8 @@ def _assert_local_source_contract(body: str) -> None:
         "granola_id",
         "wispr_id",
         "multiple",
+        "mismatch",
+        "non-scalar",
         "manual note",
     ):
         assert required in body
@@ -77,12 +79,12 @@ def test_meeting_source_instruction_journey_matches_the_profile_contract() -> No
 
     process_step = _section(
         PROCESS_AGENT.read_text(encoding="utf-8"),
-        "## Step 1: Check Background Sync Status",
+        "## Step 1:",
         "## Step 3: Update Person Pages",
     )
     adapter_step = _section(
         PROCESS_ADAPTER.read_text(encoding="utf-8"),
-        "### Step 1: Check Background Sync Status",
+        "### Step 1:",
         "### Step 3: Update Person Pages",
     )
     _assert_local_source_contract(process_step)
@@ -105,7 +107,8 @@ def test_contract_helper_rejects_removed_configured_source_lookup() -> None:
     valid = (
         "meeting_sources notes_folder vault-relative provider-neutral "
         "00-Inbox/Meetings missing malformed absolute symlink external service "
-        "non-empty scalar ending in `_id` granola_id wispr_id multiple manual note"
+        "non-empty scalar ending in `_id` granola_id wispr_id multiple mismatch "
+        "non-scalar manual note"
     )
     without_lookup = valid.replace("meeting_sources", "")
 
@@ -123,7 +126,8 @@ def test_contract_helper_rejects_removed_provider_neutral_capture_ids() -> None:
     valid = (
         "meeting_sources notes_folder vault-relative provider-neutral "
         "00-Inbox/Meetings missing malformed absolute symlink external service "
-        "non-empty scalar ending in `_id` granola_id wispr_id multiple manual note"
+        "non-empty scalar ending in `_id` granola_id wispr_id multiple mismatch "
+        "non-scalar manual note"
     )
     granola_only = valid.replace("ending in `_id`", "fixed key").replace(
         "wispr_id", ""

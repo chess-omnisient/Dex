@@ -64,13 +64,15 @@ function personPage(name, region = true) {
   ].join('\n');
 }
 
-function meetingNote(vault, name = 'roadmap.md', granolaId = null) {
+function meetingNote(vault, name = 'roadmap.md', granolaId = null, extraFrontmatter = []) {
   const meeting = path.join(vault, '00-Inbox', 'Meetings', name);
+  fs.mkdirSync(path.dirname(meeting), { recursive: true });
   fs.writeFileSync(meeting, [
     '---',
     'title: Roadmap Review',
     'date: 2026-07-10',
     ...(granolaId ? [`granola_id: ${granolaId}`] : []),
+    ...extraFrontmatter,
     'attendees:',
     '  - name: Alice Smith',
     '    email: alice@example.com',
@@ -81,6 +83,121 @@ function meetingNote(vault, name = 'roadmap.md', granolaId = null) {
   ].join('\n'));
   return meeting;
 }
+
+test('a provider-neutral capture id becomes the meeting touch source', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  fs.writeFileSync(person, personPage('Alice Smith'));
+  const meeting = meetingNote(vault, 'roadmap.md', null, [
+    'source: wispr',
+    'wispr_id: wispr-meeting-456',
+  ]);
+
+  const result = runHook(vault, { tool_input: { file_path: meeting } });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(parseEntityPage(person).touches[0].source.id, 'wispr-meeting-456');
+});
+
+test('multiple provider capture ids fall back to path identity', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  fs.writeFileSync(person, personPage('Alice Smith'));
+  const meeting = meetingNote(vault, 'roadmap.md', null, [
+    'first_id: capture-one',
+    'second_id: capture-two',
+  ]);
+
+  const result = runHook(vault, { tool_input: { file_path: meeting } });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(parseEntityPage(person).touches[0].source.id, 'roadmap');
+});
+
+test('empty and non-scalar capture ids fall back to path identity', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  fs.writeFileSync(person, personPage('Alice Smith'));
+  const meeting = meetingNote(vault, 'roadmap.md', null, [
+    'wispr_id: ""',
+    'other_id: [not, scalar]',
+  ]);
+
+  const result = runHook(vault, { tool_input: { file_path: meeting } });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(parseEntityPage(person).touches[0].source.id, 'roadmap');
+});
+
+test('a source and capture-id key mismatch falls back to path identity', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  fs.writeFileSync(person, personPage('Alice Smith'));
+  const meeting = meetingNote(vault, 'roadmap.md', null, [
+    'source: wispr',
+    'granola_id: granola-meeting-123',
+  ]);
+
+  const result = runHook(vault, { tool_input: { file_path: meeting } });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(parseEntityPage(person).touches[0].source.id, 'roadmap');
+});
+
+test('a configured vault-relative notes folder is a meeting source', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  fs.writeFileSync(person, personPage('Alice Smith'));
+  fs.mkdirSync(path.join(vault, 'System'), { recursive: true });
+  fs.writeFileSync(
+    path.join(vault, 'System', 'user-profile.yaml'),
+    'meeting_sources:\n  primary: exported-folder\n  notes_folder: 00-Inbox/ClickUp\n',
+  );
+  const meeting = meetingNote(
+    vault,
+    '../ClickUp/roadmap.md',
+    null,
+    ['source: wispr', 'wispr_id: wispr-meeting-789'],
+  );
+
+  const result = runHook(vault, { tool_input: { file_path: meeting } });
+
+  assert.equal(result.status, 0, result.stderr);
+  const updated = fs.readFileSync(person, 'utf8');
+  assert.match(updated, /\(00-Inbox\/ClickUp\/roadmap\.md\)/);
+  assert.equal(parseEntityPage(person).touches[0].source.id, 'wispr-meeting-789');
+});
+
+test('a symlink escape below the configured notes folder is ignored', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  const original = personPage('Alice Smith');
+  fs.writeFileSync(person, original);
+  fs.mkdirSync(path.join(vault, 'System'), { recursive: true });
+  fs.mkdirSync(path.join(vault, '00-Inbox/ClickUp'), { recursive: true });
+  fs.writeFileSync(
+    path.join(vault, 'System', 'user-profile.yaml'),
+    'meeting_sources:\n  primary: exported-folder\n  notes_folder: 00-Inbox/ClickUp\n',
+  );
+  const outside = path.join(path.dirname(vault), `${path.basename(vault)}-outside.md`);
+  fs.writeFileSync(outside, [
+    '---',
+    'title: Roadmap Review',
+    'date: 2026-07-10',
+    'attendees:',
+    '  - name: Alice Smith',
+    '---',
+    '# Notes',
+  ].join('\n'));
+  t.after(() => fs.rmSync(outside, { force: true }));
+  const linked = path.join(vault, '00-Inbox/ClickUp/escaped.md');
+  fs.symlinkSync(outside, linked);
+
+  const result = runHook(vault, { tool_input: { file_path: linked } });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.readFileSync(person, 'utf8'), original);
+});
 
 test('attendees update an existing machine region and last_interaction', (t) => {
   const vault = createVault(t);
