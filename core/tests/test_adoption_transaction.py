@@ -19,6 +19,7 @@ from core.lifecycle.engine import (
     AdoptionReceipt,
     canonical_adoption_receipt_bytes,
     execute_adoption,
+    recover_committed_adoption_evidence,
 )
 from core.lifecycle.inventory import build_inventory
 from core.lifecycle.model import ReleaseCatalog
@@ -583,3 +584,73 @@ def test_e9_adoption_crash_at_every_transaction_seam_converges(
         assert after == before, seam
         assert len(outcomes) == 1
         assert outcomes[0]["resumed"] is True
+
+
+@pytest.mark.parametrize(
+    ("transaction_seam", "adoption_seam"),
+    (
+        ("after-commit-record", None),
+        (None, "after-receipt"),
+        (None, "after-ledger"),
+    ),
+)
+def test_committed_adoption_with_lost_finalization_is_reconstructed_exactly_once(
+    tmp_path: Path,
+    transaction_seam: str | None,
+    adoption_seam: str | None,
+) -> None:
+    vault, _document_value, catalog, inventory, plan, loader = _setup(tmp_path)
+    preview = build_adoption_preview(
+        catalog,
+        inventory,
+        plan,
+        ("alpha", "beta"),
+        loader,
+    )
+    preview_path = tmp_path / "approved-preview.json"
+    preview_path.write_bytes(canonical_adoption_preview_bytes(preview))
+
+    environment = dict(os.environ)
+    if transaction_seam is not None:
+        environment["DEX_TX_TEST_STOP_AFTER"] = transaction_seam
+    if adoption_seam is not None:
+        environment["DEX_ADOPTION_TEST_STOP_AFTER"] = adoption_seam
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _FAULT_WORKER,
+            str(vault),
+            str(preview_path),
+            str(REPO_ROOT),
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert process.returncode == 137
+    committed = [
+        journal.parent.name
+        for journal in (vault / "System/.dex/tx").glob("*/journal.jsonl")
+        if '"event":"COMMITTED"' in journal.read_text(encoding="utf-8")
+    ]
+    assert len(committed) == 1
+    receipt = vault / f"System/.dex/adoptions/{committed[0]}.receipt.json"
+    assert receipt.exists() is (adoption_seam is not None)
+
+    assert recover_committed_adoption_evidence(vault) == (committed[0],)
+    first_receipt = receipt.read_bytes()
+    first_ledger = {
+        path.relative_to(vault).as_posix(): path.read_bytes()
+        for path in (vault / "System/.dex/lifecycle").rglob("*")
+        if path.is_file()
+    }
+    assert recover_committed_adoption_evidence(vault) == (committed[0],)
+    assert receipt.read_bytes() == first_receipt
+    assert {
+        path.relative_to(vault).as_posix(): path.read_bytes()
+        for path in (vault / "System/.dex/lifecycle").rglob("*")
+        if path.is_file()
+    } == first_ledger

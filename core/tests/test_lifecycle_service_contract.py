@@ -10,9 +10,14 @@ import shutil
 from collections.abc import Mapping
 from pathlib import Path
 
+import pytest
+
 from core.lifecycle import service
 from core.lifecycle.bridge import ACTIVATION_RELATIVE
-from core.lifecycle.engine import rewind_acknowledgement_token
+from core.lifecycle.engine import (
+    AdoptionReceiptPersistenceError,
+    rewind_acknowledgement_token,
+)
 from core.tests.test_adoption_transaction import _setup
 from core.tests.test_lifecycle_bridge import _write_bridge_release
 from core.update import apply_update
@@ -118,7 +123,6 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
         inventory_request,
         inventory_response,
     )
-
     mcp_vault = tmp_path / "mcp-vault"
     (mcp_vault / "System").mkdir(parents=True)
     shutil.copy2(
@@ -307,6 +311,24 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
         state_request,
         state_response,
     )
+
+
+def test_service_recovery_refuses_damage_before_activation_mutates(tmp_path: Path) -> None:
+    vault, _document, _catalog, _inventory, _plan, _loader = _setup(
+        tmp_path, item_ids=("alpha",)
+    )
+    _write_bridge_release(vault)
+    journal = vault / "System/.dex/tx/damaged/journal.jsonl"
+    journal.parent.mkdir(parents=True)
+    journal.write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(
+        AdoptionReceiptPersistenceError,
+        match="incomplete or quarantined",
+    ):
+        service.build_inventory_and_plan(vault)
+
+    assert not (vault / ACTIVATION_RELATIVE).exists()
 
 
 def test_api_version_is_present_and_frozen_in_schema() -> None:

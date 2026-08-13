@@ -35,6 +35,7 @@ from core.lifecycle.engine import (
     execute_adoption,
     execute_conflict_resolution,
     execute_topology_migration,
+    recover_committed_adoption_evidence,
     rewind_acknowledgement_token,
     rewind_adoption,
 )
@@ -534,6 +535,7 @@ def _release_payload_loader(release_root: str | Path):
 def _prepare(vault_root: str | Path, release_root: str | Path | None = None) -> None:
     from core.lifecycle.bridge import BridgeActivationError, prepare_vault
 
+    recover_committed_adoption_evidence(Path(vault_root))
     try:
         prepare_vault(vault_root, release_root=release_root)
     except BridgeActivationError:

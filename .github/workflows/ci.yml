@@ -332,17 +332,20 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          git diff --name-only "$BASE_SHA" "$HEAD_SHA" | tee "$RUNNER_TEMP/lens-catalog-changed-files.txt"
-          if grep -E '^(\.github/workflows/ci\.yml|scripts/generate-dex-lens-catalog\.py|core/lens-catalog/)' "$RUNNER_TEMP/lens-catalog-changed-files.txt"; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          CHANGED_FILES="$RUNNER_TEMP/lens-catalog-changed-files.txt"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" | tee "$CHANGED_FILES"
           else
+            : > "$CHANGED_FILES"
+          fi
+          DECISION="$(
+            python3 scripts/lens-catalog-release-path.py \
+              --event-name "$GITHUB_EVENT_NAME" \
+              --changed-files "$CHANGED_FILES"
+          )"
+          echo "$DECISION" >> "$GITHUB_OUTPUT"
+          if [ "$DECISION" = "should_run=false" ]; then
             echo "No Lens catalogue release-path changes; dry-run skipped."
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Dry-run the Lens catalogue release environment
         if: steps.changes.outputs.should_run == 'true'

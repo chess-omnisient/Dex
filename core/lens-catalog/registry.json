@@ -1,6 +1,6 @@
 {
   "registry_version": 1,
-  "catalog_version": 1,
+  "catalog_version": 2,
   "jobs": [
     {
       "job_id": "plan-my-work",
@@ -46,13 +46,23 @@
       "job_id": "keep-my-work-recoverable",
       "title": "Keep my work recoverable",
       "description": "Answer the question a healthy system still cannot: if this went wrong, could the person actually get their work back, and has that been proved rather than hoped?"
+    },
+    {
+      "job_id": "run-my-role",
+      "title": "Run my role",
+      "description": "Use the working methods, reviews and decisions specific to a person's professional role without losing source truth or human authority."
+    },
+    {
+      "job_id": "grow-my-career",
+      "title": "Grow my career",
+      "description": "Turn consented evidence and reflection into career development and truthful application material the person still controls."
     }
   ],
   "entries": [
     {
       "id": "daily-plan",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
         "sha256": "311c9cdf45842936cee4a91d1ac116ce9e1eeae576c01aacdce989e44b912221",
         "byte_size": 30797
@@ -94,7 +104,7 @@
     {
       "id": "week-plan",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/week-plan/SKILL.md",
         "sha256": "23b5acf167fb02f41fa31fb75c38c366afab2263a53b0b4a9dcbdc62966b4bf2",
         "byte_size": 12007
@@ -136,7 +146,7 @@
     {
       "id": "process-meetings",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/process-meetings/SKILL.md",
         "sha256": "eb7e819ed4c4e32fb5ec1f5477b249ec4bd6d8805870360107098d893a04642c",
         "byte_size": 19094
@@ -178,7 +188,7 @@
     {
       "id": "dex-doctor",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/dex-doctor/SKILL.md",
         "sha256": "d875ffd44a37489e225ddb0eae06cde12dc146f7e356152320da80f77a0cee08",
         "byte_size": 17600
@@ -220,7 +230,7 @@
     {
       "id": "relationship-radar",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/relationship-radar/SKILL.md",
         "sha256": "e28b91f08f068368a8d66dc51e090fa807ab3f7fa0ec88c62de10344ea44f78e",
         "byte_size": 5811
@@ -262,7 +272,7 @@
     {
       "id": "save-insight",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/save-insight/SKILL.md",
         "sha256": "1fdb8303f5b56ff4f2b95f69fb430ac0821eccd15027bd55476973dce61ce9d1",
         "byte_size": 2658
@@ -304,7 +314,7 @@
     {
       "id": "daily-review",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/daily-review/SKILL.md",
         "sha256": "df2e77a13ccd34cce7c9b34b1d92d99b1c09fbe93ebce60e486bbfa5b878ae8a",
         "byte_size": 19256
@@ -352,7 +362,7 @@
     {
       "id": "week-review",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/week-review/SKILL.md",
         "sha256": "30b052197bb91b3b48d41021789ec577eaab394ec1a910001773c2c8e9319d16",
         "byte_size": 18517
@@ -400,7 +410,7 @@
     {
       "id": "meeting-prep",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/meeting-prep/SKILL.md",
         "sha256": "f0365cfcd014a836429498c306ae9accf71370f2dde06e9049da8334385d49ea",
         "byte_size": 12203
@@ -448,7 +458,7 @@
     {
       "id": "meeting-closeout",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/meeting-closeout/SKILL.md",
         "sha256": "d9b9110fb2f49a3b161c71fbc793ac2738641f1b40bf69c6a765a7d20d3a365b",
         "byte_size": 6690
@@ -490,7 +500,7 @@
     {
       "id": "commitments",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/commitments/SKILL.md",
         "sha256": "8936fea6f6e7a0e8a3f67bbe3fbede95dde26e752f339d86fa34e01d9dfc90b7",
         "byte_size": 6092
@@ -532,7 +542,7 @@
     {
       "id": "delegate-check",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/delegate-check/SKILL.md",
         "sha256": "c4cc8a0bb2c7b48edddf3aa809a0756fa123fb6f6be8c60076357454b96edc34",
         "byte_size": 4435
@@ -574,7 +584,7 @@
     {
       "id": "triage",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/triage/SKILL.md",
         "sha256": "472605767b79c8af009ad4e265fc70c441618f446b3690d0e05a49f086093cb6",
         "byte_size": 14395
@@ -610,7 +620,7 @@
     {
       "id": "project-health",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/project-health/SKILL.md",
         "sha256": "9196c6be1f953775212c6992f0c099d0c80c67cbb47e0a22b20392d168e937ca",
         "byte_size": 2605
@@ -646,7 +656,7 @@
     {
       "id": "decision-log",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/decision-log/SKILL.md",
         "sha256": "e6c5d64940fe7135bfacd06aebcffae7ac40ca0f1971503b6f4a46551c505283",
         "byte_size": 4518
@@ -688,7 +698,7 @@
     {
       "id": "initiative-kickoff",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/initiative-kickoff/SKILL.md",
         "sha256": "0b7db35d2bc39bc85bc94067348b3a3e04066698f7b1886c410e91e11001c9e3",
         "byte_size": 4862
@@ -730,7 +740,7 @@
     {
       "id": "product-brief",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/product-brief/SKILL.md",
         "sha256": "745a0899a364299b0b1b119044e7bdcc0819c8fd8aa4bc64fe276378c8bc14ac",
         "byte_size": 16845
@@ -766,7 +776,7 @@
     {
       "id": "industry-truths",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/industry-truths/SKILL.md",
         "sha256": "b2eb362df0d00962dbdf9fe8a988e499b9f584431e02e585ba3f376453b2b8c0",
         "byte_size": 8712
@@ -802,7 +812,7 @@
     {
       "id": "identity-snapshot",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/identity-snapshot/SKILL.md",
         "sha256": "9aa571d6fe78dfea5c8d78b32d3ec2ba78a7ea40ca5faf9d62be8b6c47922303",
         "byte_size": 3285
@@ -838,7 +848,7 @@
     {
       "id": "weekly-reflection",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/weekly-reflection/SKILL.md",
         "sha256": "7a8fdd0bf4dfb517bcc076d2f9cc899efa1d678c5efa3f0bd6457d9186ef4ffb",
         "byte_size": 3929
@@ -880,7 +890,7 @@
     {
       "id": "enable-semantic-search",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/enable-semantic-search/SKILL.md",
         "sha256": "cfd8cda3a6fd2fbd63129ed59a94db64a9dda24007dce2b488144043ee0459af",
         "byte_size": 18978
@@ -916,7 +926,7 @@
     {
       "id": "xray",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/xray/SKILL.md",
         "sha256": "4ac35ac8c17b738e53210200694e027988f7a92dbda04d28a1285a4b1fd27631",
         "byte_size": 25061
@@ -952,7 +962,7 @@
     {
       "id": "backup-setup",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/backup-setup/SKILL.md",
         "sha256": "bbcec8b57013f56e10d3de80ae5db46d2fe56dd5e77e3f9c68fa5ac8c12167da",
         "byte_size": 5265
@@ -1005,7 +1015,7 @@
     {
       "id": "backup-now",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/backup-now/SKILL.md",
         "sha256": "38b8ab7eff8980521852bc223fcdef9d194f8c35f5647683d08e4d8ff8d556c0",
         "byte_size": 1731
@@ -1047,7 +1057,7 @@
     {
       "id": "backup-restore",
       "source": {
-        "kind": "skill",
+        "kind": "active-skill",
         "path": ".claude/skills/backup-restore/SKILL.md",
         "sha256": "eae4e6c405acf8f8bba6bfe0a6ef60186e44e136e20501b66d7d7c56a54773bd",
         "byte_size": 2778
@@ -1089,6 +1099,1393 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.95.1",
+      "changed_in": []
+    },
+    {
+      "id": "account-plan",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "account-plan"
+      },
+      "value": "Builds a sourced account plan that keeps goals, relationships, risks and next moves in one reviewable place.",
+      "jobs_served": ["run-my-role", "keep-relationships-warm"],
+      "foundation_capabilities": ["context-orientation", "durable-memory-provenance", "scoped-agency-human-control"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_mature_skill_amendments.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/sales/account-plan/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Builds a sourced account plan that keeps goals, relationships, risks and next moves in one reviewable place.",
+        "method_outline": ["Collect dated account facts with per-field provenance.", "Separate knowns, unknowns and recommendations.", "Preview any saved plan and read it back after confirmation."],
+        "verification_checklist": ["Important claims cite their source and date.", "No account write occurs without an exact confirmed preview."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "call-prep",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "call-prep"
+      },
+      "value": "Turns current relationship, account and meeting evidence into a concise call brief without inventing intent.",
+      "jobs_served": ["run-my-role", "process-meetings", "keep-relationships-warm"],
+      "foundation_capabilities": ["context-orientation", "privacy-minimal-disclosure", "durable-memory-provenance"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_mature_skill_amendments.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/sales/call-prep/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Turns current relationship, account and meeting evidence into a concise call brief without inventing intent.",
+        "method_outline": ["Time-box and date the approved inputs.", "Surface objectives, context and honest unknowns.", "Draft questions and a read-only brief."],
+        "verification_checklist": ["Every material point has a source or an unknown label.", "The brief does not claim another person's intent."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "deal-review",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "deal-review"
+      },
+      "value": "Reviews deal evidence, value coverage and dated activity so pipeline attention goes to the right places.",
+      "jobs_served": ["run-my-role", "stay-on-top-of-commitments"],
+      "foundation_capabilities": ["context-orientation", "honest-health-observability", "durable-memory-provenance"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_mature_skill_amendments.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/sales/deal-review/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Reviews deal evidence, value coverage and dated activity so pipeline attention goes to the right places.",
+        "method_outline": ["Read canonical deal values and activity dates.", "Keep unchecked and unknown-value deals visible.", "Calculate only over a disclosed denominator."],
+        "verification_checklist": ["Totals exclude unknown values instead of treating them as zero.", "Coverage names checked and unchecked deals."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "pipeline-health",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "pipeline-health"
+      },
+      "value": "Checks pipeline coverage, stage movement and forecast assumptions against configured sales definitions.",
+      "jobs_served": ["run-my-role"],
+      "foundation_capabilities": ["context-orientation", "honest-health-observability", "scoped-agency-human-control"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_mature_skill_amendments.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/sales/pipeline-health/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Checks pipeline coverage, stage movement and forecast assumptions against configured sales definitions.",
+        "method_outline": ["Confirm stages, probabilities, targets and period.", "Distinguish missing data from zero.", "Show sourced benchmarks, denominators and arithmetic."],
+        "verification_checklist": ["Every percentage can be recomputed from shown inputs.", "Missing configuration returns an unknown result."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "pipeline-sync",
+      "source": {
+        "kind": "active-skill",
+        "path": ".claude/skills/pipeline-sync/SKILL.md",
+        "sha256": "c8e652f6f4e27054a540016282b4bb09162f230a48abc54613a66b8b24724b34",
+        "byte_size": 11277
+      },
+      "value": "Reconciles Pipedrive deal facts with local strategy notes through explicit previews and read-back checks.",
+      "jobs_served": ["run-my-role"],
+      "foundation_capabilities": ["scoped-agency-human-control", "honest-health-observability", "safe-change-recovery", "privacy-minimal-disclosure"],
+      "prerequisites": ["A configured Pipedrive connection the host can read.", "The pipeline-sync companion instructions and explicit authority for any proposed write."],
+      "trade_offs": ["It requires both the Pipedrive connection and its companion instructions; write behavior remains human-confirmed and only supported, not behaviorally verified.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_mature_skill_amendments.py",
+          "summary": "The shipped instructions cover partial reads, prerequisites, confirmation and recovery limits."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_pipedrive_server.py",
+          "summary": "Pipedrive adapter tests support key read and write safety behavior, not complete synchronization."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/pipeline-sync/SKILL.md",
+          "summary": "The active release skill defines the pipeline reconciliation workflow."
+        }
+      ],
+      "brief": {
+        "goal": "Reconciles Pipedrive deal facts with local strategy notes through explicit previews and read-back checks.",
+        "method_outline": ["Discover complete deal and note inputs.", "Map differences without treating partial reads as complete.", "Preview, confirm and read back each approved reconciliation."],
+        "verification_checklist": ["Incomplete reads remain visibly incomplete.", "A retry does not assume idempotency without proof."],
+        "rollback_advice": "Stop the reconciliation and keep both systems unchanged; use the last preview and read-back receipt to recover any confirmed partial update."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "pipedrive-connection", "pipeline-sync-companion"],
+        "needs_hooks": false,
+        "needs_mcp": true,
+        "platforms": ["macos"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "customer-intel",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "customer-intel"
+      },
+      "value": "Synthesizes dated customer evidence into traceable themes while preserving quotes, contradictions and weak-signal limits.",
+      "jobs_served": ["run-my-role", "know-my-market"],
+      "foundation_capabilities": ["context-orientation", "durable-memory-provenance", "privacy-minimal-disclosure"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_mature_skill_amendments.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/product/customer-intel/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Synthesizes dated customer evidence into traceable themes while preserving quotes, contradictions and weak-signal limits.",
+        "method_outline": ["Build a source-ID and date ledger.", "Deduplicate repeated evidence without dropping provenance.", "Return insufficient evidence when the record cannot support a theme."],
+        "verification_checklist": ["Quotes remain faithful to their source.", "Contradictory evidence stays visible."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "feature-decision",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "feature-decision"
+      },
+      "value": "Frames an evidence-backed feature recommendation while keeping the human decision and prior record intact.",
+      "jobs_served": ["run-my-role", "decide-and-record"],
+      "foundation_capabilities": ["context-orientation", "durable-memory-provenance", "scoped-agency-human-control"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_mature_skill_amendments.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/product/feature-decision/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Frames an evidence-backed feature recommendation while keeping the human decision and prior record intact.",
+        "method_outline": ["Gather outcomes, constraints, effort evidence and unknowns.", "Compare alternatives and make a labelled recommendation.", "Preview a proposed record and preserve or explicitly supersede earlier decisions."],
+        "verification_checklist": ["The recommendation is not presented as an accepted decision.", "Any persisted record reads back to the confirmed preview."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "roadmap",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "roadmap"
+      },
+      "value": "Builds a roadmap view from canonical dated status evidence, with disclosed status coverage and honest unknowns.",
+      "jobs_served": ["run-my-role", "plan-my-work"],
+      "foundation_capabilities": ["context-orientation", "honest-health-observability", "durable-memory-provenance"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_mature_skill_amendments.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/product/roadmap/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Builds a roadmap view from canonical dated status evidence, with disclosed status coverage and honest unknowns.",
+        "method_outline": ["Read canonical goals, initiatives and status dates.", "Keep unknown distinct from blocked.", "Reconcile status counts over a declared cohort and cite the evidence."],
+        "verification_checklist": ["Every status has a source and freshness date.", "Excluded or unknown work is shown beside the denominator."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "audience-intel",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "audience-intel"
+      },
+      "value": "Finds evidence-backed audience patterns without turning repeated anecdotes into invented personas.",
+      "jobs_served": ["run-my-role", "know-my-market"],
+      "foundation_capabilities": ["context-orientation", "durable-memory-provenance", "privacy-minimal-disclosure"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/marketing/audience-intel/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Finds evidence-backed audience patterns without turning repeated anecdotes into invented personas.",
+        "method_outline": ["Time-box and deduplicate the evidence ledger.", "Compare segments, quotes and contradictions.", "Label observed patterns separately from inference."],
+        "verification_checklist": ["Every audience claim cites quote, source and date.", "Insufficient evidence produces an honest limited result."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "campaign-review",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "campaign-review"
+      },
+      "value": "Turns campaign goals, comparable actuals and attribution limits into reusable learning.",
+      "jobs_served": ["run-my-role", "compound-learning"],
+      "foundation_capabilities": ["durable-memory-provenance", "compounding-correctability", "context-orientation"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/marketing/campaign-review/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Turns campaign goals, comparable actuals and attribution limits into reusable learning.",
+        "method_outline": ["Establish the goal, baseline and comparable period.", "Normalize target and actual metrics.", "Separate correlation, causation, hypotheses and missing data."],
+        "verification_checklist": ["Every result cites its source and denominator.", "Any saved review is previewed, confirmed and read back."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "content-calendar",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "content-calendar"
+      },
+      "value": "Builds a dated content inventory that separates commitments from ideas and exposes collisions, gaps and undated work.",
+      "jobs_served": ["run-my-role", "plan-my-work"],
+      "foundation_capabilities": ["context-orientation", "honest-health-observability", "scoped-agency-human-control"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/marketing/content-calendar/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Builds a dated content inventory that separates commitments from ideas and exposes collisions, gaps and undated work.",
+        "method_outline": ["Define the period, timezone and canonical status evidence.", "Detect duplicate items and date collisions.", "Report committed, idea and undated buckets separately."],
+        "verification_checklist": ["No date, status or coverage percentage is inferred.", "Any calendar change requires a confirmed preview."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "messaging-audit",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "messaging-audit"
+      },
+      "value": "Compares current messaging with a cited approved baseline and distinguishes drift from intentional variation.",
+      "jobs_served": ["run-my-role", "know-my-market"],
+      "foundation_capabilities": ["context-orientation", "compounding-correctability", "durable-memory-provenance"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/marketing/messaging-audit/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Compares current messaging with a cited approved baseline and distinguishes drift from intentional variation.",
+        "method_outline": ["Select and date the canonical baseline.", "Normalize terms by audience and channel.", "Classify contradictions, intentional variants, stale copy and unsupported claims."],
+        "verification_checklist": ["The source-date matrix can be traced to each finding.", "No copy is changed without human confirmation."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "architecture-decision",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "architecture-decision"
+      },
+      "value": "Compares architecture options and records an accepted choice only after the named human authority decides.",
+      "jobs_served": ["run-my-role", "decide-and-record"],
+      "foundation_capabilities": ["durable-memory-provenance", "compounding-correctability", "scoped-agency-human-control"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/engineering/architecture-decision/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Compares architecture options and records an accepted choice only after the named human authority decides.",
+        "method_outline": ["Collect constraints, evidence and alternatives.", "Compare consequences and trade-offs.", "Keep proposed, accepted and superseded ADR states distinct."],
+        "verification_checklist": ["The record names decision authority and sources.", "History is appended or superseded, never silently rewritten."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "incident-review",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "incident-review"
+      },
+      "value": "Creates a blameless, evidence-led incident review with a cited timeline and verifiable prevention work.",
+      "jobs_served": ["run-my-role", "keep-system-healthy", "compound-learning"],
+      "foundation_capabilities": ["durable-memory-provenance", "compounding-correctability", "honest-health-observability", "safe-change-recovery"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/engineering/incident-review/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Creates a blameless, evidence-led incident review with a cited timeline and verifiable prevention work.",
+        "method_outline": ["Build a timezone-aware fact timeline.", "Separate facts, hypotheses and contradictions.", "Assign prevention actions only from confirmed ownership and proof."],
+        "verification_checklist": ["Unknown causes and owners remain explicit.", "Follow-up checks name evidence of prevention."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "tech-debt",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "tech-debt"
+      },
+      "value": "Creates a deduplicated, evidence-linked technical-debt inventory with honest risk, effort and confidence.",
+      "jobs_served": ["run-my-role", "keep-system-healthy", "plan-my-work"],
+      "foundation_capabilities": ["context-orientation", "honest-health-observability", "scoped-agency-human-control"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/engineering/tech-debt/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Creates a deduplicated, evidence-linked technical-debt inventory with honest risk, effort and confidence.",
+        "method_outline": ["Link code or operational evidence and first-seen dates.", "Separate impact, effort, confidence and cost of delay.", "Escalate security evidence through the approved path."],
+        "verification_checklist": ["Age is never guessed from an undated mention.", "Prioritisation retains its evidence and uncertainty."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "board-prep",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "board-prep"
+      },
+      "value": "Builds a reconciled, dated financial narrative and question set as a draft for authorised human review.",
+      "jobs_served": ["run-my-role"],
+      "foundation_capabilities": ["durable-memory-provenance", "privacy-minimal-disclosure", "scoped-agency-human-control", "honest-health-observability"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/finance/board-prep/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Builds a reconciled, dated financial narrative and question set as a draft for authorised human review.",
+        "method_outline": ["Set the as-of date, source hierarchy, unit and currency.", "Reconcile actuals and expose forecast limits.", "Draft the narrative and likely questions without approving or sending it."],
+        "verification_checklist": ["Totals reconcile to cited sources.", "Unknowns and forecast assumptions remain visible."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "close-status",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "close-status"
+      },
+      "value": "Shows month-end close progress, blockers and critical path from the authoritative checklist rather than guessed status.",
+      "jobs_served": ["run-my-role", "stay-on-top-of-commitments"],
+      "foundation_capabilities": ["honest-health-observability", "durable-memory-provenance", "context-orientation"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/finance/close-status/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Shows month-end close progress, blockers and critical path from the authoritative checklist rather than guessed status.",
+        "method_outline": ["Load the approved checklist and as-of date.", "Count complete items over the explicit denominator.", "Derive dependencies and critical path while separating blocked, unknown and not started."],
+        "verification_checklist": ["Completion can be recomputed from counted evidence.", "No missing state becomes complete by inference."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "variance-analysis",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "variance-analysis"
+      },
+      "value": "Explains reconciled actual-versus-plan differences with validated formulas, materiality and honest causal limits.",
+      "jobs_served": ["run-my-role", "compound-learning"],
+      "foundation_capabilities": ["durable-memory-provenance", "honest-health-observability", "context-orientation"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/finance/variance-analysis/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Explains reconciled actual-versus-plan differences with validated formulas, materiality and honest causal limits.",
+        "method_outline": ["Normalize units, signs and comparable periods.", "Validate formulas, materiality and reconciled totals.", "Label timing or permanent causes as evidenced, hypothesised or unknown."],
+        "verification_checklist": ["Shown arithmetic reproduces each variance.", "Unsupported causal explanations remain hypotheses."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "expansion-opportunities",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "expansion-opportunities"
+      },
+      "value": "Finds account expansion hypotheses while keeping customer evidence, expressed need, fit and speculation separate.",
+      "jobs_served": ["run-my-role", "keep-relationships-warm"],
+      "foundation_capabilities": ["context-orientation", "durable-memory-provenance", "scoped-agency-human-control", "privacy-minimal-disclosure"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/customer-success/expansion-opportunities/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Finds account expansion hypotheses while keeping customer evidence, expressed need, fit and speculation separate.",
+        "method_outline": ["Gather dated account evidence and expressed needs.", "Assess fit without inventing value or likelihood.", "Keep CRM changes, outreach and commercial action behind human approval."],
+        "verification_checklist": ["Every hypothesis shows its evidence and confidence.", "No recommendation becomes pipeline or customer communication automatically."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "health-score",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "health-score"
+      },
+      "value": "Applies a configured account-health rubric to dated inputs, or returns not scored when honest scoring is impossible.",
+      "jobs_served": ["run-my-role", "keep-relationships-warm"],
+      "foundation_capabilities": ["honest-health-observability", "context-orientation", "durable-memory-provenance"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/customer-success/health-score/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Applies a configured account-health rubric to dated inputs, or returns not scored when honest scoring is impossible.",
+        "method_outline": ["Confirm the scoring rubric and data freshness.", "Calculate only from permitted dated inputs.", "Keep unknown distinct from red or green and review signals when not scored."],
+        "verification_checklist": ["The score can be reproduced from the configured rubric.", "Silence alone never becomes churn risk."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "renewal-prep",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "renewal-prep"
+      },
+      "value": "Prepares a sourced renewal brief from contract, ARR, dated outcomes and explicit risks without making commercial commitments.",
+      "jobs_served": ["run-my-role", "keep-relationships-warm"],
+      "foundation_capabilities": ["context-orientation", "durable-memory-provenance", "scoped-agency-human-control", "privacy-minimal-disclosure"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/customer-success/renewal-prep/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Prepares a sourced renewal brief from contract, ARR, dated outcomes and explicit risks without making commercial commitments.",
+        "method_outline": ["Cite contract, ARR, renewal date and outcome evidence.", "Separate risk from unknown and recommendations from decisions.", "Keep pricing and customer communication human-authorised."],
+        "verification_checklist": ["Every value claim has a dated source.", "The brief sends nothing and changes no commercial record."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "metrics-review",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "metrics-review"
+      },
+      "value": "Reviews comparable operational metrics and validates anomalies before interpreting performance.",
+      "jobs_served": ["run-my-role", "keep-system-healthy"],
+      "foundation_capabilities": ["honest-health-observability", "context-orientation", "durable-memory-provenance"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/operations/metrics-review/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Reviews comparable operational metrics and validates anomalies before interpreting performance.",
+        "method_outline": ["Define each metric, unit, window, source, baseline and target.", "Check freshness and comparability.", "Validate anomalies before offering a non-causal interpretation."],
+        "verification_checklist": ["Every number has a definition and source date.", "Missing or incomparable data stays unknown."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "process-audit",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "process-audit"
+      },
+      "value": "Maps a bounded process from observed samples, then tests bottleneck improvements with measurable outcomes.",
+      "jobs_served": ["run-my-role", "compound-learning"],
+      "foundation_capabilities": ["context-orientation", "honest-health-observability", "compounding-correctability"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/operations/process-audit/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Maps a bounded process from observed samples, then tests bottleneck improvements with measurable outcomes.",
+        "method_outline": ["Define process start, end, owner and outcome.", "Sample observed queues, handoffs, rework and failures.", "Propose a controlled experiment with a success measure."],
+        "verification_checklist": ["Claims disclose the observed sample and limits.", "An experiment is not called successful before measurement."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "design-review",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "design-review"
+      },
+      "value": "Prepares or documents a design review with versioned artifacts, traceable requirements and explicit decision authority.",
+      "jobs_served": ["run-my-role", "decide-and-record"],
+      "foundation_capabilities": ["context-orientation", "durable-memory-provenance", "scoped-agency-human-control"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/design/design-review/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Prepares or documents a design review with versioned artifacts, traceable requirements and explicit decision authority.",
+        "method_outline": ["Choose preparation or documentation mode.", "Identify artifact versions, requirements and evidence.", "Keep recommendations distinct from authorised decisions."],
+        "verification_checklist": ["Every finding points to a versioned artifact and requirement.", "A decision record names who accepted it."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "design-system-audit",
+      "source": {
+        "kind": "lifecycle-skill",
+        "item_id": "design-system-audit"
+      },
+      "value": "Measures design-system use against canonical components and tokens with a declared sample and denominator.",
+      "jobs_served": ["run-my-role", "keep-system-healthy"],
+      "foundation_capabilities": ["context-orientation", "honest-health-observability", "compounding-correctability"],
+      "prerequisites": ["Adopt this dormant role skill through Dex's capability manager before using it.", "Give the host access only to the approved role sources named by the workflow."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_role_skill_contracts.py",
+          "summary": "The shipped instructions meet the reviewed role-specific evidence and depth contract."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_lifecycle_official_capabilities.py",
+          "summary": "Lifecycle tests support adoption, replan and rewind of official capability payloads."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/design/design-system-audit/SKILL.md",
+          "summary": "The official lifecycle catalogue pins this dormant role skill to the release bytes."
+        }
+      ],
+      "brief": {
+        "goal": "Measures design-system use against canonical components and tokens with a declared sample and denominator.",
+        "method_outline": ["Select canonical components, tokens and a representative sample.", "Calculate adoption over a disclosed denominator.", "Separate accidental deviations from intentional exceptions."],
+        "verification_checklist": ["Coverage and adoption can be recomputed from shown inputs.", "Exceptions retain owner, reason and evidence."],
+        "rollback_advice": "Rewind or remove the adopted role skill through the capability manager; keep the person's source material and prior records untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "role-source-access", "capability-adoption"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "career-setup",
+      "source": {
+        "kind": "room-skill",
+        "room": "career",
+        "skill": "career-setup"
+      },
+      "value": "Sets up the career room and its consented evidence space while verifying the room, hooks and connected tools honestly.",
+      "jobs_served": ["grow-my-career"],
+      "foundation_capabilities": ["privacy-minimal-disclosure", "ownership-portability", "scoped-agency-human-control", "safe-change-recovery"],
+      "prerequisites": ["Enable the career room; its skills are installed as one room bundle, not adopted independently.", "Keep the room's approved source and privacy boundaries available to the host."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_mature_skill_amendments.py",
+          "summary": "The shipped instructions close the reviewed evidence, authority and recovery gaps."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_capabilities.py",
+          "summary": "Room activation verifies release-owned skill identity before changing profile or files."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/capabilities/career/skills/career-setup/SKILL.md",
+          "summary": "The release ships this room skill as the source used when the room is enabled."
+        }
+      ],
+      "brief": {
+        "goal": "Sets up the career room and its consented evidence space while verifying the room, hooks and connected tools honestly.",
+        "method_outline": ["Preview the canonical career evidence paths and sensitive-data boundary.", "Enable only after consent.", "Verify room, hook and MCP state and surface capture failures."],
+        "verification_checklist": ["All evidence paths use the portable room contract.", "Failed setup leaves a clear recovery state."],
+        "rollback_advice": "Disable the room through the capability manager; preserve the person's room content and remove only release-owned surfaced skill copies."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "career-room-enabled", "room-capability-manager"],
+        "needs_hooks": true,
+        "needs_mcp": true,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "career-coach",
+      "source": {
+        "kind": "room-skill",
+        "room": "career",
+        "skill": "career-coach"
+      },
+      "value": "Turns sourced career evidence into reflective coaching while keeping uncertainty, HR limits and save consent explicit.",
+      "jobs_served": ["grow-my-career", "compound-learning"],
+      "foundation_capabilities": ["context-orientation", "durable-memory-provenance", "compounding-correctability", "privacy-minimal-disclosure"],
+      "prerequisites": ["Enable the career room; its skills are installed as one room bundle, not adopted independently.", "Keep the room's approved source and privacy boundaries available to the host."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_mature_skill_amendments.py",
+          "summary": "The shipped instructions close the reviewed evidence, authority and recovery gaps."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_capabilities.py",
+          "summary": "Room activation verifies release-owned skill identity before changing profile or files."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/capabilities/career/skills/career-coach/SKILL.md",
+          "summary": "The release ships this room skill as the source used when the room is enabled."
+        }
+      ],
+      "brief": {
+        "goal": "Turns sourced career evidence into reflective coaching while keeping uncertainty, HR limits and save consent explicit.",
+        "method_outline": ["Choose the coaching mode and inspect consented evidence.", "Separate missing evidence from missing competency and label confidence.", "Preview and confirm any saved reflection."],
+        "verification_checklist": ["Claims cite evidence and uncertainty.", "The coach does not impersonate HR or a manager."],
+        "rollback_advice": "Disable the room through the capability manager; preserve the person's room content and remove only release-owned surfaced skill copies."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "career-room-enabled", "room-capability-manager"],
+        "needs_hooks": false,
+        "needs_mcp": true,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "resume-builder",
+      "source": {
+        "kind": "room-skill",
+        "room": "career",
+        "skill": "resume-builder"
+      },
+      "value": "Builds a truthful, portable resume from sourced evidence and verifies the rendered result before claiming pagination.",
+      "jobs_served": ["grow-my-career"],
+      "foundation_capabilities": ["context-orientation", "durable-memory-provenance", "privacy-minimal-disclosure", "ownership-portability"],
+      "prerequisites": ["Enable the career room; its skills are installed as one room bundle, not adopted independently.", "Keep the room's approved source and privacy boundaries available to the host."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_mature_skill_amendments.py",
+          "summary": "The shipped instructions close the reviewed evidence, authority and recovery gaps."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_capabilities.py",
+          "summary": "Room activation verifies release-owned skill identity before changing profile or files."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/capabilities/career/skills/resume-builder/SKILL.md",
+          "summary": "The release ships this room skill as the source used when the room is enabled."
+        }
+      ],
+      "brief": {
+        "goal": "Builds a truthful, portable resume from sourced evidence and verifies the rendered result before claiming pagination.",
+        "method_outline": ["Gather cited outcomes without inventing metrics.", "Label any user-supplied estimate.", "Render-check pages and separately confirm every cross-file write."],
+        "verification_checklist": ["Every claim maps to evidence or an explicit supplied estimate.", "Pagination is claimed only after rendering."],
+        "rollback_advice": "Disable the room through the capability manager; preserve the person's room content and remove only release-owned surfaced skill copies."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "career-room-enabled", "room-capability-manager"],
+        "needs_hooks": false,
+        "needs_mcp": true,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "quarter-plan",
+      "source": {
+        "kind": "room-skill",
+        "room": "quarter_goals",
+        "skill": "quarter-plan"
+      },
+      "value": "Builds a quarter plan across the correct fiscal boundary with previewed, conflict-safe and verified writes.",
+      "jobs_served": ["plan-my-work"],
+      "foundation_capabilities": ["context-orientation", "durable-memory-provenance", "scoped-agency-human-control", "safe-change-recovery"],
+      "prerequisites": ["Enable the quarter goals room; its skills are installed as one room bundle, not adopted independently.", "Keep the room's approved source and privacy boundaries available to the host."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_mature_skill_amendments.py",
+          "summary": "The shipped instructions close the reviewed evidence, authority and recovery gaps."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_capabilities.py",
+          "summary": "Room activation verifies release-owned skill identity before changing profile or files."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/capabilities/quarter_goals/skills/quarter-plan/SKILL.md",
+          "summary": "The release ships this room skill as the source used when the room is enabled."
+        }
+      ],
+      "brief": {
+        "goal": "Builds a quarter plan across the correct fiscal boundary with previewed, conflict-safe and verified writes.",
+        "method_outline": ["Confirm fiscal-quarter dates and current goals.", "Preview every archive, move or goal mutation separately.", "Preserve conflicting bytes and read back approved results."],
+        "verification_checklist": ["No mutation occurs without its exact confirmation.", "Conflicts preserve the existing file and report recovery."],
+        "rollback_advice": "Disable the room through the capability manager; preserve the person's room content and remove only release-owned surfaced skill copies."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "quarter_goals-room-enabled", "room-capability-manager"],
+        "needs_hooks": false,
+        "needs_mcp": true,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
+      "changed_in": []
+    },
+    {
+      "id": "quarter-review",
+      "source": {
+        "kind": "room-skill",
+        "room": "quarter_goals",
+        "skill": "quarter-review"
+      },
+      "value": "Reviews a quarter from sourced statistics and reflections without inferring completion or chaining unapproved mutations.",
+      "jobs_served": ["plan-my-work", "compound-learning"],
+      "foundation_capabilities": ["context-orientation", "durable-memory-provenance", "compounding-correctability", "honest-health-observability"],
+      "prerequisites": ["Enable the quarter goals room; its skills are installed as one room bundle, not adopted independently.", "Keep the room's approved source and privacy boundaries available to the host."],
+      "trade_offs": ["Its result is only as current and complete as the approved sources it can inspect.", "Current release evidence supports the shipped instructions and adoption path; it does not yet behaviorally verify the complete workflow."],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_wave3_mature_skill_amendments.py",
+          "summary": "The shipped instructions close the reviewed evidence, authority and recovery gaps."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_capabilities.py",
+          "summary": "Room activation verifies release-owned skill identity before changing profile or files."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/_available/capabilities/quarter_goals/skills/quarter-review/SKILL.md",
+          "summary": "The release ships this room skill as the source used when the room is enabled."
+        }
+      ],
+      "brief": {
+        "goal": "Reviews a quarter from sourced statistics and reflections without inferring completion or chaining unapproved mutations.",
+        "method_outline": ["Source every statistic and expose unknowns.", "Keep reflection, archive and next-plan changes under separate consent.", "Make archive recovery idempotent and never infer completion percentages."],
+        "verification_checklist": ["Every statistic has a source and denominator.", "A repeated archive action cannot duplicate or overwrite work."],
+        "rollback_advice": "Disable the room through the capability manager; preserve the person's room content and remove only release-owned surfaced skill copies."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "quarter_goals-room-enabled", "room-capability-manager"],
+        "needs_hooks": false,
+        "needs_mcp": true,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.96.0",
       "changed_in": []
     }
   ]

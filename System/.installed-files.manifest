@@ -34,6 +34,7 @@
 .claude/hooks/tests/adapter-runner.test.cjs
 .claude/hooks/tests/auto-link-gate.test.cjs
 .claude/hooks/tests/auto-link-people.test.cjs
+.claude/hooks/tests/career-evidence-capture.test.cjs
 .claude/hooks/tests/connection-health-checker.test.cjs
 .claude/hooks/tests/context-injectors.test.cjs
 .claude/hooks/tests/data-safety-instructions.test.cjs
@@ -827,6 +828,7 @@ core/integrations/slack/setup.py
 core/integrations/task_sync.py
 core/lens-catalog/registry.json
 core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json
+core/lens_catalog_sources.py
 core/lifecycle/__init__.py
 core/lifecycle/bridge.py
 core/lifecycle/catalog.py
@@ -1101,6 +1103,8 @@ core/tests/test_instruction_honesty.py
 core/tests/test_integration_credentials.py
 core/tests/test_large_vault_performance.py
 core/tests/test_learning_capture_command_name.py
+core/tests/test_lens_catalog_ci_trigger.py
+core/tests/test_lens_catalog_sources.py
 core/tests/test_lifecycle_bridge.py
 core/tests/test_lifecycle_official_capabilities.py
 core/tests/test_lifecycle_relocated_vault.py
@@ -1146,6 +1150,7 @@ core/tests/test_release_publish_draft_first.py
 core/tests/test_release_tag_uniqueness.py
 core/tests/test_release_tree_matches_tag.py
 core/tests/test_release_workflows_draft_first.py
+core/tests/test_resume_export_safety.py
 core/tests/test_review_retirement.py
 core/tests/test_ritual_intelligence_entrypoints.py
 core/tests/test_ritual_intelligence_runtime.py
@@ -1177,6 +1182,8 @@ core/tests/test_update_checker.py
 core/tests/test_update_checker_real_installs.py
 core/tests/test_update_journey_protocol.py
 core/tests/test_update_rollback_journey.py
+core/tests/test_wave3_mature_skill_amendments.py
+core/tests/test_wave3_role_skill_contracts.py
 core/tests/test_work_server_entity_links.py
 core/tests/test_work_server_legacy_task_completion.py
 core/tests/test_work_server_production_paths.py
@@ -1355,6 +1362,7 @@ scripts/generate-release-catalog.py
 scripts/generate-test-durations.py
 scripts/generate-update-journey-protocol.py
 scripts/instructed-tools-allowlist.txt
+scripts/lens-catalog-release-path.py
 scripts/make-aged-vault-fixture.sh
 scripts/merge-junit.py
 scripts/pii-allowlist.txt

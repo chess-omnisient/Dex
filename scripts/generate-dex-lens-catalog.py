@@ -10,13 +10,19 @@ import json
 import os
 import posixpath
 import re
-import subprocess
+import sys
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Mapping
 
 import jsonschema
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from core.lens_catalog_sources import SkillSourceError, resolve_skill_source
 
 REGISTRY_PATH = Path("core/lens-catalog/registry.json")
 LENS_CATALOG_SCHEMA_PATH = Path("core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json")
@@ -25,7 +31,6 @@ CHANGELOG_PATH = Path("CHANGELOG.md")
 CONTRACT_VERSION = "dex-lens-catalogue-v2"
 MINIMUM_LENS_CONTRACT = "0.1.0"
 REGISTRY_VERSION = 1
-HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+)?$")
 KEBAB = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
@@ -189,19 +194,6 @@ def _human_title(entry_id: str) -> str:
     return " ".join(part.capitalize() for part in entry_id.split("-"))
 
 
-def _is_git_tracked(release_root: Path, relative: str) -> bool:
-    git_dir = release_root / ".git"
-    if not git_dir.exists():
-        return True
-    result = subprocess.run(
-        ["git", "-C", str(release_root), "ls-files", "--error-unmatch", relative],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode == 0
-
-
 def _canonical_json(value: Mapping[str, object]) -> str:
     return json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":"))
 
@@ -231,41 +223,20 @@ def _atomic_write(path: Path, content: bytes) -> None:
 
 
 def _source(entry: Mapping[str, object], release_root: Path, *, context: str) -> dict[str, object]:
-    raw = _mapping(entry.get("source"), context=f"{context} source")
-    _exact_fields(raw, {"kind", "path", "sha256", "byte_size"}, context=f"{context} source")
-    kind = _text(raw.get("kind"), context=f"{context} source kind", max_length=32)
-    if kind != "skill":
-        raise LensCatalogError(f"{context} source kind must be skill")
-    relative, absolute = _release_file(release_root, raw.get("path"), context=f"{context} source path")
-    if not relative.startswith(".claude/skills/") or not relative.endswith("/SKILL.md"):
-        raise LensCatalogError(f"{context} source path must be a shipped skill SKILL.md")
-    if "/_available/" in relative:
-        raise LensCatalogError(f"{context} source path must not be a dormant optional skill")
-    if relative.startswith(".claude/skills/anthropic-"):
-        raise LensCatalogError(f"{context} source path must not be a vendored third-party skill")
-    if not _is_git_tracked(release_root, relative):
-        raise LensCatalogError(f"{context} source path is not tracked by the release tree: {relative}")
-    declared_sha = raw.get("sha256")
-    if not isinstance(declared_sha, str) or HEX_SHA256.fullmatch(declared_sha) is None:
-        raise LensCatalogError(f"{context} source sha256 must be a lowercase sha256 digest")
-    declared_size = raw.get("byte_size")
-    if type(declared_size) is not int or declared_size < 0:
-        raise LensCatalogError(f"{context} source byte_size must be a non-negative integer")
-    actual_sha = _sha256(absolute)
-    actual_size = absolute.stat().st_size
-    if actual_sha != declared_sha or actual_size != declared_size:
-        raise LensCatalogError(f"{context} source does not match its declared sha256 or byte_size")
+    try:
+        pin = resolve_skill_source(entry.get("source"), release_root)
+    except SkillSourceError as error:
+        raise LensCatalogError(f"{context} source identity is invalid: {error}") from error
     return {
-        "kind": kind,
-        "path": relative,
-        "sha256": actual_sha,
-        "byte_size": actual_size,
+        "kind": pin.kind,
+        "path": pin.source_path,
+        "target_path": pin.target_path,
+        "sha256": pin.sha256,
+        "byte_size": pin.byte_size,
     }
 
 
-def _evidence(
-    value: object, release_root: Path, *, context: str
-) -> tuple[dict[str, str], ...]:
+def _evidence(value: object, release_root: Path, *, context: str) -> tuple[dict[str, str], ...]:
     if not isinstance(value, list) or not value:
         raise LensCatalogError(f"{context} evidence must be a non-empty array")
     result = []
@@ -279,15 +250,11 @@ def _evidence(
             _exact_fields(raw, {"kind", "coverage", "reference", "summary"}, context=item_context)
             coverage = _text(raw.get("coverage"), context=f"{item_context} coverage", max_length=32)
             if coverage not in {"behavioral", "supporting"}:
-                raise LensCatalogError(
-                    f"{item_context} coverage must be behavioral or supporting"
-                )
+                raise LensCatalogError(f"{item_context} coverage must be behavioral or supporting")
         else:
             _exact_fields(raw, {"kind", "reference", "summary"}, context=item_context)
             coverage = "supporting"
-        reference, _ = _release_file(
-            release_root, raw.get("reference"), context=f"{item_context} reference"
-        )
+        reference, _ = _release_file(release_root, raw.get("reference"), context=f"{item_context} reference")
         summary = _text(raw.get("summary"), context=f"{item_context} summary")
         # A test earns "verified" only when it explicitly exercises the capability
         # itself. Instruction-contract, adoption, and runtime evidence still support
@@ -397,9 +364,7 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
                 "job_id": job_id,
                 "label": _text(job.get("title"), context=f"{context} title", max_length=96),
                 "description": _text(job.get("description"), context=f"{context} description"),
-                "confirmed_gap_signals": (
-                    f"The Lens session finds a gap related to {job_id.replace('-', ' ')}."
-                ,),
+                "confirmed_gap_signals": (f"The Lens session finds a gap related to {job_id.replace('-', ' ')}.",),
             }
         )
 
@@ -408,6 +373,7 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
         raise LensCatalogError("entries must be a non-empty array")
     entries = []
     seen_entries: set[str] = set()
+    seen_targets: dict[str, str] = {}
     for index, raw_entry in enumerate(entries_raw):
         context = f"entry {index}"
         entry = _mapping(raw_entry, context=context)
@@ -435,8 +401,12 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
             raise LensCatalogError(f"duplicate entry id {entry_id!r}")
         seen_entries.add(entry_id)
         source = _source(entry, release_root, context=context)
-        if source["path"] != f".claude/skills/{entry_id}/SKILL.md":
-            raise LensCatalogError(f"{context} source path must match entry id {entry_id!r}")
+        expected_target = f".claude/skills/{entry_id}/SKILL.md"
+        if source["target_path"] != expected_target:
+            raise LensCatalogError(f"{context} resolved source target must match entry id {entry_id!r}")
+        target_owner = seen_targets.setdefault(str(source["target_path"]), entry_id)
+        if target_owner != entry_id:
+            raise LensCatalogError(f"{context} resolved source target duplicates entry {target_owner!r}")
         jobs_served = _text_tuple(entry.get("jobs_served"), context=f"{context} jobs_served", max_length=128)
         for job_id in jobs_served:
             if job_id not in seen_jobs:
@@ -531,9 +501,7 @@ def _signature(payload: str, *, signing_key_env: str, key_id: str, test_determin
         from cryptography.hazmat.primitives import serialization
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     except ImportError as error:
-        raise LensCatalogError(
-            "cryptography>=42 is required to sign the Dex Lens catalog on this runner"
-        ) from error
+        raise LensCatalogError("cryptography>=42 is required to sign the Dex Lens catalog on this runner") from error
     try:
         private_key = serialization.load_pem_private_key(key_bytes, password=None)
     except ValueError as error:
@@ -556,9 +524,7 @@ def generate_lens_catalog(
     test_deterministic_signature: bool = False,
 ) -> tuple[Path, Path]:
     release_root = release_root.resolve()
-    issued = _parse_issued_at(
-        issued_at or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    )
+    issued = _parse_issued_at(issued_at or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"))
     catalog_version, release_version, catalogue = _build_catalogue(release_root)
     metadata = {
         "contract_version": CONTRACT_VERSION,

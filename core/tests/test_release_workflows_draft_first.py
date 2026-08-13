@@ -192,11 +192,14 @@ def test_lens_catalog_release_environment_has_a_pr_dry_run() -> None:
 
     steps = {s["name"]: s for s in dry_run["steps"] if "name" in s}
     changed = steps["Decide whether the Lens catalogue release path changed"]["run"]
-    assert r"\.github/workflows/ci\.yml" in changed
-    assert r"scripts/generate-dex-lens-catalog\.py" in changed
-    assert "core/lens-catalog/" in changed
+    assert "python3 scripts/lens-catalog-release-path.py" in changed
+    assert '--event-name "$GITHUB_EVENT_NAME"' in changed
+    assert '--changed-files "$CHANGED_FILES"' in changed
+    assert 'echo "$DECISION" >> "$GITHUB_OUTPUT"' in changed
 
-    run = steps["Dry-run the Lens catalogue release environment"]["run"]
+    release_step = steps["Dry-run the Lens catalogue release environment"]
+    assert release_step["if"] == "steps.changes.outputs.should_run == 'true'"
+    run = release_step["run"]
     assert "python3 -m venv .lens-venv" in run
     assert ".lens-venv/bin/python -m pip install --quiet 'cryptography>=42' jsonschema" in run
     assert ".lens-venv/bin/python scripts/generate-dex-lens-catalog.py" in run
