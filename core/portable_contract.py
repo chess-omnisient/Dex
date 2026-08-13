@@ -50,7 +50,8 @@ AUTOMATION_OWNERSHIP_RELATIVE = "System/.dex/automation-ownership.json"
 ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES = 256 * 1024
 ANALYTICS_ATTEMPT_RECEIPT_MAX_RECORD_BYTES = 256
 ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES = (
-    ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES + ANALYTICS_ATTEMPT_RECEIPT_MAX_RECORD_BYTES
+    ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES
+    + ANALYTICS_ATTEMPT_RECEIPT_MAX_RECORD_BYTES
 )
 
 OWNERSHIP_CLASSES = ("brain", "vault", "seed", "generated", "runtime")
@@ -130,51 +131,51 @@ RULES: tuple[Rule, ...] = (
     _r("brain-core", "core", "dir", "brain"),
     _r("brain-scripts", "scripts", "dir", "brain"),
     _r("brain-dot-scripts", ".scripts", "dir", "brain"),
-    _r(
-        "brain-packages",
-        "packages",
-        "dir",
-        "brain",
-        "package sources are brain; the committed dist/ views are generated (below)",
-    ),
-    _r(
-        "brain-claude",
-        ".claude",
-        "dir",
-        "brain",
-        "shipped skills/hooks/flows; user skills belong in .claude/skills-custom/ (vault)",
-    ),
+    _r("brain-packages", "packages", "dir", "brain",
+       "package sources are brain; the committed dist/ views are generated (below)"),
+    _r("brain-claude", ".claude", "dir", "brain",
+       "shipped skills/hooks/flows; user skills belong in .claude/skills-custom/ (vault)"),
     _r("brain-agents", ".agents", "dir", "brain"),
     _r("brain-cursor", ".cursor", "dir", "brain"),
-    _r(
-        "brain-obsidian",
-        ".obsidian",
-        "dir",
-        "brain",
-        "shipped Obsidian defaults; a user's live workspace state is untracked",
-    ),
+    _r("brain-obsidian", ".obsidian", "dir", "brain",
+       "shipped Obsidian defaults; a user's live workspace state is untracked"),
     _r("brain-github", ".github", "dir", "brain"),
-    _r("brain-ci", ".ci", "dir", "brain", "CI shard-balance data; dev-only, stripped from releases via .distignore"),
+    _r("brain-ci", ".ci", "dir", "brain",
+       "CI shard-balance data; dev-only, stripped from releases via .distignore"),
     _r("brain-docs", "docs", "dir", "brain"),
     # System docs shipped inside the user's Resources region: enumerated file by
     # file (mirroring the PARA seed pattern) so a USER note or edit added under
     # 06-Resources/Dex_System/ falls through to the vault region rule and can
     # never be clobbered by an update. Relocate to docs/ per Vault_Contract
     # §10.1; until then updates may replace exactly these shipped files.
-    _r("brain-doc-background-processing", "06-Resources/Dex_System/Background_Processing_Guide.md", "file", "brain"),
-    _r("brain-doc-calendar-setup", "06-Resources/Dex_System/Calendar_Setup.md", "file", "brain"),
-    _r("brain-doc-jobs-to-be-done", "06-Resources/Dex_System/Dex_Jobs_to_Be_Done.md", "file", "brain"),
-    _r("brain-doc-system-guide", "06-Resources/Dex_System/Dex_System_Guide.md", "file", "brain"),
-    _r("brain-doc-technical-guide", "06-Resources/Dex_System/Dex_Technical_Guide.md", "file", "brain"),
-    _r("brain-doc-distribution-checklist", "06-Resources/Dex_System/Distribution_Checklist.md", "file", "brain"),
-    _r("brain-doc-distribution-strategy", "06-Resources/Dex_System/Distribution_Strategy.md", "file", "brain"),
-    _r("brain-doc-folder-structure", "06-Resources/Dex_System/Folder_Structure.md", "file", "brain"),
-    _r("brain-doc-memory-ownership", "06-Resources/Dex_System/Memory_Ownership.md", "file", "brain"),
-    _r("brain-doc-named-sessions", "06-Resources/Dex_System/Named_Sessions_Guide.md", "file", "brain"),
-    _r("brain-doc-obsidian-guide", "06-Resources/Dex_System/Obsidian_Guide.md", "file", "brain"),
-    _r("brain-doc-dex-system-readme", "06-Resources/Dex_System/README.md", "file", "brain"),
-    _r("brain-doc-updating-dex", "06-Resources/Dex_System/Updating_Dex.md", "file", "brain"),
-    _r("brain-staging", "staging", "dir", "brain", "dev-only staging scaffolding; excluded from releases"),
+    _r("brain-doc-background-processing",
+       "06-Resources/Dex_System/Background_Processing_Guide.md", "file", "brain"),
+    _r("brain-doc-calendar-setup", "06-Resources/Dex_System/Calendar_Setup.md",
+       "file", "brain"),
+    _r("brain-doc-jobs-to-be-done", "06-Resources/Dex_System/Dex_Jobs_to_Be_Done.md",
+       "file", "brain"),
+    _r("brain-doc-system-guide", "06-Resources/Dex_System/Dex_System_Guide.md",
+       "file", "brain"),
+    _r("brain-doc-technical-guide", "06-Resources/Dex_System/Dex_Technical_Guide.md",
+       "file", "brain"),
+    _r("brain-doc-distribution-checklist",
+       "06-Resources/Dex_System/Distribution_Checklist.md", "file", "brain"),
+    _r("brain-doc-distribution-strategy",
+       "06-Resources/Dex_System/Distribution_Strategy.md", "file", "brain"),
+    _r("brain-doc-folder-structure", "06-Resources/Dex_System/Folder_Structure.md",
+       "file", "brain"),
+    _r("brain-doc-memory-ownership", "06-Resources/Dex_System/Memory_Ownership.md",
+       "file", "brain"),
+    _r("brain-doc-named-sessions", "06-Resources/Dex_System/Named_Sessions_Guide.md",
+       "file", "brain"),
+    _r("brain-doc-obsidian-guide", "06-Resources/Dex_System/Obsidian_Guide.md",
+       "file", "brain"),
+    _r("brain-doc-dex-system-readme", "06-Resources/Dex_System/README.md",
+       "file", "brain"),
+    _r("brain-doc-updating-dex", "06-Resources/Dex_System/Updating_Dex.md",
+       "file", "brain"),
+    _r("brain-staging", "staging", "dir", "brain",
+       "dev-only staging scaffolding; excluded from releases"),
     _r("brain-agents-md", "AGENTS.md", "file", "brain"),
     _r("brain-readme", "README.md", "file", "brain"),
     _r("brain-changelog", "CHANGELOG.md", "file", "brain"),
@@ -192,66 +193,31 @@ RULES: tuple[Rule, ...] = (
     _r("brain-gitignore", ".gitignore", "file", "brain"),
     _r("brain-gitattributes", ".gitattributes", "file", "brain"),
     _r("brain-distignore", ".distignore", "file", "brain"),
-    _r(
-        "brain-beta-communications",
-        "System/Beta_Communications",
-        "dir",
-        "brain",
-        "release-doc retained until the schema-2 baseline-reduction follow-up",
-    ),
+    _r("brain-beta-communications", "System/Beta_Communications", "dir", "brain",
+       "release-doc retained until the schema-2 baseline-reduction follow-up"),
     _r("brain-system-readme", "System/README.md", "file", "brain"),
     # --- seed: shipped once, then the user's; update writes only if absent -
     _r("seed-templates", "System/Templates", "dir", "seed"),
-    _r(
-        "seed-user-profile-live",
-        "System/user-profile.yaml",
-        "file",
-        "seed",
-        "created from the tracked template at install; user VALUES live here and are never released or overwritten",
-    ),
-    _r(
-        "seed-user-profile-template",
-        "System/user-profile-template.yaml",
-        "file",
-        "seed",
-        "canonical shipped template (the ratified doc names user-profile.example.yaml; "
-        "the repo consolidated on -template — deliberate deviation)",
-    ),
-    _r(
-        "seed-user-profile-example",
-        "System/user-profile.example.yaml",
-        "file",
-        "seed",
-        "legacy duplicate template; removal in flight (portability hygiene PR)",
-    ),
-    _r(
-        "seed-pillars-live",
-        "System/pillars.yaml",
-        "file",
-        "seed",
-        "shipped empty; user pillar registry — never overwritten",
-    ),
+    _r("seed-user-profile-live", "System/user-profile.yaml", "file", "seed",
+       "created from the tracked template at install; user VALUES live here and are never released or overwritten"),
+    _r("seed-user-profile-template", "System/user-profile-template.yaml", "file", "seed",
+       "canonical shipped template (the ratified doc names user-profile.example.yaml; "
+       "the repo consolidated on -template — deliberate deviation)"),
+    _r("seed-user-profile-example", "System/user-profile.example.yaml", "file", "seed",
+       "legacy duplicate template; removal in flight (portability hygiene PR)"),
+    _r("seed-pillars-live", "System/pillars.yaml", "file", "seed",
+       "shipped empty; user pillar registry — never overwritten"),
     _r("seed-pillars-example", "System/pillars.example.yaml", "file", "seed"),
     _r("seed-trusted-mcps-example", "System/trusted-mcps.example.yaml", "file", "seed"),
     _r("seed-mcp-example", "System/.mcp.json.example", "file", "seed"),
     _r("seed-env-example", "env.example", "file", "seed"),
-    _r(
-        "seed-integrations",
-        "System/integrations",
-        "dir",
-        "seed",
-        "SR1 #150: tracked reference-schema templates carrying env-var references; "
-        "installed if absent, never overwritten once user-owned",
-    ),
+    _r("seed-integrations", "System/integrations", "dir", "seed",
+       "SR1 #150: tracked reference-schema templates carrying env-var references; "
+       "installed if absent, never overwritten once user-owned"),
     _r("seed-dex-backlog", "System/Dex_Backlog.md", "file", "seed"),
     _r("seed-session-learnings-readme", "System/Session_Learnings/README.md", "file", "seed"),
-    _r(
-        "seed-dex-ideas",
-        "System/Dex_Ideas.md",
-        "file",
-        "seed",
-        "legacy duplicate of Dex_Backlog.md; removal in flight (portability hygiene PR)",
-    ),
+    _r("seed-dex-ideas", "System/Dex_Ideas.md", "file", "seed",
+       "legacy duplicate of Dex_Backlog.md; removal in flight (portability hygiene PR)"),
     # PARA starters: the EXACT shipped scaffolding files, enumerated one by one.
     # The regions themselves are vault (below); an update may seed precisely
     # these paths when absent and nothing else. Adding a tracked file under a
@@ -260,218 +226,125 @@ RULES: tuple[Rule, ...] = (
     _r("seed-inbox-daily-plans-readme", "00-Inbox/Daily_Plans/README.md", "file", "seed"),
     _r("seed-inbox-ideas-readme", "00-Inbox/Ideas/README.md", "file", "seed"),
     _r("seed-inbox-meetings-readme", "00-Inbox/Meetings/README.md", "file", "seed"),
-    _r(
-        "seed-quarter-goals-file",
-        "01-Quarter_Goals/Quarter_Goals.md",
-        "file",
-        "seed",
-        "capability-gated room (quarter_goals)",
-    ),
-    _r("seed-week-priorities-file", "02-Week_Priorities/Week_Priorities.md", "file", "seed"),
+    _r("seed-quarter-goals-file", "01-Quarter_Goals/Quarter_Goals.md", "file", "seed",
+       "capability-gated room (quarter_goals)"),
+    _r("seed-week-priorities-file", "02-Week_Priorities/Week_Priorities.md", "file",
+       "seed"),
     _r("seed-tasks-file", "03-Tasks/Tasks.md", "file", "seed"),
     _r("seed-projects-readme", "04-Projects/README.md", "file", "seed"),
     _r("seed-areas-readme", "05-Areas/README.md", "file", "seed"),
-    _r(
-        "seed-career-evidence-readme",
-        "05-Areas/Career/Evidence/README.md",
-        "file",
-        "seed",
-        "capability-gated room (career)",
-    ),
-    _r("seed-companies-readme", "05-Areas/Companies/README.md", "file", "seed", "capability-gated room (companies)"),
+    _r("seed-career-evidence-readme", "05-Areas/Career/Evidence/README.md", "file",
+       "seed", "capability-gated room (career)"),
+    _r("seed-companies-readme", "05-Areas/Companies/README.md", "file", "seed",
+       "capability-gated room (companies)"),
     _r("seed-people-readme", "05-Areas/People/README.md", "file", "seed"),
-    _r("seed-people-internal-readme", "05-Areas/People/Internal/README.md", "file", "seed"),
-    _r("seed-people-external-readme", "05-Areas/People/External/README.md", "file", "seed"),
+    _r("seed-people-internal-readme", "05-Areas/People/Internal/README.md", "file",
+       "seed"),
+    _r("seed-people-external-readme", "05-Areas/People/External/README.md", "file",
+       "seed"),
     _r("seed-resources-readme", "06-Resources/README.md", "file", "seed"),
     _r("seed-intel-gitkeep", "06-Resources/Intel/.gitkeep", "file", "seed"),
-    _r("seed-meeting-intel-gitkeep", "06-Resources/Intel/Meeting_Intel/.gitkeep", "file", "seed"),
+    _r("seed-meeting-intel-gitkeep", "06-Resources/Intel/Meeting_Intel/.gitkeep",
+       "file", "seed"),
     _r("seed-learnings-readme", "06-Resources/Learnings/README.md", "file", "seed"),
-    _r("seed-mistake-patterns", "06-Resources/Learnings/Mistake_Patterns.md", "file", "seed"),
-    _r("seed-working-preferences", "06-Resources/Learnings/Working_Preferences.md", "file", "seed"),
-    _r("seed-quarterly-reviews-readme", "06-Resources/Quarterly_Reviews/README.md", "file", "seed"),
+    _r("seed-mistake-patterns", "06-Resources/Learnings/Mistake_Patterns.md", "file",
+       "seed"),
+    _r("seed-working-preferences", "06-Resources/Learnings/Working_Preferences.md",
+       "file", "seed"),
+    _r("seed-quarterly-reviews-readme", "06-Resources/Quarterly_Reviews/README.md",
+       "file", "seed"),
     _r("seed-archives-readme", "07-Archives/README.md", "file", "seed"),
     _r("seed-archives-plans-readme", "07-Archives/Plans/README.md", "file", "seed"),
-    _r("seed-archives-projects-readme", "07-Archives/Projects/README.md", "file", "seed"),
+    _r("seed-archives-projects-readme", "07-Archives/Projects/README.md", "file",
+       "seed"),
     _r("seed-archives-reviews-readme", "07-Archives/Reviews/README.md", "file", "seed"),
+
     # --- generated: machine-derived, regenerated ---------------------------
-    _r(
-        "generated-claude-md",
-        "CLAUDE.md",
-        "file",
-        "generated",
-        "composed from the shipped template plus vault-owned CLAUDE-custom.md",
-    ),
-    _r(
-        "generated-contracts-dist",
-        "packages/dex-contracts/dist",
-        "dir",
-        "generated",
-        "committed for cross-repo consumption; regenerated by scripts/generate-*.py; drift is CI-gated",
-    ),
-    _r(
-        "generated-architecture-inventory",
-        "docs/architecture/INVENTORY.md",
-        "file",
-        "generated",
-        "code-derived grounding document; drift is CI-gated",
-    ),
+    _r("generated-claude-md", "CLAUDE.md", "file", "generated",
+       "composed from the shipped template plus vault-owned CLAUDE-custom.md"),
+    _r("generated-contracts-dist", "packages/dex-contracts/dist", "dir", "generated",
+       "committed for cross-repo consumption; regenerated by scripts/generate-*.py; "
+       "drift is CI-gated"),
+    _r("generated-architecture-inventory", "docs/architecture/INVENTORY.md", "file",
+       "generated", "code-derived grounding document; drift is CI-gated"),
     _r("generated-manifest", "System/.installed-files.manifest", "file", "generated"),
     _r("generated-release-catalog", "System/.release-catalog.json", "file", "generated"),
-    _r("generated-evidence-profile", "System/.release-evidence-profile.json", "file", "generated"),
-    _r(
-        "generated-health-state",
-        "System/.dex/health",
-        "dir",
-        "generated",
-        "vault-local proactive-health snapshots and refresh outcomes; regenerated "
-        "by the health lifecycle and never shipped",
-    ),
-    _r(
-        "generated-doctor-last-run",
-        "System/.doctor-last-run.json",
-        "file",
-        "generated",
-        "Doctor's rendered cache; every refresh is transaction-owned",
-    ),
-    _r(
-        "generated-local-only-transition",
-        "System/.local-only-preservation-transition.json",
-        "file",
-        "generated",
-        "SR1 #148 phase marker; owned by the local-only preservation machinery",
-    ),
+    _r("generated-evidence-profile", "System/.release-evidence-profile.json", "file",
+       "generated"),
+    _r("generated-health-state", "System/.dex/health", "dir", "generated",
+       "vault-local proactive-health snapshots and refresh outcomes; regenerated "
+       "by the health lifecycle and never shipped"),
+    _r("generated-doctor-last-run", "System/.doctor-last-run.json", "file", "generated",
+       "Doctor's rendered cache; every refresh is transaction-owned"),
+    _r("generated-local-only-transition", "System/.local-only-preservation-transition.json",
+       "file", "generated",
+       "SR1 #148 phase marker; owned by the local-only preservation machinery"),
+
     # --- runtime: local machine state ---------------------------------------
-    _r(
-        "runtime-session-learnings",
-        "System/Session_Learnings",
-        "dir",
-        "runtime",
-        "user-machine session state; historical learning files become local-only in "
-        "the untrack-v1 transition, while the shipped README remains a seed",
-    ),
+    _r("runtime-session-learnings", "System/Session_Learnings", "dir", "runtime",
+       "user-machine session state; historical learning files become local-only in "
+       "the untrack-v1 transition, while the shipped README remains a seed"),
     _r("runtime-session-memory", "System/Session_Memory", "dir", "runtime"),
-    _r(
-        "runtime-usage-log",
-        "System/usage_log.md",
-        "file",
-        "runtime",
-        "shipped blank starter, then per-machine usage state; legacy-tracked",
-    ),
-    _r("runtime-claude-state", "System/claude-code-state.json", "file", "runtime", "legacy-tracked runtime state"),
-    _r(
-        "runtime-last-learning-check", "System/.last-learning-check", "file", "runtime", "legacy-tracked runtime marker"
-    ),
-    _r(
-        "runtime-adoption-receipts",
-        "System/.dex/adoptions",
-        "dir",
-        "runtime",
-        "post-commit lifecycle receipts; local runtime evidence, never shipped",
-    ),
-    _r(
-        "runtime-lifecycle-ledger",
-        "System/.dex/ledger",
-        "dir",
-        "runtime",
-        "immutable local lifecycle events and rebuildable state; never shipped or updated",
-    ),
-    _r(
-        "runtime-lifecycle-activation",
-        "System/.dex/lifecycle/activation.json",
-        "file",
-        "runtime",
-        "old-engine bridge baseline marker; created locally on first lifecycle-engine run, never shipped",
-    ),
-    _r(
-        "runtime-automation-ownership",
-        "System/.dex/automation-ownership.json",
-        "file",
-        "runtime",
-        "closed Dex Solo scheduler handoff state; transaction-owned and never shipped",
-    ),
-    _r(
-        "runtime-onboarding-session",
-        "System/.onboarding-session.json",
-        "file",
-        "runtime",
-        "pre-engine onboarding scratch; deleted by receipt-declared finalization",
-    ),
+    _r("runtime-usage-log", "System/usage_log.md", "file", "runtime",
+       "shipped blank starter, then per-machine usage state; legacy-tracked"),
+    _r("runtime-claude-state", "System/claude-code-state.json", "file", "runtime",
+       "legacy-tracked runtime state"),
+    _r("runtime-last-learning-check", "System/.last-learning-check", "file", "runtime",
+       "legacy-tracked runtime marker"),
+    _r("runtime-adoption-receipts", "System/.dex/adoptions", "dir", "runtime",
+       "post-commit lifecycle receipts; local runtime evidence, never shipped"),
+    _r("runtime-lifecycle-ledger", "System/.dex/ledger", "dir", "runtime",
+       "immutable local lifecycle events and rebuildable state; never shipped or updated"),
+    _r("runtime-lifecycle-activation", "System/.dex/lifecycle/activation.json", "file", "runtime",
+       "old-engine bridge baseline marker; created locally on first lifecycle-engine run, never shipped"),
+    _r("runtime-automation-ownership", "System/.dex/automation-ownership.json", "file", "runtime",
+       "closed Dex Solo scheduler handoff state; transaction-owned and never shipped"),
+    _r("runtime-onboarding-session", "System/.onboarding-session.json", "file", "runtime",
+       "pre-engine onboarding scratch; deleted by receipt-declared finalization"),
     _r("runtime-dex-dir", "System/.dex", "dir", "runtime"),
-    _r(
-        "runtime-backup-logs",
-        "System/backup",
-        "dir",
-        "runtime",
-        "the backup engine's own logs, plus the restore runbook that a restored "
-        "archive unpacks here; nothing under this path is shipped by a release, "
-        "because no released contract before v1.95 can classify it",
-    ),
+    _r("runtime-backup-logs", "System/backup", "dir", "runtime",
+       "the backup engine's own logs, plus the restore runbook that a restored "
+       "archive unpacks here; nothing under this path is shipped by a release, "
+       "because no released contract before v1.95 can classify it"),
     _r("runtime-onboarding", "System/.onboarding", "dir", "runtime"),
     _r("runtime-onboarding-marker", "System/.onboarding-complete", "file", "runtime"),
     _r("runtime-logs", ".logs", "dir", "runtime"),
+
     # --- vault: the user's content and values (mostly untracked in-repo) ----
     # The PARA regions: user-owned. Updates never write inside them except to
     # place the exact seed files enumerated above, and only when absent.
     _r("vault-inbox", "00-Inbox", "dir", "vault"),
-    _r(
-        "vault-quarter-goals",
-        "01-Quarter_Goals",
-        "dir",
-        "vault",
-        "capability-gated room (quarter_goals); absence is a valid state",
-    ),
+    _r("vault-quarter-goals", "01-Quarter_Goals", "dir", "vault",
+       "capability-gated room (quarter_goals); absence is a valid state"),
     _r("vault-week-priorities", "02-Week_Priorities", "dir", "vault"),
     _r("vault-tasks", "03-Tasks", "dir", "vault"),
     _r("vault-projects", "04-Projects", "dir", "vault"),
-    _r(
-        "vault-areas",
-        "05-Areas",
-        "dir",
-        "vault",
-        "Career and Companies subtrees are capability-gated rooms; absence is a valid state",
-    ),
-    _r(
-        "vault-resources",
-        "06-Resources",
-        "dir",
-        "vault",
-        "fully user-owned per Vault_Contract §10.1; the brain docs still shipped "
-        "under 06-Resources/Dex_System carry their own brain rule until they "
-        "relocate to docs/",
-    ),
+    _r("vault-areas", "05-Areas", "dir", "vault",
+       "Career and Companies subtrees are capability-gated rooms; absence is a "
+       "valid state"),
+    _r("vault-resources", "06-Resources", "dir", "vault",
+       "fully user-owned per Vault_Contract §10.1; the brain docs still shipped "
+       "under 06-Resources/Dex_System carry their own brain rule until they "
+       "relocate to docs/"),
     _r("vault-archives", "07-Archives", "dir", "vault"),
     # Secrets: hard-denied for writes AND vault-owned (deny is orthogonal to
     # ownership — these rules give denied paths their owner).
     _r("vault-env", ".env", "file", "vault", "raw secret authority (SR1 #150 model)"),
     _r("vault-credentials", "System/credentials", "dir", "vault", "secrets; hard-denied"),
-    _r(
-        "vault-mcp-json",
-        ".mcp.json",
-        "file",
-        "vault",
-        "REPORT-ONLY except the explicitly previewed, user-approved, add-only "
-        "mcp-registration lifecycle transaction and the sole bridge-only "
-        "legacy-qmd-reconciliation exception for an exact v1.20-compatible "
-        "install, exact dormant qmd entry, absent qmd executable, and explicit "
-        "removal approval",
-    ),
-    _r(
-        "vault-claude-custom",
-        "CLAUDE-custom.md",
-        "file",
-        "vault",
-        "the one canonical home for user instructions (Vault_Contract §5)",
-    ),
+    _r("vault-mcp-json", ".mcp.json", "file", "vault",
+       "REPORT-ONLY except the explicitly previewed, user-approved, add-only "
+       "mcp-registration lifecycle transaction and the sole bridge-only "
+       "legacy-qmd-reconciliation exception for an exact v1.20-compatible "
+       "install, exact dormant qmd entry, absent qmd executable, and explicit "
+       "removal approval"),
+    _r("vault-claude-custom", "CLAUDE-custom.md", "file", "vault",
+       "the one canonical home for user instructions (Vault_Contract §5)"),
     _r("vault-skills-custom", ".claude/skills-custom", "dir", "vault"),
     _r("vault-mcp-custom", "core/mcp-custom", "dir", "vault"),
     _r("vault-mcp-premium", "core/mcp-premium", "dir", "vault"),
-    _r(
-        "vault-folder-paths",
-        "System/folder-paths.yaml",
-        "file",
-        "vault",
-        "the user's folder remapping (Vault_Contract §2a); vault-owned, travels with content",
-    ),
+    _r("vault-folder-paths", "System/folder-paths.yaml", "file", "vault",
+       "the user's folder remapping (Vault_Contract §2a); vault-owned, travels "
+       "with content"),
     _r("vault-trusted-mcps", "System/trusted-mcps.yaml", "file", "vault"),
 )
 
@@ -480,7 +353,11 @@ def brain_paths_inside_vault_regions() -> tuple[str, ...]:
     """Release-owned paths nested inside otherwise user-owned vault regions."""
     region_prefixes = tuple(f"{region}/" for region in VAULT_REGIONS)
     return tuple(
-        sorted(rule.path for rule in RULES if rule.ownership == "brain" and rule.path.startswith(region_prefixes))
+        sorted(
+            rule.path
+            for rule in RULES
+            if rule.ownership == "brain" and rule.path.startswith(region_prefixes)
+        )
     )
 
 
@@ -505,7 +382,9 @@ def _room_skill_source(
     return {
         "room": room,
         "skill": skill,
-        "source_path": (f".claude/skills/_available/capabilities/{room}/skills/{skill}/SKILL.md"),
+        "source_path": (
+            f".claude/skills/_available/capabilities/{room}/skills/{skill}/SKILL.md"
+        ),
         "target_path": f".claude/skills/{skill}/SKILL.md",
         "sha256": sha256,
         "byte_size": byte_size,
@@ -571,13 +450,11 @@ CAPABILITIES: dict[str, dict[str, object]] = {
                 "resume-builder",
                 "383ad20bca80a5594d09b36f5ea0cfaf84d03de3d9da51b78f569b8d56fb8444",
                 34352,
-                previous_payloads=(
-                    (
-                        "v1.95.2",
-                        "f759f12154a6b928ad4e16bf2bf82c363d6e9baf9cd9ddfedd639b60fc51d5de",
-                        29649,
-                    ),
-                ),
+                previous_payloads=((
+                    "v1.95.2",
+                    "f759f12154a6b928ad4e16bf2bf82c363d6e9baf9cd9ddfedd639b60fc51d5de",
+                    29649,
+                ),),
             ),
         ),
         "mcp": ("career_server", "resume_server"),
@@ -599,26 +476,22 @@ CAPABILITIES: dict[str, dict[str, object]] = {
                 "quarter-plan",
                 "330b61f5e0d7c5a1eecbb3453b102fcdc795e7eaf13adf8a361a93bd0a06dc94",
                 14097,
-                previous_payloads=(
-                    (
-                        "v1.95.2",
-                        "08679c722b1555563e125a7bbc67ef1ccf1dfa367f522a5eb8565cea77fd937f",
-                        9406,
-                    ),
-                ),
+                previous_payloads=((
+                    "v1.95.2",
+                    "08679c722b1555563e125a7bbc67ef1ccf1dfa367f522a5eb8565cea77fd937f",
+                    9406,
+                ),),
             ),
             _room_skill_source(
                 "quarter_goals",
                 "quarter-review",
                 "a55db8afede1a60e7de564610a6110fc418a53a434e5ece59a3fab1074bd4fb1",
                 19152,
-                previous_payloads=(
-                    (
-                        "v1.95.2",
-                        "069b339f63aa436b8ae01b16d97756b14f003f9069eb10c11827ed9abf5df794",
-                        12851,
-                    ),
-                ),
+                previous_payloads=((
+                    "v1.95.2",
+                    "069b339f63aa436b8ae01b16d97756b14f003f9069eb10c11827ed9abf5df794",
+                    12851,
+                ),),
             ),
         ),
         "config": "quarterly_planning",
@@ -633,11 +506,11 @@ CAPABILITIES: dict[str, dict[str, object]] = {
 # must use instead of re-deriving it from prose. It travels in the frozen JSON.
 # ---------------------------------------------------------------------------
 MUTATION_POLICY: dict[str, str] = {
-    "brain": "replace",  # replaced wholesale from the release
-    "seed": "write-if-absent",  # seeded once; an existing user file always wins
-    "generated": "regenerate",  # machine-derived; safe to rewrite
-    "vault": "never",  # the user's; updates never write
-    "runtime": "never",  # local machine state; updates never write
+    "brain": "replace",           # replaced wholesale from the release
+    "seed": "write-if-absent",    # seeded once; an existing user file always wins
+    "generated": "regenerate",    # machine-derived; safe to rewrite
+    "vault": "never",             # the user's; updates never write
+    "runtime": "never",           # local machine state; updates never write
 }
 
 # First-run setup is a narrower authority than an update.  These are the only
@@ -659,7 +532,11 @@ ONBOARDING_PROVISION_PATHS = frozenset(
         "05-Areas/Career/Evidence/README.md",
         "05-Areas/Companies/README.md",
     }
-    | {str(source["target_path"]) for room in CAPABILITIES.values() for source in room.get("skill_sources", ())}
+    | {
+        str(source["target_path"])
+        for room in CAPABILITIES.values()
+        for source in room.get("skill_sources", ())
+    }
 )
 
 CUSTOMIZATION_MIGRATION_SEAMS_VERSION = 0
@@ -990,7 +867,8 @@ def update_write_verdict(
             )
 
         if candidate in CUSTOMIZATION_MIGRATION_SEAM_PATHS or any(
-            candidate.startswith(prefix) for prefix in CUSTOMIZATION_MIGRATION_SEAM_PREFIXES
+            candidate.startswith(prefix)
+            for prefix in CUSTOMIZATION_MIGRATION_SEAM_PREFIXES
         ):
             return WriteVerdict(
                 candidate,
@@ -1013,13 +891,21 @@ def update_write_verdict(
     except ContractViolation:
         return WriteVerdict(str(path), False, "unclassified-never-write", None, None)
     if resolution.denied:
-        return WriteVerdict(resolution.path, False, "deny", resolution.ownership, resolution.rule_id)
+        return WriteVerdict(
+            resolution.path, False, "deny", resolution.ownership, resolution.rule_id
+        )
     action = MUTATION_POLICY[resolution.ownership]
     if action == "never":
-        return WriteVerdict(resolution.path, False, "never", resolution.ownership, resolution.rule_id)
+        return WriteVerdict(
+            resolution.path, False, "never", resolution.ownership, resolution.rule_id
+        )
     if action == "write-if-absent" and exists:
-        return WriteVerdict(resolution.path, False, action, resolution.ownership, resolution.rule_id)
-    return WriteVerdict(resolution.path, True, action, resolution.ownership, resolution.rule_id)
+        return WriteVerdict(
+            resolution.path, False, action, resolution.ownership, resolution.rule_id
+        )
+    return WriteVerdict(
+        resolution.path, True, action, resolution.ownership, resolution.rule_id
+    )
 
 
 class ContractViolation(ValueError):
@@ -1048,7 +934,9 @@ def is_denied(path: str) -> bool:
         pattern = raw_pattern.lower()
         if fnmatch.fnmatch(candidate, pattern):
             return True
-        if "/" not in pattern and any(fnmatch.fnmatch(segment, pattern) for segment in segments):
+        if "/" not in pattern and any(
+            fnmatch.fnmatch(segment, pattern) for segment in segments
+        ):
             return True
     return False
 
@@ -1121,7 +1009,11 @@ def legacy_shipped_runtime(paths: Iterable[str]) -> list[str]:
     tree is a standing contradiction the transition baseline currently
     grandfathers (usage log and legacy state markers).
     """
-    return [resolution.path for resolution in (resolve(path) for path in paths) if resolution.ownership == "runtime"]
+    return [
+        resolution.path
+        for resolution in (resolve(path) for path in paths)
+        if resolution.ownership == "runtime"
+    ]
 
 
 def build_contract_schema(

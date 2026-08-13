@@ -99,6 +99,12 @@ def test_claim_preview_binds_exact_plist_and_sidecar_state(tmp_path: Path, monke
     assert not (vault / automation_ownership.SIDECAR_RELATIVE).exists()
 
 
+def test_transaction_rereads_the_sidecar_with_the_closed_size_bound() -> None:
+    assert service._internal_transaction_read_limits("automation-ownership") == {
+        automation_ownership.SIDECAR_RELATIVE: automation_ownership.SIDECAR_MAX_BYTES,
+    }
+
+
 def test_claim_executes_only_through_transaction_and_is_idempotent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
