@@ -52,6 +52,10 @@ returns `already-claimed` or `already-released` without another transaction.
 
 - Core accepts only `dex-solo`, canonical launchd ids, a home-relative
   `Library/LaunchAgents/*.plist` path, and lowercase SHA-256 evidence.
+- The unload and stop fields are caller attestations at this cross-repository
+  boundary. Dex Solo must perform and verify each action before making the
+  corresponding call; Core rejects every other state literal but does not
+  control or inspect Solo's scheduler process.
 - Claim execution re-reads the plist and sidecar, then recomputes the approval
   binding. Changed plist bytes or ownership state require a new preview.
 - The only writable path is

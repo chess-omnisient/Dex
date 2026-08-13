@@ -121,6 +121,10 @@ def test_reactivation_is_idempotent_but_invalid_existing_record_is_refused(
     activation_path.write_bytes(_canonical(previous_api))
     assert activate_vault(vault) == previous_api
 
+    previous_api = {**first, "api_version": "1.4.0"}
+    activation_path.write_bytes(_canonical(previous_api))
+    assert activate_vault(vault) == previous_api
+
     activation_path.write_text('{"activation_version":999}\n', encoding="utf-8")
     with pytest.raises(BridgeActivationError, match="existing activation"):
         activate_vault(vault)

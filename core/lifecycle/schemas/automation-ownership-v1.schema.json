@@ -27,7 +27,7 @@
           "owner_id": {"const": "dex-solo"},
           "plist_relative_path": {
             "type": "string",
-            "pattern": "^Library/LaunchAgents/[^/]+\\.plist$"
+            "pattern": "^Library/LaunchAgents/[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?\\.plist$"
           },
           "plist_sha256": {
             "type": "string",

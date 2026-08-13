@@ -125,6 +125,12 @@ def test_public_preview_schema_keeps_claim_and_release_shapes_closed(
     assert list(validator.iter_errors({**preview, "scheduler_state": "stopped"}))
     assert list(validator.iter_errors({key: value for key, value in preview.items() if key != "launchd_state"}))
 
+    noncanonical = {
+        **preview,
+        "claim": {**preview["claim"], "plist_relative_path": "Library/LaunchAgents/..plist"},
+    }
+    assert list(validator.iter_errors(noncanonical))
+
 
 def test_claim_executes_only_through_transaction_and_is_idempotent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -152,7 +158,12 @@ def test_claim_executes_only_through_transaction_and_is_idempotent(
     }
     schema = json.loads(SIDECAR_SCHEMA.read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
-    assert list(Draft202012Validator(schema).iter_errors(json.loads(sidecar.read_text()))) == []
+    sidecar_validator = Draft202012Validator(schema)
+    sidecar_state = json.loads(sidecar.read_text())
+    assert list(sidecar_validator.iter_errors(sidecar_state)) == []
+    noncanonical_sidecar = json.loads(sidecar.read_text())
+    noncanonical_sidecar["claims"][0]["plist_relative_path"] = "Library/LaunchAgents/..plist"
+    assert list(sidecar_validator.iter_errors(noncanonical_sidecar))
     assert executed["receipt"]["status"] == "claimed"
     assert executed["receipt"]["transaction_id"]
     assert not (vault / "System/.dex/ledger").exists()
@@ -245,6 +256,32 @@ def test_claim_rejects_sidecar_state_that_appears_after_preview(
     assert json.loads(sidecar.read_text()) == {"schema_version": 1, "claims": []}
 
 
+def test_claim_idempotent_replay_rejects_unrelated_sidecar_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault, request = _fixture(tmp_path, monkeypatch)
+    previewed = service.build_and_preview_automation_claim(vault, request)
+    service.execute_approved_automation_claim(vault, previewed["preview"], previewed["approval_token"])
+    sidecar = vault / automation_ownership.SIDECAR_RELATIVE
+    state = json.loads(sidecar.read_text())
+    state["claims"].append(
+        {
+            "automation_id": "com.dex.zzz",
+            "owner_id": "dex-solo",
+            "plist_relative_path": "Library/LaunchAgents/com.dex.zzz.plist",
+            "plist_sha256": "0" * 64,
+        }
+    )
+    sidecar.write_bytes(_canonical(state))
+
+    with pytest.raises(PlanRejected, match="state changed since preview"):
+        service.execute_approved_automation_claim(
+            vault,
+            previewed["preview"],
+            previewed["approval_token"],
+        )
+
+
 def test_claim_obeys_transaction_lock_and_rolls_back_commit_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -299,6 +336,43 @@ def test_release_requires_stopped_scheduler_and_is_idempotent(tmp_path: Path, mo
 
     with pytest.raises(PlanRejected, match="stopped"):
         service.build_and_preview_automation_release(vault, {**release_request, "scheduler_state": "running"})
+
+
+def test_release_idempotent_replay_rejects_unrelated_sidecar_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault, request = _fixture(tmp_path, monkeypatch)
+    _claim(vault, request)
+    release_request = {
+        "automation_id": LABEL,
+        "owner_id": "dex-solo",
+        "scheduler_state": "stopped",
+    }
+    previewed = service.build_and_preview_automation_release(vault, release_request)
+    service.execute_approved_automation_release(vault, previewed["preview"], previewed["approval_token"])
+    sidecar = vault / automation_ownership.SIDECAR_RELATIVE
+    sidecar.write_bytes(
+        _canonical(
+            {
+                "schema_version": 1,
+                "claims": [
+                    {
+                        "automation_id": "com.dex.zzz",
+                        "owner_id": "dex-solo",
+                        "plist_relative_path": "Library/LaunchAgents/com.dex.zzz.plist",
+                        "plist_sha256": "0" * 64,
+                    }
+                ],
+            }
+        )
+    )
+
+    with pytest.raises(PlanRejected, match="state changed since preview"):
+        service.execute_approved_automation_release(
+            vault,
+            previewed["preview"],
+            previewed["approval_token"],
+        )
 
 
 def test_release_rejects_foreign_owner_and_tampered_approval(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

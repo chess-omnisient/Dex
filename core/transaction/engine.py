@@ -168,16 +168,24 @@ class Transaction:
             for relative, max_bytes in read_limits.items()
         ):
             raise PlanRejected("transaction bounded-read limits are invalid")
+        required_limit = None
         if operation == "analytics-receipt":
-            expected_receipt_limit = {
+            required_limit = {
                 portable_contract.ANALYTICS_ATTEMPT_RECEIPT_RELATIVE: (
                     portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
                 )
             }
-            if read_limits != expected_receipt_limit:
-                raise PlanRejected(
-                    "analytics receipt transaction lacks the required bounded-read limit"
+        elif operation == "automation-ownership":
+            required_limit = {
+                portable_contract.AUTOMATION_OWNERSHIP_RELATIVE: (
+                    portable_contract.AUTOMATION_OWNERSHIP_TRANSACTION_MAX_BYTES
                 )
+            }
+        if required_limit is not None and read_limits != required_limit:
+            operation_name = operation.replace("-", " ")
+            raise PlanRejected(
+                f"{operation_name} transaction lacks the required bounded-read limit"
+            )
 
         # Target modes are bounded: no setuid/setgid/sticky, no bits beyond
         # permissions. A buggy or hostile plan must not mint a 4777 file.
@@ -789,16 +797,25 @@ class Transaction:
         ):
             raise TransactionError("transaction bounded-read limits are invalid")
         read_limits = dict(raw_limits)
-        if payload.get("operation", "update") == "analytics-receipt":
-            expected_receipt_limit = {
+        operation = payload.get("operation", "update")
+        required_limit = None
+        if operation == "analytics-receipt":
+            required_limit = {
                 portable_contract.ANALYTICS_ATTEMPT_RECEIPT_RELATIVE: (
                     portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
                 )
             }
-            if read_limits != expected_receipt_limit:
-                raise TransactionError(
-                    "analytics receipt transaction lacks the required bounded-read limit"
+        elif operation == "automation-ownership":
+            required_limit = {
+                portable_contract.AUTOMATION_OWNERSHIP_RELATIVE: (
+                    portable_contract.AUTOMATION_OWNERSHIP_TRANSACTION_MAX_BYTES
                 )
+            }
+        if required_limit is not None and read_limits != required_limit:
+            operation_name = operation.replace("-", " ")
+            raise TransactionError(
+                f"{operation_name} transaction lacks the required bounded-read limit"
+            )
         return read_limits
 
     @classmethod

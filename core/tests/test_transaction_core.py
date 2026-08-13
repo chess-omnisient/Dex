@@ -770,6 +770,64 @@ def test_resume_quarantines_analytics_receipt_without_a_persisted_read_limit(
     assert target.read_bytes() == b"private bytes must not be read"
 
 
+def test_engine_automation_ownership_requires_its_exact_bounded_read_limit(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    relative = portable_contract.AUTOMATION_OWNERSHIP_RELATIVE
+
+    with pytest.raises(PlanRejected, match="required bounded-read limit"):
+        Transaction.begin(
+            vault,
+            [PlanEntry(relative, b'{"claims":[],"schema_version":1}\n', expected_absent=True)],
+            operation="automation-ownership",
+        )
+
+
+def test_resume_quarantines_automation_ownership_without_a_persisted_read_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _vault(tmp_path)
+    tx_id = "20260813T000000-automation-ownership"
+    relative = portable_contract.AUTOMATION_OWNERSHIP_RELATIVE
+    target = vault / relative
+    target.write_bytes(b"private bytes must not be read")
+    journal = Journal(vault / "System/.dex/tx" / tx_id / "journal.jsonl")
+    journal.append(
+        "BEGIN",
+        {
+            "tx_id": tx_id,
+            "operation": "automation-ownership",
+            "plan": [
+                {
+                    "relative": relative,
+                    "sha256": hashlib.sha256(b"{}\n").hexdigest(),
+                    "size": 3,
+                    "expected_absent": True,
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        Transaction,
+        "_target_matches_planned_content",
+        staticmethod(lambda *_args, **_kwargs: pytest.fail("automation ownership target was read")),
+    )
+
+    outcomes = Transaction.resume(vault)
+
+    assert outcomes == [
+        {
+            "tx_id": tx_id,
+            "committed": False,
+            "resumed": True,
+            "quarantined": "automation ownership transaction lacks the required bounded-read limit",
+        }
+    ]
+    assert target.read_bytes() == b"private bytes must not be read"
+
+
 def test_resume_preserves_expected_absent_user_file_matching_plan_when_temp_inode_differs(
     tmp_path: Path,
 ) -> None:

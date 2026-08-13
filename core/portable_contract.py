@@ -43,6 +43,7 @@ SUPPORTED_CONTRACT_VERSIONS = (1, CONTRACT_VERSION)
 VAULT_SCHEMA_SUPPORTED = ">=1 <2"
 ANALYTICS_ATTEMPT_RECEIPT_RELATIVE = "System/.dex/analytics-attempts.jsonl"
 AUTOMATION_OWNERSHIP_RELATIVE = "System/.dex/automation-ownership.json"
+AUTOMATION_OWNERSHIP_TRANSACTION_MAX_BYTES = 64 * 1024
 # A receipt retains a bounded rolling history. A prior release could write one
 # safe record beyond the retained cap, so the transaction has exactly that
 # extra recovery room to validate the full existing file before it keeps whole

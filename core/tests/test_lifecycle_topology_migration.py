@@ -221,7 +221,7 @@ def test_dex_update_skill_routes_the_guided_migration_through_service() -> None:
         REPO_ROOT / ".claude/skills/dex-update/SKILL.md"
     ).read_text(encoding="utf-8")
 
-    assert "version 1.4.0" in instructions
+    assert "version 1.5.0" in instructions
     assert "build_and_preview_topology_migration" in instructions
     assert "execute_approved_topology_migration" in instructions
     assert "dry-run" in instructions

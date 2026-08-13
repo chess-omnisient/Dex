@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 SIDECAR_RELATIVE = portable_contract.AUTOMATION_OWNERSHIP_RELATIVE
 SIDECAR_SCHEMA_VERSION = 1
-SIDECAR_MAX_BYTES = 64 * 1024
+SIDECAR_MAX_BYTES = portable_contract.AUTOMATION_OWNERSHIP_TRANSACTION_MAX_BYTES
 OWNER_ID = "dex-solo"
 
 _CLAIM_FIELDS = frozenset({"automation_id", "owner_id", "plist_relative_path", "plist_sha256"})
@@ -261,6 +261,8 @@ def _plan(
 ) -> tuple[PlanEntry | None, str]:
     from core.transaction.engine import PlanEntry
 
+    if preview.get("automation_ownership_version") != 1:
+        raise AutomationOwnershipError("automation ownership preview version is unsupported")
     operation = preview.get("operation")
     claim = preview.get("claim")
     if operation == "claim":
@@ -278,6 +280,9 @@ def _plan(
             {**dict(_claim(claim)), "launchd_state": preview.get("launchd_state")},
         )
         if rebuilt is None:
+            _state_now, current_sha = read_state(vault_root)
+            if current_sha != preview.get("next_sidecar_sha256"):
+                raise AutomationOwnershipError("automation ownership state changed since preview")
             return None, "already-claimed"
         status = "claimed"
     elif operation == "release":
@@ -300,12 +305,13 @@ def _plan(
             },
         )
         if rebuilt is None:
+            _state_now, current_sha = read_state(vault_root)
+            if current_sha != preview.get("next_sidecar_sha256"):
+                raise AutomationOwnershipError("automation ownership state changed since preview")
             return None, "already-released"
         status = "released"
     else:
         raise AutomationOwnershipError("automation ownership preview operation is invalid")
-    if preview.get("automation_ownership_version") != 1:
-        raise AutomationOwnershipError("automation ownership preview version is unsupported")
     if dict(preview) != rebuilt:
         raise AutomationOwnershipError("automation ownership state changed since preview")
 
