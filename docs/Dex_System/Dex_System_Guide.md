@@ -450,6 +450,9 @@ Dex checks if Anthropic has released new Claude Code features. When it finds som
 **Learning Review Prompts (daily at 5pm)**  
 As you work, Dex captures learnings in `System/Session_Learnings/`. When you accumulate 5+ learnings that haven't been reviewed yet, Dex reminds you: "📚 You have 7 pending learnings from this week. Worth reviewing?"
 
+**Learning install (when the unused pile has grown)**  
+Reviewing is not installing. When 8 or more unused notes have sat at least 14 days, Dex asks at the end of a session for `/install-learnings`: route them into the file that changes next time, or drop them with a reason. A new vault does not get that nudge.
+
 Both happen automatically with no action from you. The system stays current on its own.
 
 ### Learning Files
@@ -479,12 +482,13 @@ Every session builds on the last. The system remembers so you don't have to.
 Without automation, learning requires discipline. You have to remember to:
 - Check for Claude updates
 - Review your learnings
+- Install the ones that should change next time
 - Update your preferences
 - Apply past lessons
 
-Most people don't. The learnings sit unused.
+Most people don't. The notes sit unused unless something routes them.
 
-With automation, Dex nudges you at the right time. The system improves itself through quiet background work, and only asks for your input when it matters.
+With automation, Dex nudges you at the right time — and when the unused pile has grown, it asks for an install pass instead of another reminder to review. The system improves itself through quiet background work, and only asks for your input when it matters.
 
 ---
 
@@ -879,6 +883,7 @@ Located in `06-Resources/Learnings/` and `System/Session_Learnings/`:
 **Automatic Prompts:**
 - Daily at 5pm, Dex checks if you have 5+ pending learnings
 - Next session start: "📚 You have 7 pending learnings from this week. Worth reviewing?"
+- When 8+ unused notes are at least 14 days old, session end asks for `/install-learnings` so they are applied or honestly dropped
 
 ### Why This Matters
 

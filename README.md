@@ -723,6 +723,7 @@ The system teaches you progressively. You learn what you need, when you need it.
 The system captures learnings and improves over time:
 
 - Run `/daily-review` - captures learnings to `System/Session_Learnings/`
+- Run `/install-learnings` - routes unused notes into the place that changes next time, or drops them with a reason
 - Weekly synthesis (`/week-review`) - turns learnings into system improvements
 - Background automation - checks for new Claude Code features daily
 - Run `/dex-whats-new` - surfaces learnings and new capabilities you can use

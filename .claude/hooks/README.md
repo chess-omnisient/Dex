@@ -25,10 +25,11 @@ These commands are wired in `.claude/settings.json` and run independently of any
 | `PreToolUse` | `Bash` | `bash .claude/hooks/dex-safety-guard.sh` | Block unsafe shell commands and redirect disallowed MCP usage. |
 | `PreToolUse` | `Bash` | `node .claude/hooks/ensure-mcp-user-scope.cjs` | Require an explicit scope for `claude mcp add`. |
 | `PreToolUse` | `mcp__.*` | `bash .claude/hooks/dex-safety-guard.sh` | Apply the MCP safety rules before MCP calls. |
+| `Stop` | all | `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/install-learnings.sh"` | When unused session learnings have piled up (8 pending and the oldest is at least 14 days), block Stop once per day so they get installed or honestly dropped. Capture stays separate. |
 | `SessionEnd` | all | `"$CLAUDE_PROJECT_DIR"/.claude/hooks/session-end.sh "$transcript_path"` | Record the session-end marker and transcript reference. |
 | `SessionEnd` | all | `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/vault-autocommit.cjs` | Safely checkpoint eligible vault changes when no mutation is active. |
 
-Settings also uses the macOS system ping for `Stop` and permission/elicitation `Notification` events. Those entries do not invoke repository hook files.
+Settings also uses the macOS system ping for `Stop` and permission/elicitation `Notification` events. The ping entries do not invoke repository hook files. The `Stop` install-learnings wrapper above does.
 
 ## Skill-scoped wiring
 
