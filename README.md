@@ -553,7 +553,7 @@ Eight jobs that happen reliably every day:
 | **Start Each Day Focused** | One command gives you three priorities. Heavy meeting day? Drops to two. Won't let you overcommit. |
 | **Never Miss a Commitment** | Promises made in meetings extracted automatically. Three days old? Flagged. You can't forget. |
 | **Track Relationships** | Before any call: what you discussed last time, open items, what they care about. Never walk in cold. |
-| **Accelerate Career Growth** | Captures evidence automatically. Feedback from 1:1s, achievements, skills growth. Review-ready when you need it. |
+| **Accelerate Career Growth** | When you save a note in Career Evidence, Dex offers it for the evidence log — including influence and judgement notes with no numbers. Reviews and 1:1s still prompt you to capture. Review-ready when you need it. |
 | **Manage Tasks Reliably** | Work MCP syncs tasks with unique IDs across all files. Check off once, updates everywhere. Deduplication prevents doubles. Priority limits stop overcommit. Strategic alignment required. |
 | **Reflect & Improve** | Captures mistakes → rules. Learns preferences. Each session makes the next better. |
 | **Keep Projects Moving** | Auto-detects stalls (12+ days no update). Surfaces blockers. You know what needs attention. |

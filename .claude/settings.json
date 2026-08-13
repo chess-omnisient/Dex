@@ -81,6 +81,17 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/career-evidence-capture.cjs"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

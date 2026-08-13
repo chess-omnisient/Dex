@@ -27,7 +27,7 @@
 | DexDiff (methodology sharing) | **SHIPPED** cmd surface / **PARKED** redesign | `.claude/skills/diff-*`, `core/dexdiff_profile_adopt.py` | Generate→publish→adopt-regenerates-locally; redesign parked for the desktop "Vorflux" rebuild |
 | Entity engine + gardener + relationships | **SHIPPED** (v1.37 / v1.44 / v1.71–v1.73) | `core/entity_engine/*`, `core/entity_maintenance.py` | Auto-creates person/company pages, logs meeting touches, classifies relationship temperature, resurfaces relationships going cold, and maintains typed person↔company relationships (suggested-until-confirmed) |
 | Ritual intelligence | **PARKED** (code-complete, unwired) | `core/ritual_intelligence/*` | Meeting-intelligence pipeline built Mar 2026, tested in CI, but never wired to any skill/hook/MCP; its beta preview surface was explicitly retracted (see CHANGELOG) |
-| Hooks | **SHIPPED** (wired subset) | `.claude/hooks/`, `.claude/settings.json` | Small wired core (context injection, safety guards, release awareness, autocommit); the once-dead career-evidence hook is fixed (PR #180) |
+| Hooks | **SHIPPED** (wired subset) | `.claude/hooks/`, `.claude/settings.json` | Small wired core (context injection, safety guards, release awareness, autocommit); career-evidence capture is a repo-wide Write/Edit hook on the Evidence folder (PR #180 stdin fix; issue #505 wiring + metric-gate) |
 | Skills (74 on disk) | **SHIPPED** | `.claude/skills/` | `/command` workflows; the description-rewrite + `/skill-score` quality-gate pass landed (discoverability-risk 53 → 3) |
 | Grounding suite (inventory + state + orient) | **SHIPPED** (v1.69+) | `docs/architecture/INVENTORY.md`, `STATE.md`, `scripts/dex_state.py`, `/dex-orient` | Code-derived inventory + CI drift gate, released-vs-LOCAL state snapshot, and a session orientation skill |
 
@@ -171,12 +171,13 @@ therefore remains false.
 - PreToolUse/Read → `person-context-injector.cjs`, `company-context-injector.cjs`.
 - PreToolUse/Bash → `dex-safety-guard.sh`, `ensure-mcp-user-scope.cjs`.
 - PreToolUse/`mcp__.*` → `dex-safety-guard.sh`.
+- PostToolUse/`Write|Edit` → `career-evidence-capture.cjs` (Career Evidence folder only; candidate, never a silent save).
 - SessionEnd → `session-end.sh`, `vault-autocommit.cjs`.
 - Stop / Notification → a sound (`afplay`).
 
 **Dead weight / audit findings.**
 - **Observation layer** (`observation-extract.cjs`, `observation-profile.cjs`, `observation-serendipity.cjs`, `observation-weekly-synthesis.cjs`, `observation-utils.cjs`) and the **health-checkers** (`connection-health-checker.cjs`, `gmail-health-checker.cjs`, `teams-health-checker.cjs`) exist **only as UNTRACKED local files** on the maintainer's machine — `git ls-files` shows none of them, and neither does `docs/observation-layer-beta-rollout.md`. **They are not in the repo and never ship to users.** So there is no observation layer in the distributed product to "remove"; it's local experimentation. Don't cite these as Core behavior.
-- **`career-evidence-capture.cjs` was silently dead — now fixed (PR #180).** It read hook input from `process.env.CLAUDE_HOOK_CONTEXT`, but Claude Code delivers hook input on **stdin** (as the wired hooks do), so it exited at the first guard every time and captured nothing. PR #180 switches it to read stdin and adds an input-contract test so no hook can regress to the env-var pattern. (This is the one tracked observation-adjacent cleanup; the untracked `staging/vault-fixes/` prototype is deleted in the same PR.)
+- **`career-evidence-capture.cjs` was silently dead — now fixed (PR #180), then under-wired (issue #505).** PR #180 switched it to stdin. Issue #505 found the remaining layer: it was registered only on `/career-coach` Write, and it dropped files with no metric. Capture is now a repository-wide Write/Edit hook on the Career Evidence folder; skips leave a one-line reason that `/dex-doctor` can see.
 
 **How it connects.** Wired hooks feed context injection, safety guards, and the bounded release-awareness notice. The observation/health-checker scripts are **untracked local cruft, not product** — treat them as absent when reasoning about what a user's install does.
 
@@ -219,7 +220,7 @@ Concrete non-obvious things that a fresh agent would get wrong by reasoning from
 
 1. **The Work MCP is a 46-tool monster (247 KB).** Most of its tools are never named by any skill; the breadth is easy to miss if you assume "Dex has a few task tools."
 2. **A whole local-first OAuth stack (Connection Manager) ships while its product doorway is held** — Nango-catalog-as-data, PKCE, encrypted on-device tokens, a health/refresh state machine, Doctor status, a frozen Desktop contract, live Google/Linear proof, and seven merged security-hardening phases (5a–5g). `/connect` still exists only on draft PR #231; the Phase 5e no-go on the same-user credential boundary has not been lifted.
-3. **`career-evidence-capture.cjs` was silently dead (fixed, PR #180).** It read hook input from an env var (`CLAUDE_HOOK_CONTEXT`) when Claude Code delivers it on stdin — so it no-opped on every invocation while looking like a working feature. PR #180 fixed it and added a contract test guarding the whole hook family.
+3. **`career-evidence-capture.cjs` was silently dead (fixed, PR #180), then only fired inside `/career-coach` and dropped notes with no metric (issue #505).** Stdin is fixed. Capture is now repository-wide on Career Evidence writes; the classifier describes the file instead of deciding whether it counts.
 4. **Three MCP servers lack the `feature_status` honesty contract** (`dex-improvements`, `dex-onboarding`, `dex-session-memory`) — so the "every feature reports its own health" promise has real holes.
 5. **The observation layer / health-checkers are UNTRACKED local files, not product** — easy to mistake local cruft on the maintainer's disk for shipped Core. Separately, **`/diff-adopt` edits CLAUDE.md + registers hooks outside the lifecycle safe-door** — a real exception to the "one safe door for every change" story worth knowing before you touch it.
 6. **Built ≠ shipped, twice over.** Customization-migration activation + rewind is rehearsal-proven and its doorway is authorized, but the doorway is still untagged (§12); `ritual_intelligence` is a whole CI-green subsystem that nothing invokes (§13). Reasoning from "the code exists and tests pass" to "the feature ships" gets both of these wrong.

@@ -1,15 +1,53 @@
 #!/usr/bin/env node
 /**
  * Career Evidence Candidate Detector
- * Fires after Write during /career-coach
- * Detects possible achievements and asks the active skill to seek consent.
- * This hook is deliberately read-only: it never creates or appends evidence.
+ *
+ * Repository-wide PostToolUse hook for Write and Edit. Path-filters to
+ * 05-Areas/Career/Evidence/. A file the user placed in that folder is already
+ * evidence; this hook describes it as an unconfirmed candidate and never
+ * writes the evidence log.
  */
 const fs = require('fs');
 const path = require('path');
 const { loadPaths } = require('./paths.cjs');
 
 const _paths = loadPaths();
+const SKIP_LOG_NAME = 'career-evidence-skip.jsonl';
+const SKIP_EXTS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg', '.pdf',
+  '.zip', '.tar', '.gz', '.mp3', '.mp4', '.mov', '.wav', '.pptx', '.xlsx', '.docx',
+]);
+
+function isInside(root, absoluteFilePath) {
+  const relative = path.relative(root, absoluteFilePath);
+  return !(
+    relative === ''
+    || relative.startsWith(`..${path.sep}`)
+    || relative === '..'
+    || path.isAbsolute(relative)
+  );
+}
+
+function persistSkip(reason) {
+  try {
+    const dir = _paths.DEX_RUNTIME_DIR;
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(
+      path.join(dir, SKIP_LOG_NAME),
+      `${JSON.stringify({ ts: new Date().toISOString(), reason })}\n`,
+    );
+  } catch {
+    // Fail open: a skip log miss must never block the write that triggered us.
+  }
+}
+
+function skip(reason, { persist = false } = {}) {
+  if (persist) {
+    console.error(`[dex-hook-skip] ${reason}`);
+    persistSkip(reason);
+  }
+  process.exit(0);
+}
 
 function isRegularVaultFile(filePath) {
   const vaultRoot = path.resolve(_paths.VAULT_ROOT);
@@ -39,80 +77,96 @@ function isRegularVaultFile(filePath) {
   return true;
 }
 
-function main() {
-  // Read hook context from stdin, per the Claude Code hook contract
-  const input = JSON.parse(fs.readFileSync(0, 'utf-8'));
-  const filePath = input?.tool_input?.file_path || input?.toolInput?.file_path || '';
+function bodyWithoutFrontmatter(content) {
+  const match = content.match(/^---\s*\n[\s\S]*?\n---(?:\s*\n|$)/);
+  return match ? content.slice(match[0].length) : content;
+}
 
-  // Only act on regular, non-symlink files inside the canonical Career directory.
-  const absoluteFilePath = path.resolve(filePath);
-  const relativeToCareer = path.relative(_paths.CAREER_DIR, absoluteFilePath);
-  if (
-    relativeToCareer === '' ||
-    relativeToCareer.startsWith(`..${path.sep}`) ||
-    relativeToCareer === '..' ||
-    path.isAbsolute(relativeToCareer)
-  ) {
-    process.exit(0);
+function isMetadataLine(trimmed) {
+  if (!trimmed || trimmed === '---') return true;
+  if (trimmed.startsWith('#')) return true;
+  if (trimmed.startsWith('|')) return true;
+  if (trimmed.startsWith('<!--')) return true;
+  if (/^\*\*[^*]+:\*\*/.test(trimmed)) return true;
+  if (/^[A-Za-z][\w-]*:\s/.test(trimmed)) return true;
+  return false;
+}
+
+function briefDescription(content, fileName) {
+  for (const line of bodyWithoutFrontmatter(content).split('\n')) {
+    const trimmed = line.trim().replace(/^[-*]\s+/, '');
+    if (isMetadataLine(trimmed)) continue;
+    if (trimmed.length < 8) continue;
+    return trimmed.substring(0, 120);
   }
+  return `Evidence captured from ${fileName}`;
+}
 
-  if (!isRegularVaultFile(absoluteFilePath)) {
-    process.exit(0);
-  }
-
-  const content = fs.readFileSync(absoluteFilePath, 'utf-8');
-  const retrievedAt = new Date().toISOString();
-  const fileName = path.basename(absoluteFilePath, '.md');
-
-  // Check for achievement markers
-  const achievementPatterns = [
-    /\d+%/,                          // Percentages
-    /\$[\d,]+/,                      // Dollar amounts
-    /\d+x/i,                         // Multipliers
-    /delivered|achieved|improved|reduced|increased|launched|completed|shipped/i,
-    /revenue|growth|adoption|retention|NPS|CSAT/i,
-    /award|recognition|promotion|certification/i
-  ];
-
-  const hasAchievementMarkers = achievementPatterns.some(pattern => pattern.test(content));
-
-  if (!hasAchievementMarkers) {
-    process.exit(0);
-  }
-
-  // Determine skill area from content
+function classifySkillArea(content) {
   const skillAreas = [];
   const skillPatterns = {
-    'Leadership': /leadership|team|managed|mentored|coached/i,
-    'Strategy': /strategy|strategic|roadmap|vision|planning/i,
-    'Technical': /technical|architecture|system|engineering|code/i,
-    'Communication': /presentation|stakeholder|executive|board|communication/i,
-    'Customer': /customer|client|user|NPS|satisfaction|retention/i,
-    'Product': /product|feature|launch|release|adoption/i,
-    'Sales': /deal|revenue|pipeline|close|win/i
+    Leadership: /leadership|team|managed|mentored|coached|stakeholder|judgement|stewardship/i,
+    Strategy: /strategy|strategic|roadmap|vision|planning/i,
+    Technical: /technical|architecture|system|engineering|code/i,
+    Communication: /presentation|stakeholder|executive|board|communication/i,
+    Customer: /customer|client|user|NPS|satisfaction|retention/i,
+    Product: /product|feature|launch|release|adoption/i,
+    Sales: /deal|revenue|pipeline|close|win/i,
   };
 
   for (const [area, pattern] of Object.entries(skillPatterns)) {
-    if (pattern.test(content)) {
-      skillAreas.push(area);
-    }
+    if (pattern.test(content)) skillAreas.push(area);
+  }
+  return skillAreas.length > 0 ? skillAreas.join(', ') : 'General';
+}
+
+function main() {
+  let input;
+  try {
+    input = JSON.parse(fs.readFileSync(0, 'utf-8'));
+  } catch {
+    skip('invalid-json-input');
   }
 
-  const skillArea = skillAreas.length > 0 ? skillAreas.join(', ') : 'General';
+  const filePath = input?.tool_input?.file_path || input?.toolInput?.file_path || '';
+  if (!filePath || typeof filePath !== 'string') {
+    skip('missing-file-path');
+  }
 
-  // Extract a brief description (first line with achievement markers, or first non-header line)
-  let briefDesc = '';
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith('#') || trimmed === '' || trimmed === '---') continue;
-    if (achievementPatterns.some(p => p.test(trimmed))) {
-      briefDesc = trimmed.substring(0, 120);
-      break;
-    }
+  const absoluteFilePath = path.resolve(filePath);
+  if (!isInside(_paths.CAREER_DIR, absoluteFilePath)) {
+    skip('not-career-path');
   }
-  if (!briefDesc) {
-    briefDesc = `Evidence captured from ${fileName}`;
+
+  if (!isRegularVaultFile(absoluteFilePath)) {
+    skip('not-regular-vault-file', { persist: true });
   }
+
+  const ext = path.extname(absoluteFilePath).toLowerCase();
+  if (SKIP_EXTS.has(ext)) {
+    skip(`unsupported-extension:${ext}`, { persist: true });
+  }
+
+  if (!isInside(_paths.EVIDENCE_DIR, absoluteFilePath)) {
+    skip('not-evidence-folder', { persist: true });
+  }
+
+  const baseName = path.basename(absoluteFilePath);
+  if (baseName.toLowerCase() === 'readme.md') {
+    skip('seed-readme', { persist: true });
+  }
+
+  let content;
+  try {
+    content = fs.readFileSync(absoluteFilePath, 'utf-8');
+  } catch {
+    skip('unreadable-file', { persist: true });
+  }
+
+  const retrievedAt = new Date().toISOString();
+  const fileName = path.basename(absoluteFilePath, '.md');
+  const skillArea = classifySkillArea(content);
+  const briefDesc = briefDescription(content, fileName);
 
   const frontmatter = content.match(/^---\s*\n([\s\S]*?)\n---(?:\s*\n|$)/);
   const eventDateMatch = frontmatter?.[1]?.match(/^date:\s*["']?(\d{4}-\d{2}-\d{2})["']?\s*$/m);
@@ -149,5 +203,5 @@ function main() {
 try {
   main();
 } catch {
-  process.exit(0);
+  skip('unexpected-error', { persist: true });
 }

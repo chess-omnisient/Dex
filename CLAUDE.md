@@ -369,9 +369,13 @@ When the user says they completed a task (any phrasing):
 - Don't require exact task title - use fuzzy matching on keywords
 
 ### Career Evidence Capture
-If `05-Areas/Career/` folder exists, the system automatically captures career development evidence:
+If `05-Areas/Career/` folder exists, Dex helps collect career development evidence.
+
+**Automatic (file writes):** When a file is written or edited under `05-Areas/Career/Evidence/`, a hook offers it as an unconfirmed evidence candidate — whether or not `/career-coach` is running, and whether or not the note contains a metric. Nothing is saved until the user confirms. Skipped Career files leave a one-line reason that `/dex-doctor` can see.
+
+The other channels prompt; they do not write the evidence log on their own:
 - **During `/daily-review`**: Prompt for achievements worth capturing for career growth
-- **During `/career-coach`**: Achievements with quantifiable metrics are auto-detected and captured as evidence without manual prompting
+- **During `/career-coach`**: Coaching can surface achievements from the conversation; evidence-folder writes still go through the same confirm-gated hook
 - **From Granola meetings**: Extract feedback and development discussions from manager 1:1s
 - **Project completions**: Suggest capturing impact and skills demonstrated
 - **Skill tracking**: Tag tasks/goals with `# Career: [skill]` to track skill development over time. **If QMD is available**, the Career MCP also detects skill demonstration *without* explicit tags — semantically matching achievements to competencies (e.g., a task about "designing the API migration strategy" matches the "System Design" competency even without a `# Career: System Design` tag).
