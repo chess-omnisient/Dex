@@ -48,8 +48,17 @@ find 00-Inbox/Meetings -name "*.md" -mtime -7 | head -50
 ```
 
 This includes synced notes in day directories and flat notes in the folder
-root (manually captured meetings with no `granola_id`); process and stamp those
+root (manually captured meetings with no capture id); process and stamp those
 the same way. Skip notes containing `<!-- dex:skip-processing -->`.
+
+**Which folder, and which source.** Read `meeting_sources` in
+`System/user-profile.yaml` before searching. If `notes_folder` is set, search
+that folder; it is the user's declared answer and outranks the default above.
+`primary` names the capture tool they actually use. Dex does not assume a
+particular recorder, and neither should this skill: treat the configured source
+as the source, and fall back to provider-neutral discovery in the vault when it
+returns nothing. `meeting-closeout` resolves sources the same way; follow it
+rather than inventing a second convention.
 
 If `00-Inbox/Meetings/queue/*.json` files exist, consume each queued meeting
 first, following the queue rules in this skill's `SKILL.md` (Step 2.5): create
@@ -62,7 +71,9 @@ invoked. You ARE the subagent, so you must never call the Agent tool or spawn a
 subagent of your own.
 
 For each meeting file:
-1. Read frontmatter for `granola_id`, `participants`, `company`, `date`
+1. Read frontmatter for the capture id, `participants`, `company`, `date`.
+   The id key is whatever the configured source writes (`granola_id` and
+   `wispr_id` are both in the wild); match on presence, not on a fixed name
 2. Check whether person/company pages need updating
 3. Check whether tasks need extracting (unchecked items in the "For Me"
    section, no `tasks-extracted` marker)

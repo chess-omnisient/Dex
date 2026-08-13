@@ -25,8 +25,9 @@ than silently skipping it.
 Why the window matters: a same-day filter loses meetings permanently on any day
 the review does not run.
 
-If the meeting source (Granola via `GRANOLA_API_KEY`, or another configured
-source) has unprocessed meetings in the window, process them following the
+Read `meeting_sources` in `System/user-profile.yaml` to learn which source the
+user actually configured, rather than assuming a particular recorder. If that
+source has unprocessed meetings in the window, process them following the
 conventions in `.claude/skills/process-meetings/AGENT_INSTRUCTIONS.md`,
 including updating person pages directly rather than counting on a hook.
 Note which meetings were processed. If no source is connected or nothing is
