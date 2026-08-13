@@ -15,8 +15,21 @@ import sys
 import time
 from pathlib import Path
 
-from core.utils import mcp_handshake, process_isolation, smoke
 from core.tests.test_smoke import REPO_ROOT, _definition, _write_valid_vault
+from core.utils import mcp_handshake, process_isolation, smoke
+
+
+def _succeed_preparation(monkeypatch) -> None:
+    """Skip vault preparation so lifecycle tests do not depend on site-packages."""
+    monkeypatch.setattr(
+        smoke,
+        "_preparation_command",
+        lambda *_args: [
+            sys.executable,
+            "-c",
+            "import json; print(json.dumps({'verdict': 'OK', 'detail': 'prepared'}))",
+        ],
+    )
 
 
 def test_format_os_error_names_errno_operation_and_path() -> None:
@@ -127,9 +140,18 @@ def test_start_new_session_eperm_is_named_skip_not_harness_failed(
     assert "errno=1 (EPERM)" in detail
 
 
-def test_broken_product_journey_still_fails_the_gate(tmp_path: Path) -> None:
+def test_broken_product_journey_still_fails_the_gate(monkeypatch, tmp_path: Path) -> None:
     vault = _write_valid_vault(tmp_path)
-    (vault / "System" / "pillars.yaml").write_text("pillars: [\n", encoding="utf-8")
+    _succeed_preparation(monkeypatch)
+    monkeypatch.setattr(
+        smoke,
+        "_journey_command",
+        lambda *_args: [
+            sys.executable,
+            "-c",
+            "import json; print(json.dumps({'verdict': 'BROKEN', 'detail': 'config is invalid'}))",
+        ],
+    )
 
     run = smoke.run_smoke(
         vault_root=vault,
@@ -193,6 +215,7 @@ def test_killpg_eperm_still_reaps_descendants_after_normal_exit(
         "_journey_command",
         lambda *_args: [sys.executable, "-c", parent],
     )
+    _succeed_preparation(monkeypatch)
 
     def eperm_killpg(_pgid: int, _sig: int) -> None:
         raise PermissionError(errno.EPERM, "Operation not permitted")
@@ -235,6 +258,7 @@ def test_timed_out_journey_kills_descendants_when_killpg_returns_eperm(
         "_journey_command",
         lambda *_args: [sys.executable, "-c", parent],
     )
+    _succeed_preparation(monkeypatch)
 
     def eperm_killpg(_pgid: int, _sig: int) -> None:
         raise PermissionError(errno.EPERM, "Operation not permitted")
@@ -244,7 +268,7 @@ def test_timed_out_journey_kills_descendants_when_killpg_returns_eperm(
     run = smoke.run_smoke(
         vault_root=vault,
         repo_root=REPO_ROOT,
-        journey_definitions=(_definition("configs", budget)),
+        journey_definitions=(_definition("configs", budget),),
     )
     time.sleep(post_run_wait)
 
