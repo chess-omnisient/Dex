@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.96.2] — 🔒 A company network that inspects traffic no longer looks like a corrupt release (2026-08-13)
+## [1.96.2] — 🛡️ Your history saves again, and company networks get an honest answer (2026-08-13)
 
 If you're on a corporate network that intercepts secure connections — Zscaler, Netskope, most large enterprises — or on a hotel or airport captive portal, Dex's daily update check could fail and report that the release evidence was **invalid**. That wording means something specific and alarming: that the version of Dex being offered looks tampered with. It was never true. What had actually happened is that Dex couldn't verify it was really talking to GitHub, because something on your network was sitting in the middle of the connection. Worse, Dex treated it as a permanent verdict and didn't try again, so the check stayed broken for exactly the people most likely to hit it.
 
@@ -18,6 +18,17 @@ If you're on a corporate network that intercepts secure connections — Zscaler,
 * **Dex still refuses to trust a certificate it can't verify, and there is no way to turn that off.** This release changes what Dex *tells* you and whether it *retries* — it does not change what Dex is willing to trust. There is no setting, visible or hidden, that makes Dex skip certificate checking, and there deliberately never will be: if something really is intercepting your connection to GitHub, that is exactly the moment Dex should stop.
 * **When something does go wrong, it's now diagnosable.** Update failures were being recorded as a bare category with the underlying error thrown away, which is why this particular fault took hours to track down. The underlying message is now kept — trimmed, single-line, and with anything credential-shaped stripped out before it's written anywhere.
 * **Several other failures stop being mislabelled too.** A missing file, a permissions problem, or a timed-out command were all being filed under the same "invalid evidence" heading as a genuinely bad release. Each now reports as itself.
+
+Chris Jackson found a second regression before this release went out: the rules Dex ships for its own source repository were also being copied into people's vaults. Those rules told Git to ignore the folders where their inbox, goals, tasks, projects, areas, resources, and archives live. The session snapshot hook could sometimes force past that rule, but an ordinary Git save refused the files outright — exactly when someone needed their local history as a safety net.
+
+**What this fixes for you:**
+
+* **Every personal working folder is tracked again.** Your inbox, goals, priorities, tasks, projects, areas, resources, and archives can all be saved in your local Git history after an install or update.
+* **Dex's own files stay out of your personal history.** Product files delivered inside Resources are still excluded, while your own notes beside them remain trackable.
+* **Secrets remain excluded.** Files such as `.env` stay ignored; repairing personal history does not weaken the privacy boundary.
+* **The release now proves the real recovery path.** The test installs the shipped rules through Dex's updater, creates real user and product files, commits them with Git, and inspects the resulting history. Removing the fix makes that test fail at the same command users hit.
+
+Thanks to Chris, who traced the missing-history symptom back to the generated vault rules and contributed both halves of the correction.
 
 ## [1.96.1] — 🔎 Lens can read every role and planning capability (2026-08-13)
 
