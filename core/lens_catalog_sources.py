@@ -18,9 +18,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
+try:
+    from core.utils.local_git import git_result
+except ModuleNotFoundError:  # Script entrypoints execute with core/ on sys.path.
+    from utils.local_git import git_result  # type: ignore[no-redef]
+
 DEFAULT_LIFECYCLE_CATALOG = Path("core/lifecycle/catalog/official-capabilities.json")
 DEFAULT_PORTABLE_CONTRACT = Path("packages/dex-contracts/dist/portable-vault.contract.json")
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+HEX_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 RELEASE_VERSION = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
 
 
@@ -176,24 +182,155 @@ def _release_file(release_root: Path, relative: str, *, context: str) -> Path:
     return candidate
 
 
+def _regular_json_mapping(path: Path, *, context: str) -> Mapping[str, object]:
+    if path.is_symlink() or not path.is_file():
+        raise SkillSourceError(f"{context} is missing or not a regular file")
+    return _mapping(_strict_json(path, context=context), context=context)
+
+
+def _split_release_identity(
+    release_root: Path,
+    *,
+    context: str,
+) -> tuple[Path, str] | None:
+    """Return the exact installed brain tree for a sound post-split vault.
+
+    A split leaves release-owned bytes in the vault directory but moves their
+    Git authority to ``.dex/brain.git``. The new ``.git`` belongs only to the
+    user's vault, so it must never be used to prove shipped source identity.
+    """
+    root = release_root.resolve()
+    topology_path = root / "System/.dex/topology.json"
+    brain_git = root / ".dex/brain.git"
+    split_signal = any(
+        candidate.is_symlink() or candidate.exists()
+        for candidate in (topology_path, brain_git)
+    )
+    if not split_signal:
+        return None
+
+    for relative in (".git", ".dex", ".dex/brain.git", "System", "System/.dex"):
+        candidate = root / relative
+        if candidate.is_symlink():
+            raise SkillSourceError(f"cannot prove {context}: split path {relative} is a symlink")
+    if not (root / ".git").is_dir() or not brain_git.is_dir():
+        raise SkillSourceError(f"cannot prove {context}: split Git directories are incomplete")
+
+    topology = _regular_json_mapping(topology_path, context="split topology marker")
+    vault_marker = _regular_json_mapping(root / ".git/dex-vault-v2", context="vault Git marker")
+    brain_marker = _regular_json_mapping(brain_git / "dex-brain-v2", context="brain Git marker")
+    environment = topology.get("environment")
+    if (
+        topology.get("schemaVersion") != 1
+        or topology.get("topology") != "brain-vault-split"
+        or topology.get("vaultGitDir") != ".git"
+        or topology.get("brainGitDir") != ".dex/brain.git"
+        or not isinstance(environment, Mapping)
+        or not isinstance(environment.get("DEX_VAULT"), str)
+        or not environment.get("DEX_VAULT")
+        or vault_marker.get("schemaVersion") != 1
+        or vault_marker.get("role") != "vault"
+        or brain_marker.get("schemaVersion") != 1
+        or brain_marker.get("role") != "brain"
+    ):
+        raise SkillSourceError(f"cannot prove {context}: brain/vault split identity is inconsistent")
+
+    installed = topology.get("installedRelease")
+    brain_installed = brain_marker.get("installed")
+    if (
+        not isinstance(installed, str)
+        or HEX_COMMIT.fullmatch(installed) is None
+        or brain_installed != installed
+    ):
+        raise SkillSourceError(
+            f"cannot prove {context}: brain installed identity does not match split topology"
+        )
+    try:
+        installed_ref = git_result(
+            root,
+            f"--git-dir={brain_git}",
+            "rev-parse",
+            "--verify",
+            "refs/dex/installed^{commit}",
+            profile="read-only",
+            timeout=3,
+        )
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+        raise SkillSourceError(f"cannot prove {context} from the installed brain ref") from error
+    if installed_ref.returncode != 0 or installed_ref.stdout.decode("ascii", errors="ignore").strip() != installed:
+        raise SkillSourceError(
+            f"cannot prove {context}: installed brain ref does not match split topology"
+        )
+    return brain_git, installed
+
+
 def _require_tracked(release_root: Path, relative: str, *, context: str) -> None:
-    if not (release_root / ".git").exists():
+    root = release_root.resolve()
+    split_identity = _split_release_identity(root, context=context)
+    if split_identity is not None:
+        brain_git, installed = split_identity
+        try:
+            result = git_result(
+                root,
+                f"--git-dir={brain_git}",
+                "ls-tree",
+                "-z",
+                "--full-tree",
+                installed,
+                "--",
+                relative,
+                profile="read-only",
+                timeout=3,
+            )
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            raise SkillSourceError(f"cannot prove {context} from the installed brain tree") from error
+        records = tuple(record for record in result.stdout.split(b"\0") if record)
+        if result.returncode != 0 or not records:
+            raise SkillSourceError(
+                f"{context} is not tracked by the installed release tree: {relative}"
+            )
+        try:
+            metadata, raw_path = records[0].split(b"\t", 1)
+            mode, object_type, object_id = metadata.decode("ascii").split(" ")
+            tracked_path = raw_path.decode("utf-8")
+        except (ValueError, UnicodeDecodeError) as error:
+            raise SkillSourceError(f"cannot prove {context}: installed release entry is malformed") from error
+        if (
+            len(records) != 1
+            or mode not in {"100644", "100755"}
+            or object_type != "blob"
+            or tracked_path != relative
+        ):
+            raise SkillSourceError(f"cannot prove {context}: installed release entry is unsafe")
+        try:
+            blob = git_result(
+                root,
+                f"--git-dir={brain_git}",
+                "cat-file",
+                "blob",
+                object_id,
+                profile="read-only",
+                timeout=3,
+            )
+            physical = (root / relative).read_bytes()
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            raise SkillSourceError(f"cannot prove {context}: installed release bytes are unreadable") from error
+        if blob.returncode != 0 or blob.stdout != physical:
+            raise SkillSourceError(f"{context} differs from the installed release tree: {relative}")
+        return
+
+    if not (root / ".git").exists():
         return
     try:
-        result = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(release_root),
-                "ls-files",
-                "--error-unmatch",
-                relative,
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
+        result = git_result(
+            root,
+            "ls-files",
+            "--error-unmatch",
+            relative,
+            profile="read-only",
+            timeout=3,
         )
-    except OSError as error:
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
         raise SkillSourceError(f"cannot prove {context} is tracked: {error}") from error
     if result.returncode != 0:
         raise SkillSourceError(f"{context} is not tracked by the release tree: {relative}")
