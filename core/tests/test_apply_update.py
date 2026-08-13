@@ -1651,21 +1651,38 @@ def test_composed_gitignore_appends_contract_derived_vault_section() -> None:
     assert "\n/.claude/\n" not in section
 
 
-def test_composed_shipped_gitignore_saves_user_files_and_excludes_product_files(
-    tmp_path: Path,
+def test_applied_shipped_gitignore_saves_user_files_and_excludes_product_files(
+    split_release_fixture: dict[str, object],
 ) -> None:
-    """Exercise the installed vault contract through Git, not generated text."""
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    _git(vault, "init", "--quiet")
-    _write(
-        vault,
-        ".gitignore",
-        apply_update.COMPOSERS[".gitignore"](
-            (REPO_ROOT / ".gitignore").read_bytes(),
-            vault,
-        ),
+    """Install the shipped rules, commit real files, and inspect Git history."""
+    release = split_release_fixture["release"]
+    vault = split_release_fixture["vault"]
+    brain = split_release_fixture["brain"]
+
+    _write(release, ".gitignore", (REPO_ROOT / ".gitignore").read_bytes())
+    target = _commit_release(release, "1.65.0")
+    split_release_fixture["target"] = target
+    _target_tag, _target_tag_object, target_commit, _target_tree = target
+    subprocess.run(
+        [
+            "git",
+            f"--git-dir={brain}",
+            "fetch",
+            "--quiet",
+            "--tags",
+            str(release),
+            f"+{target_commit}:refs/remotes/upstream/release",
+        ],
+        check=True,
     )
+
+    result = apply_update.apply_verified_release(vault, _verified(split_release_fixture))
+    assert result["committed"] is True
+    assert ".gitignore" in result["replaced"]
+
+    _git(vault, "init", "--quiet")
+    _git(vault, "config", "user.name", "Dex Vault Test")
+    _git(vault, "config", "user.email", "vault@example.com")
 
     user_files = {
         f"{region}/user-note.md" for region in portable_contract.VAULT_REGIONS
@@ -1673,32 +1690,31 @@ def test_composed_shipped_gitignore_saves_user_files_and_excludes_product_files(
     for relative in user_files:
         _write(vault, relative, b"user-owned\n")
 
-    product_file = "06-Resources/Dex_System/Dex_System_Guide.md"
+    product_files = set(portable_contract.brain_paths_inside_vault_regions())
+    assert product_files
+    product_files.add("README.md")
     customization = ".claude/skills-custom/mine/SKILL.md"
     secret = ".env"
-    _write(vault, product_file, b"release-owned\n")
+    for relative in product_files:
+        _write(vault, relative, b"release-owned\n")
     _write(vault, customization, b"user customization\n")
     _write(vault, secret, b"API_KEY=never-stage\n")
 
     _git(vault, "add", "-A", "--", *portable_contract.VAULT_REGIONS)
     _git(vault, "add", "-A", "--", customization)
-    staged = set(_git(vault, "diff", "--cached", "--name-only").splitlines())
+    _git(vault, "commit", "--quiet", "-m", "save user work")
+    committed = set(_git(vault, "show", "--format=", "--name-only", "HEAD").splitlines())
 
-    assert user_files <= staged
-    assert customization in staged
-    assert product_file not in staged
-    assert secret not in staged
+    assert user_files <= committed
+    assert customization in committed
+    assert product_files.isdisjoint(committed)
+    assert secret not in committed
 
-    product_ignored = subprocess.run(
-        ["git", "-C", str(vault), "check-ignore", "--quiet", "--", product_file],
-        check=False,
+    ignored = set(
+        _git(vault, "check-ignore", "--", *sorted(product_files), secret).splitlines()
     )
-    secret_ignored = subprocess.run(
-        ["git", "-C", str(vault), "check-ignore", "--quiet", "--", secret],
-        check=False,
-    )
-    assert product_ignored.returncode == 0
-    assert secret_ignored.returncode == 0
+    assert product_files <= ignored
+    assert secret in ignored
 
 
 def test_composed_gitignore_reincludes_every_vault_region() -> None:
