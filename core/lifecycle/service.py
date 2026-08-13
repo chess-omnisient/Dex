@@ -50,8 +50,9 @@ from core.lifecycle.preview import AdoptionPreview, build_adoption_preview
 from core.lifecycle.retention import compute_retention_report
 from core.path_safety import unsafe_existing_parent
 from core.transaction.engine import PlanEntry, PlanRejected, Transaction
+from core.utils import automation_ownership
 
-api_version = "1.4.0"
+api_version = "1.5.0"
 
 _CATALOG_RELATIVE = "System/.release-catalog.json"
 _PURPOSE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
@@ -76,16 +77,10 @@ _ANALYTICS_RECEIPT_REASONS = frozenset(
     }
 )
 _ANALYTICS_EVENT_NAME = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
-_MAX_ANALYTICS_RECEIPT_INPUT_BYTES = (
-    portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
-)
-_MAX_RETAINED_ANALYTICS_RECEIPT_BYTES = (
-    portable_contract.ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES
-)
+_MAX_ANALYTICS_RECEIPT_INPUT_BYTES = portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
+_MAX_RETAINED_ANALYTICS_RECEIPT_BYTES = portable_contract.ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES
 _ANALYTICS_RECEIPT_APPEND_ATTEMPTS = 2
-_ANALYTICS_RECEIPT_TIMESTAMP = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?\+00:00$"
-)
+_ANALYTICS_RECEIPT_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?\+00:00$")
 _REBUILD_TRANSACTION_PATH = re.compile(
     r"^System/\.dex/customization-migrations/cap-[0-9a-f]{16}/(?:"
     r"receipts/(?:capsule|activation|rewind)\.json|"
@@ -133,11 +128,7 @@ def _internal_transaction_read_limits(operation: str) -> dict[str, int]:
     """Return the one service-owned cap required by a private receipt operation."""
     if operation != "analytics-receipt":
         return {}
-    return {
-        _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE: (
-            portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
-        )
-    }
+    return {_ANALYTICS_ATTEMPT_RECEIPT_RELATIVE: (portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES)}
 
 
 def _transaction_preview_document_with_bounded_reads(
@@ -178,9 +169,7 @@ def _transaction_preview_document_with_bounded_reads(
             operation=operation,
         )
         if not verdict.allowed:
-            raise PlanRejected(
-                f"the ownership contract forbids writing: {entry.relative} [{verdict.action}]"
-            )
+            raise PlanRejected(f"the ownership contract forbids writing: {entry.relative} [{verdict.action}]")
         current: dict[str, object]
         if target.exists():
             if target.is_symlink() or not target.is_file():
@@ -296,11 +285,7 @@ def _execute_approved_transaction(
         before_commit=before_commit,
     )
     tx_paths_after = _tree_paths(root, tx_root_relative)
-    declared_paths = (
-        set(targets)
-        | missing_ancestors
-        | (tx_paths_before ^ tx_paths_after)
-    )
+    declared_paths = set(targets) | missing_ancestors | (tx_paths_before ^ tx_paths_after)
     files_written = [
         {
             "path": entry.relative,
@@ -462,10 +447,7 @@ def _append_analytics_attempt_receipt(
     }
     _validate_analytics_receipt_record(record)
     record_bytes = _canonical(record)
-    if (
-        len(record_bytes)
-        > portable_contract.ANALYTICS_ATTEMPT_RECEIPT_MAX_RECORD_BYTES
-    ):
+    if len(record_bytes) > portable_contract.ANALYTICS_ATTEMPT_RECEIPT_MAX_RECORD_BYTES:
         raise PlanRejected("analytics receipt record exceeds its bounded size")
 
     root = Path(vault_root)
@@ -495,9 +477,7 @@ def _append_analytics_attempt_receipt(
             _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE,
             _retain_newest_analytics_receipt_records(prefix, record_bytes),
             mode=0o600,
-            expected_current_sha256=(
-                hashlib.sha256(existing).hexdigest() if target_exists else None
-            ),
+            expected_current_sha256=(hashlib.sha256(existing).hexdigest() if target_exists else None),
             expected_absent=not target_exists,
         )
         plan = [entry]
@@ -516,10 +496,7 @@ def _append_analytics_attempt_receipt(
                 approved_token=str(preview["approval_token"]),
             )
         except PlanRejected as error:
-            if (
-                attempt + 1 < _ANALYTICS_RECEIPT_APPEND_ATTEMPTS
-                and _is_stale_analytics_receipt_plan(error)
-            ):
+            if attempt + 1 < _ANALYTICS_RECEIPT_APPEND_ATTEMPTS and _is_stale_analytics_receipt_plan(error):
                 continue
             raise
     raise RuntimeError("analytics receipt retry loop ended unexpectedly")
@@ -709,10 +686,7 @@ def _missing_companies_default_plan(
         for room, state in after_capabilities.items()
         if isinstance(state, Mapping)
         and isinstance(state.get("enabled"), bool)
-        and (
-            not isinstance(before_capabilities, Mapping)
-            or before_capabilities.get(room) != state
-        )
+        and (not isinstance(before_capabilities, Mapping) or before_capabilities.get(room) != state)
     }
 
     raw = original.encode("utf-8")
@@ -721,9 +695,7 @@ def _missing_companies_default_plan(
             "System/user-profile.yaml",
             rendered.encode("utf-8"),
             mode=(profile.stat().st_mode & 0o777) if exists else 0o644,
-            expected_current_sha256=(
-                hashlib.sha256(raw).hexdigest() if exists else None
-            ),
+            expected_current_sha256=(hashlib.sha256(raw).hexdigest() if exists else None),
             expected_absent=not exists,
         )
     ], states
@@ -773,6 +745,120 @@ def _pin_missing_companies_default(vault_root: str | Path) -> dict[str, object]:
     return _envelope(pinned=True, receipt=executed["receipt"], states=states)
 
 
+def build_and_preview_automation_claim(
+    vault_root: str | Path,
+    claim: Mapping[str, object],
+) -> dict[str, object]:
+    """Preview Dex Solo claiming one unloaded, plist-bound launchd automation."""
+    try:
+        preview = automation_ownership.build_claim_preview(vault_root, claim)
+    except automation_ownership.AutomationOwnershipError as error:
+        raise PlanRejected(str(error)) from error
+    if preview is None:
+        return _envelope(needed=False, preview=None, approval_token=None)
+    return _envelope(
+        needed=True,
+        preview=preview,
+        approval_token=hashlib.sha256(_canonical(preview)).hexdigest(),
+    )
+
+
+def _execute_approved_automation_ownership(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    expected = hashlib.sha256(_canonical(preview)).hexdigest()
+    if not isinstance(approved_token, str) or not hmac.compare_digest(
+        approved_token,
+        expected,
+    ):
+        raise PlanRejected("automation ownership approval token does not match preview")
+    try:
+        entry, status = automation_ownership.execution_plan(vault_root, preview)
+    except automation_ownership.AutomationOwnershipError as error:
+        raise PlanRejected(str(error)) from error
+    claim = preview.get("claim")
+    if not isinstance(claim, Mapping):
+        raise PlanRejected("automation ownership preview claim must be an object")
+    if entry is None:
+        return _envelope(
+            receipt={
+                "operation": preview.get("operation"),
+                "status": status,
+                "automation_id": claim.get("automation_id"),
+                "owner_id": claim.get("owner_id"),
+                "transaction_id": None,
+                "sidecar_sha256": preview.get("next_sidecar_sha256"),
+            }
+        )
+    plan = [entry]
+    internal = _preview_transaction(
+        vault_root,
+        plan,
+        purpose="automation-ownership",
+        operation="automation-ownership",
+    )
+    executed = _execute_approved_transaction(
+        vault_root,
+        plan,
+        purpose="automation-ownership",
+        operation="automation-ownership",
+        approved_token=str(internal["approval_token"]),
+    )
+    transaction_receipt = executed["receipt"]
+    return _envelope(
+        receipt={
+            "operation": preview.get("operation"),
+            "status": status,
+            "automation_id": claim.get("automation_id"),
+            "owner_id": claim.get("owner_id"),
+            "transaction_id": transaction_receipt["transaction_id"],
+            "sidecar_sha256": preview.get("next_sidecar_sha256"),
+        }
+    )
+
+
+def execute_approved_automation_claim(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    """Record one exact approved claim through the lifecycle transaction door."""
+    if preview.get("operation") != "claim":
+        raise PlanRejected("automation claim execution requires a claim preview")
+    return _execute_approved_automation_ownership(vault_root, preview, approved_token)
+
+
+def build_and_preview_automation_release(
+    vault_root: str | Path,
+    release: Mapping[str, object],
+) -> dict[str, object]:
+    """Preview release after the Dex Solo scheduler has stopped."""
+    try:
+        preview = automation_ownership.build_release_preview(vault_root, release)
+    except automation_ownership.AutomationOwnershipError as error:
+        raise PlanRejected(str(error)) from error
+    if preview is None:
+        return _envelope(needed=False, preview=None, approval_token=None)
+    return _envelope(
+        needed=True,
+        preview=preview,
+        approval_token=hashlib.sha256(_canonical(preview)).hexdigest(),
+    )
+
+
+def execute_approved_automation_release(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    """Record one exact approved release through the lifecycle transaction door."""
+    if preview.get("operation") != "release":
+        raise PlanRejected("automation release execution requires a release preview")
+    return _execute_approved_automation_ownership(vault_root, preview, approved_token)
+
+
 def _inventory_and_plan_models(vault_root: str | Path):
     root = Path(vault_root)
     catalog = load_catalog(root / _CATALOG_RELATIVE, release_root=root)
@@ -810,8 +896,7 @@ def _prepare(vault_root: str | Path, release_root: str | Path | None = None) -> 
         prepare_vault(vault_root, release_root=release_root)
     except BridgeActivationError:
         raise PlanRejected(
-            "this Dex copy's update engine doesn't match its release information "
-            "— run /dex-doctor"
+            "this Dex copy's update engine doesn't match its release information — run /dex-doctor"
         ) from None
 
 
@@ -869,9 +954,7 @@ def _write_archive_receipt(path: Path, receipt: dict[str, object]) -> None:
         os.close(descriptor)
 
 
-def execute_approved_archive_removal(
-    vault_root: str | Path, approved_token: str
-) -> dict[str, object]:
+def execute_approved_archive_removal(vault_root: str | Path, approved_token: str) -> dict[str, object]:
     """Remove the exact archive previewed by the user while holding the shared lock."""
     root = Path(vault_root)
     preview = _archive_inventory(root)
@@ -886,6 +969,7 @@ def execute_approved_archive_removal(
     receipt_path = root / receipt_relative
     moved = False
     try:
+
         def remove_archive() -> None:
             nonlocal moved
             os.replace(archive, quarantined)
@@ -1108,9 +1192,11 @@ def execute_approved_delivered_release(
         raise PlanRejected("delivered-release preview is not canonical JSON") from error
     expected_bytes = _canonical(expected_preview)
     expected_token = hashlib.sha256(expected_bytes).hexdigest()
-    if not hmac.compare_digest(supplied_bytes, expected_bytes) or not isinstance(
-        approved_token, str
-    ) or not hmac.compare_digest(approved_token, expected_token):
+    if (
+        not hmac.compare_digest(supplied_bytes, expected_bytes)
+        or not isinstance(approved_token, str)
+        or not hmac.compare_digest(approved_token, expected_token)
+    ):
         raise PlanRejected("delivered-release approval does not match the current exact preview")
 
     transaction_token = _preview_transaction(
@@ -1176,9 +1262,7 @@ def _mcp_registration_preview(
 
     rendered = json.loads(json.dumps(registration).replace("{{VAULT_PATH}}", str(root)))
     if os.name == "nt":
-        rendered = json.loads(
-            json.dumps(rendered).replace(".venv/bin/python", ".venv/Scripts/python.exe")
-        )
+        rendered = json.loads(json.dumps(rendered).replace(".venv/bin/python", ".venv/Scripts/python.exe"))
     updated = dict(existing)
     updated_servers = dict(servers)
     updated_servers[_MCP_REGISTRATION_NAME] = rendered
@@ -1238,7 +1322,11 @@ def execute_approved_mcp_registration(
         raise PlanRejected("the customization migration MCP registration is already present")
     expected = _canonical(expected_preview)
     token = hashlib.sha256(expected).hexdigest()
-    if not isinstance(approved_token, str) or not hmac.compare_digest(supplied, expected) or not hmac.compare_digest(approved_token, token):
+    if (
+        not isinstance(approved_token, str)
+        or not hmac.compare_digest(supplied, expected)
+        or not hmac.compare_digest(approved_token, token)
+    ):
         raise PlanRejected("MCP registration approval does not match the current exact preview")
     transaction = _preview_transaction(
         vault_root,
@@ -1296,9 +1384,7 @@ def execute_approved_conflict_resolution(
     """Execute one exactly approved conflict-resolution preview."""
     _prepare(vault_root, release_root)
     modeled = (
-        preview
-        if isinstance(preview, ConflictResolutionPreview)
-        else ConflictResolutionPreview.from_dict(preview)
+        preview if isinstance(preview, ConflictResolutionPreview) else ConflictResolutionPreview.from_dict(preview)
     )
     receipt = execute_conflict_resolution(
         Path(vault_root),
@@ -1317,9 +1403,7 @@ def build_and_preview_topology_migration(
     vault_root: str | Path,
 ) -> dict[str, object]:
     """Detect topology and preview the one-time split without converting it."""
-    topology, preview, approval_token = build_topology_migration_preview(
-        Path(vault_root)
-    )
+    topology, preview, approval_token = build_topology_migration_preview(Path(vault_root))
     return _envelope(
         topology=topology,
         preview=preview,
@@ -1392,12 +1476,8 @@ def execute_approved_rebuild_verification(
             {
                 "capsule_id": capsule_id,
                 "proposal_id": proposal_id,
-                "staging_receipt_sha256": hashlib.sha256(
-                    staging_receipt.canonical_bytes()
-                ).hexdigest(),
-                "report_sha256": hashlib.sha256(
-                    report.canonical_bytes()
-                ).hexdigest(),
+                "staging_receipt_sha256": hashlib.sha256(staging_receipt.canonical_bytes()).hexdigest(),
+                "report_sha256": hashlib.sha256(report.canonical_bytes()).hexdigest(),
             }
         )
     ).hexdigest()
@@ -1405,9 +1485,7 @@ def execute_approved_rebuild_verification(
         approved_token,
         expected_token,
     ):
-        raise VerificationError(
-            "verification confirmation token does not match staging"
-        )
+        raise VerificationError("verification confirmation token does not match staging")
     receipt = write_verification_report(
         Path(vault_root),
         capsule_id,
@@ -1429,9 +1507,7 @@ def execute_approved_rebuild_activation(
     receipt = activation.activate(root, preview, approved_token)
     return _envelope(
         receipt=receipt.to_dict(),
-        rewind_acknowledgement_token=(
-            activation._rewind_acknowledgement_token(receipt)
-        ),
+        rewind_acknowledgement_token=(activation._rewind_acknowledgement_token(receipt)),
     )
 
 
@@ -1446,11 +1522,7 @@ def rewind_rebuild_activation_by_receipt(
         rewind,
     )
 
-    modeled = (
-        receipt
-        if isinstance(receipt, ActivationReceipt)
-        else ActivationReceipt.from_dict(receipt)
-    )
+    modeled = receipt if isinstance(receipt, ActivationReceipt) else ActivationReceipt.from_dict(receipt)
     rewind_receipt = rewind(
         Path(vault_root),
         modeled,
@@ -1494,14 +1566,9 @@ def _rebuild_transaction_ids(root: Path) -> frozenset[str]:
         plan = begin.payload.get("plan")
         if not isinstance(plan, list):
             continue
-        relatives = (
-            item.get("relative")
-            for item in plan
-            if isinstance(item, Mapping)
-        )
+        relatives = (item.get("relative") for item in plan if isinstance(item, Mapping))
         if any(
-            isinstance(relative, str)
-            and _REBUILD_TRANSACTION_PATH.fullmatch(relative) is not None
+            isinstance(relative, str) and _REBUILD_TRANSACTION_PATH.fullmatch(relative) is not None
             for relative in relatives
         ):
             transaction_ids.add(tx_dir.name)
@@ -1534,6 +1601,10 @@ __all__ = [
     "execute_approved_mcp_registration",
     "build_and_preview_onboarding_context",
     "execute_approved_onboarding_context",
+    "build_and_preview_automation_claim",
+    "execute_approved_automation_claim",
+    "build_and_preview_automation_release",
+    "execute_approved_automation_release",
     "deliver_and_apply_latest_release",
     "build_and_preview_conflict_resolution",
     "execute_approved_conflict_resolution",

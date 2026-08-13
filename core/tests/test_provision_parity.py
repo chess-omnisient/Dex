@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -129,6 +130,36 @@ def test_installer_routes_bootstrap_config_to_sanctioned_provision_contract() ->
     assert "mcp_path.write_text" not in installer
 
 
+def test_install_config_preflight_needs_no_global_pyyaml(tmp_path: Path) -> None:
+    """The pre-venv installer seam must run on the standard library alone."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            str(REPO_ROOT / "core/capabilities.py"),
+            "--preflight-mutation-targets",
+            "--vault",
+            str(vault),
+            "--contract",
+            str(CONTRACT_PATH),
+            "--mutation-targets-json",
+            '[{"path":".mcp.json","kind":"file"}]',
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {
+        "mutation_targets": [{"kind": "file", "path": ".mcp.json"}],
+        "preflight": "passed",
+    }
+
+
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_adopt_preserves_existing_content_while_routing_lifecycle(tmp_path: Path) -> None:
     vault = _prepare_provision_vault(
@@ -157,11 +188,14 @@ def test_fresh_provision_enables_companies_and_creates_its_room(tmp_path: Path) 
     profile_path = vault / "System/user-profile.yaml"
     profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
     assert profile["capabilities"]["companies"]["enabled"] is True
-    assert capabilities.enabled(
-        "companies",
-        profile_path=profile_path,
-        contract_path=CONTRACT_PATH,
-    ) is True
+    assert (
+        capabilities.enabled(
+            "companies",
+            profile_path=profile_path,
+            contract_path=CONTRACT_PATH,
+        )
+        is True
+    )
     assert (vault / "05-Areas/Companies").is_dir()
 
 
@@ -238,22 +272,12 @@ def test_onboarding_rolls_back_every_write_when_a_late_target_fails(
     assert failed["terminal"] is True
     assert failed["transaction_ids"]
     declared = set(summary["mutation_receipt"]["declared_paths"])
-    changed = {
-        path
-        for path in set(before) | set(after)
-        if before.get(path) != after.get(path)
-    }
+    changed = {path for path in set(before) | set(after) if before.get(path) != after.get(path)}
     assert changed
     assert changed <= declared
     assert all(path == "System/.dex" or path.startswith("System/.dex/tx") for path in changed)
-    assert {
-        path: value
-        for path, value in after.items()
-        if not path.startswith("System/.dex")
-    } == {
-        path: value
-        for path, value in before.items()
-        if not path.startswith("System/.dex")
+    assert {path: value for path, value in after.items() if not path.startswith("System/.dex")} == {
+        path: value for path, value in before.items() if not path.startswith("System/.dex")
     }
 
 
@@ -322,7 +346,8 @@ def test_real_onboarding_recovers_every_direct_transaction_crash_seam(
     assert all(
         index < marker_index
         for index, relative in enumerate(plan_paths)
-        if relative not in {
+        if relative
+        not in {
             "System/.onboarding-complete",
             "System/.onboarding-session.json",
         }
@@ -348,10 +373,7 @@ def test_real_onboarding_recovers_every_direct_transaction_crash_seam(
 
     committed: set[str] = set()
     for journal in sorted((vault / "System/.dex/tx").glob("*/journal.jsonl")):
-        events = {
-            json.loads(line)["event"]
-            for line in journal.read_text(encoding="utf-8").splitlines()
-        }
+        events = {json.loads(line)["event"] for line in journal.read_text(encoding="utf-8").splitlines()}
         assert len(events & {"COMMITTED", "ROLLED-BACK"}) == 1
         if "COMMITTED" in events:
             committed.add(journal.parent.name)
@@ -416,9 +438,7 @@ def test_real_adopt_recovers_a_lifecycle_commit_after_its_receipt_is_lost(
     assert summary["ok"] is True
     assert (vault / "System/.onboarding-complete").is_file()
     assert not session.exists()
-    profile = yaml.safe_load(
-        (vault / "System/user-profile.yaml").read_text(encoding="utf-8")
-    )
+    profile = yaml.safe_load((vault / "System/user-profile.yaml").read_text(encoding="utf-8"))
     assert profile["capabilities"]["companies"]["enabled"] is True
     assert committed <= set(summary["mutation_receipt"]["transaction_ids"])
 
@@ -574,7 +594,7 @@ def test_onboarding_refuses_symlinked_mutation_targets_before_any_write(
     target_kind: str,
 ) -> None:
     vault = _prepare_provision_vault(tmp_path)
-    outside = tmp_path / f"outside-{unsafe_target.replace('/', '-') }"
+    outside = tmp_path / f"outside-{unsafe_target.replace('/', '-')}"
     target = vault / unsafe_target
     if target_kind == "directory":
         target.rename(outside)
@@ -701,11 +721,14 @@ def test_adopt_gives_an_existing_vault_without_a_company_opinion_the_room_idempo
     first = profile_path.read_text(encoding="utf-8")
     profile = yaml.safe_load(first)
     assert profile["capabilities"]["companies"]["enabled"] is True
-    assert capabilities.enabled(
-        "companies",
-        profile_path=profile_path,
-        contract_path=CONTRACT_PATH,
-    ) is True
+    assert (
+        capabilities.enabled(
+            "companies",
+            profile_path=profile_path,
+            contract_path=CONTRACT_PATH,
+        )
+        is True
+    )
     assert (vault / "05-Areas/Companies").exists()
 
     _run_provision(vault, "--adopt")
@@ -763,9 +786,7 @@ def test_lifecycle_only_dry_run_previews_the_exact_compatibility_pin(
         "companies": True,
         "quarter_goals": True,
     }
-    assert summary["mutation_receipt"]["declared_paths"] == [
-        "System/user-profile.yaml"
-    ]
+    assert summary["mutation_receipt"]["declared_paths"] == ["System/user-profile.yaml"]
     assert summary["mutation_receipt"]["lifecycle_transaction_ids"] == []
 
 
@@ -826,9 +847,7 @@ def test_lifecycle_only_update_adds_only_companies_to_a_partial_capability_map(
 
     _run_provision(vault, "--adopt", "--lifecycle-only")
 
-    profile = yaml.safe_load(
-        (vault / "System/user-profile.yaml").read_text(encoding="utf-8")
-    )
+    profile = yaml.safe_load((vault / "System/user-profile.yaml").read_text(encoding="utf-8"))
     assert profile["capabilities"] == {
         # Companies is added because this vault never said otherwise; the
         # explicit career: false above is a real choice and is preserved.
@@ -862,9 +881,7 @@ def test_adopt_preserves_an_existing_explicit_company_choice(
 
     _run_provision(vault, "--adopt")
 
-    profile = yaml.safe_load(
-        (vault / "System/user-profile.yaml").read_text(encoding="utf-8")
-    )
+    profile = yaml.safe_load((vault / "System/user-profile.yaml").read_text(encoding="utf-8"))
     assert profile["capabilities"]["companies"] == {
         "enabled": company_enabled,
         "custom": "keep",
@@ -896,20 +913,13 @@ def test_lifecycle_only_update_preserves_an_explicit_company_choice(
 def test_adopt_preserves_a_legacy_capability_opinion(tmp_path: Path) -> None:
     vault = _prepare_provision_vault(
         tmp_path,
-        profile_text=(
-            "name: Existing User\n"
-            "quarterly_planning:\n"
-            "  enabled: true\n"
-            "  q1_start_month: 4\n"
-        ),
+        profile_text=("name: Existing User\nquarterly_planning:\n  enabled: true\n  q1_start_month: 4\n"),
         companies_default=True,
     )
 
     _run_provision(vault, "--adopt")
 
-    profile = yaml.safe_load(
-        (vault / "System/user-profile.yaml").read_text(encoding="utf-8")
-    )
+    profile = yaml.safe_load((vault / "System/user-profile.yaml").read_text(encoding="utf-8"))
     assert profile["capabilities"]["companies"]["enabled"] is True
     assert profile["capabilities"]["quarter_goals"]["enabled"] is True
     assert profile["quarterly_planning"]["enabled"] is True

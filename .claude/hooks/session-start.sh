@@ -406,8 +406,19 @@ fi
 # (core/health/promises.py), which Doctor and Proactive Health audit.
 {
     DEX_LAUNCH_AGENTS_DIR="${DEX_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
+    AUTOMATION_OWNER_PYTHON="python3"
+    if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
+        AUTOMATION_OWNER_PYTHON="$CLAUDE_DIR/.venv/bin/python"
+    fi
     while IFS='|' read -r JOB_NAME JOB_LOG_RELATIVE_PATH JOB_MAX_AGE_SECONDS JOB_EXPECTED_CADENCE JOB_LABEL JOB_MODE; do
         [[ -f "$DEX_LAUNCH_AGENTS_DIR/$JOB_NAME.plist" ]] || continue
+        if [[ -f "$CLAUDE_DIR/core/utils/launch_agents.py" ]] && (
+            cd "$CLAUDE_DIR" && "$AUTOMATION_OWNER_PYTHON" -m core.utils.launch_agents \
+                --offloaded-check --vault "$CLAUDE_DIR" \
+                --plist-relative "Library/LaunchAgents/$JOB_NAME.plist"
+        ) >/dev/null 2>&1; then
+            continue
+        fi
 
         JOB_LOG="$CLAUDE_DIR/$JOB_LOG_RELATIVE_PATH"
         if [[ ! -f "$JOB_LOG" ]]; then

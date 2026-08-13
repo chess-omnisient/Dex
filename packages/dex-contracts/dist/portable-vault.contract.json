@@ -489,6 +489,13 @@
       "note": "post-commit lifecycle receipts; local runtime evidence, never shipped"
     },
     {
+      "id": "runtime-automation-ownership",
+      "path": "System/.dex/automation-ownership.json",
+      "kind": "file",
+      "ownership": "runtime",
+      "note": "closed Dex Solo scheduler handoff state; transaction-owned and never shipped"
+    },
+    {
       "id": "generated-health-state",
       "path": "System/.dex/health",
       "kind": "dir",

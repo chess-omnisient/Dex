@@ -28,7 +28,7 @@ from core.tests.lifecycle_test_helpers import (
     write_manifest,
 )
 from core.transaction.engine import PlanRejected
-from core.utils import doctor, release_channel
+from core.utils import automation_ownership, doctor, release_channel
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCTOR_PATH = Path(__file__).resolve().parents[1] / "utils" / "doctor.py"
@@ -93,9 +93,7 @@ def foreign_launch_agents(context):
     agents.mkdir(parents=True, exist_ok=True)
     definitions = {
         "com.dex.research-scan": ".scripts/research-scan.py",
-        "com.dex.other-product": str(
-            context.home.parent / "other-dex-vault" / ".scripts" / "other-product.py"
-        ),
+        "com.dex.other-product": str(context.home.parent / "other-dex-vault" / ".scripts" / "other-product.py"),
     }
     plists = []
     for label, script in definitions.items():
@@ -175,24 +173,66 @@ def _write_plist(context, label):
     return plist
 
 
+def _write_solo_automation_claim(context, plist, label):
+    relative = plist.relative_to(context.home).as_posix()
+    sidecar = context.vault_root / automation_ownership.SIDECAR_RELATIVE
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    sidecar.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "claims": [
+                    {
+                        "automation_id": label,
+                        "owner_id": "dex-solo",
+                        "plist_relative_path": relative,
+                        "plist_sha256": hashlib.sha256(plist.read_bytes()).hexdigest(),
+                    }
+                ],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return sidecar
+
+
 def _write_entity_probe_files(context, *, mode="auto", unresolved=None):
     runtime = context.vault_root / "System" / ".dex"
     runtime.mkdir(parents=True, exist_ok=True)
-    (runtime / "contacts.json").write_text(json.dumps({
-        "contacts": {"one": {}}, "observations": {"m1": {}, "m2": {}},
-    }))
-    (runtime / "entity-suggestions.json").write_text(json.dumps({
-        "suggestions": [{"status": "suggested"}],
-    }))
-    (runtime / "entity-verification.json").write_text(json.dumps({
-        "generated_at": NOW.isoformat(), "unresolved": unresolved or [],
-    }))
-    (context.vault_root / "System" / "user-profile.yaml").write_text(
-        f"entity_creation:\n  mode: {mode}\n"
+    (runtime / "contacts.json").write_text(
+        json.dumps(
+            {
+                "contacts": {"one": {}},
+                "observations": {"m1": {}, "m2": {}},
+            }
+        )
     )
-    (context.vault_root / "System" / "People_Index.json").write_text(json.dumps({
-        "built_at": NOW.isoformat(),
-    }))
+    (runtime / "entity-suggestions.json").write_text(
+        json.dumps(
+            {
+                "suggestions": [{"status": "suggested"}],
+            }
+        )
+    )
+    (runtime / "entity-verification.json").write_text(
+        json.dumps(
+            {
+                "generated_at": NOW.isoformat(),
+                "unresolved": unresolved or [],
+            }
+        )
+    )
+    (context.vault_root / "System" / "user-profile.yaml").write_text(f"entity_creation:\n  mode: {mode}\n")
+    (context.vault_root / "System" / "People_Index.json").write_text(
+        json.dumps(
+            {
+                "built_at": NOW.isoformat(),
+            }
+        )
+    )
 
 
 def _write_release_catalog(context, *, content=b"release skill\n", catalog_version=2):
@@ -200,20 +240,18 @@ def _write_release_catalog(context, *, content=b"release skill\n", catalog_versi
     manifest = write_manifest(context.vault_root, [item_path])
     write_file(context.vault_root, item_path, content)
     release_identity = {
-                "version": "1.64.0",
-                "channel": "release",
-                "source_commit": SOURCE_COMMIT,
-                "manifest": {
-                    "path": "System/.installed-files.manifest",
-                    "sha256": hashlib.sha256(manifest).hexdigest(),
-                },
-            }
+        "version": "1.64.0",
+        "channel": "release",
+        "source_commit": SOURCE_COMMIT,
+        "manifest": {
+            "path": "System/.installed-files.manifest",
+            "sha256": hashlib.sha256(manifest).hexdigest(),
+        },
+    }
     if catalog_version == 1:
         release_identity["immutable_distribution_tag"] = "dist/release/v1.64.0-0123456"
     else:
-        release_identity["immutable_distribution_tag_pattern"] = (
-            "dist/release/v1.64.0-<release-commit-prefix>"
-        )
+        release_identity["immutable_distribution_tag_pattern"] = "dist/release/v1.64.0-<release-commit-prefix>"
     document = with_catalog_identity(
         {
             "catalog_version": catalog_version,
@@ -291,11 +329,7 @@ def _drift_context(tmp_path, *, release_ref=True, channel=None):
     (vault / "core").mkdir()
     (vault / "core" / "shipped.py").write_text("SHIPPED = 1\n")
     (vault / "CLAUDE.md").write_text(
-        "# Dex\n\n"
-        "## USER_EXTENSIONS_START\n"
-        "<!-- personal instructions -->\n"
-        "## USER_EXTENSIONS_END\n\n"
-        "Shipped tail.\n"
+        "# Dex\n\n## USER_EXTENSIONS_START\n<!-- personal instructions -->\n## USER_EXTENSIONS_END\n\nShipped tail.\n"
     )
     (vault / ".mcp.json").write_text(
         json.dumps(
@@ -372,9 +406,14 @@ def test_entity_engine_probe_reports_default_mode_and_stale_verification(context
     _write_entity_probe_files(context)
     (context.vault_root / "System" / "user-profile.yaml").write_text("name: Test\n")
     verification = context.vault_root / "System" / ".dex" / "entity-verification.json"
-    verification.write_text(json.dumps({
-        "generated_at": (NOW - timedelta(hours=49)).isoformat(), "unresolved": [],
-    }))
+    verification.write_text(
+        json.dumps(
+            {
+                "generated_at": (NOW - timedelta(hours=49)).isoformat(),
+                "unresolved": [],
+            }
+        )
+    )
     result = doctor._probe_entity_engine(context)
     assert result.verdict == "OK"
     assert "suggest (default — key missing)" in result.detail
@@ -392,10 +431,7 @@ def test_entity_engine_probe_surfaces_dead_letters_through_feature_status(contex
                 "meeting_id": "meeting-1",
                 "meeting_ids": ["meeting-1"],
                 "op_type": "mutate",
-                "entity_path": (
-                    str(context.vault_root)
-                    + "/05-Areas/People/External/Jane_Example.md"
-                ),
+                "entity_path": (str(context.vault_root) + "/05-Areas/People/External/Jane_Example.md"),
                 "entity_identity": {
                     "kind": "person",
                     "name": "Jane Example",
@@ -420,9 +456,7 @@ def test_entity_engine_probe_surfaces_dead_letters_through_feature_status(contex
         action="Re-queue the dead-lettered entity write with retry counters reset.",
         applied=False,
     )
-    definition = next(
-        item for item in doctor.QUICK_CHECKS if item.id == "entity.engine"
-    )
+    definition = next(item for item in doctor.QUICK_CHECKS if item.id == "entity.engine")
     rendered = doctor._result_json(definition, result)
     assert rendered["feature_status"] == "broken"
     assert rendered["user_message"] == result.user_message
@@ -441,10 +475,13 @@ def test_t1_heal_requeues_dead_lettered_entity_writes(monkeypatch, context):
     monkeypatch.setattr(
         doctor,
         "_requeue_entity_dead_letters",
-        lambda candidate: calls.append(candidate) or {
-            "requeued": 1,
-            "dead_letter_ids": ["example-dead-letter"],
-        },
+        lambda candidate: (
+            calls.append(candidate)
+            or {
+                "requeued": 1,
+                "dead_letter_ids": ["example-dead-letter"],
+            }
+        ),
     )
 
     actions, errors = doctor._apply_t1_heals(context)
@@ -460,13 +497,7 @@ def test_entity_dead_letter_heal_round_trip_returns_probe_to_ok(context):
     _write_entity_probe_files(context)
     operation = {
         "op": "create",
-        "path": str(
-            context.vault_root
-            / "05-Areas"
-            / "People"
-            / "External"
-            / "Jane_Example.md"
-        ),
+        "path": str(context.vault_root / "05-Areas" / "People" / "External" / "Jane_Example.md"),
         "content": "# Jane Example\n",
         "allowed_root": str(context.vault_root),
     }
@@ -495,9 +526,7 @@ def test_entity_dead_letter_heal_round_trip_returns_probe_to_ok(context):
 
     assert healed["requeued"] == 1
     assert not dead_letter.exists()
-    pending = json.loads(
-        (context.vault_root / "System" / ".dex" / "entity-pending.json").read_text()
-    )
+    pending = json.loads((context.vault_root / "System" / ".dex" / "entity-pending.json").read_text())
     assert pending["batches"][0]["ops"] == [operation]
     assert doctor._probe_entity_engine(context).verdict == "OK"
 
@@ -511,10 +540,17 @@ def test_entity_engine_probe_reports_gardener_statuses(monkeypatch, context):
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     gardener = context.core_path("GARDENER_STATE_FILE")
-    gardener.write_text(json.dumps({"version": 2, "pages": {
-        "one.md": {"output_hash": "one", "blocks": {"context-summary": {"owner": "dex"}}},
-        "two.md": {"output_hash": "two", "blocks": {"context-summary": {"owner": "user"}}},
-    }}))
+    gardener.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "pages": {
+                    "one.md": {"output_hash": "one", "blocks": {"context-summary": {"owner": "dex"}}},
+                    "two.md": {"output_hash": "two", "blocks": {"context-summary": {"owner": "user"}}},
+                },
+            }
+        )
+    )
     result = doctor._probe_entity_engine(context)
     assert "gardener on (2 pages maintained), 1 user-owned summary" in result.detail
 
@@ -523,9 +559,16 @@ def test_entity_engine_probe_reports_gardener_statuses(monkeypatch, context):
     result = doctor._probe_entity_engine(context)
     assert "gardener off (disabled), 1 user-owned summary" in result.detail
 
-    gardener.write_text(json.dumps({"version": 1, "pages": {
-        "legacy.md": {"output_hash": "old", "locked": True, "locked_reason": "user-edited"},
-    }}))
+    gardener.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "pages": {
+                    "legacy.md": {"output_hash": "old", "locked": True, "locked_reason": "user-edited"},
+                },
+            }
+        )
+    )
     result = doctor._probe_entity_engine(context)
     assert "1 legacy lock pending migration" in result.detail
 
@@ -535,9 +578,16 @@ def test_entity_engine_probe_reads_llm_key_from_vault_env_file(monkeypatch, cont
         monkeypatch.delenv(key, raising=False)
     _write_entity_probe_files(context)
     gardener = context.core_path("GARDENER_STATE_FILE")
-    gardener.write_text(json.dumps({"version": 2, "pages": {
-        "one.md": {"output_hash": "one", "blocks": {"context-summary": {"owner": "dex"}}},
-    }}))
+    gardener.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "pages": {
+                    "one.md": {"output_hash": "one", "blocks": {"context-summary": {"owner": "dex"}}},
+                },
+            }
+        )
+    )
     env_path = context.vault_root / ".env"
     env_path.write_text("# local keys\nexport GEMINI_API_KEY='test-placeholder-key'\n")
 
@@ -777,9 +827,7 @@ def test_release_catalog_probe_is_calmly_off_for_older_installs(context):
 
 
 @pytest.mark.parametrize("catalog_version", (1, 2))
-def test_release_catalog_probe_reports_valid_version_without_writing(
-    context, catalog_version
-):
+def test_release_catalog_probe_reports_valid_version_without_writing(context, catalog_version):
     _write_release_catalog(context, catalog_version=catalog_version)
     before = _tree_snapshot(context.vault_root)
 
@@ -914,9 +962,7 @@ def test_adoption_plan_probe_is_broken_on_a_real_bridge_pin_mismatch(context):
 
 
 def test_corrupt_catalog_never_raises_out_of_doctor(monkeypatch, context):
-    (context.vault_root / "System/.release-catalog.json").write_text(
-        "{not json", encoding="utf-8"
-    )
+    (context.vault_root / "System/.release-catalog.json").write_text("{not json", encoding="utf-8")
     _stub_probes(monkeypatch, exclude={"release.catalog", "adoption.plan"})
 
     report = doctor.collect(context=context)
@@ -945,9 +991,7 @@ def _write_split_topology(context, *, installed: str = "a" * 40) -> Path:
         ["git", f"--git-dir={brain}", "remote", "add", "origin", "https://github.com/davekilleen/Dex.git"],
         check=True,
     )
-    (brain / "dex-brain-v2").write_text(
-        json.dumps({"role": "brain", "installed": commit}) + "\n"
-    )
+    (brain / "dex-brain-v2").write_text(json.dumps({"role": "brain", "installed": commit}) + "\n")
     topology = context.vault_root / "System/.dex/topology.json"
     topology.parent.mkdir(parents=True, exist_ok=True)
     topology.write_text(
@@ -970,10 +1014,7 @@ def test_topology_probe_distinguishes_combined_split_and_invalid(context):
     assert doctor._topology_state(context) == "combined"
     assert doctor._probe_migration_pending(context).verdict == "OFF"
 
-    migrator = (
-        context.vault_root
-        / "core/migrations/v1-to-v2-brain-vault-split.cjs"
-    )
+    migrator = context.vault_root / "core/migrations/v1-to-v2-brain-vault-split.cjs"
     migrator.parent.mkdir(parents=True)
     migrator.write_text("'use strict';\n", encoding="utf-8")
     assert doctor._topology_state(context) == "migration-pending"
@@ -1280,9 +1321,7 @@ def test_raising_probe_becomes_unknown_and_main_still_returns_valid_json(monkeyp
         ),
     ],
 )
-def test_missing_modules_have_truthful_actionable_unknown_detail(
-    monkeypatch, context, error, guidance
-):
+def test_missing_modules_have_truthful_actionable_unknown_detail(monkeypatch, context, error, guidance):
     _stub_probes(monkeypatch)
 
     def missing_dependency(_context):
@@ -1383,10 +1422,7 @@ def test_heal_applies_all_t1_actions_and_leaves_t2_suggestion_untouched(
     assert "Missing standard PARA directories: 00-Inbox" in structure["detail"]
     assert structure["heal"] == {
         "tier": 1,
-        "action": (
-            "regenerated core/paths.json; restored executable permission on "
-            ".scripts/repo-tool.sh."
-        ),
+        "action": ("regenerated core/paths.json; restored executable permission on .scripts/repo-tool.sh."),
         "applied": True,
     }
     assert _check(report, "mcp.registered")["heal"] == {
@@ -1416,9 +1452,7 @@ def test_quick_mode_does_not_apply_t1_without_heal(monkeypatch, context):
     assert not script.stat().st_mode & stat.S_IXUSR
 
 
-def test_t1_authorized_repairs_preview_and_execute_through_lifecycle_service(
-    monkeypatch, context
-):
+def test_t1_authorized_repairs_preview_and_execute_through_lifecycle_service(monkeypatch, context):
     for name in doctor.PARA_PATH_NAMES:
         context.core_path(name).mkdir(parents=True, exist_ok=True)
     script = context.vault_root / ".scripts" / "repair-me.sh"
@@ -1490,9 +1524,7 @@ def test_heal_does_not_overwrite_a_raising_structure_probe_with_ok(monkeypatch, 
     structure = _check(report, "vault.structure")
     assert structure["verdict"] == "UNKNOWN"
     assert structure["heal"]["applied"] is True
-    assert report["instruments"]["failed"] == [
-        {"id": "vault.structure", "error": "structure probe exploded"}
-    ]
+    assert report["instruments"]["failed"] == [{"id": "vault.structure", "error": "structure probe exploded"}]
 
 
 def test_main_heal_flag_invokes_t1_and_still_returns_json(monkeypatch, context, capsys):
@@ -1598,10 +1630,7 @@ def test_capability_rooms_probe_detects_missing_on_assets_and_live_off_skills(
     assert "quarter-plan" in result.detail
     assert result.heal == doctor.Heal(
         tier=1,
-        action=(
-            "Reconcile capability room folders and shipped skills without "
-            "deleting user content."
-        ),
+        action=("Reconcile capability room folders and shipped skills without deleting user content."),
         applied=False,
     )
 
@@ -1624,9 +1653,7 @@ def test_capability_seed_probe_advises_update_only_for_enabled_rooms(
     )
     career = context.vault_root / "05-Areas/Career"
     career.mkdir(parents=True)
-    dormant = (
-        REPO_ROOT / ".claude/skills/_available/capabilities/career/skills"
-    )
+    dormant = REPO_ROOT / ".claude/skills/_available/capabilities/career/skills"
     for skill in ("career-setup", "career-coach", "resume-builder"):
         shutil.copytree(dormant / skill, context.vault_root / ".claude/skills" / skill)
 
@@ -1661,8 +1688,7 @@ def test_doctor_heal_reconciles_room_assets_and_preserves_user_content(
     for name in doctor.PARA_PATH_NAMES:
         context.core_path(name).mkdir(parents=True, exist_ok=True)
     (context.vault_root / "System/user-profile.yaml").write_text(
-        "name: Legacy User\n"
-        "role: Founder\n",
+        "name: Legacy User\nrole: Founder\n",
         encoding="utf-8",
     )
     user_note = context.vault_root / "05-Areas/Career/private-review.md"
@@ -1671,8 +1697,7 @@ def test_doctor_heal_reconciles_room_assets_and_preserves_user_content(
     existing_skill = context.vault_root / ".claude/skills/quarter-plan/SKILL.md"
     existing_skill.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(
-        REPO_ROOT
-        / ".claude/skills/_available/capabilities/quarter_goals/skills/quarter-plan/SKILL.md",
+        REPO_ROOT / ".claude/skills/_available/capabilities/quarter_goals/skills/quarter-plan/SKILL.md",
         existing_skill,
     )
     context.paths_json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1693,13 +1718,9 @@ def test_doctor_heal_reconciles_room_assets_and_preserves_user_content(
         "applied": True,
     }
     assert user_note.read_text(encoding="utf-8") == "Keep this forever.\n"
-    assert (
-        context.vault_root / "05-Areas/Career/Evidence/README.md"
-    ).is_file()
+    assert (context.vault_root / "05-Areas/Career/Evidence/README.md").is_file()
     for skill in ("career-setup", "career-coach", "resume-builder"):
-        assert (
-            context.vault_root / ".claude/skills" / skill / "SKILL.md"
-        ).is_file()
+        assert (context.vault_root / ".claude/skills" / skill / "SKILL.md").is_file()
     for skill in (
         "career-setup",
         "career-coach",
@@ -1707,12 +1728,8 @@ def test_doctor_heal_reconciles_room_assets_and_preserves_user_content(
         "quarter-plan",
         "quarter-review",
     ):
-        assert (
-            context.vault_root / ".claude/skills" / skill / "SKILL.md"
-        ).is_file()
-    profile = (
-        context.vault_root / "System/user-profile.yaml"
-    ).read_text(encoding="utf-8")
+        assert (context.vault_root / ".claude/skills" / skill / "SKILL.md").is_file()
+    profile = (context.vault_root / "System/user-profile.yaml").read_text(encoding="utf-8")
     assert "companies:\n    enabled: true" in profile
 
 
@@ -1830,11 +1847,7 @@ def test_mcp_probes_read_legacy_config_without_moving_it(context):
     server = mcp_dir / "alpha_server.py"
     server.touch()
     legacy = context.vault_root / "System" / ".mcp.json"
-    legacy.write_text(
-        json.dumps(
-            {"mcpServers": {"alpha": {"command": sys.executable, "args": [str(server)]}}}
-        )
-    )
+    legacy.write_text(json.dumps({"mcpServers": {"alpha": {"command": sys.executable, "args": [str(server)]}}}))
 
     before = _tree_snapshot(context.vault_root)
     registered = doctor._probe_mcp_registered(context)
@@ -1903,9 +1916,7 @@ def test_hooks_wired_detects_dangling_hook_files(context):
         json.dumps(
             {
                 "hooks": {
-                    "SessionStart": [
-                        {"hooks": [{"type": "command", "command": "bash .claude/hooks/session-start.sh"}]}
-                    ]
+                    "SessionStart": [{"hooks": [{"type": "command", "command": "bash .claude/hooks/session-start.sh"}]}]
                 }
             }
         )
@@ -1962,6 +1973,67 @@ def test_jobs_loaded_distinguishes_not_installed_from_unloaded(monkeypatch, cont
     assert result.heal.tier == 2
 
 
+def test_doctor_treats_valid_solo_claim_as_app_owned_and_offloaded(monkeypatch, context):
+    plist = _write_plist(context, "com.dex.meeting-intel")
+    _write_solo_automation_claim(context, plist, "com.dex.meeting-intel")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    def launchctl_must_not_run(*_args, **_kwargs):
+        raise AssertionError("Core must not inspect launchd state for an offloaded job")
+
+    monkeypatch.setattr(doctor, "_launchctl_status", launchctl_must_not_run)
+
+    loaded = doctor._probe_jobs_loaded(context)
+    fresh = doctor._probe_jobs_fresh(context)
+
+    assert loaded.verdict == "OK"
+    assert "owned by Dex Solo and offloaded from Core" in loaded.detail
+    assert fresh.verdict == "OFF"
+    assert "owned by Dex Solo and offloaded from Core" in fresh.detail
+
+
+def test_doctor_does_not_call_valid_solo_claim_broken_or_stale(monkeypatch, context):
+    former_vault = context.home.parent / "old-vault"
+    _write_breadcrumb(context, former_vault)
+    plist = _write_plist(context, "com.dex.example-job")
+    with plist.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": "com.dex.example-job",
+                "ProgramArguments": ["/bin/bash", str(former_vault / ".scripts/job.sh")],
+            },
+            handle,
+        )
+    _write_solo_automation_claim(context, plist, "com.dex.example-job")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "OK"
+    assert "offloaded" in result.detail
+    assert "old location" not in result.detail
+
+
+def test_doctor_rejects_stale_solo_plist_evidence(monkeypatch, context):
+    plist = _write_plist(context, "com.dex.meeting-intel")
+    _write_solo_automation_claim(context, plist, "com.dex.meeting-intel")
+    plist.write_bytes(plist.read_bytes() + b"\n")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_launchctl_domain_check", lambda: None)
+    monkeypatch.setattr(doctor, "_plist_interpreter", lambda _plist: "/bin/bash")
+    monkeypatch.setattr(
+        doctor,
+        "_launchctl_status",
+        lambda _label: {"loaded": False, "last_exit_status": None},
+    )
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "BROKEN"
+    assert "not loaded" in result.detail
+    assert "offloaded" not in result.detail
+
+
 def test_jobs_loaded_skips_foreign_product_plists(monkeypatch, context, foreign_launch_agents):
     monkeypatch.setattr(doctor, "_is_macos", lambda: True)
 
@@ -1969,8 +2041,7 @@ def test_jobs_loaded_skips_foreign_product_plists(monkeypatch, context, foreign_
 
     assert result.verdict == "OFF"
     assert result.detail == (
-        "No launch agents for this vault are installed; "
-        "2 Dex launch agents from other Dex products were skipped"
+        "No launch agents for this vault are installed; 2 Dex launch agents from other Dex products were skipped"
     )
     assert "research-scan.py" not in result.detail
 
@@ -1998,8 +2069,7 @@ def test_shipped_job_from_another_vault_is_not_attributed_to_this_vault(monkeypa
 
     assert loaded.verdict == "OFF"
     assert loaded.detail == (
-        "No launch agents for this vault are installed; "
-        "1 Dex launch agent from another Dex product was skipped"
+        "No launch agents for this vault are installed; 1 Dex launch agent from another Dex product was skipped"
     )
     assert fresh.verdict == "OFF"
 
@@ -2027,8 +2097,7 @@ def test_shipped_job_from_another_worktree_vault_is_not_a_failure(monkeypatch, c
 
     assert loaded.verdict == "OFF"
     assert loaded.detail == (
-        "No launch agents for this vault are installed; "
-        "1 Dex launch agent from another Dex product was skipped"
+        "No launch agents for this vault are installed; 1 Dex launch agent from another Dex product was skipped"
     )
     assert fresh.verdict == "OFF"
 
@@ -2210,8 +2279,13 @@ def test_jobs_loaded_reports_missing_program_script_as_broken_t2(monkeypatch, co
 
 
 def test_launchctl_domain_failure_is_an_unknown_instrument(monkeypatch, context):
-    _write_plist(context, "com.dex.meeting-intel")
+    plist = _write_plist(context, "com.dex.meeting-intel")
     monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(
+        doctor,
+        "_plist_interpreter",
+        lambda candidate: "/bin/bash" if candidate == plist else None,
+    )
     monkeypatch.setattr(
         doctor,
         "_launchctl_domain_check",
@@ -2390,9 +2464,7 @@ def _write_breadcrumb(context, former_vault):
     return breadcrumb
 
 
-def test_jobs_loaded_flags_agent_pointing_at_the_stored_former_vault_root(
-    monkeypatch, context
-):
+def test_jobs_loaded_flags_agent_pointing_at_the_stored_former_vault_root(monkeypatch, context):
     """A job left behind by a vault move is owned-and-stale, never foreign (#364)."""
     former_vault = context.home.parent / "old-vault"
     _write_breadcrumb(context, former_vault)
@@ -2423,9 +2495,7 @@ def test_jobs_loaded_flags_agent_pointing_at_the_stored_former_vault_root(
     assert str(context.vault_root) in result.heal.action
 
 
-def test_jobs_loaded_flags_user_labeled_stale_agent_the_hook_warns_about(
-    monkeypatch, context
-):
+def test_jobs_loaded_flags_user_labeled_stale_agent_the_hook_warns_about(monkeypatch, context):
     """The hook and the doctor must agree: any label pointing at the former root."""
     former_vault = context.home.parent / "old-vault"
     _write_breadcrumb(context, former_vault)
@@ -2466,12 +2536,7 @@ def test_jobs_loaded_stale_matching_requires_a_path_boundary(monkeypatch, contex
                 "Label": "com.dex.sibling-product",
                 "ProgramArguments": [
                     "/bin/bash",
-                    str(
-                        context.home.parent
-                        / "old-vault-other"
-                        / ".scripts"
-                        / "run.sh"
-                    ),
+                    str(context.home.parent / "old-vault-other" / ".scripts" / "run.sh"),
                 ],
             },
             handle,
@@ -2485,9 +2550,7 @@ def test_jobs_loaded_stale_matching_requires_a_path_boundary(monkeypatch, contex
     assert "was skipped" in result.detail
 
 
-def test_jobs_loaded_discovers_user_labeled_dex_agent_for_this_vault(
-    monkeypatch, context
-):
+def test_jobs_loaded_discovers_user_labeled_dex_agent_for_this_vault(monkeypatch, context):
     """User-installed com.<user>.dex.* jobs get real monitoring coverage (#253)."""
     agents = context.home / "Library" / "LaunchAgents"
     agents.mkdir(parents=True, exist_ok=True)
@@ -2510,16 +2573,12 @@ def test_jobs_loaded_discovers_user_labeled_dex_agent_for_this_vault(
     assert str(missing_script) in result.detail
 
 
-def test_jobs_loaded_discovers_vault_job_under_any_label_by_path_evidence(
-    monkeypatch, context
-):
+def test_jobs_loaded_discovers_vault_job_under_any_label_by_path_evidence(monkeypatch, context):
     """Ownership is path evidence, not the label: any plist into this vault counts."""
     plist = _write_plist(context, "com.mycompany.sync")
     monkeypatch.setattr(doctor, "_is_macos", lambda: True)
     monkeypatch.setattr(doctor, "_launchctl_domain_check", lambda: None)
-    monkeypatch.setattr(
-        doctor, "_plist_interpreter", lambda candidate: "/bin/bash" if candidate == plist else None
-    )
+    monkeypatch.setattr(doctor, "_plist_interpreter", lambda candidate: "/bin/bash" if candidate == plist else None)
     monkeypatch.setattr(
         doctor,
         "_launchctl_status",
@@ -2532,9 +2591,7 @@ def test_jobs_loaded_discovers_vault_job_under_any_label_by_path_evidence(
     assert "All 1 installed launch agents for this vault are loaded" in result.detail
 
 
-def test_jobs_loaded_ignores_unrelated_products_whose_names_contain_dex(
-    monkeypatch, context
-):
+def test_jobs_loaded_ignores_unrelated_products_whose_names_contain_dex(monkeypatch, context):
     """com.dexcom.* / com.samsung.dex.* / com.fedex.* are other products."""
     agents = context.home / "Library" / "LaunchAgents"
     agents.mkdir(parents=True, exist_ok=True)
@@ -2585,9 +2642,7 @@ def test_corrupt_third_party_plists_never_degrade_job_monitoring(monkeypatch, co
     plist = _write_plist(context, "com.dex.smoke-nightly")
     monkeypatch.setattr(doctor, "_is_macos", lambda: True)
     monkeypatch.setattr(doctor, "_launchctl_domain_check", lambda: None)
-    monkeypatch.setattr(
-        doctor, "_plist_interpreter", lambda candidate: "/bin/bash" if candidate == plist else None
-    )
+    monkeypatch.setattr(doctor, "_plist_interpreter", lambda candidate: "/bin/bash" if candidate == plist else None)
     monkeypatch.setattr(
         doctor,
         "_launchctl_status",
@@ -2609,9 +2664,7 @@ def test_truncated_shipped_plist_is_unknown_not_a_probe_crash(monkeypatch, conte
     agents = context.home / "Library" / "LaunchAgents"
     agents.mkdir(parents=True, exist_ok=True)
     plist = agents / "com.dex.meeting-intel.plist"
-    plist.write_bytes(
-        b'<?xml version="1.0"?><plist version="1.0"><dict><key>Label</key>'
-    )
+    plist.write_bytes(b'<?xml version="1.0"?><plist version="1.0"><dict><key>Label</key>')
     monkeypatch.setattr(doctor, "_is_macos", lambda: True)
 
     loaded = doctor._probe_jobs_loaded(context)
@@ -2634,9 +2687,7 @@ def test_legacy_claudesidian_jobs_get_real_freshness_audits(context):
     assert "checked for loading only" not in result.detail
 
 
-def test_jobs_loaded_flags_owned_agent_with_leftover_former_root_references(
-    monkeypatch, context
-):
+def test_jobs_loaded_flags_owned_agent_with_leftover_former_root_references(monkeypatch, context):
     """A partially repointed job (invocation current, other keys stale) is surfaced.
 
     The session-start hook greps raw bytes and keeps warning about the
@@ -2760,9 +2811,7 @@ def test_stored_former_vault_root_rejects_current_and_degenerate_roots(context):
     assert doctor._stored_former_vault_root(context) == former
 
 
-def test_jobs_loaded_skips_a_dex_plist_pointing_at_another_worktree(
-    monkeypatch, context
-):
+def test_jobs_loaded_skips_a_dex_plist_pointing_at_another_worktree(monkeypatch, context):
     """A worktree path is foreign unless it is this vault's path evidence."""
     agents = context.home / "Library" / "LaunchAgents"
     agents.mkdir(parents=True, exist_ok=True)
@@ -2783,14 +2832,11 @@ def test_jobs_loaded_skips_a_dex_plist_pointing_at_another_worktree(
 
     assert result.verdict == "OFF"
     assert result.detail == (
-        "No launch agents for this vault are installed; "
-        "1 Dex launch agent from another Dex product was skipped"
+        "No launch agents for this vault are installed; 1 Dex launch agent from another Dex product was skipped"
     )
 
 
-def test_jobs_loaded_skips_a_dex_plist_pointing_into_another_git_worktree_checkout(
-    monkeypatch, context
-):
+def test_jobs_loaded_skips_a_dex_plist_pointing_into_another_git_worktree_checkout(monkeypatch, context):
     checkout = context.home.parent / "checkouts" / "dex-copy"
     (checkout / ".scripts").mkdir(parents=True)
     (checkout / ".git").write_text("gitdir: /somewhere/else\n", encoding="utf-8")
@@ -2814,8 +2860,7 @@ def test_jobs_loaded_skips_a_dex_plist_pointing_into_another_git_worktree_checko
 
     assert result.verdict == "OFF"
     assert result.detail == (
-        "No launch agents for this vault are installed; "
-        "1 Dex launch agent from another Dex product was skipped"
+        "No launch agents for this vault are installed; 1 Dex launch agent from another Dex product was skipped"
     )
 
 
@@ -3024,8 +3069,7 @@ def test_customization_mcp_compiles_custom_python_without_running_or_littering(c
     target = context.vault_root / "custom-mcp" / "server.py"
     target.parent.mkdir()
     target.write_text(
-        "from pathlib import Path\n"
-        f"Path({str(sentinel)!r}).write_text('executed')\n",
+        f"from pathlib import Path\nPath({str(sentinel)!r}).write_text('executed')\n",
         encoding="utf-8",
     )
     _write_mcp_config(
@@ -3202,8 +3246,7 @@ def test_worktree_blob_ids_hash_large_release_trees_in_pipe_safe_batches(
 ) -> None:
     relatives = [f"core/release-file-{index:04d}.py" for index in range(600)]
     expected = {
-        relative: hashlib.sha1(relative.encode("utf-8"), usedforsecurity=False).hexdigest()
-        for relative in relatives
+        relative: hashlib.sha1(relative.encode("utf-8"), usedforsecurity=False).hexdigest() for relative in relatives
     }
     observed_batches: list[list[str]] = []
 
@@ -3407,8 +3450,7 @@ def test_repository_credential_named_release_files_match_head_without_python_rea
     credential_paths = sorted(
         relative
         for relative in release_entries
-        if "credential" in relative.casefold()
-        and not relative.startswith("core/tests/")
+        if "credential" in relative.casefold() and not relative.startswith("core/tests/")
     )
     assert credential_paths == [
         "core/utils/credential_migration_exceptions.json",
@@ -3733,9 +3775,7 @@ def test_smoke_journeys_roll_up_broken_from_exit_one(monkeypatch, context):
     payload = {
         "schema_version": 1,
         "generated_at": NOW.isoformat(),
-        "journeys": [
-            {"id": "task_lifecycle", "verdict": "BROKEN", "detail": "Tasks.md changed", "duration_ms": 3}
-        ],
+        "journeys": [{"id": "task_lifecycle", "verdict": "BROKEN", "detail": "Tasks.md changed", "duration_ms": 3}],
         "summary": {"ok": 0, "broken": 1, "unknown": 0, "off": 0},
     }
     monkeypatch.setattr(
@@ -3836,20 +3876,14 @@ def test_granola_no_key_is_off_and_api_400_is_broken(monkeypatch, context):
     result = doctor._probe_granola_query_path(context)
     assert result.verdict == "BROKEN"
     assert result.detail == (
-        "Granola query failed (HTTP 400) — the connector may need updating. "
-        "Response: created_after is invalid"
+        "Granola query failed (HTTP 400) — the connector may need updating. Response: created_after is invalid"
     )
 
 
 def _write_backup_config(context, *, enabled=True):
     config = context.vault_root / "System" / "integrations" / "config.yaml"
     config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text(
-        "backup:\n"
-        f"  enabled: {str(enabled).lower()}\n"
-        "  backend: folder\n"
-        "  destination: /backups\n"
-    )
+    config.write_text(f"backup:\n  enabled: {str(enabled).lower()}\n  backend: folder\n  destination: /backups\n")
 
 
 def _write_backup_stamp(context, *, ok, timestamp, error=None, warnings=None):
@@ -3876,9 +3910,11 @@ def test_backup_freshness_broken_when_a_recent_run_stored_less_than_asked(contex
         context,
         ok=True,
         timestamp="2026-07-10T02:00:00+00:00",
-        warnings=["the vault's version history could not be bundled, so this "
-                  "set holds the notes archive only: fatal: Refusing to create "
-                  "empty bundle."],
+        warnings=[
+            "the vault's version history could not be bundled, so this "
+            "set holds the notes archive only: fatal: Refusing to create "
+            "empty bundle."
+        ],
     )
     result = doctor._probe_backup_freshness(context)
     assert result.verdict == "BROKEN"
@@ -3889,8 +3925,7 @@ def test_backup_freshness_broken_when_a_recent_run_stored_less_than_asked(contex
 
 def test_backup_freshness_stays_ok_when_the_run_recorded_no_warnings(context):
     _write_backup_config(context)
-    _write_backup_stamp(
-        context, ok=True, timestamp="2026-07-10T02:00:00+00:00", warnings=[])
+    _write_backup_stamp(context, ok=True, timestamp="2026-07-10T02:00:00+00:00", warnings=[])
     assert doctor._probe_backup_freshness(context).verdict == "OK"
 
 
@@ -3999,9 +4034,7 @@ def test_calendar_permission_boundaries_and_configured_name(monkeypatch, context
     )
     assert doctor._probe_calendar_access(context).verdict == "OFF"
 
-    (context.vault_root / "System" / "user-profile.yaml").write_text(
-        "calendar:\n  work_calendar: Team Calendar\n"
-    )
+    (context.vault_root / "System" / "user-profile.yaml").write_text("calendar:\n  work_calendar: Team Calendar\n")
     assert doctor._probe_calendar_access(context).verdict == "BROKEN"
 
     monkeypatch.setattr(doctor, "_calendar_permission_status", lambda _context: "denied")
@@ -4196,9 +4229,7 @@ def test_qmd_unexpected_exception_still_breaks_doctor_self(monkeypatch, context)
     report = doctor.collect(deep=True, context=context)
 
     assert _check(report, "qmd.live")["verdict"] == "UNKNOWN"
-    assert report["instruments"]["failed"] == [
-        {"id": "qmd.live", "error": "unexpected qmd adapter failure"}
-    ]
+    assert report["instruments"]["failed"] == [{"id": "qmd.live", "error": "unexpected qmd adapter failure"}]
     assert _check(report, "doctor.self")["verdict"] == "BROKEN"
 
 
@@ -4251,12 +4282,7 @@ def test_integrations_check_only_task_sync_entries_through_adapter_runner(monkey
     config = context.vault_root / "System" / "integrations" / "config.yaml"
     config.parent.mkdir()
     config.write_text(
-        "todoist:\n"
-        "  enabled: true\n"
-        "  task_sync: true\n"
-        "  api_key_env_var: TODOIST_API_KEY\n"
-        "notion:\n"
-        "  enabled: true\n"
+        "todoist:\n  enabled: true\n  task_sync: true\n  api_key_env_var: TODOIST_API_KEY\nnotion:\n  enabled: true\n"
     )
     (context.vault_root / ".env").write_text('TODOIST_API_KEY="secret"\n')
     (context.vault_root / ".env").chmod(0o600)
@@ -4299,12 +4325,7 @@ def test_integrations_check_only_task_sync_entries_through_adapter_runner(monkey
     assert with_unverifiable.verdict == "UNKNOWN"
     assert "notion" in with_unverifiable.detail
 
-    config.write_text(
-        "todoist:\n"
-        "  enabled: true\n"
-        "  task_sync: true\n"
-        "  api_key_env_var: TODOIST_API_KEY\n"
-    )
+    config.write_text("todoist:\n  enabled: true\n  task_sync: true\n  api_key_env_var: TODOIST_API_KEY\n")
     assert doctor._probe_integrations_enabled(context).verdict == "OK"
 
 
@@ -4374,11 +4395,7 @@ def test_integrations_engine_stored_but_unverified_rows_are_unknown(monkeypatch,
         lambda command, **_kwargs: subprocess.CompletedProcess(
             command,
             0,
-            stdout=(
-                '{"connections":[{"service":"google","status":"'
-                + status
-                + '","verified":false}]}\n'
-            ),
+            stdout=('{"connections":[{"service":"google","status":"' + status + '","verified":false}]}\n'),
             stderr="",
         ),
     )
@@ -4578,7 +4595,7 @@ def test_post_update_canary_probe_reads_the_receipt(context):
 
 def test_meeting_sources_probe_is_ok_for_api_sources_without_folders(context):
     profile = context.vault_root / "System" / "user-profile.yaml"
-    profile.write_text("meeting_sources:\n  primary: granola\n  notes_folder: \"\"\n", encoding="utf-8")
+    profile.write_text('meeting_sources:\n  primary: granola\n  notes_folder: ""\n', encoding="utf-8")
     result = doctor._probe_meeting_sources(context)
     assert result.verdict == "OK"
     assert "granola" in result.detail

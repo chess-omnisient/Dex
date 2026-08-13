@@ -20,8 +20,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-import yaml
-
 try:
     from core.lens_catalog_sources import (
         SkillSourceError,
@@ -86,6 +84,8 @@ def _read_profile(
     *,
     strict: bool = False,
 ) -> dict[str, Any]:
+    import yaml
+
     path = Path(profile_path)
     if not path.exists():
         return {}
@@ -145,11 +145,7 @@ def _within(root: Path, relative_path: str) -> Path:
 def _lexical_target(root: Path, relative_path: str, *, kind: str) -> Path:
     """Resolve a vault-relative target without following any path component."""
     relative = Path(relative_path)
-    if (
-        relative.is_absolute()
-        or not relative.parts
-        or any(part in {"", ".", ".."} for part in relative.parts)
-    ):
+    if relative.is_absolute() or not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
         raise CapabilityError(f"Capability path is not a safe relative path: {relative_path}")
     target = root.joinpath(*relative.parts)
     cursor = root
@@ -162,9 +158,7 @@ def _lexical_target(root: Path, relative_path: str, *, kind: str) -> Path:
             continue
         expects_directory = not final or kind == "directory"
         if expects_directory and not cursor.is_dir():
-            raise CapabilityError(
-                f"Capability target ancestor is not a directory: {relative.as_posix()}"
-            )
+            raise CapabilityError(f"Capability target ancestor is not a directory: {relative.as_posix()}")
         if final and kind == "file" and not cursor.is_file():
             raise CapabilityError(f"Capability target is not a regular file: {relative.as_posix()}")
     return target
@@ -249,9 +243,7 @@ class _MutationJournal:
 
     def removed_skill(self, target: Path, payload: bytes) -> None:
         # Rollback runs in reverse: restore the directory, then its one pinned file.
-        self._actions.append(
-            _UndoMutation("restore-file", target / "SKILL.md", payload=payload)
-        )
+        self._actions.append(_UndoMutation("restore-file", target / "SKILL.md", payload=payload))
         self._actions.append(_UndoMutation("restore-directory", target))
 
     def rollback(self) -> None:
@@ -562,23 +554,16 @@ def _active_room_skill_target(root: Path, pin: SkillSourcePin) -> _ActiveRoomSki
     except OSError as error:
         raise CapabilityError(f"Active room skill target cannot be inspected: {relative.as_posix()}") from error
     if len(entries) != 1 or any(
-        entry.name != "SKILL.md" or entry.is_symlink() or not entry.is_file()
-        for entry in entries
+        entry.name != "SKILL.md" or entry.is_symlink() or not entry.is_file() for entry in entries
     ):
-        raise CapabilityError(
-            f"Active room skill target contains unpinned or unsafe entries: {relative.as_posix()}"
-        )
+        raise CapabilityError(f"Active room skill target contains unpinned or unsafe entries: {relative.as_posix()}")
     try:
         payload = entries[0].read_bytes()
     except OSError as error:
-        raise CapabilityError(
-            f"Active room skill target cannot be read: {relative.as_posix()}"
-        ) from error
+        raise CapabilityError(f"Active room skill target cannot be read: {relative.as_posix()}") from error
     identity = pin.identify_payload(payload)
     if identity is None:
-        raise CapabilityError(
-            f"Active room skill target does not match its authoritative pin: {relative.as_posix()}"
-        )
+        raise CapabilityError(f"Active room skill target does not match its authoritative pin: {relative.as_posix()}")
     return _ActiveRoomSkill(target, identity, payload)
 
 
@@ -700,14 +685,10 @@ def reconcile_room(
                 active = active_skills[skill_id]
                 observed = _active_room_skill_target(root, pin)
                 if observed.identity != active.identity or observed.payload != active.payload:
-                    raise CapabilityError(
-                        f"Active room skill changed after preflight: {pin.target_path}"
-                    )
+                    raise CapabilityError(f"Active room skill changed after preflight: {pin.target_path}")
                 if active.identity != "missing":
                     if active.payload is None:
-                        raise CapabilityError(
-                            f"Active room skill payload is unavailable: {pin.target_path}"
-                        )
+                        raise CapabilityError(f"Active room skill payload is unavailable: {pin.target_path}")
                     journal.removed_skill(active.target, active.payload)
                     skill_file = active.target / "SKILL.md"
                     skill_file.unlink()
@@ -727,9 +708,7 @@ def reconcile_room(
                 raise CapabilityError(
                     f"Room {room} reconciliation failed and rollback was incomplete: {rollback_error}"
                 ) from error
-            raise CapabilityError(
-                f"Room {room} reconciliation failed and was rolled back: {error}"
-            ) from error
+            raise CapabilityError(f"Room {room} reconciliation failed and was rolled back: {error}") from error
         raise CapabilityError(f"Room {room} reconciliation failed: {error}") from error
 
     return {
@@ -834,15 +813,11 @@ def preflight_mutation_targets(
     seen: set[tuple[str, str]] = set()
     for index, raw in enumerate(targets):
         if not isinstance(raw, Mapping) or set(raw) != {"path", "kind"}:
-            raise CapabilityError(
-                f"Provision mutation target {index} must contain only path and kind"
-            )
+            raise CapabilityError(f"Provision mutation target {index} must contain only path and kind")
         relative_path = raw["path"]
         kind = raw["kind"]
         if not isinstance(relative_path, str) or kind not in {"file", "directory"}:
-            raise CapabilityError(
-                f"Provision mutation target {index} has an invalid path or kind"
-            )
+            raise CapabilityError(f"Provision mutation target {index} has an invalid path or kind")
         identity = (relative_path, kind)
         if identity in seen:
             continue
@@ -949,21 +924,16 @@ def reconcile_all(
             for room in rooms
         ]
         if profile_mutation_paths and results:
-            results[0]["mutation_paths"] = sorted(
-                set(results[0]["mutation_paths"]) | set(profile_mutation_paths)
-            )
+            results[0]["mutation_paths"] = sorted(set(results[0]["mutation_paths"]) | set(profile_mutation_paths))
         return results
     except Exception as error:
         try:
             journal.rollback()
         except Exception as rollback_error:
             raise CapabilityError(
-                "All-room reconciliation failed and aggregate rollback was incomplete: "
-                f"{rollback_error}"
+                f"All-room reconciliation failed and aggregate rollback was incomplete: {rollback_error}"
             ) from error
-        raise CapabilityError(
-            f"All-room reconciliation failed and aggregate rollback completed: {error}"
-        ) from error
+        raise CapabilityError(f"All-room reconciliation failed and aggregate rollback completed: {error}") from error
 
 
 def _atomic_text_write(path: Path, content: str) -> None:
@@ -1045,6 +1015,8 @@ def render_missing_companies_compatibility_pin(
     *,
     contract_path: Path | str | None = None,
 ) -> str | None:
+    import yaml
+
     """Render the one-time Companies compatibility pin without rewriting profile prose.
 
     ``None`` means the profile already has an explicit or legacy opinion.
@@ -1135,6 +1107,8 @@ def set_enabled(
     profile_path: Path | str | None = None,
     contract_path: Path | str | None = None,
 ) -> dict[str, Any]:
+    import yaml
+
     """Persist one room state and immediately reconcile its surfaced assets."""
     if not isinstance(room_enabled, bool):
         raise CapabilityError("enabled state must be true or false")
@@ -1214,13 +1188,8 @@ def set_enabled(
             try:
                 profile_journal.rollback()
             except Exception as rollback_error:
-                raise CapabilityError(
-                    "profile write failed and rollback was incomplete: "
-                    f"{rollback_error}"
-                ) from error
-            raise CapabilityError(
-                f"profile write failed before room reconciliation: {error}"
-            ) from error
+                raise CapabilityError(f"profile write failed and rollback was incomplete: {rollback_error}") from error
+            raise CapabilityError(f"profile write failed before room reconciliation: {error}") from error
     try:
         result = reconcile_room(
             room,
@@ -1228,23 +1197,18 @@ def set_enabled(
             vault_root=root,
             contract_path=contract_path,
         )
-        result["mutation_paths"] = sorted(
-            set(result["mutation_paths"]) | set(profile_mutation_paths)
-        )
+        result["mutation_paths"] = sorted(set(result["mutation_paths"]) | set(profile_mutation_paths))
         return result
     except Exception as error:
         try:
             profile_journal.rollback()
         except Exception as rollback_error:
             raise CapabilityError(
-                f"Room {room} reconciliation failed and profile rollback was incomplete: "
-                f"{rollback_error}"
+                f"Room {room} reconciliation failed and profile rollback was incomplete: {rollback_error}"
             ) from error
         if isinstance(error, CapabilityError):
             raise
-        raise CapabilityError(
-            f"Room {room} reconciliation failed and was rolled back: {error}"
-        ) from error
+        raise CapabilityError(f"Room {room} reconciliation failed and was rolled back: {error}") from error
 
 
 def _main() -> int:

@@ -37,14 +37,13 @@ from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
 from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry, PlanRejected
 from core.transaction.journal import Journal, JournalCorruptError
-from core.utils import apple_mail_health, dex_logger, launch_agents, preflight, release_channel
+from core.utils import apple_mail_health, automation_ownership, dex_logger, launch_agents, preflight, release_channel
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
 QMD_STATUS_TIMEOUT_SECONDS = 10
 MISSING_PACKAGES_DETAIL = (
-    "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
-    "then re-run /dex-doctor"
+    "Python packages not installed — run /dex-update (or pip install -r requirements.txt) then re-run /dex-doctor"
 )
 RELEASE_CATALOG_PATH = "System/.release-catalog.json"
 KNOWN_SKILL_CONTAINER_DIRECTORIES = frozenset({"_available", "integrations"})
@@ -61,20 +60,13 @@ ADOPTION_STATUSES = frozenset(state.value for state in AdoptionState)
 ADOPTION_REASON_CODES = frozenset(reason.value for reason in ReasonCode)
 INSTALLER_STRIPPED_PACKAGE_SCRIPTS = {
     "test:hooks": "node --test .claude/hooks/tests/*.test.cjs",
-    "test:scripts": (
-        "node --test .scripts/lib/tests/*.test.cjs "
-        ".scripts/meeting-intel/__tests__/*.test.cjs"
-    ),
-    "test:integrations": (
-        "node --test core/integrations/connection-manager/*.test.cjs"
-    ),
+    "test:scripts": ("node --test .scripts/lib/tests/*.test.cjs .scripts/meeting-intel/__tests__/*.test.cjs"),
+    "test:integrations": ("node --test core/integrations/connection-manager/*.test.cjs"),
     "check:connections-contract": (
-        "node scripts/check-connections-contract.mjs && "
-        "node scripts/build-connections-engine-manifest.mjs --check"
+        "node scripts/check-connections-contract.mjs && node scripts/build-connections-engine-manifest.mjs --check"
     ),
     "test:connections-consumer-smoke": (
-        "node --test "
-        "core/integrations/connection-manager/connections-contract.test.cjs"
+        "node --test core/integrations/connection-manager/connections-contract.test.cjs"
     ),
 }
 
@@ -82,9 +74,7 @@ INSTALLER_STRIPPED_PACKAGE_SCRIPTS = {
 def _validate_authority_item(item_id: object, item_version: object) -> None:
     if not isinstance(item_id, str) or ITEM_ID.fullmatch(item_id) is None:
         raise ValueError("Adoption authority item_id is not canonical")
-    if item_version is not None and (
-        not isinstance(item_version, str) or SEMVER.fullmatch(item_version) is None
-    ):
+    if item_version is not None and (not isinstance(item_version, str) or SEMVER.fullmatch(item_version) is None):
         raise ValueError("Adoption authority item_version is not strict SemVer")
 
 
@@ -234,9 +224,7 @@ class AdoptionReviewItem:
             or any(reason not in ADOPTION_REASON_CODES for reason in self.reasons)
         ):
             raise ValueError("Adoption review reasons use an invalid authority value")
-        if not isinstance(self.files, tuple) or any(
-            type(entry) is not AdoptionReviewFile for entry in self.files
-        ):
+        if not isinstance(self.files, tuple) or any(type(entry) is not AdoptionReviewFile for entry in self.files):
             raise ValueError("Adoption review files must be AdoptionReviewFile records")
 
     def to_dict(self) -> dict[str, object]:
@@ -443,11 +431,7 @@ class ReceiptsAndRewindGroup:
 
 
 AdoptionGroup = (
-    NewAndSafeGroup
-    | NeedsReviewGroup
-    | PreservedForNowGroup
-    | ContinueOrRecoverGroup
-    | ReceiptsAndRewindGroup
+    NewAndSafeGroup | NeedsReviewGroup | PreservedForNowGroup | ContinueOrRecoverGroup | ReceiptsAndRewindGroup
 )
 
 
@@ -490,9 +474,7 @@ class AdoptionReport:
                 raise ValueError("Adoption group count must be a non-negative integer")
             _validate_surface(group.surface)
         new_group, review_group, preserved_group, recovery_group, receipt_group = self.groups
-        if not isinstance(new_group.items, tuple) or any(
-            type(item) is not AdoptionItem for item in new_group.items
-        ):
+        if not isinstance(new_group.items, tuple) or any(type(item) is not AdoptionItem for item in new_group.items):
             raise ValueError("new-and-safe items must be AdoptionItem records")
         if any(item.action != PlannedAction.ADOPT.value for item in new_group.items):
             raise ValueError("new-and-safe items must have action adopt")
@@ -504,35 +486,25 @@ class AdoptionReport:
             type(item) is not AdoptionItem for item in preserved_group.held_back_items
         ):
             raise ValueError("preserved held-back items must be AdoptionItem records")
-        if any(
-            item.action != PlannedAction.SKIP_HELD_BACK.value
-            for item in preserved_group.held_back_items
-        ):
+        if any(item.action != PlannedAction.SKIP_HELD_BACK.value for item in preserved_group.held_back_items):
             raise ValueError("preserved held-back items must have action skip-held-back")
         if not isinstance(preserved_group.customized_files, tuple) or any(
-            type(item) is not PreservedCustomization
-            for item in preserved_group.customized_files
+            type(item) is not PreservedCustomization for item in preserved_group.customized_files
         ):
             raise ValueError("preserved customized files must be strict authority records")
         if not isinstance(recovery_group.transactions, tuple) or any(
-            type(item) is not InterruptedTransaction
-            for item in recovery_group.transactions
+            type(item) is not InterruptedTransaction for item in recovery_group.transactions
         ):
             raise ValueError("recovery transactions must be strict authority records")
         if recovery_group.ledger is not None and type(recovery_group.ledger) is not LedgerRecovery:
             raise ValueError("recovery ledger must be a LedgerRecovery record or null")
-        if recovery_group.inspection_error is not None and not isinstance(
-            recovery_group.inspection_error, str
-        ):
+        if recovery_group.inspection_error is not None and not isinstance(recovery_group.inspection_error, str):
             raise ValueError("recovery inspection_error must be a string or null")
         if not isinstance(receipt_group.receipts, tuple) or any(
             type(item) is not AdoptionReceiptSummary for item in receipt_group.receipts
         ):
             raise ValueError("receipt summaries must be strict authority records")
-        if any(
-            item.status != AdoptionState.ADOPTED.value
-            for item in receipt_group.receipts
-        ):
+        if any(item.status != AdoptionState.ADOPTED.value for item in receipt_group.receipts):
             raise ValueError("receipt summaries must have status adopted")
         expected_counts = (
             len(new_group.items),
@@ -852,11 +824,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             pass
         if current_paths != expected_paths:
             relative = context.paths_json_path.relative_to(context.vault_root).as_posix()
-            mode = (
-                context.paths_json_path.stat().st_mode & 0o777
-                if context.paths_json_path.is_file()
-                else 0o644
-            )
+            mode = context.paths_json_path.stat().st_mode & 0o777 if context.paths_json_path.is_file() else 0o644
             planned.append(
                 PlanEntry(
                     relative,
@@ -880,9 +848,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             try:
                 relative = script.relative_to(context.vault_root).as_posix()
             except ValueError:
-                errors.append(
-                    f"Executable-mode repair requires user action outside the vault: {script}"
-                )
+                errors.append(f"Executable-mode repair requires user action outside the vault: {script}")
                 continue
             planned.append(
                 PlanEntry(
@@ -903,9 +869,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             # Findings that cannot be auto-tightened (foreign owner, symlink)
             # carry their own Tier-3 guidance and are never attempted here.
             _tighten_env_permissions(context)
-            actions.setdefault("vault.configs", []).append(
-                "tightened .env to owner-only permissions"
-            )
+            actions.setdefault("vault.configs", []).append("tightened .env to owner-only permissions")
     except OSError as error:
         errors.append(f".env permission heal failed: {_one_line(error)}")
 
@@ -926,19 +890,13 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
         acknowledged = _acknowledge_resolved_preflight_errors(context)
         if acknowledged:
             noun = "error" if acknowledged == 1 else "errors"
-            actions.setdefault("preflight.queue", []).append(
-                f"acknowledged {acknowledged} resolved preflight {noun}"
-            )
+            actions.setdefault("preflight.queue", []).append(f"acknowledged {acknowledged} resolved preflight {noun}")
     except Exception as error:
         errors.append(f"Preflight-queue heal failed: {_one_line(error)}")
 
     try:
         room_health = _probe_capability_rooms(context)
-        if (
-            room_health.verdict == "BROKEN"
-            and room_health.heal is not None
-            and room_health.heal.tier == 1
-        ):
+        if room_health.verdict == "BROKEN" and room_health.heal is not None and room_health.heal.tier == 1:
             from core import capabilities
 
             reconciled = capabilities.reconcile_all(
@@ -1046,10 +1004,7 @@ def collect(
             truthful_missing_diagnosis = bool(
                 missing_module
                 and (
-                    (
-                        dex_logger.is_dex_module(missing_module)
-                        and "Dex checkup fault" in result.detail
-                    )
+                    (dex_logger.is_dex_module(missing_module) and "Dex checkup fault" in result.detail)
                     or (
                         not dex_logger.is_dex_module(missing_module)
                         and f"missing module {missing_module!r}" in result.detail
@@ -1098,8 +1053,7 @@ def collect(
                     result = replace(
                         result,
                         detail=(
-                            f"{result.detail.rstrip('.')}; a safe Tier-1 repair separately "
-                            + "; ".join(check_actions)
+                            f"{result.detail.rstrip('.')}; a safe Tier-1 repair separately " + "; ".join(check_actions)
                         ),
                     )
             if definition.id == "capabilities.rooms" and check_actions:
@@ -1141,19 +1095,11 @@ def collect(
     }
     if deep:
         assessment_result = results.get("customizations.assessment")
-        if (
-            assessment_result is not None
-            and assessment_result.structured_detail is not None
-        ):
+        if assessment_result is not None and assessment_result.structured_detail is not None:
             report["customization_assessment"] = assessment_result.structured_detail
         migration_status_result = results.get("customizations.migration-status")
-        if (
-            migration_status_result is not None
-            and migration_status_result.structured_detail is not None
-        ):
-            report["customization_migration_status"] = (
-                migration_status_result.structured_detail
-            )
+        if migration_status_result is not None and migration_status_result.structured_detail is not None:
+            report["customization_migration_status"] = migration_status_result.structured_detail
 
     try:
         _write_last_run(report, context)
@@ -1353,11 +1299,7 @@ def _empty_adoption_report(
     inspection_error: str | None = None,
 ) -> AdoptionReport:
     recovery_count = len(transactions) + int(ledger is not None) + int(inspection_error is not None)
-    recovery_surface = (
-        _recovery_surface(transactions, ledger, inspection_error)
-        if recovery_count
-        else surface
-    )
+    recovery_surface = _recovery_surface(transactions, ledger, inspection_error) if recovery_count else surface
     return AdoptionReport(
         ADOPTION_REPORT_VERSION,
         verdict,
@@ -1401,14 +1343,10 @@ def _inspect_interrupted_transactions(
         return (), f"Transaction store could not be inspected: {_one_line(error)}"
     for tx_dir in candidates:
         if lifecycle_engine.TRANSACTION_ID.fullmatch(tx_dir.name) is None:
-            inspection_errors.append(
-                f"Transaction store contains a non-canonical entry: {tx_dir.name}"
-            )
+            inspection_errors.append(f"Transaction store contains a non-canonical entry: {tx_dir.name}")
             continue
         if tx_dir.is_symlink() or not tx_dir.is_dir():
-            interrupted.append(
-                InterruptedTransaction(tx_dir.name, "UNKNOWN", None, False)
-            )
+            interrupted.append(InterruptedTransaction(tx_dir.name, "UNKNOWN", None, False))
             continue
         try:
             entries = Journal(tx_dir / "journal.jsonl").read()
@@ -1580,11 +1518,7 @@ def collect_adoption_report(context: DoctorContext) -> AdoptionReport:
         plan = build_adoption_plan(
             catalog,
             inventory,
-            adoption_states={
-                item_id: AdoptionState.ADOPTED
-                for item_id in adopted
-                if item_id in catalog_ids
-            },
+            adoption_states={item_id: AdoptionState.ADOPTED for item_id in adopted if item_id in catalog_ids},
             held_back=frozenset(held_back & catalog_ids),
         )
     except Exception as error:
@@ -1606,11 +1540,7 @@ def collect_adoption_report(context: DoctorContext) -> AdoptionReport:
             item.item_version,
             item.action.value,
             tuple(reason.code.value for reason in item.reasons),
-            tuple(
-                AdoptionReviewFile(path, reason.code.value)
-                for reason in item.reasons
-                for path in reason.paths
-            ),
+            tuple(AdoptionReviewFile(path, reason.code.value) for reason in item.reasons for path in reason.paths),
         )
         for item in plan.items
         if item.action in {PlannedAction.CONFLICT, PlannedAction.UNKNOWN}
@@ -1659,22 +1589,18 @@ def collect_adoption_report(context: DoctorContext) -> AdoptionReport:
     recovery_verdict = (
         "UNKNOWN"
         if inspection_error is not None or any(tx.verdict == "UNKNOWN" for tx in transactions)
-        else "BROKEN" if transactions else "OK"
-    )
-    review_verdict = (
-        "UNKNOWN"
-        if any(item.action is PlannedAction.UNKNOWN for item in plan.items)
+        else "BROKEN"
+        if transactions
         else "OK"
     )
-    receipts_verdict = (
-        "UNKNOWN"
-        if any(receipt.rewind_verdict == "UNKNOWN" for receipt in receipts)
-        else "OK"
-    )
+    review_verdict = "UNKNOWN" if any(item.action is PlannedAction.UNKNOWN for item in plan.items) else "OK"
+    receipts_verdict = "UNKNOWN" if any(receipt.rewind_verdict == "UNKNOWN" for receipt in receipts) else "OK"
     report_verdict = (
         "UNKNOWN"
         if "UNKNOWN" in {recovery_verdict, review_verdict, receipts_verdict}
-        else "BROKEN" if recovery_verdict == "BROKEN" else "OK"
+        else "BROKEN"
+        if recovery_verdict == "BROKEN"
+        else "OK"
     )
     return AdoptionReport(
         ADOPTION_REPORT_VERSION,
@@ -1757,8 +1683,7 @@ def _probe_adoption_plan(context: DoctorContext) -> ProbeResult:
     counts = result["plan"]["counts"]
     return ProbeResult(
         "OK",
-        f"{counts['adopt']} adoptable / {counts['already-adopted']} adopted / "
-        f"{counts['conflict']} conflicts",
+        f"{counts['adopt']} adoptable / {counts['already-adopted']} adopted / {counts['conflict']} conflicts",
     )
 
 
@@ -1787,9 +1712,7 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
     from core.customization_migration.service import assess
 
     assessment = assess(context.vault_root)
-    authority = _customization_persistence_detail(
-        assessment_report(assessment)
-    )
+    authority = _customization_persistence_detail(assessment_report(assessment))
     catalog_path = _release_catalog_path(context)
     if os.path.lexists(catalog_path):
         try:
@@ -1803,8 +1726,7 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
     if assessment.baseline_identity_state != "VERIFIED":
         return ProbeResult(
             "UNKNOWN",
-            "I couldn't verify which Dex version is installed, so I can't tell you "
-            "what you've changed.",
+            "I couldn't verify which Dex version is installed, so I can't tell you what you've changed.",
             structured_detail=authority,
         )
     if assessment.completeness == "UNKNOWN":
@@ -1848,9 +1770,7 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
         from core.customization_migration.service import migration_status_to_dict
     except ModuleNotFoundError as error:
         missing = error.name or ""
-        if missing == "core.customization_migration" or missing.startswith(
-            "core.customization_migration."
-        ):
+        if missing == "core.customization_migration" or missing.startswith("core.customization_migration."):
             return ProbeResult(
                 "OFF",
                 "Customization migration status is unavailable on this older Dex release",
@@ -1885,13 +1805,7 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
     recovery_token = authority.get("recovery_token")
     if (
         not isinstance(recovery_actions, list)
-        or (
-            recovery_actions
-            and (
-                not isinstance(recovery_token, str)
-                or len(recovery_token) != 64
-            )
-        )
+        or (recovery_actions and (not isinstance(recovery_token, str) or len(recovery_token) != 64))
         or (not recovery_actions and recovery_token is not None)
     ):
         return ProbeResult(
@@ -1899,8 +1813,7 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
             "The customization recovery status is structurally incomplete",
         )
     expected_recovery_action = (
-        "python3 -m core.customization_migration.cli recover "
-        f"--confirm-token {recovery_token}"
+        f"python3 -m core.customization_migration.cli recover --confirm-token {recovery_token}"
         if isinstance(recovery_token, str)
         else None
     )
@@ -1925,10 +1838,7 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
                 "rewind",
             }
             or not isinstance(recovery["capsule_id"], str)
-            or (
-                recovery["proposal_id"] is not None
-                and not isinstance(recovery["proposal_id"], str)
-            )
+            or (recovery["proposal_id"] is not None and not isinstance(recovery["proposal_id"], str))
             or recovery["action"] != expected_recovery_action
         ):
             return ProbeResult(
@@ -1949,19 +1859,17 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
         capsule_id = capsule.get("capsule_id")
         state = capsule.get("state")
         validation = capsule.get("validation")
-        if (
-            not isinstance(capsule_id, str)
-            or not isinstance(state, str)
-            or not isinstance(validation, dict)
-        ):
+        if not isinstance(capsule_id, str) or not isinstance(state, str) or not isinstance(validation, dict):
             return ProbeResult(
                 "UNKNOWN",
                 "The customization migration status contains incomplete capsule authority",
             )
         status = validation.get("status")
         mismatches = validation.get("mismatches")
-        if not isinstance(status, str) or not isinstance(mismatches, list) or any(
-            not isinstance(item, str) for item in mismatches
+        if (
+            not isinstance(status, str)
+            or not isinstance(mismatches, list)
+            or any(not isinstance(item, str) for item in mismatches)
         ):
             return ProbeResult(
                 "UNKNOWN",
@@ -1972,9 +1880,7 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
             verification_verdicts = capsule.get("verification_verdicts")
             pending_rebuild = capsule.get("pending_rebuild")
             activation = capsule.get("activation")
-            activation_receipt_present = capsule.get(
-                "activation_receipt_present"
-            )
+            activation_receipt_present = capsule.get("activation_receipt_present")
             rewindable = capsule.get("rewindable")
             if (
                 not isinstance(staging, dict)
@@ -1996,8 +1902,7 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
                 or type(staging_truncated) is not bool
                 or set(verification_verdicts) != {"OK", "BLOCKED", "UNKNOWN"}
                 or any(
-                    type(verification_verdicts[key]) is not int
-                    or verification_verdicts[key] < 0
+                    type(verification_verdicts[key]) is not int or verification_verdicts[key] < 0
                     for key in ("OK", "BLOCKED", "UNKNOWN")
                 )
             ):
@@ -2011,17 +1916,14 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
                     not isinstance(proposal, dict)
                     or not isinstance(proposal.get("proposal_id"), str)
                     or not isinstance(proposal.get("state"), str)
-                    or proposal.get("verification_verdict")
-                    not in counted_verdicts
+                    or proposal.get("verification_verdict") not in counted_verdicts
                 ):
                     return ProbeResult(
                         "UNKNOWN",
                         "The customization staging status contains a malformed proposal",
                     )
                 counted_verdicts[proposal["verification_verdict"]] += 1
-                rebuild_broken = rebuild_broken or (
-                    proposal["state"] == "recovery-required"
-                )
+                rebuild_broken = rebuild_broken or (proposal["state"] == "recovery-required")
             if counted_verdicts != verification_verdicts:
                 return ProbeResult(
                     "UNKNOWN",
@@ -2038,16 +1940,12 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
             if (
                 set(activation) != activation_required
                 or activation.get("capsule_id") != capsule_id
-                or (
-                    activation.get("proposal_id") is not None
-                    and not isinstance(activation.get("proposal_id"), str)
-                )
+                or (activation.get("proposal_id") is not None and not isinstance(activation.get("proposal_id"), str))
                 or not isinstance(activation.get("state"), str)
                 or not isinstance(activation.get("reason"), str)
                 or type(activation.get("activation_receipt_present")) is not bool
                 or type(activation.get("rewindable")) is not bool
-                or activation_receipt_present
-                != activation["activation_receipt_present"]
+                or activation_receipt_present != activation["activation_receipt_present"]
                 or rewindable != activation["rewindable"]
             ):
                 return ProbeResult(
@@ -2056,17 +1954,12 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
                 )
             pending = pending or pending_rebuild
             rebuild_broken = rebuild_broken or (
-                verification_verdicts["BLOCKED"] > 0
-                or activation["state"] == "recovery-required"
+                verification_verdicts["BLOCKED"] > 0 or activation["state"] == "recovery-required"
             )
             rebuild_unknown = rebuild_unknown or (
                 staging_truncated
                 or verification_verdicts["UNKNOWN"] > 0
-                or (
-                    activation_receipt_present
-                    and activation["state"]
-                    not in {"activated", "rewound"}
-                )
+                or (activation_receipt_present and activation["state"] not in {"activated", "rewound"})
             )
         else:
             pending = pending or state == "capsule-created"
@@ -2120,11 +2013,7 @@ def _mcp_config_path(context: DoctorContext) -> Path:
 
 def _load_mcp_config(context: DoctorContext) -> dict[str, Any]:
     loaded = json.loads(_mcp_config_path(context).read_text())
-    if (
-        not isinstance(loaded, dict)
-        or "mcpServers" not in loaded
-        or not isinstance(loaded["mcpServers"], dict)
-    ):
+    if not isinstance(loaded, dict) or "mcpServers" not in loaded or not isinstance(loaded["mcpServers"], dict):
         raise ValueError(".mcp.json must contain an mcpServers object")
     return loaded
 
@@ -2258,9 +2147,7 @@ def _probe_mcp_orphans(context: DoctorContext) -> ProbeResult:
     except FileNotFoundError:
         config = {"mcpServers": {}}
     registered = {
-        target.resolve()
-        for entry in config["mcpServers"].values()
-        for target in _entry_targets(entry, context)
+        target.resolve() for entry in config["mcpServers"].values() for target in _entry_targets(entry, context)
     }
     orphans = [path.name for resolved, path in shipped.items() if resolved not in registered]
     if orphans:
@@ -2403,10 +2290,7 @@ def _installed_launch_agents(context: DoctorContext) -> list[tuple[Path, bool]]:
     directory = context.launch_agents_dir
     if not directory.is_dir():
         return []
-    return sorted(
-        (path, launch_agents.is_dex_named(path.name))
-        for path in directory.glob("*.plist")
-    )
+    return sorted((path, launch_agents.is_dex_named(path.name)) for path in directory.glob("*.plist"))
 
 
 def _stored_former_vault_root(context: DoctorContext) -> Path | None:
@@ -2494,10 +2378,7 @@ def _with_skipped_launch_agents(detail: str, skipped_count: int) -> str:
 
 
 def _unattributable_launch_agent_detail(plist: Path, error: Exception) -> str:
-    return (
-        f"Could not determine whether {plist.name} belongs to this vault "
-        f"({_one_line(error)})"
-    )
+    return f"Could not determine whether {plist.name} belongs to this vault ({_one_line(error)})"
 
 
 def _plist_configuration_issue(plist: Path, data: dict[str, Any], context: DoctorContext) -> str | None:
@@ -2586,6 +2467,7 @@ def _resolved_interpreter(raw: str, context: DoctorContext) -> str | None:
 
 
 _OWNED = "owned"
+_OFFLOADED = "offloaded"
 _STALE = "stale"
 _FOREIGN = "foreign"
 _UNREADABLE = "unreadable"
@@ -2596,7 +2478,7 @@ class LaunchAgentRecord:
     """One launch agent's classification, computed once per doctor run."""
 
     plist: Path
-    classification: str  # "owned" | "stale" | "foreign" | "unreadable"
+    classification: str  # "owned" | "offloaded" | "stale" | "foreign" | "unreadable"
     label: str
     data: dict[str, Any] | None = None
     error_detail: str | None = None  # unreadable only
@@ -2627,7 +2509,28 @@ def _classify_launch_agents(context: DoctorContext) -> LaunchAgentScan:
     except (OSError, RuntimeError):
         vault_root = context.vault_root
     records: list[LaunchAgentRecord] = []
+    offloaded = {
+        claim["plist_relative_path"]: claim
+        for claim in automation_ownership.valid_claims(
+            context.vault_root,
+            home_root=context.home,
+        )
+    }
     for plist, dex_named in _installed_launch_agents(context):
+        try:
+            plist_relative = plist.relative_to(context.home).as_posix()
+        except ValueError:
+            plist_relative = ""
+        offloaded_claim = offloaded.get(plist_relative)
+        if offloaded_claim is not None:
+            records.append(
+                LaunchAgentRecord(
+                    plist=plist,
+                    classification=_OFFLOADED,
+                    label=offloaded_claim["automation_id"],
+                )
+            )
+            continue
         try:
             data = _plist_data(plist)
         except PermissionError:
@@ -2664,11 +2567,7 @@ def _classify_launch_agents(context: DoctorContext) -> LaunchAgentScan:
             # The agent points at this vault's stored former location. That
             # is this vault's job left behind by a move or rename —
             # owned-and-stale, never another product's (issue #364).
-            records.append(
-                LaunchAgentRecord(
-                    plist=plist, classification=_STALE, label=label, data=data
-                )
-            )
+            records.append(LaunchAgentRecord(plist=plist, classification=_STALE, label=label, data=data))
         elif dex_named:
             records.append(
                 LaunchAgentRecord(
@@ -2717,9 +2616,13 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     unknowns = []
     runtime_labels = []
     skipped_count = 0
+    offloaded_count = 0
     owned_count = 0
     stale_count = 0
     for record in scan.records:
+        if record.classification == _OFFLOADED:
+            offloaded_count += 1
+            continue
         if record.classification == _UNREADABLE:
             # A corrupt plist could belong to this vault, but a filename alone
             # cannot establish that safely. Surface the uncertainty instead of
@@ -2794,12 +2697,20 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
                     unknowns.append(f"{label} is loaded but has no observable LastExitStatus")
                 elif status["last_exit_status"] != 0:
                     issues.append((2, f"{label} last exited with status {status['last_exit_status']}"))
+    offloaded_note = (
+        f"{offloaded_count} launch agent{' is' if offloaded_count == 1 else 's are'} "
+        "owned by Dex Solo and offloaded from Core"
+        if offloaded_count
+        else ""
+    )
     if not owned_count and not issues:
         if unknowns:
             return ProbeResult(
                 "UNKNOWN",
                 _with_skipped_launch_agents("; ".join(unknowns), skipped_count),
             )
+        if offloaded_note:
+            return ProbeResult("OK", _with_skipped_launch_agents(offloaded_note, skipped_count))
         return ProbeResult(
             "OFF",
             _with_skipped_launch_agents("No launch agents for this vault are installed", skipped_count),
@@ -2819,6 +2730,8 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
         if sum(1 for issue_tier, _detail in issues if issue_tier == 2) > stale_count:
             action_parts.append("repair or reload the named launch agent only after explicit approval")
         detail_parts = [detail for _tier, detail in issues]
+        if offloaded_note:
+            detail_parts.append(offloaded_note)
         detail_parts.extend(unknowns)
         return ProbeResult(
             "BROKEN",
@@ -2833,7 +2746,14 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     return ProbeResult(
         "OK",
         _with_skipped_launch_agents(
-            f"All {owned_count} installed launch agents for this vault are loaded with valid interpreters",
+            "; ".join(
+                part
+                for part in (
+                    f"All {owned_count} installed launch agents for this vault are loaded with valid interpreters",
+                    offloaded_note,
+                )
+                if part
+            ),
             skipped_count,
         ),
     )
@@ -2860,13 +2780,14 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
         return None
 
     scan = _scan_launch_agents(context)
-    unknowns = [
-        record.error_detail
-        for record in scan.records
-        if record.classification == _UNREADABLE
-    ]
-    installed = sorted(
-        {record.label for record in scan.records if record.classification == _OWNED}
+    unknowns = [record.error_detail for record in scan.records if record.classification == _UNREADABLE]
+    installed = sorted({record.label for record in scan.records if record.classification == _OWNED})
+    offloaded = sorted({record.label for record in scan.records if record.classification == _OFFLOADED})
+    offloaded_note = (
+        f"{len(offloaded)} launch agent{' is' if len(offloaded) == 1 else 's are'} "
+        "owned by Dex Solo and offloaded from Core"
+        if offloaded
+        else ""
     )
     monitored = []
     monitored_ids = set()
@@ -2900,7 +2821,8 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
         if unknowns:
             return ProbeResult("UNKNOWN", _with_coverage_note("; ".join(unknowns)))
         return ProbeResult(
-            "OFF", _with_coverage_note("No shipped Dex freshness jobs are installed")
+            "OFF",
+            _with_coverage_note(offloaded_note or "No shipped Dex freshness jobs are installed"),
         )
 
     stale = []
@@ -2919,7 +2841,14 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     return ProbeResult(
         "OK",
         _with_coverage_note(
-            f"All {len(monitored)} installed job promises are within their promised cadence"
+            "; ".join(
+                part
+                for part in (
+                    f"All {len(monitored)} installed job promises are within their promised cadence",
+                    offloaded_note,
+                )
+                if part
+            )
         ),
     )
 
@@ -2985,11 +2914,7 @@ def _acknowledge_resolved_preflight_errors(context: DoctorContext) -> int:
             return 0
         acknowledged = 0
         for entry in entries:
-            if (
-                isinstance(entry, dict)
-                and entry.get("id") in resolved
-                and not entry.get("acknowledged", False)
-            ):
+            if isinstance(entry, dict) and entry.get("id") in resolved and not entry.get("acknowledged", False):
                 entry["acknowledged"] = True
                 entry["acknowledgedAt"] = context.now.astimezone(timezone.utc).isoformat()
                 acknowledged += 1
@@ -3037,28 +2962,13 @@ def _historical_error_summary(
     count = len(entries)
     subject = "1 earlier error" if count == 1 else f"{count} earlier errors"
     if previous_version_count == count:
-        reason = (
-            " from a previous Dex version"
-            if count == 1
-            else " from previous Dex versions"
-        )
+        reason = " from a previous Dex version" if count == 1 else " from previous Dex versions"
     elif previous_version_count:
-        reason = (
-            " from previous Dex versions or more than "
-            f"{dex_logger.STALE_ERROR_DAYS} days ago"
-        )
+        reason = f" from previous Dex versions or more than {dex_logger.STALE_ERROR_DAYS} days ago"
     else:
-        reason = (
-            " that is old enough to count as history"
-            if count == 1
-            else " that are old enough to count as history"
-        )
+        reason = " that is old enough to count as history" if count == 1 else " that are old enough to count as history"
 
-    dated = [
-        _queued_error_date(entry)
-        for entry in entries
-        if _queued_error_date(entry) != "date unavailable"
-    ]
+    dated = [_queued_error_date(entry) for entry in entries if _queued_error_date(entry) != "date unavailable"]
     if dated:
         return f"{subject}{reason}, last on {max(dated)}"
     return f"{subject}{reason}, dates unavailable"
@@ -3077,10 +2987,7 @@ def _probe_preflight_queue(context: DoctorContext) -> ProbeResult:
     resolved_heal = (
         Heal(
             tier=1,
-            action=(
-                f"Acknowledge {resolved_count} resolved preflight "
-                f"{'error' if resolved_count == 1 else 'errors'}."
-            ),
+            action=(f"Acknowledge {resolved_count} resolved preflight {'error' if resolved_count == 1 else 'errors'}."),
             applied=False,
         )
         if resolved_count
@@ -3129,9 +3036,7 @@ def _probe_preflight_queue(context: DoctorContext) -> ProbeResult:
     detail = "Preflight completed with no server or current queued errors"
     if resolved_count:
         noun = "error has" if resolved_count == 1 else "errors have"
-        detail += (
-            f"; {resolved_count} queued {noun} a newer successful check"
-        )
+        detail += f"; {resolved_count} queued {noun} a newer successful check"
     if historical_summary:
         detail += f"; {historical_summary}"
     return ProbeResult("OK", detail, resolved_heal)
@@ -3140,20 +3045,14 @@ def _probe_preflight_queue(context: DoctorContext) -> ProbeResult:
 def _capability_seed_paths(room: str) -> tuple[str, ...]:
     from core import capabilities
 
-    folders = tuple(
-        str(folder).rstrip("/")
-        for folder in capabilities.surfaces_for(room).get("folders", [])
-    )
+    folders = tuple(str(folder).rstrip("/") for folder in capabilities.surfaces_for(room).get("folders", []))
     return tuple(
         sorted(
             rule.path
             for rule in portable_contract.RULES
             if rule.ownership == "seed"
             and rule.kind == "file"
-            and any(
-                rule.path == folder or rule.path.startswith(f"{folder}/")
-                for folder in folders
-            )
+            and any(rule.path == folder or rule.path.startswith(f"{folder}/") for folder in folders)
         )
     )
 
@@ -3186,12 +3085,7 @@ def _probe_capability_rooms(context: DoctorContext) -> ProbeResult:
             for skill in surfaces.get("skills", []):
                 path = context.vault_root / ".claude/skills" / str(skill)
                 skill_file = path / "SKILL.md"
-                if (
-                    path.is_symlink()
-                    or not path.is_dir()
-                    or skill_file.is_symlink()
-                    or not skill_file.is_file()
-                ):
+                if path.is_symlink() or not path.is_dir() or skill_file.is_symlink() or not skill_file.is_file():
                     missing_skills.append(f"{room}: {skill}")
             for relative in _capability_seed_paths(room):
                 path = context.vault_root / relative
@@ -3205,32 +3099,20 @@ def _probe_capability_rooms(context: DoctorContext) -> ProbeResult:
 
     findings: list[str] = []
     if missing_folders:
-        findings.append(
-            f"Enabled room folders are missing: {', '.join(missing_folders)}"
-        )
+        findings.append(f"Enabled room folders are missing: {', '.join(missing_folders)}")
     if missing_skills:
-        findings.append(
-            f"Enabled room skills are missing: {', '.join(missing_skills)}"
-        )
+        findings.append(f"Enabled room skills are missing: {', '.join(missing_skills)}")
     if stale_skills:
-        findings.append(
-            f"Disabled room skills are still live: {', '.join(stale_skills)}"
-        )
+        findings.append(f"Disabled room skills are still live: {', '.join(stale_skills)}")
     if missing_seeds:
-        findings.append(
-            "Missing enabled-room seed files: "
-            f"{', '.join(missing_seeds)} — run /dex-update to restore"
-        )
+        findings.append(f"Missing enabled-room seed files: {', '.join(missing_seeds)} — run /dex-update to restore")
     if findings:
         return ProbeResult(
             "BROKEN",
             "; ".join(findings),
             Heal(
                 tier=1,
-                action=(
-                    "Reconcile capability room folders and shipped skills "
-                    "without deleting user content."
-                ),
+                action=("Reconcile capability room folders and shipped skills without deleting user content."),
                 applied=False,
             ),
         )
@@ -3256,9 +3138,7 @@ def _unsafe_customization_path(context: DoctorContext, path: Path) -> str | None
     if any(part in {"", ".", ".."} for part in relative.parts):
         return "contains an unsafe path component"
     if any(
-        part.lower() == ".env"
-        or part.lower().startswith(".env.")
-        or "credential" in part.lower()
+        part.lower() == ".env" or part.lower().startswith(".env.") or "credential" in part.lower()
         for part in relative.parts
     ):
         return "is credential-sensitive"
@@ -3281,18 +3161,19 @@ def _probe_customization_skills(context: DoctorContext) -> ProbeResult:
             "UNKNOWN",
             f"{relative} {root_safety} and was not read for safety; fix or remove {relative}",
         )
-    skill_directories = sorted(
-        (
-            path
-            for path in skills_root.iterdir()
-            if path.name not in KNOWN_SKILL_CONTAINER_DIRECTORIES
-            and (
-                path.is_symlink()
-                or (path.is_dir() and any(path.iterdir()))
-            )
-        ),
-        key=lambda path: path.name,
-    ) if skills_root.is_dir() else []
+    skill_directories = (
+        sorted(
+            (
+                path
+                for path in skills_root.iterdir()
+                if path.name not in KNOWN_SKILL_CONTAINER_DIRECTORIES
+                and (path.is_symlink() or (path.is_dir() and any(path.iterdir())))
+            ),
+            key=lambda path: path.name,
+        )
+        if skills_root.is_dir()
+        else []
+    )
     catalogued_paths: frozenset[str] | None = None
     catalog_path = _release_catalog_path(context)
     if catalog_path.is_file():
@@ -3301,11 +3182,7 @@ def _probe_customization_skills(context: DoctorContext) -> ProbeResult:
         except (CatalogError, OSError, UnicodeError):
             pass
         else:
-            catalogued_paths = frozenset(
-                file.path
-                for item in catalog.items
-                for file in item.files
-            )
+            catalogued_paths = frozenset(file.path for item in catalog.items for file in item.files)
     failures = []
     safety_findings = []
     custom_count = 0
@@ -3316,11 +3193,7 @@ def _probe_customization_skills(context: DoctorContext) -> ProbeResult:
         custom_count += int(is_custom)
         release_carries_skill = catalogued_paths is None or relative in catalogued_paths
         shipped_label = "shipped skill" if release_carries_skill else "skill"
-        guidance = (
-            f"run /dex-update to restore {relative}"
-            if release_carries_skill
-            else f"fix or remove {relative}"
-        )
+        guidance = f"run /dex-update to restore {relative}" if release_carries_skill else f"fix or remove {relative}"
         safety_reason = _unsafe_customization_path(context, skill_path)
         if safety_reason:
             if is_custom:
@@ -3330,8 +3203,7 @@ def _probe_customization_skills(context: DoctorContext) -> ProbeResult:
                 )
             else:
                 safety_findings.append(
-                    f"{shipped_label} {relative} {safety_reason} and was not read for safety; "
-                    f"{guidance}"
+                    f"{shipped_label} {relative} {safety_reason} and was not read for safety; {guidance}"
                 )
             continue
         errors = validate_skill_frontmatter(skill_path)
@@ -3339,13 +3211,9 @@ def _probe_customization_skills(context: DoctorContext) -> ProbeResult:
             continue
         issue = "; ".join(_one_line(error) for error in errors)
         if is_custom:
-            failures.append(
-                f"user customization {relative} is invalid ({issue}); fix or remove {relative}"
-            )
+            failures.append(f"user customization {relative} is invalid ({issue}); fix or remove {relative}")
         else:
-            failures.append(
-                f"{shipped_label} {relative} is invalid ({issue}); {guidance}"
-            )
+            failures.append(f"{shipped_label} {relative} is invalid ({issue}); {guidance}")
 
     findings = [*failures, *safety_findings]
     if findings:
@@ -3399,9 +3267,7 @@ def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
     if config_safety:
         relative = _display_vault_path(context, config_path)
         guidance = (
-            f"run /dex-update to restore {relative}"
-            if shipped_example
-            else f"fix your customization in {relative}"
+            f"run /dex-update to restore {relative}" if shipped_example else f"fix your customization in {relative}"
         )
         return ProbeResult(
             "UNKNOWN",
@@ -3420,9 +3286,7 @@ def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
 
     structural_errors = validate_mcp_config(config)
     if shipped_example:
-        structural_errors = [
-            error for error in structural_errors if "unresolved placeholder" not in error
-        ]
+        structural_errors = [error for error in structural_errors if "unresolved placeholder" not in error]
     if structural_errors:
         return _mcp_customization_failure(
             context,
@@ -3433,9 +3297,7 @@ def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
 
     servers = config["mcpServers"]
     custom_entries = [
-        (name, entry)
-        for name, entry in servers.items()
-        if isinstance(name, str) and name.startswith("custom-")
+        (name, entry) for name, entry in servers.items() if isinstance(name, str) and name.startswith("custom-")
     ]
     compile_failures = []
     safety_findings = []
@@ -3446,9 +3308,7 @@ def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
         compile_index = 0
         for name, entry in custom_entries:
             if trust_registry.invalid_reason is not None:
-                safety_findings.append(
-                    f"{name} trusted MCP registry is invalid ({trust_registry.invalid_reason})"
-                )
+                safety_findings.append(f"{name} trusted MCP registry is invalid ({trust_registry.invalid_reason})")
                 continue
             trusted_target: Path | None = None
             if name in trust_registry.entries:
@@ -3469,11 +3329,9 @@ def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
                     "(nightly and in deep scans), and trusts whatever it imports"
                 )
             python_targets = sorted(
-                {trusted_target} if trusted_target is not None else {
-                    target
-                    for target in _entry_targets(entry, context)
-                    if target.suffix == ".py"
-                },
+                {trusted_target}
+                if trusted_target is not None
+                else {target for target in _entry_targets(entry, context) if target.suffix == ".py"},
                 key=str,
             )
             for target in python_targets:
@@ -3485,8 +3343,7 @@ def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
                     safety_reason = _unsafe_customization_path(context, target)
                 if safety_reason:
                     safety_findings.append(
-                        f"{name} target {relative_target} {safety_reason} and was not compiled or "
-                        "executed for safety"
+                        f"{name} target {relative_target} {safety_reason} and was not compiled or executed for safety"
                     )
                     continue
                 if not target.is_file():
@@ -3501,9 +3358,7 @@ def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
                         doraise=True,
                     )
                 except (OSError, py_compile.PyCompileError) as error:
-                    compile_failures.append(
-                        f"{name} target {relative_target} does not compile ({_one_line(error)})"
-                    )
+                    compile_failures.append(f"{name} target {relative_target} does not compile ({_one_line(error)})")
 
     if compile_failures:
         issues = [*compile_failures, *safety_findings]
@@ -3517,9 +3372,7 @@ def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
     if safety_findings:
         relative = _display_vault_path(context, config_path)
         guidance = (
-            f"run /dex-update to restore {relative}"
-            if shipped_example
-            else f"fix your customization in {relative}"
+            f"run /dex-update to restore {relative}" if shipped_example else f"fix your customization in {relative}"
         )
         return ProbeResult(
             "UNKNOWN",
@@ -3626,28 +3479,20 @@ def _probe_vault_git(context: DoctorContext) -> ProbeResult:
             "The separate vault history is not active; the topology check reports the current layout",
         )
     git_directory = context.vault_root / ".git"
-    healthy = _git_result(
-        context, "rev-parse", "--git-dir", git_directory=git_directory
-    )
+    healthy = _git_result(context, "rev-parse", "--git-dir", git_directory=git_directory)
     if healthy.returncode != 0:
         return ProbeResult(
             "BROKEN",
             "The vault Git repository cannot be opened — your files remain on disk, but history needs repair",
         )
-    integrity = _git_result(
-        context, "fsck", "--no-progress", git_directory=git_directory
-    )
+    integrity = _git_result(context, "fsck", "--no-progress", git_directory=git_directory)
     if integrity.returncode != 0:
         return ProbeResult(
             "BROKEN",
             "The vault Git repository failed its integrity check — do not push it; repair the local history",
         )
     remotes = _git_result(context, "remote", git_directory=git_directory)
-    remote_count = (
-        len([line for line in remotes.stdout.splitlines() if line.strip()])
-        if remotes.returncode == 0
-        else 0
-    )
+    remote_count = len([line for line in remotes.stdout.splitlines() if line.strip()]) if remotes.returncode == 0 else 0
     suffix = (
         "no private backup remote configured"
         if remote_count == 0
@@ -3688,12 +3533,8 @@ def _probe_brain_git(context: DoctorContext) -> ProbeResult:
             "BROKEN",
             "The Dex brain release identity disagrees across its installed ref and topology markers — rerun /dex-update",
         )
-    configured = _git_result(
-        context, "config", "--get", "remote.origin.url", git_directory=brain
-    )
-    effective = _git_result(
-        context, "remote", "get-url", "origin", git_directory=brain
-    )
+    configured = _git_result(context, "config", "--get", "remote.origin.url", git_directory=brain)
+    effective = _git_result(context, "remote", "get-url", "origin", git_directory=brain)
     official = re.compile(
         r"^(?:https://github\.com/|ssh://git@github\.com/|git@github\.com:)"
         r"davekilleen/Dex(?:\.git)?/?$",
@@ -3717,9 +3558,7 @@ def _probe_brain_git(context: DoctorContext) -> ProbeResult:
         )
     archive = context.vault_root / ".dex/pre-split-archive.git"
     archive_note = (
-        " The pre-split restore archive is still present."
-        if archive.is_dir() and not archive.is_symlink()
-        else ""
+        " The pre-split restore archive is still present." if archive.is_dir() and not archive.is_symlink() else ""
     )
     return ProbeResult(
         "OK",
@@ -3735,11 +3574,7 @@ def _probe_pre_split_archive(context: DoctorContext) -> ProbeResult:
     if archive.is_symlink() or not archive.is_dir():
         return ProbeResult("BROKEN", "The pre-split undo archive is not a safe directory")
     try:
-        size_bytes = sum(
-            path.stat().st_size
-            for path in archive.rglob("*")
-            if path.is_file() and not path.is_symlink()
-        )
+        size_bytes = sum(path.stat().st_size for path in archive.rglob("*") if path.is_file() and not path.is_symlink())
         age_days = max(0, int((context.now.timestamp() - archive.stat().st_mtime) // 86_400))
     except OSError as error:
         return ProbeResult("UNKNOWN", f"Could not inspect the pre-split undo archive: {_one_line(str(error))}")
@@ -3764,26 +3599,17 @@ def _probe_vault_auto_commit(context: DoctorContext) -> ProbeResult:
     except FileNotFoundError:
         profile = {}
     if not isinstance(profile, dict):
-        return ProbeResult(
-            "BROKEN", "Vault auto-commit cannot read user-profile.yaml as a mapping"
-        )
+        return ProbeResult("BROKEN", "Vault auto-commit cannot read user-profile.yaml as a mapping")
     vault_settings = profile.get("vault")
-    enabled = (
-        isinstance(vault_settings, dict)
-        and vault_settings.get("auto_commit") is True
-    )
+    enabled = isinstance(vault_settings, dict) and vault_settings.get("auto_commit") is True
     if not enabled:
-        return ProbeResult(
-            "OFF", "Vault auto-commit is off by default; local files remain untouched"
-        )
+        return ProbeResult("OFF", "Vault auto-commit is off by default; local files remain untouched")
     if _topology_state(context) != "post-split":
         return ProbeResult(
             "BROKEN",
             "Vault auto-commit is enabled before the split topology is ready — run /dex-update",
         )
-    return ProbeResult(
-        "OK", "Vault auto-commit is enabled for local snapshots and never pushes"
-    )
+    return ProbeResult("OK", "Vault auto-commit is enabled for local snapshots and never pushes")
 
 
 def _probe_migration_pending(context: DoctorContext) -> ProbeResult:
@@ -3793,8 +3619,7 @@ def _probe_migration_pending(context: DoctorContext) -> ProbeResult:
     if topology == "migration-pending":
         return ProbeResult(
             "OFF",
-            "Optional one-time upgrade available — run /dex-update when you want it; "
-            "notes stay in place either way",
+            "Optional one-time upgrade available — run /dex-update when you want it; notes stay in place either way",
         )
     if topology == "migration-in-progress":
         return ProbeResult(
@@ -3811,12 +3636,8 @@ def _probe_migration_pending(context: DoctorContext) -> ProbeResult:
             "to return to the pre-split layout. Do not reinstall, restore backups, or run raw Git commands.",
         )
     if topology == "zip-or-manual":
-        return ProbeResult(
-            "OFF", "This ZIP/manual install has no Git topology; use the manual update path"
-        )
-    return ProbeResult(
-        "OFF", "This is the older combined topology; updates keep using the merge path"
-    )
+        return ProbeResult("OFF", "This ZIP/manual install has no Git topology; use the manual update path")
+    return ProbeResult("OFF", "This is the older combined topology; updates keep using the merge path")
 
 
 def _upstream_release_ref(context: DoctorContext, channel: str | None = None) -> str | None:
@@ -3859,17 +3680,9 @@ def _sanctioned_customization_path(relative: str) -> bool:
     if relative in {"System/user-profile.yaml", "System/pillars.yaml"}:
         return True
     parts = relative.split("/")
-    if (
-        len(parts) >= 3
-        and parts[:2] == [".claude", "skills"]
-        and parts[2].endswith("-custom")
-    ):
+    if len(parts) >= 3 and parts[:2] == [".claude", "skills"] and parts[2].endswith("-custom"):
         return True
-    return (
-        len(parts) == 3
-        and parts[:2] == ["System", "integrations"]
-        and Path(relative).suffix == ".yaml"
-    )
+    return len(parts) == 3 and parts[:2] == ["System", "integrations"] and Path(relative).suffix == ".yaml"
 
 
 def _git_file(
@@ -3984,9 +3797,9 @@ def _only_sanctioned_file_changes(
     if relative == "CLAUDE.md":
         return _strip_user_extensions(baseline_text) == _strip_user_extensions(working_text)
     if relative == ".gitignore":
-        return _without_vault_mode_gitignore_section(
-            baseline_text
-        ) == _without_vault_mode_gitignore_section(working_text)
+        return _without_vault_mode_gitignore_section(baseline_text) == _without_vault_mode_gitignore_section(
+            working_text
+        )
     if relative == ".mcp.json":
         baseline_config = _mcp_without_custom_entries(baseline_text)
         working_config = _mcp_without_custom_entries(working_text)
@@ -4033,12 +3846,7 @@ def _worktree_blob_mode_matches(
     mode: str,
 ) -> bool:
     parts = Path(relative).parts
-    if (
-        not parts
-        or "\n" in relative
-        or "\r" in relative
-        or any(part in {"", ".", ".."} for part in parts)
-    ):
+    if not parts or "\n" in relative or "\r" in relative or any(part in {"", ".", ".."} for part in parts):
         return False
     current = context.repo_root
     for part in parts[:-1]:
@@ -4088,13 +3896,7 @@ def _worktree_blob_ids(
 
 
 def _symlink_matches_release_blob(path: Path, object_id: str) -> bool:
-    algorithm = (
-        "sha1"
-        if len(object_id) == 40
-        else "sha256"
-        if len(object_id) == 64
-        else None
-    )
+    algorithm = "sha1" if len(object_id) == 40 else "sha256" if len(object_id) == 64 else None
     if algorithm is None:
         return False
     try:
@@ -4114,8 +3916,7 @@ def _mismatched_release_blobs(
     hashable = [
         relative
         for relative, (mode, _object_id) in entries.items()
-        if mode != "120000"
-        and _worktree_blob_mode_matches(context, relative, mode)
+        if mode != "120000" and _worktree_blob_mode_matches(context, relative, mode)
     ]
     worktree_ids = _worktree_blob_ids(context, hashable)
     return {
@@ -4174,9 +3975,7 @@ def _brain_paths_from_installed_release(
         try:
             resolution = portable_contract.resolve(relative)
         except portable_contract.ContractViolation as error:
-            raise RuntimeError(
-                f"installed brain release has an unclassified path: {relative}"
-            ) from error
+            raise RuntimeError(f"installed brain release has an unclassified path: {relative}") from error
         if resolution.ownership == "brain":
             paths.add(relative)
     return paths
@@ -4232,9 +4031,7 @@ def _installer_normalized_package_metadata(
     if relative == "package.json":
         baseline_scripts = baseline_value.get("scripts")
         current_scripts = current_value.get("scripts")
-        if not isinstance(baseline_scripts, Mapping) or not isinstance(
-            current_scripts, Mapping
-        ):
+        if not isinstance(baseline_scripts, Mapping) or not isinstance(current_scripts, Mapping):
             return False
         for name, command in baseline_scripts.items():
             if current_scripts.get(name) != command:
@@ -4252,15 +4049,11 @@ def _installer_normalized_package_metadata(
 
     baseline_packages = baseline_value.get("packages")
     current_packages = current_value.get("packages")
-    if not isinstance(baseline_packages, Mapping) or not isinstance(
-        current_packages, Mapping
-    ):
+    if not isinstance(baseline_packages, Mapping) or not isinstance(current_packages, Mapping):
         return False
     baseline_root = baseline_packages.get("")
     current_root = current_packages.get("")
-    if not isinstance(baseline_root, Mapping) or not isinstance(
-        current_root, Mapping
-    ):
+    if not isinstance(baseline_root, Mapping) or not isinstance(current_root, Mapping):
         return False
     package_version = current_package["version"]
     if (
@@ -4296,15 +4089,9 @@ def _probe_core_drift(context: DoctorContext) -> ProbeResult:
                 "UNKNOWN",
                 "the brain Git store cannot resolve refs/dex/installed — rerun /dex-update",
             )
-        release_entries = _release_tree_entries(
-            context, baseline, git_directory=brain
-        )
+        release_entries = _release_tree_entries(context, baseline, git_directory=brain)
         brain_paths = _brain_paths_from_installed_release(context, baseline, brain)
-        brain_entries = {
-            relative: release_entries[relative]
-            for relative in brain_paths
-            if relative in release_entries
-        }
+        brain_entries = {relative: release_entries[relative] for relative in brain_paths if relative in release_entries}
         mismatched = _mismatched_release_blobs(
             context,
             brain_entries,
@@ -4329,13 +4116,10 @@ def _probe_core_drift(context: DoctorContext) -> ProbeResult:
             )
         )
         if not drifted:
-            return ProbeResult(
-                "OK", "No shipped brain files differ from refs/dex/installed"
-            )
+            return ProbeResult("OK", "No shipped brain files differ from refs/dex/installed")
         return ProbeResult(
             "UNKNOWN",
-            "Modified shipped brain files: "
-            f"{', '.join(drifted)}; the updater snapshots them before replacement",
+            f"Modified shipped brain files: {', '.join(drifted)}; the updater snapshots them before replacement",
         )
 
     channel = release_channel.read_channel(context.vault_root)
@@ -4372,14 +4156,12 @@ def _probe_core_drift(context: DoctorContext) -> ProbeResult:
     candidates = sorted(
         relative
         for relative in mismatched
-        if _is_shipped_drift_candidate(relative)
-        and not _sanctioned_customization_path(relative)
+        if _is_shipped_drift_candidate(relative) and not _sanctioned_customization_path(relative)
     )
     drifted = [
         relative
         for relative in candidates
-        if relative not in COMPOSED_SHIPPED_PATHS
-        or not _only_sanctioned_file_changes(context, baseline, relative)
+        if relative not in COMPOSED_SHIPPED_PATHS or not _only_sanctioned_file_changes(context, baseline, relative)
     ]
     if not drifted:
         return ProbeResult("OK", "No tracked shipped files differ from the installed release")
@@ -4403,9 +4185,7 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         people_dir = context.core_path("PEOPLE_DIR")
         companies_dir = context.core_path("COMPANIES_DIR")
         people_index_path = context.core_path("PEOPLE_INDEX_FILE")
-        dead_letter_path = (
-            context.vault_root / "System" / ".dex" / "entity-dead-letter.jsonl"
-        )
+        dead_letter_path = context.vault_root / "System" / ".dex" / "entity-dead-letter.jsonl"
 
         contacts = json.loads(contacts_path.read_text()) if contacts_path.exists() else {}
         suggestions = json.loads(suggestions_path.read_text()) if suggestions_path.exists() else {}
@@ -4475,10 +4255,14 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
                 if page.name != "README.md" and parse_entity_page(page).get("quarantined"):
                     quarantined_paths.append(str(page.relative_to(context.vault_root)))
 
-        newest_people_mtime = max(
-            (page.stat().st_mtime for page in people_dir.rglob("*.md") if page.name != "README.md"),
-            default=0.0,
-        ) if people_dir.exists() else 0.0
+        newest_people_mtime = (
+            max(
+                (page.stat().st_mtime for page in people_dir.rglob("*.md") if page.name != "README.md"),
+                default=0.0,
+            )
+            if people_dir.exists()
+            else 0.0
+        )
         index_freshness = "missing"
         if people_index_path.exists():
             people_index = json.loads(people_index_path.read_text())
@@ -4890,18 +4674,14 @@ def _probe_backup_freshness(context: DoctorContext) -> ProbeResult:
     warnings = stamp.get("warnings")
     if isinstance(warnings, list) and warnings:
         detail = "; ".join(_one_line(str(item)) for item in warnings[:3])
-        return ProbeResult("BROKEN", f"{summary}, but it stored less than a full "
-                                     f"backup: {detail}", _BACKUP_HEAL)
+        return ProbeResult("BROKEN", f"{summary}, but it stored less than a full backup: {detail}", _BACKUP_HEAL)
     return ProbeResult("OK", summary)
 
 
 def _calendar_permission_status(_context: DoctorContext) -> str:
     if not _is_macos():
         return "unsupported"
-    code = (
-        "import EventKit; "
-        "print(EventKit.EKEventStore.authorizationStatusForEntityType_(EventKit.EKEntityTypeEvent))"
-    )
+    code = "import EventKit; print(EventKit.EKEventStore.authorizationStatusForEntityType_(EventKit.EKEntityTypeEvent))"
     result = subprocess.run(
         [sys.executable, "-c", code],
         capture_output=True,
@@ -5045,7 +4825,11 @@ def _qmd_registered(config: dict[str, Any]) -> bool:
             continue
         command = str(entry.get("command", ""))
         args = [str(argument) for argument in entry.get("args", []) if isinstance(argument, str)]
-        if "qmd" in name.lower() or Path(command).name == "qmd" or any(Path(argument).name == "qmd" for argument in args):
+        if (
+            "qmd" in name.lower()
+            or Path(command).name == "qmd"
+            or any(Path(argument).name == "qmd" for argument in args)
+        ):
             return True
     return False
 
@@ -5245,9 +5029,7 @@ def _probe_integrations_enabled(context: DoctorContext) -> ProbeResult:
         if status in {"needs_reauth", "not_connected"}:
             failures.append(f"{service}: {status}")
         elif row.get("verified") is not True:
-            unknowns.append(
-                f"{service}: stored credential has not been live-verified"
-            )
+            unknowns.append(f"{service}: stored credential has not been live-verified")
     if failures:
         detail_parts = [f"failed: {'; '.join(failures)}"]
         if unknowns:
@@ -5324,10 +5106,7 @@ def _probe_mcp_importable(context: DoctorContext) -> ProbeResult:
         if missing_dependencies:
             noun = "dependency" if len(missing_dependencies) == 1 else "dependencies"
             named = ", ".join(repr(name) for name in sorted(missing_dependencies))
-            remedies.append(
-                f"Reinstall missing MCP {noun} {named} into the vault .venv, "
-                "then re-run /dex-doctor."
-            )
+            remedies.append(f"Reinstall missing MCP {noun} {named} into the vault .venv, then re-run /dex-doctor.")
         if unclassified_failure:
             remedies.append("Reinstall the missing MCP dependencies into the vault .venv.")
         return ProbeResult(
@@ -5408,10 +5187,7 @@ def _smoke_attribution_paths(context: DoctorContext) -> list[Path]:
     paths_to_check.extend(sorted((system / "integrations").glob("*.yaml")))
     custom_skills = context.vault_root / ".claude" / "skills"
     paths_to_check.extend(
-        path
-        for root in sorted(custom_skills.glob("*-custom"))
-        for path in sorted(root.rglob("*"))
-        if path.is_file()
+        path for root in sorted(custom_skills.glob("*-custom")) for path in sorted(root.rglob("*")) if path.is_file()
     )
     return paths_to_check
 
@@ -5455,11 +5231,7 @@ def _probe_smoke_history(context: DoctorContext) -> ProbeResult:
         )
 
     prior_good_index = next(
-        (
-            index
-            for index in range(len(entries) - 2, -1, -1)
-            if entries[index]["summary"].get("broken") == 0
-        ),
+        (index for index in range(len(entries) - 2, -1, -1) if entries[index]["summary"].get("broken") == 0),
         None,
     )
     broken_ids = ", ".join(journey["id"] for journey in broken)
@@ -5470,11 +5242,7 @@ def _probe_smoke_history(context: DoctorContext) -> ProbeResult:
         )
 
     good_entry = entries[prior_good_index]
-    first_broken = next(
-        entry
-        for entry in entries[prior_good_index + 1 :]
-        if entry["summary"].get("broken", 0) > 0
-    )
+    first_broken = next(entry for entry in entries[prior_good_index + 1 :] if entry["summary"].get("broken", 0) > 0)
     window_start = _smoke_timestamp(good_entry)
     window_end = _smoke_timestamp(first_broken)
     facts = []
@@ -5484,9 +5252,7 @@ def _probe_smoke_history(context: DoctorContext) -> ProbeResult:
         except OSError:
             continue
         if window_start < modified <= window_end:
-            facts.append(
-                f"{_smoke_attribution_name(path, context)} modified {modified.isoformat()}"
-            )
+            facts.append(f"{_smoke_attribution_name(path, context)} modified {modified.isoformat()}")
     old_version = good_entry.get("dex_version")
     new_version = first_broken.get("dex_version")
     if isinstance(old_version, str) and isinstance(new_version, str) and old_version != new_version:
@@ -5507,16 +5273,8 @@ def _probe_smoke_history(context: DoctorContext) -> ProbeResult:
 def _probe_smoke_journeys(context: DoctorContext) -> ProbeResult:
     smoke_path = context.repo_root / "core" / "utils" / "smoke.py"
     vault_python = context.vault_root / ".venv" / "bin" / "python"
-    interpreter = (
-        str(vault_python)
-        if vault_python.is_file() and os.access(vault_python, os.X_OK)
-        else sys.executable
-    )
-    env = {
-        name: os.environ[name]
-        for name in ("PATH", "PYTHONPATH")
-        if name in os.environ
-    }
+    interpreter = str(vault_python) if vault_python.is_file() and os.access(vault_python, os.X_OK) else sys.executable
+    env = {name: os.environ[name] for name in ("PATH", "PYTHONPATH") if name in os.environ}
     env.update(
         {
             "VAULT_PATH": str(context.vault_root),
@@ -5572,9 +5330,7 @@ def _probe_smoke_journeys(context: DoctorContext) -> ProbeResult:
     else:
         worst = "OFF"
     if (result.returncode == 1) != (worst == "BROKEN"):
-        raise RuntimeError(
-            f"smoke harness exit {result.returncode} did not match its {worst} journey roll-up"
-        )
+        raise RuntimeError(f"smoke harness exit {result.returncode} did not match its {worst} journey roll-up")
     return ProbeResult(worst, " | ".join(rendered))
 
 
