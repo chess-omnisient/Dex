@@ -254,7 +254,7 @@ def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
     return {str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})")}
 
 
-def _index_state(index: Path) -> tuple[int, str]:
+def _index_state(index: Path) -> tuple[int, tuple[str, ...]]:
     uri = index.resolve().as_uri() + "?mode=ro"
     with sqlite3.connect(uri, uri=True, timeout=2) as connection:
         quick_check = connection.execute("PRAGMA quick_check").fetchone()
@@ -299,12 +299,18 @@ def _index_state(index: Path) -> tuple[int, str]:
         searchable_terms = int(connection.execute("SELECT COUNT(*) FROM temp.apple_mail_health_vocab").fetchone()[0])
         if email_count and searchable_terms == 0:
             raise sqlite3.DatabaseError("FTS5 contains no searchable terms")
-        last_sync = connection.execute("SELECT MAX(last_sync) FROM sync_state WHERE last_sync IS NOT NULL").fetchone()[
-            0
-        ]
-    if not last_sync:
-        raise sqlite3.DatabaseError("no successful sync is recorded")
-    return email_count, str(last_sync)
+        required_syncs = connection.execute(
+            """
+            SELECT state.last_sync
+            FROM (SELECT DISTINCT account, mailbox FROM emails) AS indexed
+            LEFT JOIN sync_state AS state
+              ON state.account = indexed.account
+             AND state.mailbox = indexed.mailbox
+            """
+        ).fetchall()
+    if email_count and (not required_syncs or any(row[0] is None for row in required_syncs)):
+        raise sqlite3.DatabaseError("one or more indexed mailboxes has no successful sync")
+    return email_count, tuple(str(row[0]) for row in required_syncs)
 
 
 def _sync_age(now: datetime, raw_timestamp: str) -> timedelta:
@@ -397,8 +403,7 @@ def probe(context: Context) -> Result:
     if permissions:
         return permissions
     try:
-        email_count, last_sync = _index_state(index)
-        age = _sync_age(context.now, last_sync)
+        email_count, required_syncs = _index_state(index)
     except (OSError, sqlite3.DatabaseError, ValueError) as error:
         detail = _one_line(error)
         return Result(
@@ -418,6 +423,17 @@ def probe(context: Context) -> Result:
             action=APPLE_MAIL_INDEX_REBUILD_FIX,
             feature_status="broken",
             user_message="Mail search's local index contains no messages. " + APPLE_MAIL_INDEX_REBUILD_FIX,
+        )
+    try:
+        age = max(_sync_age(context.now, last_sync) for last_sync in required_syncs)
+    except ValueError as error:
+        detail = _one_line(error)
+        return Result(
+            "BROKEN",
+            f"The Apple Mail search index at {index} is not usable: {detail}",
+            action=APPLE_MAIL_INDEX_REBUILD_FIX,
+            feature_status="broken",
+            user_message="Mail search's local index is not usable. " + APPLE_MAIL_INDEX_REBUILD_FIX,
         )
     if age > settings.stale_after:
         allowed_hours = settings.stale_after.total_seconds() / 3600

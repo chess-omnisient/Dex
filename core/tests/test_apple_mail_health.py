@@ -123,6 +123,22 @@ def _write_real_apple_mail_index(
     return path
 
 
+def _add_indexed_mailbox(path, *, account, mailbox, last_sync):
+    with sqlite3.connect(path) as connection:
+        rowid = int(connection.execute("SELECT MAX(rowid) FROM emails").fetchone()[0]) + 1
+        connection.execute(
+            "INSERT INTO emails "
+            "(rowid, message_id, account, mailbox, subject, sender, content) "
+            "VALUES (?, ?, ?, ?, 'Second mailbox', 'fixture@example.com', 'Searchable body')",
+            (rowid, rowid, account, mailbox),
+        )
+        connection.execute(
+            "INSERT INTO sync_state (account, mailbox, last_sync, message_count) "
+            "VALUES (?, ?, ?, 1)",
+            (account, mailbox, last_sync),
+        )
+
+
 def test_apple_mail_search_is_off_when_no_server_is_registered(context):
     result = apple_mail_health.probe(context)
 
@@ -437,6 +453,40 @@ def test_apple_mail_search_uses_configured_sync_freshness_not_file_mtime(
     (index.parent / "config.toml").write_text("config_version = 1\n[index]\nstaleness_hours = 48\n")
     fresh_by_policy = apple_mail_health.probe(context)
     assert fresh_by_policy.verdict == "OK"
+
+
+@pytest.mark.parametrize(
+    ("second_sync", "expected_detail"),
+    [
+        pytest.param(
+            (NOW - timedelta(hours=48)).isoformat(),
+            "configured 24-hour freshness limit",
+            id="mixed-fresh-and-stale",
+        ),
+        pytest.param(None, "has no successful sync", id="mixed-fresh-and-missing"),
+    ],
+)
+def test_apple_mail_search_checks_every_indexed_mailbox_sync(
+    context,
+    second_sync,
+    expected_detail,
+):
+    _register_apple_mail_user_scope(context)
+    index = _write_real_apple_mail_index(
+        context.home / ".apple-mail-mcp" / "index.db",
+        last_sync=(NOW - timedelta(hours=1)).isoformat(),
+    )
+    _add_indexed_mailbox(
+        index,
+        account="Second",
+        mailbox="Archive",
+        last_sync=second_sync,
+    )
+
+    result = apple_mail_health.probe(context)
+
+    assert result.verdict == "BROKEN"
+    assert expected_detail in result.detail
 
 
 @pytest.mark.parametrize(
