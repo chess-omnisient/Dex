@@ -19,9 +19,11 @@ import os
 import re
 import shutil
 from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime, timezone
 from pathlib import Path
 
 from core import portable_contract
+from core.analytics_events import RECEIPT_ANALYTICS_EVENT_NAMES
 from core.customization_migration.registration import mcp_registration_snippet
 from core.lifecycle.catalog import load_catalog, load_catalog_payload_sources
 from core.lifecycle.conflict import (
@@ -58,6 +60,32 @@ _ARCHIVE_RECEIPTS_RELATIVE = "System/.dex/archive-removals"
 _MCP_CONFIG_RELATIVE = ".mcp.json"
 _MCP_REGISTRATION_NAME = "customization-migration-mcp"
 _ONBOARDING_PROFILE_RELATIVE = "System/user-profile.yaml"
+_ANALYTICS_ATTEMPT_RECEIPT_RELATIVE = portable_contract.ANALYTICS_ATTEMPT_RECEIPT_RELATIVE
+_ANALYTICS_RECEIPT_FIELDS = frozenset({"timestamp", "event", "outcome", "reason"})
+_ANALYTICS_RECEIPT_OUTCOMES = frozenset({"sent", "not_sent"})
+_ANALYTICS_RECEIPT_REASONS = frozenset(
+    {
+        "analytics_disabled",
+        "no_analytics_endpoint",
+        "no_pendo_secret",
+        "requests_not_installed",
+        "sent",
+        "http_error",
+        "invalid_event_name",
+        "request_failed",
+    }
+)
+_ANALYTICS_EVENT_NAME = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
+_MAX_ANALYTICS_RECEIPT_INPUT_BYTES = (
+    portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
+)
+_MAX_RETAINED_ANALYTICS_RECEIPT_BYTES = (
+    portable_contract.ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES
+)
+_ANALYTICS_RECEIPT_APPEND_ATTEMPTS = 2
+_ANALYTICS_RECEIPT_TIMESTAMP = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?\+00:00$"
+)
 _REBUILD_TRANSACTION_PATH = re.compile(
     r"^System/\.dex/customization-migrations/cap-[0-9a-f]{16}/(?:"
     r"receipts/(?:capsule|activation|rewind)\.json|"
@@ -91,6 +119,35 @@ def _transaction_preview_document(
     purpose: str,
     operation: str = "update",
 ) -> dict[str, object]:
+    """Build the historic private service-to-Transaction approval binding."""
+    return _transaction_preview_document_with_bounded_reads(
+        vault_root,
+        plan,
+        purpose=purpose,
+        operation=operation,
+        max_read_bytes_by_relative=_internal_transaction_read_limits(operation),
+    )
+
+
+def _internal_transaction_read_limits(operation: str) -> dict[str, int]:
+    """Return the one service-owned cap required by a private receipt operation."""
+    if operation != "analytics-receipt":
+        return {}
+    return {
+        _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE: (
+            portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
+        )
+    }
+
+
+def _transaction_preview_document_with_bounded_reads(
+    vault_root: str | Path,
+    plan: Sequence[PlanEntry],
+    *,
+    purpose: str,
+    operation: str,
+    max_read_bytes_by_relative: Mapping[str, int],
+) -> dict[str, object]:
     """Build the private service-to-Transaction approval binding.
 
     This is deliberately outside the frozen public ABI.  It gives trusted
@@ -102,6 +159,7 @@ def _transaction_preview_document(
     if not plan:
         raise ValueError("transaction preview needs at least one write")
     root = Path(vault_root)
+    read_limits = dict(max_read_bytes_by_relative)
     writes: list[dict[str, object]] = []
     seen: set[str] = set()
     for entry in plan:
@@ -127,7 +185,12 @@ def _transaction_preview_document(
         if target.exists():
             if target.is_symlink() or not target.is_file():
                 raise PlanRejected(f"{entry.relative}: existing target is not a regular file")
-            raw = target.read_bytes()
+            max_bytes = read_limits.get(entry.relative)
+            raw = (
+                bounded_read(root, entry.relative, max_bytes=max_bytes)
+                if max_bytes is not None
+                else target.read_bytes()
+            )
             current = {
                 "exists": True,
                 "sha256": hashlib.sha256(raw).hexdigest(),
@@ -226,8 +289,11 @@ def _execute_approved_transaction(
     )
     tx_root_relative = Path("System/.dex/tx")
     tx_paths_before = _tree_paths(root, tx_root_relative)
-    result = Transaction.begin(root, list(plan), operation=operation).run(
-        before_commit=before_commit
+    result = _run_internal_transaction(
+        root,
+        plan,
+        operation=operation,
+        before_commit=before_commit,
     )
     tx_paths_after = _tree_paths(root, tx_root_relative)
     declared_paths = (
@@ -253,6 +319,210 @@ def _execute_approved_transaction(
             "declared_paths": sorted(declared_paths),
         }
     )
+
+
+def _run_internal_transaction(
+    vault_root: Path,
+    plan: Sequence[PlanEntry],
+    *,
+    operation: str,
+    before_commit: Callable[[], None] | None,
+) -> dict[str, object]:
+    """Run one private transaction while keeping bounded reads off legacy seams."""
+    return Transaction.begin(
+        vault_root,
+        list(plan),
+        operation=operation,
+        max_read_bytes_by_relative=_internal_transaction_read_limits(operation),
+    ).run(before_commit=before_commit)
+
+
+def _validate_analytics_receipt_record(record: object) -> None:
+    """Refuse to append to a receipt that could already contain unsafe data."""
+    if not isinstance(record, dict) or set(record) != _ANALYTICS_RECEIPT_FIELDS:
+        raise PlanRejected("analytics receipt has unsupported fields")
+    timestamp = record.get("timestamp")
+    event = record.get("event")
+    outcome = record.get("outcome")
+    reason = record.get("reason")
+    if not isinstance(timestamp, str) or _ANALYTICS_RECEIPT_TIMESTAMP.fullmatch(timestamp) is None:
+        raise PlanRejected("analytics receipt timestamp is invalid")
+    if (
+        not isinstance(event, str)
+        or _ANALYTICS_EVENT_NAME.fullmatch(event) is None
+        or event not in RECEIPT_ANALYTICS_EVENT_NAMES
+    ):
+        raise PlanRejected("analytics receipt event name is invalid")
+    if outcome not in _ANALYTICS_RECEIPT_OUTCOMES:
+        raise PlanRejected("analytics receipt outcome is invalid")
+    if reason not in _ANALYTICS_RECEIPT_REASONS:
+        raise PlanRejected("analytics receipt reason is invalid")
+
+
+def _analytics_receipt_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Build a receipt object only when each JSON field occurs once.
+
+    Python's normal JSON decoder accepts duplicate keys and silently keeps the
+    last value.  That would let an unsafe earlier value remain on disk even
+    though schema validation sees only the safe replacement.
+    """
+    record: dict[str, object] = {}
+    for key, value in pairs:
+        if key in record:
+            raise ValueError("analytics receipt contains duplicate JSON keys")
+        record[key] = value
+    return record
+
+
+def _validated_analytics_receipt_prefix(raw: bytes) -> bytes:
+    """Return only an existing receipt whose every line follows the safe schema."""
+    if not raw:
+        return b""
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise PlanRejected("analytics receipt is not UTF-8") from error
+    if not text.endswith("\n"):
+        raise PlanRejected("analytics receipt must end with a newline")
+    for line in text.splitlines():
+        try:
+            record = json.loads(line, object_pairs_hook=_analytics_receipt_json_object)
+        except (json.JSONDecodeError, ValueError) as error:
+            raise PlanRejected("analytics receipt contains invalid JSON") from error
+        _validate_analytics_receipt_record(record)
+    return raw
+
+
+def _retain_newest_analytics_receipt_records(
+    existing: bytes,
+    record: bytes,
+) -> bytes:
+    """Keep a bounded rolling receipt without splitting or skipping records.
+
+    ``existing`` has already been fully validated, including every record that
+    may be dropped.  That makes retention safe: an old malformed or unsafe
+    line fails closed instead of being silently hidden by truncation.
+    """
+    combined = existing + record
+    if len(combined) <= _MAX_RETAINED_ANALYTICS_RECEIPT_BYTES:
+        return combined
+
+    lines = combined.splitlines(keepends=True)
+    retained_size = len(combined)
+    first_retained = 0
+    while retained_size > _MAX_RETAINED_ANALYTICS_RECEIPT_BYTES:
+        retained_size -= len(lines[first_retained])
+        first_retained += 1
+
+    retained = b"".join(lines[first_retained:])
+    if not retained or not retained.endswith(b"\n"):
+        raise PlanRejected("analytics receipt retention must keep complete records")
+    if len(retained) != retained_size:
+        raise PlanRejected("analytics receipt retention size is inconsistent")
+    return retained
+
+
+def _is_stale_analytics_receipt_plan(error: PlanRejected) -> bool:
+    """Recognize only a stale precondition for this one local receipt file."""
+    message = str(error)
+    if message == "transaction approval token does not match the current preview":
+        return True
+    if _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE not in message:
+        return False
+    return any(
+        marker in message
+        for marker in (
+            "changed after the mutation plan was built",
+            "changed after the mutation snapshot",
+            "appeared after the mutation plan was built",
+            "appeared after the mutation snapshot",
+            "appeared in the vault after authorization",
+        )
+    )
+
+
+def _append_analytics_attempt_receipt(
+    vault_root: str | Path,
+    *,
+    event_name: str,
+    outcome: str,
+    reason: str,
+) -> dict[str, object]:
+    """Append one safe analytics-attempt receipt through the transaction core.
+
+    This private service seam is intentionally narrow: it owns the four-field
+    receipt shape and can write only its exact runtime file. It is not part of
+    the frozen public lifecycle API.
+    """
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event": event_name,
+        "outcome": outcome,
+        "reason": reason,
+    }
+    _validate_analytics_receipt_record(record)
+    record_bytes = _canonical(record)
+    if (
+        len(record_bytes)
+        > portable_contract.ANALYTICS_ATTEMPT_RECEIPT_MAX_RECORD_BYTES
+    ):
+        raise PlanRejected("analytics receipt record exceeds its bounded size")
+
+    root = Path(vault_root)
+    for attempt in range(_ANALYTICS_RECEIPT_APPEND_ATTEMPTS):
+        # Check the entire route before even asking whether the receipt exists:
+        # a user-owned symlinked parent must never be traversed to read it.
+        unsafe_parent = unsafe_existing_parent(root, _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE)
+        if unsafe_parent is not None:
+            raise PlanRejected(f"analytics receipt: {unsafe_parent}")
+        target = root / _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE
+        if target.is_symlink():
+            raise PlanRejected("analytics receipt target must be a regular file")
+        target_exists = target.exists()
+        if target_exists and not target.is_file():
+            raise PlanRejected("analytics receipt target must be a regular file")
+        existing = (
+            bounded_read(
+                root,
+                _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE,
+                max_bytes=_MAX_ANALYTICS_RECEIPT_INPUT_BYTES,
+            )
+            if target_exists
+            else b""
+        )
+        prefix = _validated_analytics_receipt_prefix(existing)
+        entry = PlanEntry(
+            _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE,
+            _retain_newest_analytics_receipt_records(prefix, record_bytes),
+            mode=0o600,
+            expected_current_sha256=(
+                hashlib.sha256(existing).hexdigest() if target_exists else None
+            ),
+            expected_absent=not target_exists,
+        )
+        plan = [entry]
+        preview = _preview_transaction(
+            root,
+            plan,
+            purpose="analytics-receipt",
+            operation="analytics-receipt",
+        )
+        try:
+            return _execute_approved_transaction(
+                root,
+                plan,
+                purpose="analytics-receipt",
+                operation="analytics-receipt",
+                approved_token=str(preview["approval_token"]),
+            )
+        except PlanRejected as error:
+            if (
+                attempt + 1 < _ANALYTICS_RECEIPT_APPEND_ATTEMPTS
+                and _is_stale_analytics_receipt_plan(error)
+            ):
+                continue
+            raise
+    raise RuntimeError("analytics receipt retry loop ended unexpectedly")
 
 
 def _confirmed_onboarding_context(

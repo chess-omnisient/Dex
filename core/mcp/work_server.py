@@ -35,14 +35,35 @@ import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
-# Analytics helper (optional - gracefully degrade if not available)
+# Make the canonical package import work both when this file is launched as a
+# script and when it is imported by another Dex server. This must happen before
+# the required analytics receipt route is resolved.
+_ANALYTICS_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+if _ANALYTICS_REPO_ROOT not in sys.path:
+    sys.path.insert(0, _ANALYTICS_REPO_ROOT)
+
+from core.mcp.analytics_receipts import (
+    surface_analytics_attempt,
+    unavailable_analytics_delivery,
+)
+
+
+def _analytics_helper_unavailable_result() -> dict[str, object]:
+    """Return only the fixed safe outcome when the shared helper cannot load."""
+    return unavailable_analytics_delivery()
+
+
+# This is a required receipt route, not a best-effort no-op: use the one
+# package helper in every launch mode, and make an unavailable helper visible
+# through the caller's existing safe result path.
 try:
-    from analytics_helper import fire_event as _fire_analytics_event
+    from core.mcp.analytics_helper import fire_event as _fire_analytics_event
     HAS_ANALYTICS = True
 except ImportError:
     HAS_ANALYTICS = False
+
     def _fire_analytics_event(event_name, properties=None):
-        return {'fired': False, 'reason': 'analytics_not_available'}
+        return _analytics_helper_unavailable_result()
 
 # Set up logging first (before any imports that might use it)
 logging.basicConfig(level=logging.INFO)
@@ -52,11 +73,6 @@ _LEAKED_TOOL_CALL_DELIMITER_RE = re.compile(
     r'</context\s*>|<parameter\s+name\s*=',
     re.IGNORECASE,
 )
-
-# Add grandparent directory to path for 'core.utils' imports
-# The script is at core/mcp/work_server.py, so we need to add the vault root
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
 # QMD semantic search (optional - gracefully degrade if not available)
 try:
     from core.utils.qmd_query import is_qmd_available, vault_search
@@ -4711,15 +4727,6 @@ async def _handle_call_tool_inner(
             except Exception as error:
                 logger.warning("Could not sync task references for %s: %s", page, error)
         
-        # Fire analytics event (silent, best-effort)
-        try:
-            _fire_analytics_event('task_created', {
-                'pillar': pillar,
-                'priority': priority,
-            })
-        except Exception:
-            pass
-        
         result = {
             "success": True,
             "task": {
@@ -4749,6 +4756,15 @@ async def _handle_call_tool_inner(
         }
         if priority_warning:
             result["priority_warning"] = priority_warning
+        surface_analytics_attempt(
+            result,
+            _fire_analytics_event,
+            'task_created',
+            {
+                'pillar': pillar,
+                'priority': priority,
+            },
+        )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
     elif name == "confirm_goal_link":
@@ -4882,10 +4898,12 @@ async def _handle_call_tool_inner(
             result['related_tasks_synced'] = synced_pages
             
             if completed:
-                try:
-                    _fire_analytics_event('task_completed', {'method': 'task_id'})
-                except Exception:
-                    pass
+                surface_analytics_attempt(
+                    result,
+                    _fire_analytics_event,
+                    'task_completed',
+                    {'method': 'task_id'},
+                )
             
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
         
@@ -4933,10 +4951,12 @@ async def _handle_call_tool_inner(
                 result['related_tasks_synced'] = synced_pages
                 
                 if completed:
-                    try:
-                        _fire_analytics_event('task_completed', {'method': 'task_title'})
-                    except Exception:
-                        pass
+                    surface_analytics_attempt(
+                        result,
+                        _fire_analytics_event,
+                        'task_completed',
+                        {'method': 'task_title'},
+                    )
                 
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
             
@@ -4965,12 +4985,6 @@ async def _handle_call_tool_inner(
                 
                 status_name = STATUS_CODES.get(new_status, new_status)
                 
-                if completed:
-                    try:
-                        _fire_analytics_event('task_completed', {'method': 'legacy'})
-                    except Exception:
-                        pass
-                
                 result = {
                     "success": True,
                     "task": task['title'],
@@ -4979,6 +4993,13 @@ async def _handle_call_tool_inner(
                     "synced_pages": synced_pages,
                     "note": "Task has no ID - only updated in source file. Create new tasks with IDs for multi-location sync."
                 }
+                if completed:
+                    surface_analytics_attempt(
+                        result,
+                        _fire_analytics_event,
+                        'task_completed',
+                        {'method': 'legacy'},
+                    )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
         
         else:
@@ -6067,6 +6088,12 @@ async def _handle_call_tool_inner(
             notes=arguments.get('notes'),
             allow_duplicate=arguments.get('allow_duplicate', False),
         )
+        if result.get('success') is True and result.get('created') is True:
+            surface_analytics_attempt(
+                result,
+                _fire_analytics_event,
+                'person_page_created',
+            )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
     elif name == "query_meeting_cache":
@@ -6106,20 +6133,21 @@ async def _handle_call_tool_inner(
         with open(SKILL_RATINGS_FILE, 'a') as f:
             f.write(json.dumps(entry) + '\n')
 
-        # Fire analytics event (anonymous, consent-checked)
-        try:
-            _fire_analytics_event('skill_rated', {
-                'skill_name': skill_name,
-                'rating': rating,
-            })
-        except Exception:
-            pass
-
-        return [types.TextContent(type="text", text=json.dumps({
+        result = {
             "success": True,
             "message": f"Rated {skill_name}: {rating}/5" + (f" — {note}" if note else ""),
             "entry": entry
-        }, indent=2))]
+        }
+        surface_analytics_attempt(
+            result,
+            _fire_analytics_event,
+            'skill_rated',
+            {
+                'skill_name': skill_name,
+                'rating': rating,
+            },
+        )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
     elif name == "get_skill_ratings":
         skill_filter = arguments.get('skill_name', '') if arguments else ''
