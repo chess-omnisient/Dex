@@ -39,6 +39,9 @@ Use: calendar_get_events_with_attendees(start_date="{{TARGET_DATE}}", end_date="
 Use: analyze_calendar_capacity(days_ahead=1, events=[...from above...])
 ```
 
+Apply CLAUDE.md's **Calendar response confidence contract** before consuming
+events or passing them to `analyze_calendar_capacity`.
+
 Get: meetings with times and attendees, day type (stacked / moderate / open),
 free blocks, deep work opportunities. Verify every event's date against the
 target date; exclude events that bled in from adjacent days.
