@@ -37,10 +37,11 @@ from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
 from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry, PlanRejected
 from core.transaction.journal import Journal, JournalCorruptError
-from core.utils import dex_logger, launch_agents, preflight, release_channel
+from core.utils import apple_mail_health, dex_logger, launch_agents, preflight, release_channel
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
+QMD_STATUS_TIMEOUT_SECONDS = 10
 MISSING_PACKAGES_DETAIL = (
     "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
     "then re-run /dex-doctor"
@@ -646,6 +647,7 @@ DEEP_CHECKS = (
     CheckDefinition("config.meeting_sources", "Configured meeting source", "_probe_meeting_sources"),
     CheckDefinition("update.post-canary", "Post-update canary", "_probe_post_update_canary"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
+    CheckDefinition("mail.apple-search", "Apple Mail search", "_probe_apple_mail_search"),
     CheckDefinition("qmd.live", "Semantic search", "_probe_qmd_live"),
     CheckDefinition("integrations.enabled", "Enabled integrations", "_probe_integrations_enabled"),
     CheckDefinition("mcp.importable", "MCP imports", "_probe_mcp_importable"),
@@ -674,16 +676,22 @@ def _sentence(value: object) -> str:
 
 
 def _actionable_probe_error(error: Exception) -> str:
-    detail = _one_line(error)
-    if _is_missing_package_error(error, detail):
-        return MISSING_PACKAGES_DETAIL
-    return detail
+    missing_module_detail = _missing_module_detail(error)
+    return missing_module_detail or _one_line(error)
 
 
-def _is_missing_package_error(value: object, detail: str | None = None) -> bool:
-    rendered = detail or _one_line(value)
-    return isinstance(value, ModuleNotFoundError) or any(
-        marker in rendered for marker in ("ModuleNotFoundError", "No module named")
+def _missing_module_detail(value: object) -> str | None:
+    module = dex_logger.missing_module_name(value)
+    if module is None:
+        return MISSING_PACKAGES_DETAIL if isinstance(value, ModuleNotFoundError) else None
+    if dex_logger.is_dex_module(module):
+        return (
+            f"Dex's own code could not be loaded (missing module {module!r}). "
+            "This is a Dex checkup fault, not a missing Python package."
+        )
+    return (
+        f"Python packages not installed (missing module {module!r}) — run /dex-update "
+        "(or pip install -r requirements.txt) then re-run /dex-doctor"
     )
 
 
@@ -1030,11 +1038,26 @@ def collect(
                 result = ProbeResult(
                     "UNKNOWN",
                     error_text
-                    if error_text == MISSING_PACKAGES_DETAIL
+                    if _missing_module_detail(error) is not None
                     else f"The {definition.feature} probe could not run: {error_text}",
                 )
-            if result.verdict == "UNKNOWN" and _is_missing_package_error(result.detail):
-                result = ProbeResult("UNKNOWN", MISSING_PACKAGES_DETAIL, result.heal)
+            missing_module = dex_logger.missing_module_name(result.detail)
+            missing_detail = _missing_module_detail(result.detail)
+            truthful_missing_diagnosis = bool(
+                missing_module
+                and (
+                    (
+                        dex_logger.is_dex_module(missing_module)
+                        and "Dex checkup fault" in result.detail
+                    )
+                    or (
+                        not dex_logger.is_dex_module(missing_module)
+                        and f"missing module {missing_module!r}" in result.detail
+                    )
+                )
+            )
+            if result.verdict == "UNKNOWN" and missing_detail and not truthful_missing_diagnosis:
+                result = ProbeResult("UNKNOWN", missing_detail, result.heal)
             check_actions = t1_actions.get(definition.id, [])
             if definition.id == "vault.structure" and check_actions:
                 action = "; ".join(check_actions) + "."
@@ -4988,6 +5011,34 @@ def _probe_calendar_access(context: DoctorContext) -> ProbeResult:
     return ProbeResult("OK", f"Calendar access works and {len(calendars)} calendar names were returned")
 
 
+def _apple_mail_cli_present() -> bool:
+    return shutil.which("apple-mail-mcp") is not None
+
+
+def _probe_apple_mail_search(context: DoctorContext) -> ProbeResult:
+    """Adapt the focused Apple Mail checker to Doctor's normalized result."""
+    result = apple_mail_health.probe(
+        apple_mail_health.Context(
+            home=context.home,
+            vault_root=context.vault_root,
+            now=context.now,
+            user_config_path=context.home / ".claude.json",
+            project_config_path=_mcp_config_path(context),
+            environment=os.environ,
+            macos=_is_macos(),
+            cli_present=_apple_mail_cli_present(),
+        )
+    )
+    heal = Heal(tier=3, action=result.action, applied=False) if result.action else None
+    return ProbeResult(
+        result.verdict,
+        result.detail,
+        heal,
+        feature_status=result.feature_status,
+        user_message=result.user_message,
+    )
+
+
 def _qmd_registered(config: dict[str, Any]) -> bool:
     for name, entry in config.get("mcpServers", {}).items():
         if not isinstance(entry, dict):
@@ -5010,7 +5061,7 @@ def _qmd_status(binary: str) -> tuple[bool, str]:
         [binary, "status"],
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=QMD_STATUS_TIMEOUT_SECONDS,
         check=False,
     )
     detail = _one_line(result.stdout if result.returncode == 0 else result.stderr or result.stdout)
@@ -5031,7 +5082,14 @@ def _probe_qmd_live(context: DoctorContext) -> ProbeResult:
             "qmd is registered but its binary is not installed",
             Heal(tier=3, action="Run /enable-semantic-search to install and configure qmd.", applied=False),
         )
-    healthy, detail = _qmd_status(binary)
+    try:
+        healthy, detail = _qmd_status(binary)
+    except subprocess.TimeoutExpired:
+        return ProbeResult(
+            "UNKNOWN",
+            "qmd status did not finish within "
+            f"{QMD_STATUS_TIMEOUT_SECONDS} seconds, so semantic search health could not be checked",
+        )
     if not healthy:
         if _looks_like_sandbox_failure(detail):
             return ProbeResult("UNKNOWN", f"The sandbox or GPU environment blocked qmd status: {detail}")
@@ -5243,16 +5301,39 @@ def _probe_mcp_importable(context: DoctorContext) -> ProbeResult:
     config = _load_mcp_config(context)
     registered = _registered_core_scripts(context, config)
     failures = []
+    missing_dependencies: set[str] = set()
+    dex_code_missing = False
+    unclassified_failure = False
     for _name, (target, interpreter) in registered.items():
         module = f"core.mcp.{target.stem}"
         importable, detail = _mcp_import_check(context, module, interpreter)
         if not importable:
-            failures.append(f"{module}: {detail}")
+            missing_module = dex_logger.missing_module_name(detail)
+            classified_detail = _missing_module_detail(detail)
+            failures.append(f"{module}: {classified_detail or detail}")
+            if dex_logger.is_dex_module(missing_module):
+                dex_code_missing = True
+            elif missing_module:
+                missing_dependencies.add(missing_module)
+            else:
+                unclassified_failure = True
     if failures:
+        remedies = []
+        if dex_code_missing:
+            remedies.append("Run /dex-update to restore Dex's own code, then re-run /dex-doctor.")
+        if missing_dependencies:
+            noun = "dependency" if len(missing_dependencies) == 1 else "dependencies"
+            named = ", ".join(repr(name) for name in sorted(missing_dependencies))
+            remedies.append(
+                f"Reinstall missing MCP {noun} {named} into the vault .venv, "
+                "then re-run /dex-doctor."
+            )
+        if unclassified_failure:
+            remedies.append("Reinstall the missing MCP dependencies into the vault .venv.")
         return ProbeResult(
             "BROKEN",
             f"Registered MCP imports failed: {'; '.join(failures)}",
-            Heal(tier=2, action="Reinstall the missing MCP dependencies into the vault .venv.", applied=False),
+            Heal(tier=2, action=" ".join(remedies), applied=False),
         )
     return ProbeResult("OK", f"All {len(registered)} registered core MCP servers import in a subprocess")
 

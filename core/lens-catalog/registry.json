@@ -64,8 +64,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
-        "sha256": "311c9cdf45842936cee4a91d1ac116ce9e1eeae576c01aacdce989e44b912221",
-        "byte_size": 30797
+        "sha256": "ed6b1cb03cc69b597669cc3f0eb520b8769a28cc7730a0f054df10185c7ecf47",
+        "byte_size": 31420
       },
       "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
       "jobs_served": ["plan-my-work"],
@@ -364,8 +364,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-review/SKILL.md",
-        "sha256": "30b052197bb91b3b48d41021789ec577eaab394ec1a910001773c2c8e9319d16",
-        "byte_size": 18517
+        "sha256": "7972089ecf86d0ce8cc23281f490afabbd11ce8683856cf91479a856444ff905",
+        "byte_size": 19021
       },
       "value": "Reviews the week in concrete finished work and the patterns behind it, and deliberately refuses to invent a completion percentage that would make a bad week look measured.",
       "jobs_served": ["plan-my-work", "compound-learning"],
