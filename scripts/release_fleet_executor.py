@@ -264,16 +264,10 @@ def _validate_foundation_cache(
 def _validate_follow_up_cache(
     cache: Path,
     release: Mapping[str, object],
-    *,
-    source_commit: str | None = None,
 ) -> Path:
     """Prove a closed private cache contains the requested canary identity."""
 
-    identity = _strict_identity(
-        release,
-        "follow-up",
-        source_commit=source_commit,
-    )
+    identity = _strict_identity(release, "follow-up")
     if cache.is_symlink() or not cache.is_dir():
         raise ExecutorError("follow-up cache must be a private bare repository")
     status = cache.stat()
@@ -434,7 +428,6 @@ class _ProductionRuntime:
         foundation_cache: Path | None = None,
         follow_up_cache: Path | None = None,
         follow_up_release: Mapping[str, object] | None = None,
-        source_commit: str | None = None,
     ) -> None:
         self._runtime_home = tempfile.TemporaryDirectory(
             prefix="dex-release-journey-runtime-"
@@ -456,26 +449,17 @@ class _ProductionRuntime:
                 "follow-up cache and release identity must be supplied together"
             )
         self._follow_up_release = (
-            _strict_identity(
-                follow_up_release,
-                "follow-up",
-                source_commit=source_commit,
-            )
+            _strict_identity(follow_up_release, "follow-up")
             if follow_up_release is not None
             else None
         )
         self._follow_up_cache = (
-            _validate_follow_up_cache(
-                follow_up_cache,
-                self._follow_up_release,
-                source_commit=source_commit,
-            )
+            _validate_follow_up_cache(follow_up_cache, self._follow_up_release)
             if follow_up_cache is not None and self._follow_up_release is not None
             else None
         )
         self._bridge_asset = bridge_asset.resolve(strict=True)
         self._bridge_sha256 = bridge_sha256
-        self._source_commit = source_commit
 
     def _link_optional_qmd(self) -> None:
         """Expose only a real controller QMD binary to installed health checks.
@@ -628,8 +612,6 @@ class _ProductionRuntime:
                     ),
                 ]
             )
-            if self._source_commit is not None:
-                command.extend(["--source-commit", self._source_commit])
         process = subprocess.Popen(
             command,
             cwd=PROJECT_ROOT,
@@ -958,7 +940,6 @@ def _runtime_server(
     foundation_cache: Path | None = None,
     follow_up_cache: Path | None = None,
     follow_up_release: Mapping[str, object] | None = None,
-    source_commit: str | None = None,
 ) -> int:
     """Serve the fixed lifecycle vocabulary from the fixture virtualenv."""
 
@@ -970,11 +951,7 @@ def _runtime_server(
             "follow-up cache and release identity must be supplied together"
         )
     verified_follow_up_cache = (
-        _validate_follow_up_cache(
-            follow_up_cache,
-            follow_up_release,
-            source_commit=source_commit,
-        )
+        _validate_follow_up_cache(follow_up_cache, follow_up_release)
         if follow_up_cache is not None and follow_up_release is not None
         else None
     )
@@ -1099,7 +1076,6 @@ def _strict_identity(
     *,
     allow_archive: bool = False,
     allow_legacy: bool = False,
-    source_commit: str | None = None,
 ) -> dict[str, str]:
     if set(value) != _IDENTITY_FIELDS or not all(
         isinstance(value[field], str) for field in _IDENTITY_FIELDS
@@ -1114,11 +1090,6 @@ def _strict_identity(
         _LEGACY_RELEASE_TAG.fullmatch(identity["tag"]) if allow_legacy else None
     )
     immutable_match = tag_match if tag_match is not None else archive_match
-    suffix_commit = (
-        source_commit
-        if tag_match is not None and source_commit is not None
-        else identity["commit"]
-    )
     version = (
         immutable_match.group("version")
         if immutable_match is not None
@@ -1130,7 +1101,7 @@ def _strict_identity(
         or version != identity["version"]
         or (
             immutable_match is not None
-            and not suffix_commit.startswith(immutable_match.group("short"))
+            and not identity["commit"].startswith(immutable_match.group("short"))
         )
         or identity["channel"] != "stable"
     ):
@@ -1643,11 +1614,7 @@ def _execute_journey_with_runtime(
         allow_legacy=True,
     )
     foundation = _strict_identity(foundation_release, "foundation")
-    follow_up = _strict_identity(
-        follow_up_release,
-        "follow-up",
-        source_commit=source_commit,
-    )
+    follow_up = _strict_identity(follow_up_release, "follow-up")
     if foundation == follow_up:
         raise ExecutorError("foundation and follow-up releases must be different")
     executor_identity = _verify_released_executor(
@@ -2087,7 +2054,6 @@ def _executor_boundary():
                 bridge_sha256=protocol.bridge.artifact.sha256,
                 follow_up_cache=follow_up_cache,
                 follow_up_release=follow_up_release if follow_up_cache is not None else None,
-                source_commit=source_commit if follow_up_cache is not None else None,
             )
             if production_owned
             else _runtime
@@ -2187,7 +2153,6 @@ if __name__ == "__main__":
                     "--foundation-cache",
                     "--follow-up-cache",
                     "--follow-up-release",
-                    "--source-commit",
                 }
                 or option in extra_arguments
             ):
@@ -2227,7 +2192,6 @@ if __name__ == "__main__":
                     else None
                 ),
                 follow_up_release=follow_up_release,
-                source_commit=extra_arguments.get("--source-commit"),
             )
         )
     except Exception as error:  # noqa: BLE001

@@ -239,7 +239,9 @@ python3 "$CATALOG_GENERATOR" \
     --channel "$CATALOG_CHANNEL" \
     --source-commit "$SOURCE_SHA"
 python3 "$CATALOG_COVERAGE_CHECKER" --release-root "$REPO_ROOT"
-git add -- "$MANIFEST" "$CATALOG" "$BRIDGE_RELEASE" packages/dex-contracts/dist/release-catalog-v1.schema.json
+git add -- "$MANIFEST" "$CATALOG" "$BRIDGE_RELEASE" \
+    packages/dex-contracts/dist/release-catalog-v1.schema.json \
+    packages/dex-contracts/dist/release-catalog-v2.schema.json
 
 if git diff --cached --quiet; then
     echo "Nothing to remove — release branch matches main."
@@ -261,14 +263,16 @@ EOF
 python3 "$TAU_CHECKER" --repo-root "$REPO_ROOT" --git-tree "$RELEASE_BRANCH"
 
 RELEASE_SHA=$(git rev-parse --short HEAD)
-# The catalog is the canonical immutable name. Its suffix binds the exact source
-# tag while the annotated tag itself peels to this sanitized distribution commit.
-# Deriving a second name from RELEASE_SHA caused v1.96.2's public catalog to
-# promise dist/release/v1.96.2-f23caea while only ...-a948d6f existed.
+# The catalog truthfully declares the tag shape and source identity. The checker
+# is authoritative for deriving the one concrete immutable name from this final
+# sanitized distribution commit; embedding that name in the commit would be
+# self-referential. v1.96.2 demonstrated the failure mode by promising a
+# source-suffix tag while the compatible updater observed a release-suffix tag.
 if ! RELEASE_TAG=$(python3 "$CATALOG_IDENTITY_CHECKER" \
     --repo "$REPO_ROOT" \
     --release-ref HEAD \
-    --print-catalog-tag 2>&1); then
+    --source-ref "$SOURCE_SHA" \
+    --print-release-tag 2>&1); then
     echo "Error: $RELEASE_TAG" >&2
     exit 1
 fi
@@ -281,6 +285,10 @@ if [ "$(git rev-parse "$RELEASE_TAG^{}")" != "$(git rev-parse HEAD)" ]; then
     echo "Error: immutable release tag '$RELEASE_TAG' does not peel to the release commit." >&2
     exit 1
 fi
+python3 "$CATALOG_IDENTITY_CHECKER" \
+    --repo "$REPO_ROOT" \
+    --release-ref HEAD \
+    --source-ref "$SOURCE_SHA"
 
 echo "Done! Release branch built:"
 echo "  Branch: $RELEASE_BRANCH ($RELEASE_SHA)"

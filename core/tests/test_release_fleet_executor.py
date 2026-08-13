@@ -51,31 +51,6 @@ def _archive_identity(version: str, fill: str) -> dict[str, str]:
     return identity
 
 
-def test_executor_identity_accepts_source_suffix_and_keeps_release_peel() -> None:
-    source_commit = "a" * 40
-    release_commit = "b" * 40
-    identity = _identity("1.96.2", "b")
-    identity["tag"] = f"dist/release/v1.96.2-{source_commit[:7]}"
-
-    accepted = executor._strict_identity(
-        identity, "follow-up", source_commit=source_commit
-    )
-
-    assert accepted["tag"].endswith(source_commit[:7])
-    assert accepted["commit"] == release_commit
-
-
-def test_executor_identity_rejects_wrong_source_suffix_or_release_peel() -> None:
-    source_commit = "a" * 40
-    identity = _identity("1.96.2", "b")
-    identity["tag"] = "dist/release/v1.96.2-ccccccc"
-
-    with pytest.raises(executor.ExecutorError, match="identity is malformed"):
-        executor._strict_identity(
-            identity, "follow-up", source_commit=source_commit
-        )
-
-
 def _executor_source_commit(tmp_path: Path) -> tuple[Path, str]:
     repo = tmp_path / "source"
     repo.mkdir()
@@ -271,51 +246,6 @@ def test_private_follow_up_cache_is_exact_and_rejects_ref_tampering(
     alternates.write_text(str(tmp_path / "other-objects") + "\n", encoding="utf-8")
     with pytest.raises(executor.ExecutorError, match="alternate object stores"):
         executor._validate_follow_up_cache(cache, pin.identity())
-
-
-def test_private_follow_up_cache_binds_source_suffix_to_release_peel(
-    tmp_path: Path,
-) -> None:
-    cache, pin = _follow_up_cache(tmp_path)
-    source_commit = "a" * 40
-    source_tag = f"dist/release/v{pin.version}-{source_commit[:7]}"
-    subprocess.run(
-        [
-            "git",
-            "--git-dir",
-            str(cache),
-            "tag",
-            "-a",
-            source_tag,
-            pin.commit,
-            "-m",
-            source_tag,
-        ],
-        check=True,
-    )
-    subprocess.run(
-        ["git", "--git-dir", str(cache), "tag", "-d", pin.tag],
-        check=True,
-        capture_output=True,
-    )
-    release = pin.identity()
-    release["tag"] = source_tag
-    release["tag_object"] = executor._cached_git(cache, "rev-parse", source_tag)
-
-    assert (
-        executor._validate_follow_up_cache(
-            cache,
-            release,
-            source_commit=source_commit,
-        )
-        == cache.resolve()
-    )
-    with pytest.raises(executor.ExecutorError, match="identity is malformed"):
-        executor._validate_follow_up_cache(
-            cache,
-            release,
-            source_commit="c" * 40,
-        )
 
 
 def test_production_authority_predicate_is_sealed_inside_executor_boundary() -> None:
@@ -714,7 +644,6 @@ def test_executor_owns_the_closed_two_hop_journey_and_returned_evidence(
     vault, user_files = _vault(tmp_path)
     starting = _identity("1.61.0", "a")
     follow_up = _identity("1.81.0", "b")
-    follow_up["tag"] = f"dist/release/v1.81.0-{source_commit[:7]}"
     runtime = _Runtime(follow_up)
     rendered: list[str] = []
 
@@ -794,9 +723,6 @@ def _execute(
     )
     vault, user_files = _vault(tmp_path)
     starting = starting or _identity("1.61.0", "a")
-    runtime.follow_up["tag"] = (
-        f"dist/release/v{runtime.follow_up['version']}-{source_commit[:7]}"
-    )
     return executor.execute_journey(
         repo_root=source_repo,
         source_commit=source_commit,
@@ -1678,7 +1604,7 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
     monkeypatch.setattr(
         executor,
         "_validate_follow_up_cache",
-        lambda cache, _release, **_kwargs: cache.resolve(),
+        lambda cache, _release: cache.resolve(),
     )
     request_stream = io.StringIO(
         "\n".join(

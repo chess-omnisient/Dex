@@ -52,124 +52,6 @@ def _tag_release(
     return tag
 
 
-def _tag_catalog_identity_release(
-    repo: Path, version: str
-) -> tuple[str, str, str]:
-    """Create the v1.96.2-style source-name/release-peel identity."""
-
-    (repo / "source.txt").write_text("source\n", encoding="utf-8")
-    _git(repo, "add", "source.txt")
-    _git(repo, "commit", "--quiet", "-m", f"source v{version}")
-    source_commit = _git(repo, "rev-parse", "HEAD")
-    tag = f"dist/release/v{version}-{source_commit[:7]}"
-    catalog = {
-        "release": {
-            "version": version,
-            "channel": "release",
-            "immutable_distribution_tag": tag,
-            "source_commit": source_commit,
-        }
-    }
-    catalog_path = repo / "System/.release-catalog.json"
-    catalog_path.parent.mkdir()
-    catalog_path.write_text(json.dumps(catalog) + "\n", encoding="utf-8")
-    (repo / "source.txt").unlink()
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "--quiet", "-m", "sanitized release")
-    release_commit = _git(repo, "rev-parse", "HEAD")
-    _git(repo, "tag", "-a", tag, "-m", tag)
-    return tag, source_commit, release_commit
-
-
-def test_historic_fleet_accepts_catalog_source_suffix_with_release_commit_peel(
-    tmp_path: Path,
-) -> None:
-    repo = _repository(tmp_path)
-    tag, source_commit, release_commit = _tag_catalog_identity_release(
-        repo, "1.96.2"
-    )
-
-    resolved = release_fleet.resolve_immutable_release(repo, tag)
-    discovered = release_fleet.discover_distribution_releases(repo)
-
-    assert tag.endswith(source_commit[:7])
-    assert resolved.commit == release_commit
-    assert discovered == (
-        release_fleet.DistributionRelease(
-            tag=tag,
-            version="1.96.2",
-            commit=release_commit,
-            tree=_git(repo, "rev-parse", f"{tag}^{{tree}}"),
-        ),
-    )
-
-
-def test_historic_fleet_rejects_catalog_tag_with_the_wrong_source_suffix(
-    tmp_path: Path,
-) -> None:
-    repo = _repository(tmp_path)
-    tag, _source_commit, release_commit = _tag_catalog_identity_release(
-        repo, "1.96.2"
-    )
-    wrong_tag = f"dist/release/v1.96.2-{release_commit[:7]}"
-    catalog_path = repo / "System/.release-catalog.json"
-    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
-    catalog["release"]["immutable_distribution_tag"] = wrong_tag
-    catalog_path.write_text(json.dumps(catalog) + "\n", encoding="utf-8")
-    _git(repo, "add", str(catalog_path))
-    _git(repo, "commit", "--quiet", "-m", "diverge catalog tag suffix")
-    wrong_release = _git(repo, "rev-parse", "HEAD")
-    _git(repo, "tag", "-a", wrong_tag, wrong_release, "-m", wrong_tag)
-
-    with pytest.raises(
-        release_fleet.FleetError, match="catalog source commit"
-    ):
-        release_fleet.resolve_immutable_release(repo, wrong_tag)
-
-
-def test_historic_fleet_preserves_legacy_release_suffix_when_catalog_names_another_tag(
-    tmp_path: Path,
-) -> None:
-    repo = _repository(tmp_path)
-    catalog_tag, _source_commit, release_commit = _tag_catalog_identity_release(
-        repo, "1.96.2"
-    )
-    minted_tag = f"dist/release/v1.96.2-{release_commit[:7]}"
-    _git(repo, "tag", "-a", minted_tag, release_commit, "-m", minted_tag)
-
-    assert minted_tag != catalog_tag
-    resolved = release_fleet.resolve_immutable_release(repo, minted_tag)
-
-    assert resolved.commit == release_commit
-    assert minted_tag.endswith(release_commit[:7])
-
-
-@pytest.mark.parametrize(
-    "catalog",
-    (
-        "",
-        '{"release":{"source_commit":"a","source_commit":"b"}}\n',
-        "[]\n",
-        "{}\n",
-    ),
-)
-def test_historic_fleet_rejects_a_present_but_malformed_release_catalog(
-    tmp_path: Path, catalog: str
-) -> None:
-    repo = _repository(tmp_path)
-    catalog_path = repo / "System/.release-catalog.json"
-    catalog_path.parent.mkdir()
-    catalog_path.write_text(catalog, encoding="utf-8")
-    _git(repo, "add", "System/.release-catalog.json")
-    _git(repo, "commit", "--quiet", "-m", "malformed immutable catalog")
-    commit = _git(repo, "rev-parse", "HEAD")
-    tag = f"dist/release/v1.96.2-{commit[:7]}"
-    _git(repo, "tag", "-a", tag, "-m", tag)
-
-    with pytest.raises(release_fleet.FleetError, match="release catalog is malformed"):
-        release_fleet.resolve_immutable_release(repo, tag)
-
-
 def _tag_legacy_release(repo: Path, version: str, content: str) -> str:
     (repo / "README.md").write_text(content + "\n", encoding="utf-8")
     _git(repo, "add", "README.md")
@@ -219,24 +101,6 @@ def test_discovers_archived_distribution_tree_when_the_canonical_tag_is_absent(
     assert [release.tag for release in releases] == [archive_tag]
 
 
-def test_discovers_archived_catalog_source_suffix_with_release_commit_peel(
-    tmp_path: Path,
-) -> None:
-    repo = _repository(tmp_path)
-    tag, source_commit, release_commit = _tag_catalog_identity_release(
-        repo, "1.96.2"
-    )
-    archive_tag = tag.replace("dist/release/", "dist/archive/", 1)
-    _git(repo, "tag", "-a", archive_tag, release_commit, "-m", archive_tag)
-    _git(repo, "tag", "-d", tag)
-
-    releases = release_fleet.discover_distribution_releases(repo)
-
-    assert archive_tag.endswith(source_commit[:7])
-    assert releases[0].tag == archive_tag
-    assert releases[0].commit == release_commit
-
-
 def test_discovers_exact_v164_archived_starting_tree(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     tag = "dist/archive/v1.64.0-366c168"
     commit = "366c168af61c50ee7157976a9eb8a154ca0fd7f4"
@@ -252,9 +116,6 @@ def test_discovers_exact_v164_archived_starting_tree(monkeypatch: pytest.MonkeyP
         raise AssertionError(arguments)
 
     monkeypatch.setattr(release_fleet, "_git", fake_git)
-    monkeypatch.setattr(
-        release_fleet, "_tag_file_if_present", lambda *_arguments: None
-    )
 
     assert release_fleet.discover_distribution_releases(tmp_path) == (
         release_fleet.DistributionRelease(
@@ -300,9 +161,6 @@ def test_rejects_colliding_immutable_distribution_identities(
         raise AssertionError(arguments)
 
     monkeypatch.setattr(release_fleet, "_git", fake_git)
-    monkeypatch.setattr(
-        release_fleet, "_tag_file_if_present", lambda *_arguments: None
-    )
 
     with pytest.raises(release_fleet.FleetError, match="ambiguous immutable distribution identity"):
         release_fleet.discover_distribution_releases(tmp_path)

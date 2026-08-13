@@ -178,7 +178,6 @@ def _run_failure(
     )
     starting = _identity("1.65.0", "a")
     follow_up = _identity("1.81.5", "b")
-    follow_up["tag"] = f"dist/release/v1.81.5-{source_commit[:7]}"
     bridge_name = f"dex-update-bridge-v{follow_up['version']}.py"
     checksum = f"{protocol.bridge.artifact.sha256}  {bridge_name}\n".encode()
     with pytest.raises(expected_error) as error:

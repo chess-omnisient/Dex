@@ -32,12 +32,13 @@ def _identity_repo(tmp_path: Path) -> tuple[Path, str, str, str]:
     source_tag = "v9.8.7"
     _git(repo, "tag", "-a", source_tag, "-m", source_tag)
 
-    catalog_tag = f"dist/release/v9.8.7-{source_commit[:7]}"
+    tag_pattern = "dist/release/v9.8.7-<release-commit-prefix>"
     catalog = {
+        "catalog_version": 2,
         "release": {
             "version": "9.8.7",
             "channel": "release",
-            "immutable_distribution_tag": catalog_tag,
+            "immutable_distribution_tag_pattern": tag_pattern,
             "source_commit": source_commit,
         }
     }
@@ -49,8 +50,9 @@ def _identity_repo(tmp_path: Path) -> tuple[Path, str, str, str]:
     _git(repo, "commit", "--quiet", "-m", "sanitized release")
     release_commit = _git(repo, "rev-parse", "HEAD")
     _git(repo, "branch", "release")
-    _git(repo, "tag", "-a", catalog_tag, "-m", catalog_tag)
-    return repo, source_commit, release_commit, catalog_tag
+    release_tag = f"dist/release/v9.8.7-{release_commit[:7]}"
+    _git(repo, "tag", "-a", release_tag, "-m", release_tag)
+    return repo, source_commit, release_commit, release_tag
 
 
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -63,19 +65,19 @@ def _run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_catalog_identity_gate_accepts_the_complete_local_loop(tmp_path: Path) -> None:
-    repo, source_commit, release_commit, catalog_tag = _identity_repo(tmp_path)
+    repo, source_commit, release_commit, release_tag = _identity_repo(tmp_path)
 
     result = _run(repo, "--release-ref", "release")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert f"v9.8.7 -> {source_commit}" in result.stdout
-    assert f"{catalog_tag} -> {release_commit}" in result.stdout
+    assert f"{release_tag} -> {release_commit}" in result.stdout
 
 
 def test_catalog_identity_gate_accepts_a_release_shaped_candidate_source_ref(
     tmp_path: Path,
 ) -> None:
-    repo, source_commit, release_commit, catalog_tag = _identity_repo(tmp_path)
+    repo, source_commit, release_commit, release_tag = _identity_repo(tmp_path)
     _git(repo, "branch", "candidate", source_commit)
     _git(repo, "tag", "-d", "v9.8.7")
 
@@ -85,7 +87,7 @@ def test_catalog_identity_gate_accepts_a_release_shaped_candidate_source_ref(
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert f"source ref candidate -> {source_commit}" in result.stdout
-    assert f"{catalog_tag} -> {release_commit}" in result.stdout
+    assert f"{release_tag} -> {release_commit}" in result.stdout
 
 
 def test_catalog_identity_gate_rejects_the_wrong_candidate_source_ref(
@@ -112,12 +114,12 @@ def test_catalog_identity_gate_accepts_a_canonical_beta_prerelease(
     catalog = json.loads(
         (repo / "System/.release-catalog.json").read_text(encoding="utf-8")
     )
-    beta_tag = f"dist/release-beta/v9.8.7-beta.1-{source_commit[:7]}"
+    beta_pattern = "dist/release-beta/v9.8.7-beta.1-<release-commit-prefix>"
     catalog["release"].update(
         {
             "version": "9.8.7-beta.1",
             "channel": "release-beta",
-            "immutable_distribution_tag": beta_tag,
+            "immutable_distribution_tag_pattern": beta_pattern,
         }
     )
     (repo / "System/.release-catalog.json").write_text(
@@ -126,6 +128,7 @@ def test_catalog_identity_gate_accepts_a_canonical_beta_prerelease(
     _git(repo, "add", "System/.release-catalog.json")
     _git(repo, "commit", "--quiet", "-m", "beta release catalog")
     release_commit = _git(repo, "rev-parse", "HEAD")
+    beta_tag = f"dist/release-beta/v9.8.7-beta.1-{release_commit[:7]}"
     _git(repo, "branch", "release-beta", release_commit)
     _git(repo, "branch", "beta", source_commit)
     _git(repo, "tag", "-a", beta_tag, release_commit, "-m", beta_tag)
@@ -143,16 +146,38 @@ def test_catalog_identity_gate_accepts_a_canonical_beta_prerelease(
     assert f"{beta_tag} -> {release_commit}" in result.stdout
 
 
-def test_catalog_identity_gate_prints_the_only_allowed_tag_before_minting(
+def test_catalog_identity_gate_derives_the_only_allowed_tag_before_minting(
     tmp_path: Path,
 ) -> None:
-    repo, _source_commit, _release_commit, catalog_tag = _identity_repo(tmp_path)
-    _git(repo, "tag", "-d", catalog_tag)
+    repo, _source_commit, _release_commit, release_tag = _identity_repo(tmp_path)
+    _git(repo, "tag", "-d", release_tag)
 
-    result = _run(repo, "--release-ref", "release", "--print-catalog-tag")
+    result = _run(repo, "--release-ref", "release", "--print-release-tag")
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout == f"{catalog_tag}\n"
+    assert result.stdout == f"{release_tag}\n"
+
+
+def test_catalog_identity_gate_rejects_the_v1_96_2_concrete_tag_promise(
+    tmp_path: Path,
+) -> None:
+    repo, source_commit, _release_commit, _release_tag = _identity_repo(tmp_path)
+    catalog_path = repo / "System/.release-catalog.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog["catalog_version"] = 1
+    del catalog["release"]["immutable_distribution_tag_pattern"]
+    catalog["release"]["immutable_distribution_tag"] = (
+        f"dist/release/v9.8.7-{source_commit[:7]}"
+    )
+    catalog_path.write_text(json.dumps(catalog) + "\n", encoding="utf-8")
+    _git(repo, "add", "System/.release-catalog.json")
+    _git(repo, "commit", "--quiet", "-m", "repeat concrete catalog promise")
+    _git(repo, "branch", "-f", "release", "HEAD")
+
+    result = _run(repo, "--release-ref", "release", "--print-release-tag")
+
+    assert result.returncode == 1
+    assert "requires catalog_version 2" in result.stderr
 
 
 @pytest.mark.parametrize("mutation", ("empty", "duplicate", "missing"))
@@ -177,7 +202,7 @@ def test_catalog_identity_gate_rejects_unreadable_local_catalog_observations(
     _git(repo, "commit", "--quiet", "-m", f"{mutation} catalog")
     _git(repo, "branch", "-f", "release", "HEAD")
 
-    result = _run(repo, "--release-ref", "release", "--print-catalog-tag")
+    result = _run(repo, "--release-ref", "release", "--print-release-tag")
 
     assert result.returncode == 1
     assert expected in result.stderr
@@ -187,14 +212,14 @@ def test_catalog_identity_gate_rejects_unreadable_local_catalog_observations(
 def test_catalog_identity_gate_rejects_minted_tag_mutations(
     tmp_path: Path, mutation: str
 ) -> None:
-    repo, source_commit, release_commit, catalog_tag = _identity_repo(tmp_path)
-    _git(repo, "tag", "-d", catalog_tag)
+    repo, source_commit, release_commit, release_tag = _identity_repo(tmp_path)
+    _git(repo, "tag", "-d", release_tag)
     if mutation == "divergent-suffix":
-        wrong_tag = f"dist/release/v9.8.7-{release_commit[:7]}"
+        wrong_tag = f"dist/release/v9.8.7-{source_commit[:7]}"
         _git(repo, "tag", "-a", wrong_tag, release_commit, "-m", wrong_tag)
-        expected = f"git cat-file -t {catalog_tag} failed"
+        expected = f"git cat-file -t {release_tag} failed"
     else:
-        _git(repo, "tag", "-a", catalog_tag, source_commit, "-m", catalog_tag)
+        _git(repo, "tag", "-a", release_tag, source_commit, "-m", release_tag)
         expected = f"peels to {source_commit}, not release commit {release_commit}"
 
     result = _run(repo, "--release-ref", "release")
@@ -257,6 +282,36 @@ def test_remote_catalog_identity_gate_rejects_a_missing_peeled_observation(
 
     assert result.returncode == 1
     assert "remote did not return annotated and peeled refs for 'v9.8.7'" in result.stderr
+
+
+def test_remote_catalog_identity_gate_rejects_a_missing_release_tag(
+    tmp_path: Path,
+) -> None:
+    repo, _source_commit, _release_commit, release_tag = _identity_repo(tmp_path)
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "--bare", "--quiet", str(remote)], check=True)
+    _git(repo, "push", str(remote), "refs/tags/v9.8.7")
+
+    result = _run(repo, "--release-ref", "release", "--remote", str(remote))
+
+    assert result.returncode == 1
+    assert f"remote returned no observation for required tag {release_tag!r}" in result.stderr
+
+
+def test_remote_catalog_identity_gate_rejects_the_wrong_peeled_release_commit(
+    tmp_path: Path,
+) -> None:
+    repo, source_commit, release_commit, release_tag = _identity_repo(tmp_path)
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "--bare", "--quiet", str(remote)], check=True)
+    _git(repo, "tag", "-d", release_tag)
+    _git(repo, "tag", "-a", release_tag, source_commit, "-m", release_tag)
+    _git(repo, "push", str(remote), "refs/tags/v9.8.7", f"refs/tags/{release_tag}")
+
+    result = _run(repo, "--release-ref", "release", "--remote", str(remote))
+
+    assert result.returncode == 1
+    assert f"peels to {source_commit}, not release commit {release_commit}" in result.stderr
 
 
 def test_remote_tag_parser_rejects_duplicate_observations(

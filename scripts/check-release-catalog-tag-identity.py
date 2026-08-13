@@ -47,10 +47,18 @@ def _catalog(repo: Path, release_ref: str) -> tuple[str, str, str]:
         raise IdentityError("release catalog observation was empty")
     try:
         document = json.loads(raw, object_pairs_hook=_unique_object)
+        catalog_version = document["catalog_version"]
+    except (KeyError, TypeError, json.JSONDecodeError) as error:
+        raise IdentityError(f"release catalog identity is unreadable: {error}") from error
+    if catalog_version != 2:
+        raise IdentityError(
+            "release catalog identity gate requires catalog_version 2"
+        )
+    try:
         release = document["release"]
         version = release["version"]
         channel = release["channel"]
-        catalog_tag = release["immutable_distribution_tag"]
+        tag_pattern = release["immutable_distribution_tag_pattern"]
         source_commit = release["source_commit"]
     except (KeyError, TypeError, json.JSONDecodeError) as error:
         raise IdentityError(f"release catalog identity is unreadable: {error}") from error
@@ -60,12 +68,12 @@ def _catalog(repo: Path, release_ref: str) -> tuple[str, str, str]:
         raise IdentityError(f"release catalog channel is unsupported: {channel!r}")
     if not isinstance(source_commit, str) or FULL_COMMIT.fullmatch(source_commit) is None:
         raise IdentityError("release catalog source_commit is not a full lowercase Git hash")
-    expected_tag = f"dist/{channel}/v{version}-{source_commit[:7]}"
-    if catalog_tag != expected_tag:
+    expected_pattern = f"dist/{channel}/v{version}-<release-commit-prefix>"
+    if tag_pattern != expected_pattern:
         raise IdentityError(
-            f"catalog tag {catalog_tag!r} does not match source identity {expected_tag!r}"
+            f"catalog tag pattern {tag_pattern!r} does not match {expected_pattern!r}"
         )
-    return version, source_commit, catalog_tag
+    return version, channel, source_commit
 
 
 def _local_peeled(repo: Path, tag: str) -> str:
@@ -105,25 +113,19 @@ def _remote_peeled(repo: Path, remote: str, tag: str) -> str:
     return refs[peeled]
 
 
-def verify(
+def _expected_identity(
     repo: Path,
     release_ref: str,
-    remote: str | None,
-    source_ref: str | None = None,
-) -> None:
-    version, source_commit, catalog_tag = _catalog(repo, release_ref)
-    source_tag = f"v{version}"
+    source_ref: str | None,
+    peel,
+) -> tuple[str, str, str, str]:
+    version, channel, source_commit = _catalog(repo, release_ref)
     expected_release = _git(repo, "rev-parse", f"{release_ref}^{{commit}}")
     if FULL_COMMIT.fullmatch(expected_release) is None:
         raise IdentityError(f"release ref {release_ref!r} did not resolve to one full commit")
-    peel = (
-        (lambda tag: _remote_peeled(repo, remote, tag))
-        if remote is not None
-        else (lambda tag: _local_peeled(repo, tag))
-    )
     if source_ref is None:
-        source_label = f"peeled {source_tag}"
-        actual_source = peel(source_tag)
+        source_label = f"peeled v{version}"
+        actual_source = peel(f"v{version}")
     else:
         source_label = f"source ref {source_ref}"
         actual_source = _git(repo, "rev-parse", f"{source_ref}^{{commit}}")
@@ -133,16 +135,47 @@ def verify(
         raise IdentityError(
             f"catalog source_commit {source_commit} does not equal {source_label} {actual_source}"
         )
-    actual_release = peel(catalog_tag)
+    release_tag = f"dist/{channel}/v{version}-{expected_release[:7]}"
+    return source_label, source_commit, expected_release, release_tag
+
+
+def verify(
+    repo: Path,
+    release_ref: str,
+    remote: str | None,
+    source_ref: str | None = None,
+) -> None:
+    peel = (
+        (lambda tag: _remote_peeled(repo, remote, tag))
+        if remote is not None
+        else (lambda tag: _local_peeled(repo, tag))
+    )
+    source_label, source_commit, expected_release, release_tag = _expected_identity(
+        repo,
+        release_ref,
+        source_ref,
+        peel,
+    )
+    actual_release = peel(release_tag)
     if actual_release != expected_release:
         raise IdentityError(
-            f"catalog tag {catalog_tag} peels to {actual_release}, not release commit {expected_release}"
+            f"release tag {release_tag} peels to {actual_release}, not release commit {expected_release}"
         )
     location = f"remote {remote}" if remote is not None else "local repository"
     print(
         f"Release catalog identity verified in {location}: "
-        f"{source_label} -> {source_commit}; {catalog_tag} -> {expected_release}"
+        f"{source_label} -> {source_commit}; {release_tag} -> {expected_release}"
     )
+
+
+def release_tag(repo: Path, release_ref: str, source_ref: str | None) -> str:
+    _source_label, _source_commit, _release_commit, tag = _expected_identity(
+        repo,
+        release_ref,
+        source_ref,
+        lambda value: _local_peeled(repo, value),
+    )
+    return tag
 
 
 def main() -> int:
@@ -155,22 +188,19 @@ def main() -> int:
         help="verify catalog source_commit against this local source ref instead of vN",
     )
     parser.add_argument(
-        "--print-catalog-tag",
+        "--print-release-tag",
         action="store_true",
-        help="validate catalog identity fields and print its canonical tag before minting",
+        help="validate catalog/source fields and print the release-commit tag before minting",
     )
     args = parser.parse_args()
     try:
         repo = args.repo.resolve()
         if args.remote is not None and args.source_ref is not None:
             raise IdentityError("--source-ref cannot be combined with --remote")
-        if args.print_catalog_tag:
+        if args.print_release_tag:
             if args.remote is not None:
-                raise IdentityError("--print-catalog-tag cannot be combined with --remote")
-            if args.source_ref is not None:
-                raise IdentityError("--print-catalog-tag cannot be combined with --source-ref")
-            _version, _source_commit, catalog_tag = _catalog(repo, args.release_ref)
-            print(catalog_tag)
+                raise IdentityError("--print-release-tag cannot be combined with --remote")
+            print(release_tag(repo, args.release_ref, args.source_ref))
         else:
             verify(repo, args.release_ref, args.remote, args.source_ref)
     except IdentityError as error:

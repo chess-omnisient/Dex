@@ -434,7 +434,7 @@ jobs:
           set -euo pipefail
           bash scripts/build-release.sh
           echo "release_sha=$(git rev-parse release)" >> "$GITHUB_OUTPUT"
-          RELEASE_TAG="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release --print-catalog-tag)"
+          RELEASE_TAG="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release --print-release-tag)"
           test -n "$RELEASE_TAG"
           python3 scripts/check-release-catalog-tag-identity.py --release-ref release
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
@@ -533,7 +533,7 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/build-release.sh --source beta --target release-beta
-          RELEASE_TAG="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release-beta --print-catalog-tag)"
+          RELEASE_TAG="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release-beta --source-ref beta --print-release-tag)"
           test -n "$RELEASE_TAG"
           IDENTITY="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release-beta --source-ref beta)"
           test -n "$IDENTITY"

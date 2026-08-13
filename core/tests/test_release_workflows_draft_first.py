@@ -177,7 +177,7 @@ def test_stable_release_verifies_catalog_identity_before_publication() -> None:
     names = [step["name"] for step in steps if "name" in step]
 
     assert "set -euo pipefail" in build
-    assert "--release-ref release --print-catalog-tag" in build
+    assert "--release-ref release --print-release-tag" in build
     assert "test -n \"$RELEASE_TAG\"" in build
     assert "check-release-catalog-tag-identity.py --release-ref release" in build
     assert "set -euo pipefail" in push
@@ -194,7 +194,10 @@ def test_beta_release_verifies_both_catalog_identities_before_push() -> None:
     build = named["Build beta release branch"]["run"]
 
     assert "set -euo pipefail" in build
-    assert "--release-ref release-beta --print-catalog-tag" in build
+    assert (
+        "--release-ref release-beta --source-ref beta --print-release-tag"
+        in build
+    )
     assert "--release-ref release-beta --source-ref beta" in build
     assert 'test -n "$IDENTITY"' in build
 
