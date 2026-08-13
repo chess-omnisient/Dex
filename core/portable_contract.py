@@ -41,6 +41,17 @@ from typing import Iterable
 CONTRACT_VERSION = 2
 SUPPORTED_CONTRACT_VERSIONS = (1, CONTRACT_VERSION)
 VAULT_SCHEMA_SUPPORTED = ">=1 <2"
+ANALYTICS_ATTEMPT_RECEIPT_RELATIVE = "System/.dex/analytics-attempts.jsonl"
+# A receipt retains a bounded rolling history. A prior release could write one
+# safe record beyond the retained cap, so the transaction has exactly that
+# extra recovery room to validate the full existing file before it keeps whole
+# newest records under the retained cap.
+ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES = 256 * 1024
+ANALYTICS_ATTEMPT_RECEIPT_MAX_RECORD_BYTES = 256
+ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES = (
+    ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES
+    + ANALYTICS_ATTEMPT_RECEIPT_MAX_RECORD_BYTES
+)
 
 OWNERSHIP_CLASSES = ("brain", "vault", "seed", "generated", "runtime")
 
@@ -580,6 +591,7 @@ def update_write_verdict(
         "legacy-qmd-reconciliation",
         "onboarding-context",
         "onboarding-provision",
+        "analytics-receipt",
     ):
         raise ValueError(f"unknown write operation: {operation}")
 
@@ -699,6 +711,46 @@ def update_write_verdict(
             candidate,
             False,
             "outside-onboarding-context",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
+        )
+
+    if operation == "analytics-receipt":
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "outside-analytics-receipt",
+                None,
+                None,
+            )
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        if candidate == ANALYTICS_ATTEMPT_RECEIPT_RELATIVE:
+            return WriteVerdict(
+                candidate,
+                True,
+                "write-analytics-receipt",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-analytics-receipt",
             resolution.ownership if resolution is not None else None,
             resolution.rule_id if resolution is not None else None,
         )

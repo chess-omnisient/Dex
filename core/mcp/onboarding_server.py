@@ -48,6 +48,10 @@ if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core import capabilities as capability_rooms
 from core.lifecycle import service as lifecycle_service
+from core.mcp.analytics_receipts import (
+    surface_analytics_attempt,
+    unavailable_analytics_delivery,
+)
 from core.paths import (
     MARKER_FILE,
     MCP_CONFIG_EXAMPLE,
@@ -58,6 +62,21 @@ from core.paths import (
 )
 from core.transaction.engine import PlanRejected
 from core.utils.nudge_calendar import build_nudge_calendar, is_dex_nudge_event
+
+
+def _analytics_helper_unavailable_result() -> dict[str, object]:
+    """Return only the fixed safe outcome when the shared helper cannot load."""
+    return unavailable_analytics_delivery()
+
+
+try:
+    from core.mcp.analytics_helper import fire_event as _fire_analytics_event
+    HAS_ANALYTICS = True
+except ImportError:
+    HAS_ANALYTICS = False
+
+    def _fire_analytics_event(event_name, properties=None):
+        return _analytics_helper_unavailable_result()
 
 # User-configured working week (defaults to Monday-Friday)
 try:
@@ -2537,6 +2556,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 result = create_success_response(
                     summary,
                     f"Onboarding complete! Created {len(summary['folders_created'])} folders, {len(summary['files_created'])} files"
+                )
+                surface_analytics_attempt(
+                    result,
+                    _fire_analytics_event,
+                    "onboarding_completed",
                 )
                 
             except Exception as e:

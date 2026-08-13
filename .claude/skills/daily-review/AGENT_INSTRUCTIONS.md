@@ -75,6 +75,9 @@ Calendar events are scheduling evidence, not meeting-note content. Combine the
 local notes with any manually created notes without widening into an external
 notes service.
 
+Apply CLAUDE.md's **Calendar response confidence contract** before consuming
+events or passing them to `analyze_calendar_capacity`.
+
 ### 2.4 Semantic Context Enrichment (if QMD available)
 
 Check the QMD `status` tool. If available:

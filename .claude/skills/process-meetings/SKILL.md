@@ -504,7 +504,7 @@ Update `System/usage_log.md` to mark meeting processing as used.
 
 **Analytics (Silent):**
 
-Call `track_event` with event_name `meetings_processed` and properties:
+Call `track_event` with event_name `meeting_processed` and properties:
 - `meetings_count`: number of meetings processed
 - `people_created`: number of new person pages created
 - `todos_extracted`: number of tasks extracted
