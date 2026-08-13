@@ -18,6 +18,7 @@ from core.utils import automation_ownership
 LABEL = "com.dex.smoke-nightly"
 PLIST_RELATIVE = f"Library/LaunchAgents/{LABEL}.plist"
 SIDECAR_SCHEMA = Path(__file__).resolve().parents[1] / "lifecycle/schemas/automation-ownership-v1.schema.json"
+API_SCHEMA = Path(__file__).resolve().parents[1] / "lifecycle/contracts/api.schema.json"
 
 
 def _canonical(value: object) -> bytes:
@@ -103,6 +104,26 @@ def test_transaction_rereads_the_sidecar_with_the_closed_size_bound() -> None:
     assert service._internal_transaction_read_limits("automation-ownership") == {
         automation_ownership.SIDECAR_RELATIVE: automation_ownership.SIDECAR_MAX_BYTES,
     }
+
+
+def test_public_preview_schema_keeps_claim_and_release_shapes_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault, request = _fixture(tmp_path, monkeypatch)
+    preview = service.build_and_preview_automation_claim(vault, request)["preview"]
+    document = json.loads(API_SCHEMA.read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(document)
+    preview_schema = {
+        "$schema": document["$schema"],
+        "$ref": "#/$defs/automationPreview",
+        "$defs": document["$defs"],
+    }
+    validator = Draft202012Validator(preview_schema)
+
+    assert list(validator.iter_errors(preview)) == []
+    assert list(validator.iter_errors({**preview, "scheduler_state": "stopped"}))
+    assert list(validator.iter_errors({key: value for key, value in preview.items() if key != "launchd_state"}))
 
 
 def test_claim_executes_only_through_transaction_and_is_idempotent(

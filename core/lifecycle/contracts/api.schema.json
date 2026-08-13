@@ -206,19 +206,37 @@
         "release": {"$ref": "#/$defs/automationReleaseRequest"}
       }
     },
-    "automationPreview": {
+    "automationClaimPreview": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["automation_ownership_version", "operation", "claim", "current_sidecar_sha256", "next_sidecar_sha256"],
+      "required": ["automation_ownership_version", "operation", "claim", "launchd_state", "current_sidecar_sha256", "next_sidecar_sha256"],
       "properties": {
         "automation_ownership_version": {"const": 1},
-        "operation": {"type": "string", "enum": ["claim", "release"]},
+        "operation": {"const": "claim"},
         "claim": {"$ref": "#/$defs/automationClaim"},
         "launchd_state": {"const": "unloaded"},
+        "current_sidecar_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "next_sidecar_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "automationReleasePreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automation_ownership_version", "operation", "claim", "scheduler_state", "current_sidecar_sha256", "next_sidecar_sha256"],
+      "properties": {
+        "automation_ownership_version": {"const": 1},
+        "operation": {"const": "release"},
+        "claim": {"$ref": "#/$defs/automationClaim"},
         "scheduler_state": {"const": "stopped"},
         "current_sidecar_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
         "next_sidecar_sha256": {"$ref": "#/$defs/sha256"}
       }
+    },
+    "automationPreview": {
+      "anyOf": [
+        {"$ref": "#/$defs/automationClaimPreview"},
+        {"$ref": "#/$defs/automationReleasePreview"}
+      ]
     },
     "automationPreviewResponse": {
       "anyOf": [
