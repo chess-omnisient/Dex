@@ -537,6 +537,21 @@ than from 11 August.
   against the tempting non-fix (loosening the `exit_code == 0` assertion), which
   would recreate the unfailable gate #367 just removed.
 
+  **Partial fix in [#487](https://github.com/davekilleen/Dex/pull/487):** the
+  descendant-timeout test's 0.4s budget could expire before the child spawned,
+  so a run that never exercised the kill still passed. The budget now covers
+  spawn; that does not address the bare `EPERM` from process-group teardown.
+
+  **Harness lifecycle fix (issue #477):** `killpg` on a session whose leader has
+  already exited returns `EPERM` on Darwin instead of `ESRCH`. The handshake
+  `finally` and the journey runner both used that syscall and treated the
+  refusal as `harness_failed`. Teardown now swallows the zombie-leader `EPERM`
+  and signals remaining descendants individually. The next refusal logs errno,
+  operation, and path. A syscall the sandbox will not perform degrades to a
+  named `sandbox unavailable` skip (not `harness_failed`). Parallel xdist
+  workers each get their own `dex-smoke-<worker>-run-*` temp tree. The
+  `exit_code == 0` product assertion is unchanged.
+
 ---
 
 ## Smaller gaps, no action proposed

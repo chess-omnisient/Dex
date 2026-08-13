@@ -316,8 +316,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-review/SKILL.md",
-        "sha256": "df2e77a13ccd34cce7c9b34b1d92d99b1c09fbe93ebce60e486bbfa5b878ae8a",
-        "byte_size": 19256
+        "sha256": "a80d344986973206ca9e0017f76eb80a4c904416c6a39b0df3d893068e52ba30",
+        "byte_size": 19418
       },
       "value": "Closes the day the morning plan opened: what actually got done against what was intended, what a meeting left behind, and what tomorrow starts with — so the loop finishes instead of drifting.",
       "jobs_served": ["plan-my-work", "compound-learning"],
@@ -364,8 +364,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-review/SKILL.md",
-        "sha256": "7972089ecf86d0ce8cc23281f490afabbd11ce8683856cf91479a856444ff905",
-        "byte_size": 19021
+        "sha256": "8681d40ae1c8e55ec75d017fb2149f684acf625dec55cb0362952e219a4cd1df",
+        "byte_size": 19171
       },
       "value": "Reviews the week in concrete finished work and the patterns behind it, and deliberately refuses to invent a completion percentage that would make a bad week look measured.",
       "jobs_served": ["plan-my-work", "compound-learning"],

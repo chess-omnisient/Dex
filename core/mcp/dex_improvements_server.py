@@ -79,7 +79,6 @@ BASE_DIR = Path(os.environ.get('VAULT_PATH', Path.cwd()))
 BACKLOG_FILE = BASE_DIR / 'System' / 'Dex_Backlog.md'
 SYSTEM_DIR = BASE_DIR / 'System'
 CHANGELOG_FILE = BASE_DIR / '06-Resources' / 'Claude_Code_Docs' / 'changelog-log.md'
-SESSION_LEARNINGS_DIR = BASE_DIR / 'System' / 'Session_Learnings'
 SYNTHESIS_STATE_FILE = BASE_DIR / 'System' / '.synthesis-state.json'
 
 # Valid categories for ideas
@@ -363,39 +362,11 @@ def generate_idea_title_from_feature(feature_text: str) -> str:
 
 def parse_session_learnings(since_date: Optional[str] = None) -> List[Dict[str, str]]:
     """Parse session learnings files for pending improvements"""
-    if not SESSION_LEARNINGS_DIR.exists():
-        return []
+    from core.utils.session_learnings import parse_entries, pending_entries
 
-    learnings = []
-    for filepath in sorted(SESSION_LEARNINGS_DIR.glob('*.md'), reverse=True):
-        file_date = filepath.stem
-        if since_date and file_date < since_date:
-            continue
-
-        content = filepath.read_text()
-        blocks = re.split(r'\n---\n', content)
-
-        for block in blocks:
-            status_match = re.search(r'\*\*Status:\*\*\s*(\w+)', block)
-            if not status_match or status_match.group(1) != 'pending':
-                continue
-
-            title_match = re.search(r'##\s*\[?\d{2}:\d{2}\]?\s*-?\s*(.+)', block)
-            fix_match = re.search(r'\*\*Suggested fix:\*\*\s*(.+?)(?:\n\*\*|\n---|\Z)', block, re.DOTALL)
-            what_match = re.search(r'\*\*What happened:\*\*\s*(.+?)(?:\n\*\*|\n---|\Z)', block, re.DOTALL)
-            why_match = re.search(r'\*\*Why it matters:\*\*\s*(.+?)(?:\n\*\*|\n---|\Z)', block, re.DOTALL)
-
-            if title_match:
-                learnings.append({
-                    "date": file_date,
-                    "title": title_match.group(1).strip(),
-                    "what_happened": what_match.group(1).strip() if what_match else "",
-                    "why_it_matters": why_match.group(1).strip() if why_match else "",
-                    "suggested_fix": fix_match.group(1).strip() if fix_match else "",
-                    "file": str(filepath),
-                })
-
-    return learnings
+    pending = pending_entries(parse_entries(BASE_DIR), since_date=since_date)
+    pending.sort(key=lambda entry: entry.date, reverse=True)
+    return [entry.as_synthesis_dict() for entry in pending]
 
 def enrich_idea_in_backlog(idea_id: str, evidence: str, source: str) -> Dict[str, Any]:
     """Append evidence to an existing idea's entry in the backlog"""

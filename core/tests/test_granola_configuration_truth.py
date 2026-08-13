@@ -181,6 +181,7 @@ def test_no_live_code_or_instructions_use_legacy_granola_local_auth() -> None:
     intentional_history_or_prohibition = {
         Path("CHANGELOG.md"),
         Path(".claude/skills/granola-setup/SKILL.md"),
+        Path(".agents/skills/granola-setup/SKILL.md"),
         Path(".scripts/meeting-intel/sync-from-granola.cjs"),
         Path("06-Resources/Dex_System/Dex_Technical_Guide.md"),
         # Byte-for-byte bridge copy of the guide above (ratified docs relocation).

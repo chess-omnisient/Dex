@@ -15,6 +15,7 @@ from types import ModuleType
 
 import pytest
 
+from core.tests.process_isolation import assert_process_isolation
 from core.utils import doctor, mcp_handshake, smoke, trust_registry
 from core.utils.mcp_handshake import mcp_stdio_handshake
 from core.utils.trust_registry import (
@@ -23,6 +24,19 @@ from core.utils.trust_registry import (
     load_trusted_mcp_registry,
     snapshot_trusted_mcp,
 )
+
+
+@pytest.fixture(autouse=True)
+def _trusted_mcp_process_isolation() -> None:
+    """Fail if a shard neighbor left sleep, Popen, tempdir, or env bindings behind."""
+
+    assert_process_isolation("before test")
+    yield
+    assert_process_isolation("after test")
+
+
+def test_process_state_is_isolated_from_shard_neighbors() -> None:
+    assert_process_isolation("named isolation check")
 
 
 def _valid_vault(tmp_path: Path, *, initialize_git: bool = True) -> Path:
@@ -834,7 +848,12 @@ def test_f4_one_off_without_consent_token_refuses_without_execution(
     assert not marker.exists()
 
 
-def test_f4_one_off_token_is_single_use_and_runs_in_temp_vault(tmp_path: Path) -> None:
+def test_f4_one_off_token_is_single_use_and_runs_in_temp_vault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frozen = 1_700_000_000.0
+    monkeypatch.setattr(smoke.time, "time", lambda: frozen)
     vault = _valid_vault(tmp_path)
     marker = tmp_path / "one-off-context.jsonl"
     script = vault / "custom-mcp" / "server.py"
@@ -853,7 +872,7 @@ def test_f4_one_off_token_is_single_use_and_runs_in_temp_vault(tmp_path: Path) -
     first = smoke.check_custom_mcp_once(vault, "custom-once", consent_token=token)
     second = smoke.check_custom_mcp_once(vault, "custom-once", consent_token=token)
 
-    assert first["verdict"] == "OK"
+    assert first["verdict"] == "OK", first
     assert second == {
         "verdict": "UNKNOWN",
         "detail": "valid fresh single-use consent token is required",

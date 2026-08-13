@@ -2,6 +2,8 @@
 
 Some skills take minutes, not seconds. Background processing lets you keep working while heavy operations run.
 
+Dex capability tiers (see the README): **Tier 2 Skills** cover these journeys on Cursor, Codex, and other Agent Skills harnesses. **Tier 3 Full** (Claude Code) adds in-chat hooks on top. Meeting sync itself is already a scheduled **Tier 1 Core** job — it does not need a harness hook.
+
 ## How It Works
 
 ### Claude Code CLI
@@ -35,6 +37,6 @@ All background-capable skills follow this pattern:
 ## Implementation Notes
 
 - Skills declare background capability in their prompt
-- The harness (Claude Code / Cursor) decides execution model
+- The harness (Claude Code / Cursor) decides execution model. That difference is packaging (**Tier 2** vs **Tier 3**), not a second skill body.
 - Progress can be written to a status file for polling
 - Background skills should be idempotent — safe to re-run if interrupted

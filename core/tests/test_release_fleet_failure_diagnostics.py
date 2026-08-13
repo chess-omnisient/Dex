@@ -10,10 +10,20 @@ from pathlib import Path
 
 import pytest
 
+from core.tests.process_isolation import assert_executor_isolation
 from core.update.journey_protocol import load_update_journey_protocol
 from scripts import release_fleet_executor as executor
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture(autouse=True)
+def _executor_process_isolation() -> None:
+    """Fail if a shard neighbor left executor or process bindings behind."""
+
+    assert_executor_isolation(executor, "before test")
+    yield
+    assert_executor_isolation(executor, "after test")
 
 
 def _identity(version: str, fill: str) -> dict[str, str]:

@@ -230,6 +230,7 @@ if [[ -f "$LEARNING_PENDING" ]]; then
         echo "--- 📚 Pending Learnings Review ($LEARNING_COUNT) ---"
         echo "Session learnings ready for review"
         echo "Run: /dex-whats-new --learnings"
+        echo "To apply them so the next session changes: /install-learnings"
         echo "---"
         echo ""
     fi

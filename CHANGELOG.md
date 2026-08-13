@@ -7,6 +7,80 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.0] — 📝 Session notes get used, career evidence is kept, and Cursor gets the same named journeys (2026-08-13)
+
+A larger release than usual: session lessons actually get installed, career evidence is kept even without a number, Claude's private project notes are copied into the vault, other assistants get an honest account of what they can run, and a checkup that used to cry wolf now says what it means. Each is written up in full below.
+
+### 📝 Unused session notes now change how Dex works next time
+
+Dex was already good at writing down what went wrong in a session. Those notes landed in a folder marked pending and stayed there. One person reached eighty-seven unused notes, the oldest ten weeks old. Every one was a real lesson. None of them changed what Dex did the next day.
+
+**What this fixes for you:**
+
+* **Dex now installs those notes instead of only filing them.** When enough unused notes have sat for two weeks, Dex takes a routing pass at the end of a session: it writes the lesson into the instructions it will follow next time, or it honestly drops the note with a date and a reason.
+* **You can run that pass yourself.** `/install-learnings` does the same routing any time, without waiting for the pile to grow.
+* **Nothing is deleted to make the pile look smaller.** Wrong or already-covered notes are marked dropped, not erased. Dex will not invent a fake edit just to lower the count.
+
+Thanks to Josh, who showed that writing the notes down is not the same as using them, and that a routing pass is what actually moves the number.
+
+### 📒 Career evidence notes are kept, even without a number
+
+Career evidence was supposed to accumulate as you worked. In practice the detector only ran during `/career-coach`, only on new files, and only if the note contained a percentage, a dollar figure, a multiplier, or a short list of verbs. Influence and judgement — the kind of evidence you cannot reconstruct a year later — was dropped with no message. `/dex-doctor` had nothing to say about it.
+
+**What this fixes for you:**
+
+* **A Career Evidence note is treated as evidence.** If you save it in that folder, Dex offers it for the evidence log whether or not you are in `/career-coach`, and whether or not it contains a number.
+* **Edits count too.** Updating an existing evidence file is no longer invisible.
+* **A skipped file leaves a reason.** If Dex does not offer a candidate, it writes a one-line explanation, and `/dex-doctor` can show recent skips instead of staying silent.
+* **The write-up now matches the behaviour.** Dex no longer says it “automatically captures” from seven channels when only evidence-folder writes are automatic, and confirmation is still required before anything is added to the log.
+
+Thanks to Josh M, who found both the missing wiring and the silent metric filter.
+
+### 🧠 Claude's project notes now live in your vault
+
+Claude Code keeps a private notes folder outside Dex — every correction and local convention it has learned about your work. That folder was never saved with your vault. If it disappeared, nothing would error; sessions would just get quietly worse.
+
+**What this fixes for you:**
+
+* **Those notes are copied into your vault at the end of a Claude Code session.** They sit under System, with your other machine state, not in a folder you might share. Your existing vault history and backups cover them.
+* **If the copy stops, Dex can tell you.** A dated record in the vault is how you notice, and a checkup flags a missing or old copy instead of failing silently.
+* **A sudden wipe is not copied over.** If the live notes folder shrinks sharply, Dex leaves the vault copy alone so earlier files remain the recovery path.
+* **Notes that apply to every project on your machine stay out of this vault.** Only this project's learned notes are copied.
+
+Thanks to Josh, who found the gap and prototyped the copy.
+
+### 🧭 Cursor and Codex get the named journeys — and Dex says so
+
+The README used to read as if the whole of Dex lived in Claude Code. People opening Dex in Cursor or Codex then hit a quieter product and had no way to know that was on purpose.
+
+**What this changes for you:**
+
+* **The README tells the truth about what each assistant actually gets.** Cursor, Codex, and similar apps get the vault, the tools, and the named journeys — `/daily-plan`, `/process-meetings`, and the rest. Claude Code also gets the automatic in-chat behaviour: person context when you open a file, safety gates, session learning. That fuller layer is a stated choice, not an accident.
+* **Those named journeys are generated for the other assistants.** They stay in lockstep with the Claude copies, so a new command is not Claude-only by forgetfulness.
+* **Nothing is silently missing.** If a write-up claims another assistant can do something, it has to name which layer that is. A checkup fails the release if the copies drift.
+
+### 🩺 A checkup that cried wolf now says what it means
+
+Two honesty bugs were already on the main line and belong in this release even though they landed just after v1.96.2.
+
+**What this fixes for you:**
+
+* **A missing Dex file is reported as a missing Dex file.** The checkup was replacing that diagnosis with generic packaging advice, so the useful next step disappeared.
+* **A slow search-index status check is no longer called broken.** The ten-second wait Dex already expects is treated as “could not tell,” not as a failure. A real failure still fails.
+* **Apple Mail search health is proved from the real local index.** List and read can work while search returns nothing because a separate index was never built or stopped updating. The checkup now looks at that index itself, rather than trusting one file's size and date.
+
+Thanks to Chris Jackson, who traced both the remaining doctor false alarms and the Mail search gap.
+
+### 🧪 The checks before a release can be trusted again
+
+Two failures in the pre-release checks had nothing to do with Dex and were failing real work about one run in three.
+
+**What this fixes for you:**
+
+* **A checkup journey that cannot isolate a helper process no longer fails the whole run.** When the machine hosting the check refuses to isolate or stop a helper, that one journey is skipped with a reason. A real product failure still fails the check.
+* **One test can no longer poison the next.** Leftover process state from an earlier check was making a later, unrelated check fail on the same run. That leak is closed, so a green run means the product is actually fine.
+* **The copy Dex downloads to update itself now matches the copy that was published.** The previous release named a download identity that did not exist, so a stuck install could be pointed at a file that was never there. This cut names the real published copy.
+
 ## [1.96.2] — 🛡️ Your history saves again, and company networks get an honest answer (2026-08-13)
 
 If you're on a corporate network that intercepts secure connections — Zscaler, Netskope, most large enterprises — or on a hotel or airport captive portal, Dex's daily update check could fail and report that the release evidence was **invalid**. That wording means something specific and alarming: that the version of Dex being offered looks tampered with. It was never true. What had actually happened is that Dex couldn't verify it was really talking to GitHub, because something on your network was sitting in the middle of the connection. Worse, Dex treated it as a permanent verdict and didn't try again, so the check stayed broken for exactly the people most likely to hit it.

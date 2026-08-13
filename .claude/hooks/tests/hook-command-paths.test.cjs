@@ -74,10 +74,13 @@ test('notification hooks survive a platform without afplay', () => {
     'fixture PATH must not expose afplay',
   );
 
+  // Claude Code always sets CLAUDE_PROJECT_DIR. Keep it here so Stop hooks
+  // that live in the vault can no-op on missing afplay/python3 instead of
+  // dying on an empty project path.
   for (const command of commands) {
     const result = spawnSync('/bin/bash', ['-c', command], {
       encoding: 'utf8',
-      env: { ...process.env, PATH: linuxLikeBin },
+      env: { ...process.env, PATH: linuxLikeBin, CLAUDE_PROJECT_DIR: ROOT },
     });
     assert.equal(
       result.status,
