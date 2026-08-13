@@ -145,6 +145,7 @@ from core.entity_engine import (
     render_company_page,
 )
 from core.entity_engine import index as entity_index
+from core.meeting_capture_match import match_capture_to_calendar
 from core.paths import (
     COMPANIES_DIR,
     COMPANY_INDEX_FILE,
@@ -4071,6 +4072,30 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
+            name="match_capture_to_calendar",
+            description=(
+                "Match one captured meeting to Calendar events inside a hard five-minute window. "
+                "Timezone-aware ISO timestamps are required. The result returns meeting identity only "
+                "(title, UTC start, attendee names/emails), never invite links, dial-ins, access codes, "
+                "notes, or raw payloads."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "capture": {
+                        "type": "object",
+                        "description": "Capture identity: title, start_time, and optional attendees.",
+                    },
+                    "calendar_events": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "Calendar MCP events for the capture date.",
+                    },
+                },
+                "required": ["capture", "calendar_events"],
+            },
+        ),
+        types.Tool(
             name="get_commitments_due",
             description="Scan meeting notes and person pages for commitments and follow-ups that are due today or this week.",
             inputSchema={
@@ -5937,7 +5962,14 @@ async def _handle_call_tool_inner(
         
         result = get_meeting_context_data(meeting_title, attendees)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
-    
+
+    elif name == "match_capture_to_calendar":
+        result = match_capture_to_calendar(
+            arguments.get("capture", {}),
+            arguments.get("calendar_events", []),
+        )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
     elif name == "get_commitments_due":
         date_range = arguments.get('date_range', 'today') if arguments else 'today'
         
