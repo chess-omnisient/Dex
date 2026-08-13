@@ -108,20 +108,60 @@ If not provided, prompt the user for:
 
 ### Step 0: Gather Context (if needed)
 
-**If $MEETING or $ATTENDEES are not provided:**
+**If $MEETING or $ATTENDEES are not provided, try the calendar before asking.** The user booked
+the meeting; the invite already holds the title and the attendee list, and asking them to retype
+it is both friction and a source of duplicate person pages from misspelt names.
 
-Ask: "Which meeting are you prepping for?"
-- Get meeting topic/title
+When the calendar integration is available:
 
-Ask: "Who's attending? (comma-separated names or just list them)"
-- Accept formats: "Sarah Chen, Mike Rodriguez" or "Sarah, Mike" or natural list
-- Parse into individual attendee names
+```
+mcp__calendar-mcp__calendar_get_events_with_attendees(start_date="YYYY-MM-DD", end_date="YYYY-MM-DD")
+```
+
+**The end date is exclusive.** For a single day, pass the following day as `end_date`. Passing
+the same date twice returns zero events with no error, which is indistinguishable from an empty
+calendar.
+
+Match the user's phrasing to an event:
+
+- **A time** ("prep me for the 2pm", "tomorrow's 1:30"): match on start time, usually
+  unambiguous on its own.
+- **A person or topic** ("prep me for the Acme call"): match on title, or on an attendee name
+  within the event's `attendees` list.
+- **Nothing specified:** list today's and tomorrow's events and ask which one is meant.
+
+Each attendee carries `name`, `email`, `status`, `is_organizer`, plus `has_person_page` and
+`person_page`, so the vault lookup in Step 1 is already done for anyone who has a page.
+
+**Ask when the calendar cannot answer.** The calendar is the preferred source, not a required
+one, and this skill must still work without it:
+
+- **No calendar integration, or the tool is unavailable or refused** (a non-macOS machine, or
+  calendar access not granted): ask for the meeting and the attendees as before. Say once, in
+  passing, that you are asking because the calendar is not connected. A feature the user never
+  set up is not a fault and should not be reported as one.
+- **No matching event** in the range returned: ask which meeting is meant rather than guessing.
+- **Two events match a stated time:** that is a double-booking. Name both and let the user
+  choose; it is worth telling them about in itself.
+
+Never treat an empty result as proof of an empty calendar. A tool that is absent, a permission
+that was refused, and a query built with the wrong range all return nothing, and none of them
+mean "no meetings". If you cannot tell which it was, say so and ask.
+
+When asking, accept any natural format: "Sarah Chen, Mike Rodriguez", "Sarah, Mike", or a plain
+list.
 
 ### Step 1: Attendee Lookup
 
-For each attendee in $ATTENDEES:
+For each attendee:
 
-1. Search `05-Areas/People/Internal/` and `05-Areas/People/External/` for matching names
+1. **If the calendar supplied `person_page`, use it.** That resolution is already done and is
+   more reliable than matching a name, particularly for the display forms invites actually
+   carry: `Surname, First`, a job title in parentheses, or a bare email address where the name
+   should be. Only fall back to searching when `has_person_page` is false or the attendee came
+   from the user rather than the calendar.
+
+   Otherwise search `05-Areas/People/Internal/` and `05-Areas/People/External/` for matching names
 2. If found, extract:
    - Role and company
    - Last interaction date
@@ -366,6 +406,14 @@ This only fires if the user has opted into analytics. No action needed if it ret
 - Before any meeting with multiple attendees
 - When meeting someone you haven't seen in a while
 - Before important meetings where you want full context
+
+## MCP Dependencies
+
+| Integration | MCP Server | Tools Used |
+|-------------|------------|------------|
+| Calendar | calendar-mcp | `calendar_get_events_with_attendees` (optional: resolves the meeting and its attendees; the skill asks the user when it is unavailable) |
+
+---
 
 ## Tips
 
