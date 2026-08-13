@@ -150,6 +150,19 @@ def test_parked_rollout_and_dev_only_scripts_are_not_shipped() -> None:
     assert "ritual" not in _read(".claude/skills/daily-plan/SKILL.md").lower()
 
 
+def test_email_aware_plans_do_not_silently_skip_a_broken_mail_index() -> None:
+    for relative in (
+        ".claude/skills/daily-plan/SKILL.md",
+        ".claude/skills/daily-plan/AGENT_INSTRUCTIONS.md",
+        ".claude/skills/week-review/SKILL.md",
+        ".claude/skills/week-review/AGENT_INSTRUCTIONS.md",
+    ):
+        instructions = _read(relative)
+        assert "mail.apple-search" in instructions, relative
+        assert "do not silently skip" in instructions.lower(), relative
+        assert "python3 core/utils/doctor.py --deep" in instructions, relative
+
+
 def test_live_integration_guidance_only_names_the_shipped_entrypoint() -> None:
     dead_commands = tuple(
         "/integrate-" + service for service in ("notion", "slack", "google")
