@@ -67,6 +67,9 @@ Check `00-Inbox/Meetings/{{TARGET_DATE}}/` for meeting notes. Also call
 `calendar_get_today()` for the calendar view. Combine meetings processed in
 Step 0 with any manually created notes.
 
+Apply CLAUDE.md's **Calendar response confidence contract** before consuming
+events or passing them to `analyze_calendar_capacity`.
+
 ### 2.4 Semantic Context Enrichment (if QMD available)
 
 Check the QMD `status` tool. If available:
