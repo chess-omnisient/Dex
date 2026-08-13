@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.96.3] — 📝 Unused session notes now change how Dex works next time (2026-08-13)
+
+Dex was already good at writing down what went wrong in a session. Those notes landed in a folder marked pending and stayed there. One person reached eighty-seven unused notes, the oldest ten weeks old. Every one was a real lesson. None of them changed what Dex did the next day.
+
+**What this fixes for you:**
+
+* **Dex now installs those notes instead of only filing them.** When enough unused notes have sat for two weeks, Dex takes a routing pass at the end of a session: it writes the lesson into the instructions it will follow next time, or it honestly drops the note with a date and a reason.
+* **You can run that pass yourself.** `/install-learnings` does the same routing any time, without waiting for the pile to grow.
+* **Nothing is deleted to make the pile look smaller.** Wrong or already-covered notes are marked dropped, not erased. Dex will not invent a fake edit just to lower the count.
+
+Thanks to Josh, who showed that writing the notes down is not the same as using them, and that a routing pass is what actually moves the number.
+
 ## [1.96.2] — 🛡️ Your history saves again, and company networks get an honest answer (2026-08-13)
 
 If you're on a corporate network that intercepts secure connections — Zscaler, Netskope, most large enterprises — or on a hotel or airport captive portal, Dex's daily update check could fail and report that the release evidence was **invalid**. That wording means something specific and alarming: that the version of Dex being offered looks tampered with. It was never true. What had actually happened is that Dex couldn't verify it was really talking to GitHub, because something on your network was sitting in the middle of the connection. Worse, Dex treated it as a permanent verdict and didn't try again, so the check stayed broken for exactly the people most likely to hit it.

@@ -301,6 +301,8 @@ Review `System/Session_Learnings/` files from this week:
 > 
 > Should I add these to your pattern files?"
 
+Unaddressed pending entries are installed by `/install-learnings`, not by compiling them here. If the unused pile is large, offer that command once.
+
 ---
 
 ## Output Format

@@ -59,7 +59,7 @@
 - [ ] Promotion readiness checked
 - [ ] Skills gap analysis
 
-## System Discovery & Improvement (9 features)
+## System Discovery & Improvement (10 features)
 
 - [ ] Feature discovery (`/dex-level-up`)
 - [ ] X-ray transparency (`/xray`)
@@ -70,6 +70,7 @@
 - [ ] Dex updated (`/dex-update`)
 - [ ] Dex rolled back (`/dex-rollback`)
 - [ ] Learnings reviewed (`/learnings`)
+- [ ] Learnings installed (`/install-learnings`)
 
 ## Integrations (5 features)
 

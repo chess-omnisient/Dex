@@ -249,6 +249,7 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/dex-backlog` - AI-powered idea ranking
 - `/dex-improve` - Workshop improvement ideas
 - `/dex-whats-new` - Check for system improvements (learnings + Claude updates)
+- `/install-learnings` - Route unused session learnings into next-session behaviour, or drop them with a reason
 - `/dex-update` - Update Dex automatically (shows what's new, updates if confirmed, no technical knowledge needed)
 - `/dex-rollback` - Undo last update if something went wrong
 - `/dex-obsidian-setup` - Enable Obsidian integration and migrate vault to wiki links

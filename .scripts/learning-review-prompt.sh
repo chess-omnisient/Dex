@@ -81,7 +81,8 @@ You have accumulated learnings from recent sessions that haven't been reviewed y
 Run \`/dex-whats-new --learnings\` to:
 - Review patterns identified from your usage
 - See suggested system improvements
-- Mark learnings as implemented or archived
+
+Run \`/install-learnings\` to route pending entries into the file that changes next-session behaviour (or honestly drop them). Reviewing is not installing.
 
 This helps Dex evolve based on your actual workflow patterns.
 

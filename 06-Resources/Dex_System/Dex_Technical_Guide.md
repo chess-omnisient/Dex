@@ -900,6 +900,8 @@ Focus on architecture questions, not syntax nitpicks. I trust the team on detail
    - Move to appropriate file (`Mistake_Patterns.md`, `Working_Preferences.md`, or fix immediately)
    - Mark as resolved in session learnings
 
+5. **Install (separate from capture):** `/install-learnings` routes still-pending entries into the file that changes next-session behaviour, or marks them `dropped` with a reason. A Stop hook asks for this pass when there are 8 pending entries and the oldest is at least 14 days old. Routing table: `.claude/reference/session-learnings-routing.md`. Do not fabricate an edit to make the count drop. Do not delete an obsolete entry.
+
 ### Background Automation Setup
 
 Dex runs self-learning checks automatically through two mechanisms:
