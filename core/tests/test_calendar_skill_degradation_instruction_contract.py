@@ -18,6 +18,7 @@ CALENDAR_CONTRACT_PATH = REPO_ROOT / "CLAUDE.md"
 CALENDAR_EXECUTION_FILES = {
     "daily-plan": REPO_ROOT / ".claude/skills/daily-plan/AGENT_INSTRUCTIONS.md",
     "daily-review": REPO_ROOT / ".claude/skills/daily-review/AGENT_INSTRUCTIONS.md",
+    "meeting-prep": REPO_ROOT / ".claude/skills/meeting-prep/SKILL.md",
     "week-plan": REPO_ROOT / ".claude/skills/week-plan/SKILL.md",
     "week-review": REPO_ROOT / ".claude/skills/week-review/AGENT_INSTRUCTIONS.md",
 }

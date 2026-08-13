@@ -412,8 +412,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/meeting-prep/SKILL.md",
-        "sha256": "f0365cfcd014a836429498c306ae9accf71370f2dde06e9049da8334385d49ea",
-        "byte_size": 12203
+        "sha256": "02110d2093e22aeb472ed3ef05ae97e2e4773ce18ccac6aa6f1888daf0ce88b9",
+        "byte_size": 17660
       },
       "value": "Walks into the meeting already holding the attendees, the history and the open threads, instead of spending the last five minutes searching for them.",
       "jobs_served": ["process-meetings"],
@@ -421,6 +421,12 @@
       "prerequisites": ["A calendar entry, or simply the meeting named out loud.", "Some history worth gathering: earlier notes, people records or related project material."],
       "trade_offs": ["A brief is only as good as the history already captured; a genuinely first meeting has little to gather.", "Anything the brief claims should be checked against the real file before it is repeated in the room."],
       "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_meeting_prep_calendar_journey.py",
+          "summary": "Statically checks the calendar-first instruction contract and journey order across the inline skill and delegated research prompt, including required attendee filters, feature-status guidance, and the structured person-page handoff; it does not simulate Calendar MCP runtime behavior."
+        },
         {
           "kind": "test",
           "coverage": "supporting",
