@@ -20,8 +20,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-import yaml
-
 try:
     from core.lens_catalog_sources import (
         SkillSourceError,
@@ -86,6 +84,8 @@ def _read_profile(
     *,
     strict: bool = False,
 ) -> dict[str, Any]:
+    import yaml
+
     path = Path(profile_path)
     if not path.exists():
         return {}
@@ -1053,6 +1053,8 @@ def render_missing_companies_compatibility_pin(
     map also retain the earlier Career/Quarter bridge defaults in the same
     transaction; partial maps gain only the Companies pin.
     """
+    import yaml
+
     try:
         profile = yaml.safe_load(original) or {}
     except yaml.YAMLError as exc:
@@ -1136,6 +1138,8 @@ def set_enabled(
     contract_path: Path | str | None = None,
 ) -> dict[str, Any]:
     """Persist one room state and immediately reconcile its surfaced assets."""
+    import yaml
+
     if not isinstance(room_enabled, bool):
         raise CapabilityError("enabled state must be true or false")
     surfaces = surfaces_for(room, contract_path=contract_path)

@@ -28,7 +28,7 @@ from core.tests.lifecycle_test_helpers import (
     write_manifest,
 )
 from core.transaction.engine import PlanRejected
-from core.utils import doctor, release_channel
+from core.utils import automation_ownership, doctor, release_channel
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCTOR_PATH = Path(__file__).resolve().parents[1] / "utils" / "doctor.py"
@@ -173,6 +173,32 @@ def _write_plist(context, label):
             handle,
         )
     return plist
+
+
+def _write_solo_automation_claim(context, plist, label):
+    relative = plist.relative_to(context.home).as_posix()
+    sidecar = context.vault_root / automation_ownership.SIDECAR_RELATIVE
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    sidecar.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "claims": [
+                    {
+                        "automation_id": label,
+                        "owner_id": "dex-solo",
+                        "plist_relative_path": relative,
+                        "plist_sha256": hashlib.sha256(plist.read_bytes()).hexdigest(),
+                    }
+                ],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return sidecar
 
 
 def _write_entity_probe_files(context, *, mode="auto", unresolved=None):
@@ -1962,6 +1988,67 @@ def test_jobs_loaded_distinguishes_not_installed_from_unloaded(monkeypatch, cont
     assert result.heal.tier == 2
 
 
+def test_doctor_treats_valid_solo_claim_as_app_owned_and_offloaded(monkeypatch, context):
+    plist = _write_plist(context, "com.dex.meeting-intel")
+    _write_solo_automation_claim(context, plist, "com.dex.meeting-intel")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    def launchctl_must_not_run(*_args, **_kwargs):
+        raise AssertionError("Core must not inspect launchd state for an offloaded job")
+
+    monkeypatch.setattr(doctor, "_launchctl_status", launchctl_must_not_run)
+
+    loaded = doctor._probe_jobs_loaded(context)
+    fresh = doctor._probe_jobs_fresh(context)
+
+    assert loaded.verdict == "OK"
+    assert "owned by Dex Solo and offloaded from Core" in loaded.detail
+    assert fresh.verdict == "OFF"
+    assert "owned by Dex Solo and offloaded from Core" in fresh.detail
+
+
+def test_doctor_does_not_call_valid_solo_claim_broken_or_stale(monkeypatch, context):
+    former_vault = context.home.parent / "old-vault"
+    _write_breadcrumb(context, former_vault)
+    plist = _write_plist(context, "com.dex.example-job")
+    with plist.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": "com.dex.example-job",
+                "ProgramArguments": ["/bin/bash", str(former_vault / ".scripts/job.sh")],
+            },
+            handle,
+        )
+    _write_solo_automation_claim(context, plist, "com.dex.example-job")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "OK"
+    assert "offloaded" in result.detail
+    assert "old location" not in result.detail
+
+
+def test_doctor_rejects_stale_solo_plist_evidence(monkeypatch, context):
+    plist = _write_plist(context, "com.dex.meeting-intel")
+    _write_solo_automation_claim(context, plist, "com.dex.meeting-intel")
+    plist.write_bytes(plist.read_bytes() + b"\n")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_launchctl_domain_check", lambda: None)
+    monkeypatch.setattr(doctor, "_plist_interpreter", lambda _plist: "/bin/bash")
+    monkeypatch.setattr(
+        doctor,
+        "_launchctl_status",
+        lambda _label: {"loaded": False, "last_exit_status": None},
+    )
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "BROKEN"
+    assert "not loaded" in result.detail
+    assert "offloaded" not in result.detail
+
+
 def test_jobs_loaded_skips_foreign_product_plists(monkeypatch, context, foreign_launch_agents):
     monkeypatch.setattr(doctor, "_is_macos", lambda: True)
 
@@ -2210,8 +2297,9 @@ def test_jobs_loaded_reports_missing_program_script_as_broken_t2(monkeypatch, co
 
 
 def test_launchctl_domain_failure_is_an_unknown_instrument(monkeypatch, context):
-    _write_plist(context, "com.dex.meeting-intel")
+    plist = _write_plist(context, "com.dex.meeting-intel")
     monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_plist_interpreter", lambda candidate: "/bin/bash" if candidate == plist else None)
     monkeypatch.setattr(
         doctor,
         "_launchctl_domain_check",

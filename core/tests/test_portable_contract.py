@@ -99,8 +99,7 @@ def test_room_upgrade_ledger_preserves_all_published_payload_identities() -> Non
     document = portable_contract.build_contract_document(contract_version=2)
     observed = {
         pin["skill"]: {
-            (previous["release"], previous["sha256"], previous["byte_size"])
-            for previous in pin["previous_payloads"]
+            (previous["release"], previous["sha256"], previous["byte_size"]) for previous in pin["previous_payloads"]
         }
         for room in document["capabilities"].values()
         for pin in room["skill_sources"]
@@ -124,6 +123,7 @@ def _tracked_paths() -> list[str]:
 # ---------------------------------------------------------------------------
 # Resolution semantics
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     ("path", "ownership", "denied"),
@@ -157,6 +157,7 @@ def _tracked_paths() -> list[str]:
         ("System/.installed-files.manifest", "generated", False),
         ("packages/dex-contracts/dist/paths.contract.json", "generated", False),
         ("System/.dex/gardener.json", "runtime", False),
+        (portable_contract.AUTOMATION_OWNERSHIP_RELATIVE, "runtime", False),
         ("System/.onboarding-session.json", "runtime", False),
         ("System/Session_Learnings/2026-05-01.md", "runtime", False),
     ],
@@ -171,10 +172,7 @@ def test_exact_seed_beats_region_and_specificity_orders_directories() -> None:
     # Exact starter file wins over its vault region.
     assert portable_contract.resolve("03-Tasks/Tasks.md").rule_id == "seed-tasks-file"
     # Shipped system docs are enumerated file-by-file as brain…
-    assert (
-        portable_contract.resolve("06-Resources/Dex_System/README.md").rule_id
-        == "brain-doc-dex-system-readme"
-    )
+    assert portable_contract.resolve("06-Resources/Dex_System/README.md").rule_id == "brain-doc-dex-system-readme"
 
 
 def test_user_file_next_to_shipped_docs_is_vault_not_brain() -> None:
@@ -183,9 +181,7 @@ def test_user_file_next_to_shipped_docs_is_vault_not_brain() -> None:
     resolution = portable_contract.resolve("06-Resources/Dex_System/my-notes.md")
     assert resolution.ownership == "vault"
     assert resolution.rule_id == "vault-resources"
-    verdict = portable_contract.update_write_verdict(
-        "06-Resources/Dex_System/my-notes.md", exists=True
-    )
+    verdict = portable_contract.update_write_verdict("06-Resources/Dex_System/my-notes.md", exists=True)
     assert verdict.allowed is False
 
 
@@ -387,6 +383,25 @@ def test_onboarding_context_operation_only_authorizes_the_live_profile() -> None
     assert refused.action == "outside-onboarding-context"
 
 
+def test_automation_ownership_operation_only_authorizes_its_sidecar() -> None:
+    allowed = portable_contract.update_write_verdict(
+        portable_contract.AUTOMATION_OWNERSHIP_RELATIVE,
+        exists=True,
+        operation="automation-ownership",
+    )
+    refused = portable_contract.update_write_verdict(
+        "System/.dex/ledger/automation.jsonl",
+        exists=False,
+        operation="automation-ownership",
+    )
+
+    assert allowed.allowed is True
+    assert allowed.action == "write-automation-ownership"
+    assert allowed.rule_id == "runtime-automation-ownership"
+    assert refused.allowed is False
+    assert refused.action == "outside-automation-ownership"
+
+
 @pytest.mark.parametrize(
     "path",
     [
@@ -463,9 +478,7 @@ def test_customization_migration_hard_deny_survives_unclassified_resolution(
     assert portable_contract.is_denied(path) is True
 
     def unclassified(candidate: str) -> portable_contract.Resolution:
-        raise portable_contract.ContractViolation(
-            f"no ownership rule classifies: {candidate}"
-        )
+        raise portable_contract.ContractViolation(f"no ownership rule classifies: {candidate}")
 
     monkeypatch.setattr(portable_contract, "resolve", unclassified)
     with pytest.raises(portable_contract.ContractViolation):
@@ -544,14 +557,13 @@ def test_traversal_and_empty_paths_are_rejected() -> None:
 def test_unknown_path_raises_and_unclassified_reports_it() -> None:
     with pytest.raises(portable_contract.ContractViolation):
         portable_contract.resolve("totally/unknown/path.xyz")
-    assert portable_contract.unclassified(["totally/unknown/path.xyz"]) == [
-        "totally/unknown/path.xyz"
-    ]
+    assert portable_contract.unclassified(["totally/unknown/path.xyz"]) == ["totally/unknown/path.xyz"]
 
 
 # ---------------------------------------------------------------------------
 # Whole-tree invariants (the gate's substance, asserted directly)
 # ---------------------------------------------------------------------------
+
 
 def test_every_tracked_path_classifies() -> None:
     missing = portable_contract.unclassified(_tracked_paths())
@@ -563,9 +575,7 @@ def test_no_tracked_path_is_release_forbidden() -> None:
 
 
 def test_release_forbidden_flags_vault_and_denied_content() -> None:
-    forbidden = portable_contract.release_forbidden(
-        ["04-Projects/private-notes.md", ".env", "core/utils/doctor.py"]
-    )
+    forbidden = portable_contract.release_forbidden(["04-Projects/private-notes.md", ".env", "core/utils/doctor.py"])
     assert "04-Projects/private-notes.md" in forbidden
     assert ".env" in forbidden
     assert "core/utils/doctor.py" not in forbidden
@@ -574,9 +584,7 @@ def test_release_forbidden_flags_vault_and_denied_content() -> None:
 def test_capability_rooms_cover_gated_regions() -> None:
     capabilities = portable_contract.CAPABILITIES
     assert set(capabilities) == {"career", "companies", "quarter_goals"}
-    gated_folders = {
-        folder for spec in capabilities.values() for folder in spec["folders"]
-    }
+    gated_folders = {folder for spec in capabilities.values() for folder in spec["folders"]}
     assert gated_folders == {
         "05-Areas/Career",
         "05-Areas/Companies",
@@ -593,13 +601,11 @@ def test_capability_rooms_cover_gated_regions() -> None:
 
 def test_committed_dist_matches_source_of_truth() -> None:
     committed = json.loads(
-        (REPO_ROOT / "packages/dex-contracts/dist/portable-vault.contract.json")
-        .read_text(encoding="utf-8")
+        (REPO_ROOT / "packages/dex-contracts/dist/portable-vault.contract.json").read_text(encoding="utf-8")
     )
     assert committed == portable_contract.build_contract_document()
     committed_schema = json.loads(
-        (REPO_ROOT / "packages/dex-contracts/dist/portable-vault.schema.json")
-        .read_text(encoding="utf-8")
+        (REPO_ROOT / "packages/dex-contracts/dist/portable-vault.schema.json").read_text(encoding="utf-8")
     )
     assert committed_schema == portable_contract.build_contract_schema()
 
@@ -607,9 +613,7 @@ def test_committed_dist_matches_source_of_truth() -> None:
 def test_rule_ids_are_unique_and_document_is_deterministic() -> None:
     ids = [rule.rule_id for rule in portable_contract.RULES]
     assert len(ids) == len(set(ids))
-    assert portable_contract.build_contract_document() == (
-        portable_contract.build_contract_document()
-    )
+    assert portable_contract.build_contract_document() == (portable_contract.build_contract_document())
 
 
 def test_sync_folder_marker_data_is_explicitly_release_owned() -> None:
@@ -623,6 +627,7 @@ def test_sync_folder_marker_data_is_explicitly_release_owned() -> None:
 # ---------------------------------------------------------------------------
 # The gate script: red-when-removed proofs in an isolated fixture repo
 # ---------------------------------------------------------------------------
+
 
 def _gate_fixture(tmp_path: Path) -> Path:
     """A minimal repo the real gate script runs against."""
@@ -645,13 +650,9 @@ def _gate_fixture(tmp_path: Path) -> Path:
     dist = root / "packages/dex-contracts/dist"
     dist.mkdir(parents=True)
     for name in ("portable-vault.contract.json", "portable-vault.schema.json"):
-        (dist / name).write_bytes(
-            (REPO_ROOT / "packages/dex-contracts/dist" / name).read_bytes()
-        )
+        (dist / name).write_bytes((REPO_ROOT / "packages/dex-contracts/dist" / name).read_bytes())
     subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-q", "-m", "fixture"], cwd=root, check=True, capture_output=True
-    )
+    subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=root, check=True, capture_output=True)
     return root
 
 

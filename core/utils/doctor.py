@@ -37,7 +37,14 @@ from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
 from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry, PlanRejected
 from core.transaction.journal import Journal, JournalCorruptError
-from core.utils import apple_mail_health, dex_logger, launch_agents, preflight, release_channel
+from core.utils import (
+    apple_mail_health,
+    automation_ownership,
+    dex_logger,
+    launch_agents,
+    preflight,
+    release_channel,
+)
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
@@ -2586,6 +2593,7 @@ def _resolved_interpreter(raw: str, context: DoctorContext) -> str | None:
 
 
 _OWNED = "owned"
+_OFFLOADED = "offloaded"
 _STALE = "stale"
 _FOREIGN = "foreign"
 _UNREADABLE = "unreadable"
@@ -2596,7 +2604,7 @@ class LaunchAgentRecord:
     """One launch agent's classification, computed once per doctor run."""
 
     plist: Path
-    classification: str  # "owned" | "stale" | "foreign" | "unreadable"
+    classification: str  # "owned" | "offloaded" | "stale" | "foreign" | "unreadable"
     label: str
     data: dict[str, Any] | None = None
     error_detail: str | None = None  # unreadable only
@@ -2627,7 +2635,28 @@ def _classify_launch_agents(context: DoctorContext) -> LaunchAgentScan:
     except (OSError, RuntimeError):
         vault_root = context.vault_root
     records: list[LaunchAgentRecord] = []
+    offloaded = {
+        claim["plist_relative_path"]: claim
+        for claim in automation_ownership.valid_claims(
+            context.vault_root,
+            home_root=context.home,
+        )
+    }
     for plist, dex_named in _installed_launch_agents(context):
+        try:
+            plist_relative = plist.relative_to(context.home).as_posix()
+        except ValueError:
+            plist_relative = ""
+        offloaded_claim = offloaded.get(plist_relative)
+        if offloaded_claim is not None:
+            records.append(
+                LaunchAgentRecord(
+                    plist=plist,
+                    classification=_OFFLOADED,
+                    label=offloaded_claim["automation_id"],
+                )
+            )
+            continue
         try:
             data = _plist_data(plist)
         except PermissionError:
@@ -2717,9 +2746,13 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     unknowns = []
     runtime_labels = []
     skipped_count = 0
+    offloaded_count = 0
     owned_count = 0
     stale_count = 0
     for record in scan.records:
+        if record.classification == _OFFLOADED:
+            offloaded_count += 1
+            continue
         if record.classification == _UNREADABLE:
             # A corrupt plist could belong to this vault, but a filename alone
             # cannot establish that safely. Surface the uncertainty instead of
@@ -2794,12 +2827,20 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
                     unknowns.append(f"{label} is loaded but has no observable LastExitStatus")
                 elif status["last_exit_status"] != 0:
                     issues.append((2, f"{label} last exited with status {status['last_exit_status']}"))
+    offloaded_note = (
+        f"{offloaded_count} launch agent{' is' if offloaded_count == 1 else 's are'} "
+        "owned by Dex Solo and offloaded from Core"
+        if offloaded_count
+        else ""
+    )
     if not owned_count and not issues:
         if unknowns:
             return ProbeResult(
                 "UNKNOWN",
                 _with_skipped_launch_agents("; ".join(unknowns), skipped_count),
             )
+        if offloaded_note:
+            return ProbeResult("OK", _with_skipped_launch_agents(offloaded_note, skipped_count))
         return ProbeResult(
             "OFF",
             _with_skipped_launch_agents("No launch agents for this vault are installed", skipped_count),
@@ -2819,6 +2860,8 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
         if sum(1 for issue_tier, _detail in issues if issue_tier == 2) > stale_count:
             action_parts.append("repair or reload the named launch agent only after explicit approval")
         detail_parts = [detail for _tier, detail in issues]
+        if offloaded_note:
+            detail_parts.append(offloaded_note)
         detail_parts.extend(unknowns)
         return ProbeResult(
             "BROKEN",
@@ -2833,7 +2876,14 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     return ProbeResult(
         "OK",
         _with_skipped_launch_agents(
-            f"All {owned_count} installed launch agents for this vault are loaded with valid interpreters",
+            "; ".join(
+                part
+                for part in (
+                    f"All {owned_count} installed launch agents for this vault are loaded with valid interpreters",
+                    offloaded_note,
+                )
+                if part
+            ),
             skipped_count,
         ),
     )
@@ -2868,6 +2918,15 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     installed = sorted(
         {record.label for record in scan.records if record.classification == _OWNED}
     )
+    offloaded = sorted(
+        {record.label for record in scan.records if record.classification == _OFFLOADED}
+    )
+    offloaded_note = (
+        f"{len(offloaded)} launch agent{' is' if len(offloaded) == 1 else 's are'} "
+        "owned by Dex Solo and offloaded from Core"
+        if offloaded
+        else ""
+    )
     monitored = []
     monitored_ids = set()
     unregistered = []
@@ -2900,7 +2959,8 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
         if unknowns:
             return ProbeResult("UNKNOWN", _with_coverage_note("; ".join(unknowns)))
         return ProbeResult(
-            "OFF", _with_coverage_note("No shipped Dex freshness jobs are installed")
+            "OFF",
+            _with_coverage_note(offloaded_note or "No shipped Dex freshness jobs are installed"),
         )
 
     stale = []
@@ -2919,7 +2979,14 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     return ProbeResult(
         "OK",
         _with_coverage_note(
-            f"All {len(monitored)} installed job promises are within their promised cadence"
+            "; ".join(
+                part
+                for part in (
+                    f"All {len(monitored)} installed job promises are within their promised cadence",
+                    offloaded_note,
+                )
+                if part
+            )
         ),
     )
 

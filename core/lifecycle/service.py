@@ -50,8 +50,9 @@ from core.lifecycle.preview import AdoptionPreview, build_adoption_preview
 from core.lifecycle.retention import compute_retention_report
 from core.path_safety import unsafe_existing_parent
 from core.transaction.engine import PlanEntry, PlanRejected, Transaction
+from core.utils import automation_ownership
 
-api_version = "1.4.0"
+api_version = "1.5.0"
 
 _CATALOG_RELATIVE = "System/.release-catalog.json"
 _PURPOSE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
@@ -130,14 +131,18 @@ def _transaction_preview_document(
 
 
 def _internal_transaction_read_limits(operation: str) -> dict[str, int]:
-    """Return the one service-owned cap required by a private receipt operation."""
-    if operation != "analytics-receipt":
-        return {}
-    return {
-        _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE: (
-            portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
-        )
-    }
+    """Return service-owned caps for bounded private runtime files."""
+    if operation == "analytics-receipt":
+        return {
+            _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE: (
+                portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
+            )
+        }
+    if operation == "automation-ownership":
+        return {
+            automation_ownership.SIDECAR_RELATIVE: automation_ownership.SIDECAR_MAX_BYTES,
+        }
+    return {}
 
 
 def _transaction_preview_document_with_bounded_reads(
@@ -771,6 +776,120 @@ def _pin_missing_companies_default(vault_root: str | Path) -> dict[str, object]:
         approved_token=str(preview["approval_token"]),
     )
     return _envelope(pinned=True, receipt=executed["receipt"], states=states)
+
+
+def build_and_preview_automation_claim(
+    vault_root: str | Path,
+    claim: Mapping[str, object],
+) -> dict[str, object]:
+    """Preview Dex Solo claiming one unloaded, plist-bound launchd automation."""
+    try:
+        preview = automation_ownership.build_claim_preview(vault_root, claim)
+    except automation_ownership.AutomationOwnershipError as error:
+        raise PlanRejected(str(error)) from error
+    if preview is None:
+        return _envelope(needed=False, preview=None, approval_token=None)
+    return _envelope(
+        needed=True,
+        preview=preview,
+        approval_token=hashlib.sha256(_canonical(preview)).hexdigest(),
+    )
+
+
+def _execute_approved_automation_ownership(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    expected = hashlib.sha256(_canonical(preview)).hexdigest()
+    if not isinstance(approved_token, str) or not hmac.compare_digest(
+        approved_token,
+        expected,
+    ):
+        raise PlanRejected("automation ownership approval token does not match preview")
+    try:
+        entry, status = automation_ownership.execution_plan(vault_root, preview)
+    except automation_ownership.AutomationOwnershipError as error:
+        raise PlanRejected(str(error)) from error
+    claim = preview.get("claim")
+    if not isinstance(claim, Mapping):
+        raise PlanRejected("automation ownership preview claim must be an object")
+    if entry is None:
+        return _envelope(
+            receipt={
+                "operation": preview.get("operation"),
+                "status": status,
+                "automation_id": claim.get("automation_id"),
+                "owner_id": claim.get("owner_id"),
+                "transaction_id": None,
+                "sidecar_sha256": preview.get("next_sidecar_sha256"),
+            }
+        )
+    plan = [entry]
+    internal = _preview_transaction(
+        vault_root,
+        plan,
+        purpose="automation-ownership",
+        operation="automation-ownership",
+    )
+    executed = _execute_approved_transaction(
+        vault_root,
+        plan,
+        purpose="automation-ownership",
+        operation="automation-ownership",
+        approved_token=str(internal["approval_token"]),
+    )
+    transaction_receipt = executed["receipt"]
+    return _envelope(
+        receipt={
+            "operation": preview.get("operation"),
+            "status": status,
+            "automation_id": claim.get("automation_id"),
+            "owner_id": claim.get("owner_id"),
+            "transaction_id": transaction_receipt["transaction_id"],
+            "sidecar_sha256": preview.get("next_sidecar_sha256"),
+        }
+    )
+
+
+def execute_approved_automation_claim(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    """Record one exact approved claim through the lifecycle transaction door."""
+    if preview.get("operation") != "claim":
+        raise PlanRejected("automation claim execution requires a claim preview")
+    return _execute_approved_automation_ownership(vault_root, preview, approved_token)
+
+
+def build_and_preview_automation_release(
+    vault_root: str | Path,
+    release: Mapping[str, object],
+) -> dict[str, object]:
+    """Preview release after the Dex Solo scheduler has stopped."""
+    try:
+        preview = automation_ownership.build_release_preview(vault_root, release)
+    except automation_ownership.AutomationOwnershipError as error:
+        raise PlanRejected(str(error)) from error
+    if preview is None:
+        return _envelope(needed=False, preview=None, approval_token=None)
+    return _envelope(
+        needed=True,
+        preview=preview,
+        approval_token=hashlib.sha256(_canonical(preview)).hexdigest(),
+    )
+
+
+def execute_approved_automation_release(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    """Record one exact approved release through the lifecycle transaction door."""
+    if preview.get("operation") != "release":
+        raise PlanRejected("automation release execution requires a release preview")
+    return _execute_approved_automation_ownership(vault_root, preview, approved_token)
 
 
 def _inventory_and_plan_models(vault_root: str | Path):
@@ -1534,6 +1653,10 @@ __all__ = [
     "execute_approved_mcp_registration",
     "build_and_preview_onboarding_context",
     "execute_approved_onboarding_context",
+    "build_and_preview_automation_claim",
+    "execute_approved_automation_claim",
+    "build_and_preview_automation_release",
+    "execute_approved_automation_release",
     "deliver_and_apply_latest_release",
     "build_and_preview_conflict_resolution",
     "execute_approved_conflict_resolution",

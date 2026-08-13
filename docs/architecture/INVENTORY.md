@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 6672cd77e728d5e48d9ca33f1c8aebd1db91101c6bdf8d61707e38e71fcba74a -->
+<!-- Content SHA-256: dd9818642b133e90d8c327eb4d9932c3d452fd96737126d36f1a9162fd25b536 -->
 
 # Architecture Inventory
 
@@ -155,7 +155,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 | `seed` | 38 | `write-if-absent` |
 | `generated` | 9 | `regenerate` |
 | `vault` | 17 | `never` |
-| `runtime` | 14 | `never` |
+| `runtime` | 15 | `never` |
 
 <details><summary><code>brain</code> declared paths (45)</summary>
 
@@ -286,11 +286,12 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 </details>
 
-<details><summary><code>runtime</code> declared paths (14)</summary>
+<details><summary><code>runtime</code> declared paths (15)</summary>
 
 - `.logs` (dir; `runtime-logs`)
 - `System/.dex` (dir; `runtime-dex-dir`)
 - `System/.dex/adoptions` (dir; `runtime-adoption-receipts`)
+- `System/.dex/automation-ownership.json` (file; `runtime-automation-ownership`)
 - `System/.dex/ledger` (dir; `runtime-lifecycle-ledger`)
 - `System/.dex/lifecycle/activation.json` (file; `runtime-lifecycle-activation`)
 - `System/.last-learning-check` (file; `runtime-last-learning-check`)
