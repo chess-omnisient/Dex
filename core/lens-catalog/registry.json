@@ -423,9 +423,9 @@
       "evidence": [
         {
           "kind": "test",
-          "coverage": "behavioral",
+          "coverage": "supporting",
           "reference": "core/tests/test_meeting_prep_calendar_journey.py",
-          "summary": "Exercises the calendar-first journey across the inline skill and its delegated research prompt, including attendee filtering, feature-status honesty, and preservation of resolved person-page records."
+          "summary": "Statically checks the calendar-first instruction contract and journey order across the inline skill and delegated research prompt, including required attendee filters, feature-status guidance, and the structured person-page handoff; it does not simulate Calendar MCP runtime behavior."
         },
         {
           "kind": "test",

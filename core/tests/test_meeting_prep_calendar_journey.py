@@ -40,7 +40,7 @@ def _assert_calendar_invite_journey(skill: str, agent: str) -> None:
     for state in ("feature_status", "broken", "permission", "user_message"):
         assert state in calendar_step
 
-    # The inline phase filters a mixed invite before delegation.
+    # The instruction contract requires attendee filtering before delegation.
     for field in ("person_page", "email", "status", "type", "is_current_user"):
         assert field in calendar_step
         assert field in delegation
@@ -66,13 +66,12 @@ def _assert_calendar_invite_journey(skill: str, agent: str) -> None:
     assert "only when `person_page` is empty" in agent_lookup
 
 
-def test_calendar_invite_drives_structured_attendee_research_journey() -> None:
-    """A real invite remains authoritative through delegated research.
+def test_calendar_first_instruction_contract_preserves_structured_attendee_handoff() -> None:
+    """The written journey keeps calendar identity fields across delegation.
 
-    The representative invite contains the user, a room, a group, a declined
-    guest, and two attending people.  The workflow must describe filtering the
-    first four and must carry the attending people's resolved identity fields
-    into the gathering prompt instead of reducing them back to names.
+    This is an instruction-contract and journey-order test. It checks the
+    shipped inline and delegated prompts together; it does not simulate a
+    Calendar MCP response or execute a representative mixed invite at runtime.
     """
 
     _assert_calendar_invite_journey(
