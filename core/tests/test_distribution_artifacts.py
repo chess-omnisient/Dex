@@ -93,6 +93,7 @@ RELEASE_BUILD_INPUTS = (
     "scripts/build-release.sh",
     "scripts/build-vault-bundle.sh",
     "scripts/check-catalog-coverage.py",
+    "scripts/check-release-catalog-tag-identity.py",
     "scripts/check-tau-removal.py",
     "scripts/dex_update_bridge.py",
     "scripts/generate-manifest.sh",
@@ -637,14 +638,9 @@ def test_release_build_uses_selected_source_version_for_tree_profile_manifest_an
         ).stdout.splitlines()
     )
     assert set(_release_manifest(clone, "release-selected")) == members
-    short = subprocess.run(
-        ["git", "rev-parse", "--short", "release-selected"],
-        cwd=clone,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    tag = f"dist/release-selected/v2.3.4-{short}"
+    tag = _git_json(
+        clone, "release-selected:System/.release-catalog.json"
+    )["release"]["immutable_distribution_tag"]
     assert subprocess.run(
         ["git", "rev-parse", f"{tag}^{{}}"], cwd=clone, check=True, capture_output=True, text=True
     ).stdout.strip() == subprocess.run(
@@ -1147,14 +1143,11 @@ def test_release_build_creates_immutable_versioned_tags(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     ).stdout.strip()
-    first_short_sha = subprocess.run(
-        ["git", "rev-parse", "--short", "release"],
-        cwd=clone,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    first_tag = f"dist/release/v{version}-{first_short_sha}"
+    first_catalog = _git_json(clone, "release:System/.release-catalog.json")
+    first_tag = first_catalog["release"]["immutable_distribution_tag"]
+    assert first_tag == (
+        f"dist/release/v{version}-{first_catalog['release']['source_commit'][:7]}"
+    )
 
     assert subprocess.run(
         ["git", "cat-file", "-t", first_tag],
@@ -1191,14 +1184,12 @@ def test_release_build_creates_immutable_versioned_tags(tmp_path: Path) -> None:
         timeout=240,
     )
 
-    second_short_sha = subprocess.run(
-        ["git", "rev-parse", "--short", "release"],
-        cwd=clone,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    second_tag = f"dist/release/v99.0.0-{second_short_sha}"
+    second_catalog = _git_json(clone, "release:System/.release-catalog.json")
+    second_tag = second_catalog["release"]["immutable_distribution_tag"]
+    assert second_tag == (
+        "dist/release/v99.0.0-"
+        f"{second_catalog['release']['source_commit'][:7]}"
+    )
     assert second_tag != first_tag
     assert subprocess.run(
         ["git", "rev-parse", f"{first_tag}^{{}}"],
@@ -1214,6 +1205,54 @@ def test_release_build_creates_immutable_versioned_tags(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     ).stdout.strip() != first_release_sha
+
+
+def test_release_build_does_not_repeat_v1_96_2_catalog_tag_split(tmp_path: Path) -> None:
+    public_split = json.loads(
+        (
+            REPO_ROOT
+            / "core/tests/fixtures/release-catalog-v1.96.2-tag-split.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert public_split == {
+        "version": "1.96.2",
+        "source_tag": "v1.96.2",
+        "source_commit": "f23caea333a060e0744cffc9b58bbddfc680246c",
+        "catalog_tag": "dist/release/v1.96.2-f23caea",
+        "minted_tag": "dist/release/v1.96.2-a948d6f",
+        "release_commit": "a948d6f85312adc545e1690faf60c09f780ec178",
+    }
+    assert public_split["catalog_tag"] != public_split["minted_tag"]
+
+    clone, _ = _build_release_in_clone(tmp_path, name="catalog-tag-identity")
+    catalog = _git_json(clone, "release:System/.release-catalog.json")
+    catalog_tag = catalog["release"]["immutable_distribution_tag"]
+    release_commit = subprocess.run(
+        ["git", "rev-parse", "release"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    minted_tags = subprocess.run(
+        ["git", "tag", "--list", f"dist/release/v{catalog['release']['version']}-*"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+
+    assert catalog_tag in minted_tags, (
+        "release build repeated the v1.96.2 split: catalog names "
+        f"{catalog_tag}, but the build minted {minted_tags}"
+    )
+    assert subprocess.run(
+        ["git", "rev-parse", f"{catalog_tag}^{{}}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == release_commit
 
 
 def test_beta_release_ci_builds_branch_and_tag() -> None:
