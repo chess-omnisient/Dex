@@ -63,11 +63,11 @@ def _document(manifest: bytes, payloads: dict[str, dict[str, bytes]]) -> dict[st
         )
     return with_catalog_identity(
         {
-            "catalog_version": 1,
+            "catalog_version": 2,
             "release": {
                 "version": "1.64.0",
                 "channel": "release",
-                "immutable_distribution_tag": "dist/release/v1.64.0-0123456",
+                "immutable_distribution_tag_pattern": "dist/release/v1.64.0-<release-commit-prefix>",
                 "source_commit": SOURCE_COMMIT,
                 "manifest": {
                     "path": "System/.installed-files.manifest",
@@ -342,7 +342,9 @@ def test_catalog_identity_drift_refuses_without_transaction_write(tmp_path: Path
     vault, document, preview, loader = _preview(tmp_path)
     changed = json.loads(json.dumps(document))
     changed["release"]["version"] = "1.64.1"
-    changed["release"]["immutable_distribution_tag"] = "dist/release/v1.64.1-0123456"
+    changed["release"]["immutable_distribution_tag_pattern"] = (
+        "dist/release/v1.64.1-<release-commit-prefix>"
+    )
     changed = with_catalog_identity(changed)
     write_file(vault, CATALOG_PATH, canonical_catalog_bytes(changed))
 

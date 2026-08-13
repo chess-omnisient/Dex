@@ -435,11 +435,12 @@ jobs:
         id: release_build
         if: steps.release_guard.outputs.already_published != 'true'
         run: |
+          set -euo pipefail
           bash scripts/build-release.sh
           echo "release_sha=$(git rev-parse release)" >> "$GITHUB_OUTPUT"
-          VERSION="$(node -p "require('./package.json').version")"
-          RELEASE_TAG="dist/release/v${VERSION}-$(git rev-parse --short release)"
-          git rev-parse --verify "refs/tags/$RELEASE_TAG"
+          RELEASE_TAG="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release --print-release-tag)"
+          test -n "$RELEASE_TAG"
+          python3 scripts/check-release-catalog-tag-identity.py --release-ref release
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - name: Build self-contained vault bundle
         if: steps.release_guard.outputs.already_published != 'true'
@@ -481,8 +482,10 @@ jobs:
       - name: Push release branch and immutable tag
         if: steps.release_guard.outputs.already_published != 'true'
         run: |
+          set -euo pipefail
           git push origin release --force
           git push origin "${{ steps.release_build.outputs.release_tag }}"
+          python3 scripts/check-release-catalog-tag-identity.py --release-ref release --remote origin
       # The ONLY step that makes a stable release public, and it does so last:
       # attach every asset, read each one back off the release and compare it to
       # what was built, and only then flip the draft public. A failure anywhere here
@@ -532,13 +535,17 @@ jobs:
       - name: Build beta release branch
         id: release_build
         run: |
+          set -euo pipefail
           bash scripts/build-release.sh --source beta --target release-beta
-          VERSION="$(node -p "require('./package.json').version")"
-          RELEASE_TAG="dist/release-beta/v${VERSION}-$(git rev-parse --short release-beta)"
-          git rev-parse --verify "refs/tags/$RELEASE_TAG"
+          RELEASE_TAG="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release-beta --source-ref beta --print-release-tag)"
+          test -n "$RELEASE_TAG"
+          IDENTITY="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release-beta --source-ref beta)"
+          test -n "$IDENTITY"
+          printf '%s\n' "$IDENTITY"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - name: Push beta release branch and immutable tag
         run: |
+          set -euo pipefail
           git push origin release-beta --force
           git push origin "${{ steps.release_build.outputs.release_tag }}"
       - name: Build self-contained vault bundle

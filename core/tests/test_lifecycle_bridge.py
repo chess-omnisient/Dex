@@ -159,8 +159,8 @@ def _deliver_release(vault: Path, release_version: str) -> None:
     catalog_path = vault / "System/.release-catalog.json"
     document = json.loads(catalog_path.read_text(encoding="utf-8"))
     document["release"]["version"] = release_version
-    document["release"]["immutable_distribution_tag"] = (
-        f"dist/release/v{release_version}-0123456"
+    document["release"]["immutable_distribution_tag_pattern"] = (
+        f"dist/release/v{release_version}-<release-commit-prefix>"
     )
     catalog_path.write_bytes(canonical_catalog_bytes(with_catalog_identity(document)))
 

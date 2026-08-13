@@ -197,23 +197,29 @@ def _write_entity_probe_files(context, *, mode="auto", unresolved=None):
     }))
 
 
-def _write_release_catalog(context, *, content=b"release skill\n"):
+def _write_release_catalog(context, *, content=b"release skill\n", catalog_version=2):
     item_path = ".claude/skills/fixture-item/SKILL.md"
     manifest = write_manifest(context.vault_root, [item_path])
     write_file(context.vault_root, item_path, content)
-    document = with_catalog_identity(
-        {
-            "catalog_version": 1,
-            "release": {
+    release_identity = {
                 "version": "1.64.0",
                 "channel": "release",
-                "immutable_distribution_tag": "dist/release/v1.64.0-0123456",
                 "source_commit": SOURCE_COMMIT,
                 "manifest": {
                     "path": "System/.installed-files.manifest",
                     "sha256": hashlib.sha256(manifest).hexdigest(),
                 },
-            },
+            }
+    if catalog_version == 1:
+        release_identity["immutable_distribution_tag"] = "dist/release/v1.64.0-0123456"
+    else:
+        release_identity["immutable_distribution_tag_pattern"] = (
+            "dist/release/v1.64.0-<release-commit-prefix>"
+        )
+    document = with_catalog_identity(
+        {
+            "catalog_version": catalog_version,
+            "release": release_identity,
             "items": [
                 {
                     "id": "fixture-item",
@@ -772,8 +778,11 @@ def test_release_catalog_probe_is_calmly_off_for_older_installs(context):
     assert "normal for older Dex releases" in result.detail
 
 
-def test_release_catalog_probe_reports_valid_version_without_writing(context):
-    _write_release_catalog(context)
+@pytest.mark.parametrize("catalog_version", (1, 2))
+def test_release_catalog_probe_reports_valid_version_without_writing(
+    context, catalog_version
+):
+    _write_release_catalog(context, catalog_version=catalog_version)
     before = _tree_snapshot(context.vault_root)
 
     result = doctor._probe_release_catalog(context)

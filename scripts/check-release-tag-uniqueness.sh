@@ -1,9 +1,16 @@
 #!/bin/bash
 set -euo pipefail
 
-REMOTE_TAGS="$(
+if ! REMOTE_TAGS="$(
   git ls-remote --tags origin 'refs/tags/dist/release/v*'
-)"
+)"; then
+  echo "❌ Release-tag uniqueness gate failed: could not read dist/release tags from origin; git ls-remote failed." >&2
+  exit 1
+fi
+if [ -z "$REMOTE_TAGS" ]; then
+  echo "❌ Release-tag uniqueness gate failed: origin returned no readable dist/release tags, so uniqueness cannot be verified." >&2
+  exit 1
+fi
 
 # Annotated tags also produce a peeled ^{} ref; count only the tag ref itself.
 DUPLICATE_VERSIONS="$(

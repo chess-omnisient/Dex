@@ -122,6 +122,44 @@ def test_gate_reports_every_new_version_with_duplicate_tags(tmp_path: Path) -> N
     assert "v1.79.0" in result.stderr
 
 
+def test_uniqueness_gate_fails_loudly_when_remote_tags_are_unreadable(
+    tmp_path: Path,
+) -> None:
+    repository = _repository_with_remote_tags(
+        tmp_path,
+        "dist/release/v1.79.0-1111111",
+    )
+    _git(repository, "remote", "set-url", "origin", str(tmp_path / "missing.git"))
+
+    result = subprocess.run(
+        ["bash", str(GATE)],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "could not read dist/release tags from origin" in result.stderr
+    assert "git ls-remote failed" in result.stderr
+
+
+def test_uniqueness_gate_rejects_an_empty_remote_observation(tmp_path: Path) -> None:
+    repository = _repository_with_remote_tags(tmp_path)
+
+    result = subprocess.run(
+        ["bash", str(GATE)],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "origin returned no readable dist/release tags" in result.stderr
+    assert "uniqueness cannot be verified" in result.stderr
+
+
 def _newer_release_tags(count: int) -> tuple[str, ...]:
     return tuple(
         f"dist/release/v1.{minor}.0-{minor:07x}"
