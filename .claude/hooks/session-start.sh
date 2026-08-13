@@ -74,10 +74,43 @@ if [[ -f "$ONBOARDING_MARKER" ]]; then
         if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
             ANALYTICS_PYTHON="$CLAUDE_DIR/.venv/bin/python"
         fi
+        ANALYTICS_TOTAL_TIMEOUT_SECONDS=3
+        # macOS has no GNU timeout command. This standard-library wrapper
+        # bounds the whole helper process (startup, imports, receipt work, and
+        # request), not just requests.post, and kills its process group on a
+        # timeout so a stalled descendant cannot outlive session start.
         ANALYTICS_RESULT=$(
             cd "$CLAUDE_DIR" && VAULT_PATH="$CLAUDE_DIR" \
-                "$ANALYTICS_PYTHON" core/mcp/analytics_helper.py --event session_started --request-timeout-seconds 2 \
-                2>/dev/null
+                "$ANALYTICS_PYTHON" - "$ANALYTICS_PYTHON" \
+                    core/mcp/analytics_helper.py --event session_started \
+                    --request-timeout-seconds 2 "$ANALYTICS_TOTAL_TIMEOUT_SECONDS" \
+                    2>/dev/null <<'PY'
+import os
+import signal
+import subprocess
+import sys
+
+command = sys.argv[1:-1]
+timeout_seconds = float(sys.argv[-1])
+process = subprocess.Popen(
+    command,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.DEVNULL,
+    text=True,
+    start_new_session=True,
+)
+try:
+    output, _ = process.communicate(timeout=timeout_seconds)
+except subprocess.TimeoutExpired:
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    process.communicate()
+    raise SystemExit(124)
+sys.stdout.write(output)
+raise SystemExit(process.returncode)
+PY
         )
         ANALYTICS_STATUS=$?
         if [[ "$ANALYTICS_STATUS" -ne 0 || "$ANALYTICS_RESULT" == *receipt_write_failed* ]]; then

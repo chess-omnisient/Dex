@@ -20,7 +20,7 @@ function createSandbox(t) {
   return { vault, home, launchAgents, dedupFile };
 }
 
-function runSessionStart(sandbox) {
+function runSessionStart(sandbox, { timeoutMs = 10_000 } = {}) {
   const result = spawnSync('/bin/bash', [HOOK_PATH], {
     cwd: sandbox.vault,
     encoding: 'utf-8',
@@ -35,12 +35,14 @@ function runSessionStart(sandbox) {
       DEX_SESSION_ANALYTICS_CALLS: sandbox.analyticsCalls
         || path.join(path.dirname(sandbox.vault), 'unused-session-analytics-calls'),
       DEX_SESSION_ANALYTICS_RESULT: sandbox.analyticsResult || '',
+      DEX_SESSION_ANALYTICS_FINISHED: sandbox.analyticsFinished
+        || path.join(path.dirname(sandbox.vault), 'unused-session-analytics-finished'),
       DEX_SESSION_HEALTH_CALLS: path.join(
         path.dirname(sandbox.vault),
         'unused-session-health-calls',
       ),
     },
-    timeout: 10_000,
+    timeout: timeoutMs,
   });
 
   assert.equal(
@@ -71,6 +73,24 @@ function installAnalyticsProbe(sandbox) {
       'result = os.environ.get("DEX_SESSION_ANALYTICS_RESULT", "")',
       'if result:',
       '    print(result)',
+      '',
+    ].join('\n'),
+  );
+}
+
+function installHangingAnalyticsProbe(sandbox) {
+  const helper = path.join(sandbox.vault, 'core', 'mcp', 'analytics_helper.py');
+  sandbox.analyticsFinished = path.join(path.dirname(sandbox.vault), 'session-analytics-finished');
+  fs.mkdirSync(path.dirname(helper), { recursive: true });
+  fs.writeFileSync(
+    helper,
+    [
+      'import os',
+      'import time',
+      'from pathlib import Path',
+      'print("private relay token")',
+      'time.sleep(4)',
+      'Path(os.environ["DEX_SESSION_ANALYTICS_FINISHED"]).write_text("finished\\n", encoding="utf-8")',
       '',
     ].join('\n'),
   );
@@ -153,6 +173,27 @@ test('a completed vault visibly reports a safe receipt-write failure', (t) => {
   assert.match(stdout, /Dex could not save the local analytics receipt/);
   assert.match(stdout, /No usage event was retried/);
   assert.doesNotMatch(stdout, /private relay token/);
+});
+
+test('a hanging analytics helper is killed within the session-start total budget', async (t) => {
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  installHangingAnalyticsProbe(sandbox);
+
+  const startedAt = Date.now();
+  const stdout = runSessionStart(sandbox, { timeoutMs: 5_000 });
+  const elapsedMs = Date.now() - startedAt;
+
+  assert.ok(elapsedMs < 3_750, `session start took ${elapsedMs}ms`);
+  assert.match(stdout, /Dex could not save the local analytics receipt/);
+  assert.match(stdout, /No usage event was retried/);
+  assert.doesNotMatch(stdout, /private relay token/);
+  await new Promise((resolve) => setTimeout(resolve, 1_250));
+  assert.equal(fs.existsSync(sandbox.analyticsFinished), false);
+  assert.equal(
+    fs.existsSync(path.join(sandbox.vault, 'System', '.dex', 'analytics-attempts.jsonl')),
+    false,
+  );
 });
 
 test('a never-onboarded vault does not start a session event', async (t) => {
