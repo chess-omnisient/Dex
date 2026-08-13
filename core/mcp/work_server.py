@@ -129,6 +129,7 @@ from core.entity_engine import (
     render_company_page,
 )
 from core.entity_engine import index as entity_index
+from core.meeting_capture_match import match_capture_to_calendar
 from core.paths import (
     COMPANIES_DIR,
     COMPANY_INDEX_FILE,
@@ -149,7 +150,6 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
-from core.meeting_capture_match import match_capture_to_calendar
 from core.soft_promise import detect_soft_promises
 from core.utils.company_domains import registrable_domain
 from core.utils.entity_pages import parse_entity_page, render_person_page

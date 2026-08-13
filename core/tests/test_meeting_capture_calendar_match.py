@@ -153,6 +153,30 @@ def test_participant_overlap_breaks_a_tie_after_title() -> None:
     ]
 
 
+def test_participant_overlap_uses_names_when_capture_has_no_email() -> None:
+    result = _match(
+        {
+            "title": "Customer discovery",
+            "start_time": "2026-07-15T09:00:00Z",
+            "attendees": ["Alex Morgan"],
+        },
+        [
+            _event(
+                start="2026-07-15T08:59:00Z",
+                attendees=[{"name": "Someone else", "email": "other@example.com"}],
+            ),
+            _event(
+                start="2026-07-15T09:01:00Z",
+                attendees=[{"name": "Alex Morgan", "email": "alex@example.com"}],
+            ),
+        ],
+    )
+
+    assert result["status"] == "matched"
+    assert result["participant_overlap"] > 0
+    assert result["identity"]["attendees"][0]["name"] == "Alex Morgan"
+
+
 def test_true_ambiguity_remains_unmatched() -> None:
     result = _match(
         {"title": "Customer discovery", "start_time": "2026-07-15T09:00:00Z"},
@@ -203,6 +227,16 @@ def test_untitled_capture_inherits_calendar_title() -> None:
 
     assert result["status"] == "matched"
     assert result["identity"]["title"] == "Customer discovery"
+
+
+def test_missing_capture_and_calendar_titles_never_serialize_none() -> None:
+    result = _match(
+        {"title": None, "start_time": "2026-07-15T09:00:00Z"},
+        [_event(title="", start="2026-07-15T09:00:10Z")],
+    )
+
+    assert result["status"] == "matched"
+    assert result["identity"]["title"] == ""
 
 
 def test_match_result_imports_identity_only_and_never_invite_secrets() -> None:

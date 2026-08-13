@@ -69,7 +69,7 @@ def _participant_tokens(record: dict[str, Any]) -> set[str]:
         name = attendee.get("name")
         if isinstance(email, str) and email.strip():
             tokens.add(f"email:{email.strip().casefold()}")
-        elif isinstance(name, str) and name.strip():
+        if isinstance(name, str) and name.strip():
             tokens.add(f"name:{' '.join(name.split()).casefold()}")
     return tokens
 
@@ -180,7 +180,8 @@ def match_capture_to_calendar(
     event = winner["event"]
     event_title = _event_title(event)
     poor_capture_title = _is_untitled(capture_title) or normalized_capture_title in _capture_participant_labels(capture)
-    identity_title = event_title if poor_capture_title and event_title else str(capture_title).strip()
+    safe_capture_title = capture_title.strip() if isinstance(capture_title, str) else ""
+    identity_title = event_title if poor_capture_title and event_title else safe_capture_title
     return {
         "status": "matched",
         "delta_seconds": int(winner["delta_seconds"]),
