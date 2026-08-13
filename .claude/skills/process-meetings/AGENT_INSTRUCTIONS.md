@@ -102,26 +102,6 @@ them for you.
 
 ---
 
-**When the calendar is not available.** Calendar access is an optional
-integration and is frequently absent: a managed device where the org withholds
-it, a non-macOS machine, or a user who simply declined the permission prompt.
-The skill must still produce a useful result, and must not present a feature the
-user never enabled as a fault.
-
-- **No calendar integration, or the tool errors:** carry on with what the
-  capture and the vault provide. Say once, in passing, that attendees could not
-  be confirmed against the invite. Do not repeat it per meeting.
-- **The query returns nothing:** that is not the same as "no meetings". An
-  absent tool, a refused permission, and a query built with the wrong range all
-  return empty. Establish which before writing anything, and say which it was
-  when you cannot tell.
-- **Never downgrade a fact to a guess silently.** If attendees came from the
-  capture rather than the invite, they are less reliable; mark them as such
-  rather than presenting them with the same confidence.
-
-This is the same rule the source handling already follows: report the source's
-status, never claim absence because a tool errored.
-
 ## Step 4: Update Company Pages
 
 For each unique external company:

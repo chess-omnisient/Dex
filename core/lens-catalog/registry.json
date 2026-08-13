@@ -106,8 +106,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-plan/SKILL.md",
-        "sha256": "23b5acf167fb02f41fa31fb75c38c366afab2263a53b0b4a9dcbdc62966b4bf2",
-        "byte_size": 12007
+        "sha256": "7e9383a02327f2d7afca9636acbbde2f9476a447193921cfcd70b97bca91f223",
+        "byte_size": 12240
       },
       "value": "Turns goals, capacity and open work into a weekly focus plan, so repeated work starts from priorities rather than a blank chat.",
       "jobs_served": ["plan-my-work"],

@@ -65,6 +65,9 @@ Check `00-Inbox/Meetings/` for this week's meeting notes, and:
 Use: calendar_get_events_with_attendees(start_date="{{WEEK_START_DATE}}", end_date="{{TARGET_DATE_PLUS_1}}")
 ```
 
+Apply CLAUDE.md's **Calendar response confidence contract** before consuming
+events or deriving meeting counts from them.
+
 Extract: meetings held, key decisions, action items created, new contacts, and
 follow-ups that may have slipped.
 
