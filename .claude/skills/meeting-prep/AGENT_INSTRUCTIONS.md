@@ -116,3 +116,51 @@ Key open items: [N]
 - Use real data from tools; never fabricate
 - Omit empty sections entirely
 - Flag anything you could not verify rather than guessing
+
+---
+
+## Matching a capture to a calendar event
+
+A capture and a calendar event are the same meeting when their **start times
+agree within about five minutes**. Start time is the key. The title is
+corroborating evidence, and a good one where it exists.
+
+Title alone cannot be the key, because a recorder names a capture from whatever
+it can see. Where the recorder has calendar access the title is the invite
+subject and is highly reliable. Where it does not, the same meeting arrives
+named after a participant, as "Untitled", or with no title at all. Start time is
+the one field every source populates and the one the user did not type, so it is
+what holds in both cases.
+
+**Use the title when you have it.** A title matching the event raises confidence
+and breaks ties. A title that disagrees is worth noting, and is not on its own a
+reason to reject a start-time match, since the mismatch is usually the recorder
+having named the capture some other way.
+
+**The trap that makes this fail silently.** Sources commonly return UTC (an ISO
+timestamp ending in `Z`) while the calendar returns local time with an offset.
+Comparing the two as text, or as naive datetimes, is wrong by exactly the
+UTC offset: under a summer offset of one hour, a perfect match reads as a 60
+minute gap and the meeting is filed as ad-hoc. **Convert both to a common
+timezone before subtracting.** Never compare the strings.
+
+**When two events are close together:**
+
+- Take the nearest start within the window. If two are inside it, break the tie
+  on title agreement first, then on participant overlap, and say the match was
+  ambiguous.
+- Outside the window, do not stretch it to force a match. An unmatched capture
+  recorded as ad-hoc is recoverable; one attached to the wrong meeting is not,
+  because everything downstream inherits the error.
+
+**Take the identity, not the payload.** A matched event contributes the meeting
+it *is*: title, time, attendees. Where the capture is untitled or poorly titled
+and the calendar event is not, **prefer the calendar title** and carry it
+through to the note, so a capture named "Untitled" is filed under the meeting it
+actually was. Joining links, dial-ins and access codes belong to the invite and
+are not written into notes or person pages.
+
+This is source-agnostic on purpose. Start time is the only field it *requires*,
+so it holds for whichever recorder the user has configured, and it uses the
+title, participants and anything else the source provides as corroboration
+wherever those exist.
