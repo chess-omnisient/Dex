@@ -46,7 +46,12 @@ Apple Mail is macOS-only. On any other platform, say so plainly and stop:
 
 Check whether it is already installed: `which apple-mail-mcp`
 
-If not, install it: `pipx install apple-mail-mcp`
+If not, install the version Dex currently supports and tests:
+`pipx install 'apple-mail-mcp==0.4.3'`
+
+`apple-mail-mcp` is community-maintained. Version 0.4.3 is Dex's current supported
+contract for its index schema and CLI. Do not upgrade it during setup; a newer community
+release should be adopted only after Dex's health checks and macOS CI prove compatibility.
 
 If `pipx` itself is missing: `brew install pipx && pipx ensurepath`
 

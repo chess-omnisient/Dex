@@ -4054,7 +4054,7 @@ def test_apple_mail_search_is_broken_when_the_command_is_missing(monkeypatch, co
 
     assert result.verdict == "BROKEN"
     assert result.feature_status == "broken"
-    assert "pipx install apple-mail-mcp" in result.heal.action
+    assert "pipx install 'apple-mail-mcp==0.4.3'" in result.heal.action
 
 
 def test_apple_mail_search_is_broken_when_the_index_was_never_built(monkeypatch, context):

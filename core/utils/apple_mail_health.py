@@ -20,6 +20,8 @@ from typing import Mapping
 
 APPLE_MAIL_CONFIG_VERSION = 1
 APPLE_MAIL_DEFAULT_STALENESS_HOURS = 24.0
+APPLE_MAIL_MCP_SUPPORTED_VERSION = "0.4.3"
+APPLE_MAIL_MCP_INSTALL = f"pipx install 'apple-mail-mcp=={APPLE_MAIL_MCP_SUPPORTED_VERSION}'"
 APPLE_MAIL_CONFIG_SCHEMA: dict[str, dict[str, tuple[type, ...]]] = {
     "defaults": {"account": (str,), "mailbox": (str,)},
     "index": {
@@ -349,11 +351,12 @@ def probe(context: Context) -> Result:
             "BROKEN",
             "An Apple Mail server is registered but the apple-mail-mcp command is not installed, "
             "so mail search cannot work",
-            action="Install the server with `pipx install apple-mail-mcp`, then run /apple-mail-setup.",
+            action=f"Install the supported server with `{APPLE_MAIL_MCP_INSTALL}`, then run /apple-mail-setup.",
             feature_status="broken",
             user_message=(
                 "Mail search is registered but the apple-mail-mcp command is missing. "
-                "Install it with `pipx install apple-mail-mcp`, then run /apple-mail-setup."
+                f"Install the tested community release with `{APPLE_MAIL_MCP_INSTALL}`, "
+                "then run /apple-mail-setup."
             ),
         )
     try:
