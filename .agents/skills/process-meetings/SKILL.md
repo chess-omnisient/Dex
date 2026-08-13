@@ -111,7 +111,9 @@ For each meeting file, including a manual note with no capture id:
    matching a string `source`; if that key is absent, report the mismatch and
    use the note path. When `source` is absent, use an id only when exactly one
    non-empty scalar candidate exists. Empty or non-scalar values do not count;
-   multiple ids fall back to note-path identity
+   multiple ids fall back to note-path identity. The path identity is the
+   normalized vault-relative Markdown path, with `/` separators and the `.md`
+   extension retained; never reduce it to a basename
 2. Check if person/company pages need updating
 3. Check if tasks need extracting (look for unchecked items in "For Me" section)
 

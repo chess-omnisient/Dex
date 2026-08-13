@@ -55,6 +55,9 @@ def _assert_local_source_contract(body: str) -> None:
         "mismatch",
         "non-scalar",
         "manual note",
+        "normalized vault-relative Markdown path",
+        "`.md`",
+        "basename",
     ):
         assert required in body
 
@@ -108,7 +111,7 @@ def test_contract_helper_rejects_removed_configured_source_lookup() -> None:
         "meeting_sources notes_folder vault-relative provider-neutral "
         "00-Inbox/Meetings missing malformed absolute symlink external service "
         "non-empty scalar ending in `_id` granola_id wispr_id multiple mismatch "
-        "non-scalar manual note"
+        "non-scalar manual note normalized vault-relative Markdown path `.md` basename"
     )
     without_lookup = valid.replace("meeting_sources", "")
 
@@ -127,7 +130,7 @@ def test_contract_helper_rejects_removed_provider_neutral_capture_ids() -> None:
         "meeting_sources notes_folder vault-relative provider-neutral "
         "00-Inbox/Meetings missing malformed absolute symlink external service "
         "non-empty scalar ending in `_id` granola_id wispr_id multiple mismatch "
-        "non-scalar manual note"
+        "non-scalar manual note normalized vault-relative Markdown path `.md` basename"
     )
     granola_only = valid.replace("ending in `_id`", "fixed key").replace(
         "wispr_id", ""

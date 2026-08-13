@@ -104,7 +104,9 @@ For each meeting file:
    report the mismatch and use the note path as identity. When `source` is
    absent, use a capture id only when exactly one such key is present. Empty or
    non-scalar values do not count. If multiple capture-id keys remain, report
-   the ambiguity and use the note path as identity. A manual note with no
+   the ambiguity and use the note path as identity. The path identity is the
+   normalized vault-relative Markdown path, with `/` separators and the `.md`
+   extension retained; never reduce it to a basename. A manual note with no
    capture id remains valid.
 2. Check whether person/company pages need updating
 3. Check whether tasks need extracting (unchecked items in the "For Me"

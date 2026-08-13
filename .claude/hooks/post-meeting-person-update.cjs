@@ -168,7 +168,10 @@ function captureSourceId(frontmatter) {
   return candidates.length === 1 ? candidates[0][1] : '';
 }
 
-const sourceId = captureSourceId(metadata) || path.basename(relativeMeetingPath, '.md');
+// Capture ids are globally stable when unambiguous. The fallback must be the
+// normalized vault-relative Markdown path (POSIX separators, `.md` retained):
+// basenames collide as soon as configured and default folders share a title.
+const sourceId = captureSourceId(metadata) || relativeMeetingPath;
 const interaction = `- [${meetingTitle(metadata)}](${relativeMeetingPath}) — ${date}`;
 const seen = new Set();
 const ops = [];
