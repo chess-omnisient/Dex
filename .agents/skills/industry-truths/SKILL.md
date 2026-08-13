@@ -3,6 +3,16 @@ name: industry-truths
 description: "Define time-horizoned assumptions about your industry (today / 6mo / 12mo) that ground strategic thinking. Use when the user is making roadmap, positioning or investment calls, or says 'what am I assuming about the market'. Also use proactively before a big strategic recommendation. Not for capturing a single decision; use `decision-log`."
 ---
 
+<!-- Generated from `.claude/skills/industry-truths/SKILL.md` by `scripts/generate-agents-skills.py`. Do not edit. -->
+
+## Execution mode
+
+Run inline in the current conversation by default, so this work can see what the
+user has already discussed, decided, or settled this session. Do not fork merely
+because this skill was selected. Only run in the background when the user
+explicitly asks for a background run or the host has already obtained a specific
+background-work approval for this run.
+
 ## Purpose
 
 In rapidly changing industries (especially AI/tech), strategic decisions require grounding in **what you believe to be true** at different time horizons. This skill helps you define, document, and maintain those assumptions so every ideation session and strategic conversation carries that context.
