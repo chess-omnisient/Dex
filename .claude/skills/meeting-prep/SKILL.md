@@ -161,22 +161,28 @@ when they have a usable name or email and flag that uncertainty in the brief.
 
 **Ask when the calendar cannot answer.** The calendar is the preferred source,
 not a required one, and this skill must still work without it. Inspect the
-calendar response before reading its event list. When it contains
-`feature_status`, follow CLAUDE.md's `feature_status` rendering convention:
+complete calendar response before reading `events` or `count`, and follow
+CLAUDE.md's **Calendar response confidence contract** at this inline call site:
 
-- `off` or `not_installed`: say once, calmly, that calendar context is not set
-  up, then ask for the meeting and attendees.
-- `broken`: show the returned `user_message`, including its permission or fix
-  guidance, then ask for the meeting and attendees so prep can continue.
-- `unknown`: say the calendar could not be checked, then ask rather than guess.
+- Only `success: true` is a healthy read. A healthy `count: 0` means the
+  searched range is empty only when the response has no `warning`; preserve a
+  warning and ask rather than claiming there are no meetings.
+- `feature_status: off` is healthy optional absence. Ask for the meeting and
+  attendees with no error tone, setup advice, or nag.
+- `feature_status: not_installed` surfaces the returned `user_message` and fix
+  once in a calm setup tone, then asks for the meeting and attendees.
+- `feature_status: broken` surfaces the returned `user_message` exactly,
+  including its permission or other fix guidance, then asks so prep can
+  continue. Never recast it as “not connected” or “no meetings.”
+- `feature_status: unknown`, or an unstructured tool error, means the calendar
+  could not be checked. Say that plainly and ask rather than guessing.
+- **No Calendar tool response** (for example, on a non-macOS machine) is
+  optional absence. Ask for the meeting and attendees without reporting a
+  fault.
 
-Do not turn `broken` calendar permission into “not connected,” and do not treat
-any non-`ok` status as an empty but healthy calendar.
+Every non-healthy branch is unavailable evidence, not an empty calendar. Never
+substitute an empty event list for a missing or failed response.
 
-- **No calendar integration or the tool is unavailable** (for example, a
-  non-macOS machine): ask for the meeting and the attendees as before. A
-  feature the user never set up is not a fault and should not be reported as
-  one.
 - **No matching event** in the range returned: ask which meeting is meant rather than guessing.
 - **Two events match a stated time:** that is a double-booking. Name both and let the user
   choose; it is worth telling them about in itself.

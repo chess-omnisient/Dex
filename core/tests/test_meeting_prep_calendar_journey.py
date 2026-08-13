@@ -1,10 +1,11 @@
-"""Journey contract for calendar-first meeting preparation.
+"""Instruction contract for calendar-first meeting preparation.
 
 The meeting-prep surface is an instruction workflow rather than Python code, so
-this test evaluates the two prompts that execute the journey together.  A
+this static test evaluates the two shipped prompts together. A
 presence-only check can stay green while the inline skill reads a rich calendar
 record and then hands only display names to its gathering agent.  This contract
-pins the information flow across that boundary.
+pins the written information flow across that boundary; it does not execute an
+LLM or Calendar MCP response.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ def _section(body: str, start: str, end: str) -> str:
     return body.split(start, 1)[1].split(end, 1)[0]
 
 
-def _assert_calendar_invite_journey(skill: str, agent: str) -> None:
+def _assert_calendar_first_instruction_contract(skill: str, agent: str) -> None:
     arguments = _section(skill, "## Arguments", "## What This Does")
     calendar_step = _section(skill, "### Step 0:", "### Step 1:")
     delegation = _section(
@@ -37,7 +38,19 @@ def _assert_calendar_invite_journey(skill: str, agent: str) -> None:
     assert calendar_step.index("calendar_get_events_with_attendees") < calendar_step.index(
         "**Ask when the calendar cannot answer.**"
     )
-    for state in ("feature_status", "broken", "permission", "user_message"):
+    assert "Calendar response confidence contract" in calendar_step
+    for state in (
+        "success: true",
+        "warning",
+        "feature_status: off",
+        "feature_status: not_installed",
+        "feature_status: broken",
+        "permission",
+        "user_message",
+        "feature_status: unknown",
+        "unstructured tool error",
+        "No Calendar tool response",
+    ):
         assert state in calendar_step
 
     # The instruction contract requires attendee filtering before delegation.
@@ -74,7 +87,7 @@ def test_calendar_first_instruction_contract_preserves_structured_attendee_hando
     Calendar MCP response or execute a representative mixed invite at runtime.
     """
 
-    _assert_calendar_invite_journey(
+    _assert_calendar_first_instruction_contract(
         SKILL_PATH.read_text(encoding="utf-8"),
         AGENT_PATH.read_text(encoding="utf-8"),
     )
