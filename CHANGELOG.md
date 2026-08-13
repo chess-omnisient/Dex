@@ -79,6 +79,7 @@ Two failures in the pre-release checks had nothing to do with Dex and were faili
 
 * **A checkup journey that cannot isolate a helper process no longer fails the whole run.** When the machine hosting the check refuses to isolate or stop a helper, that one journey is skipped with a reason. A real product failure still fails the check.
 * **One test can no longer poison the next.** Leftover process state from an earlier check was making a later, unrelated check fail on the same run. That leak is closed, so a green run means the product is actually fine.
+* **The copy Dex downloads to update itself now matches the copy that was published.** The previous release named a download identity that did not exist, so a stuck install could be pointed at a file that was never there. This cut names the real published copy.
 
 ## [1.96.2] — 🛡️ Your history saves again, and company networks get an honest answer (2026-08-13)
 
