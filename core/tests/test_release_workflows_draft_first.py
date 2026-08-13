@@ -168,6 +168,40 @@ def test_the_publishing_step_still_runs_only_after_the_full_suite() -> None:
         assert workflow["jobs"][job_name]["needs"] == ["quality", "test-results"]
 
 
+def test_stable_release_verifies_catalog_identity_before_publication() -> None:
+    workflow = _load(CI_WORKFLOW)
+    steps = workflow["jobs"]["build-release"]["steps"]
+    named = {step["name"]: step for step in steps if "name" in step}
+    build = named["Build release branch"]["run"]
+    push = named["Push release branch and immutable tag"]["run"]
+    names = [step["name"] for step in steps if "name" in step]
+
+    assert "set -euo pipefail" in build
+    assert "--release-ref release --print-release-tag" in build
+    assert "test -n \"$RELEASE_TAG\"" in build
+    assert "check-release-catalog-tag-identity.py --release-ref release" in build
+    assert "set -euo pipefail" in push
+    assert "--release-ref release --remote origin" in push
+    assert names.index("Push release branch and immutable tag") < names.index(
+        "Attach assets, verify them, then make the release public"
+    )
+
+
+def test_beta_release_verifies_both_catalog_identities_before_push() -> None:
+    workflow = _load(CI_WORKFLOW)
+    steps = workflow["jobs"]["build-release-beta"]["steps"]
+    named = {step["name"]: step for step in steps if "name" in step}
+    build = named["Build beta release branch"]["run"]
+
+    assert "set -euo pipefail" in build
+    assert (
+        "--release-ref release-beta --source-ref beta --print-release-tag"
+        in build
+    )
+    assert "--release-ref release-beta --source-ref beta" in build
+    assert 'test -n "$IDENTITY"' in build
+
+
 def test_the_stable_lane_keeps_the_non_cancelling_publish_lock() -> None:
     """The fleet proof shares this lock; a queued release must wait, not be cancelled."""
     stable = _load(CI_WORKFLOW)["jobs"]["build-release"]
