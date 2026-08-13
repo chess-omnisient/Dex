@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -21,6 +22,14 @@ from core.transaction.engine import PlanRejected
 RECEIPT_RELATIVE = Path("System/.dex/analytics-attempts.jsonl")
 RECEIPT_FIELDS = {"timestamp", "event", "outcome", "reason"}
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+class _FixedReceiptDatetime(datetime):
+    """Make timestamp-content tests deterministic rather than clock-dependent."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 8, 13, 13, 50, 30, 503000, tzinfo=tz or timezone.utc)
 
 
 def _read_receipts(vault: Path) -> list[dict[str, object]]:
@@ -327,6 +336,9 @@ def test_http_rejection_receipt_hides_status_and_transport_details(
         return SimpleNamespace(status_code=503)
 
     _configure_enabled_delivery(monkeypatch, post)
+    # A valid timestamp can naturally contain the same digits as an HTTP code.
+    # Pin one such value so the privacy assertion must inspect structured fields.
+    monkeypatch.setattr(lifecycle_service, "datetime", _FixedReceiptDatetime)
 
     result = analytics_helper.fire_event("task_created")
 
@@ -338,9 +350,14 @@ def test_http_rejection_receipt_hides_status_and_transport_details(
     }
     assert posts == 1
     receipt = _read_receipts(vault)
-    assert receipt[0]["outcome"] == "not_sent"
-    assert receipt[0]["reason"] == "http_error"
-    assert "503" not in json.dumps(receipt[0], sort_keys=True)
+    assert receipt == [
+        {
+            "timestamp": "2026-08-13T13:50:30.503000+00:00",
+            "event": "task_created",
+            "outcome": "not_sent",
+            "reason": "http_error",
+        }
+    ]
 
 
 def test_successful_delivery_receipt_records_only_the_final_safe_outcome(
