@@ -1651,6 +1651,39 @@ def test_composed_gitignore_appends_contract_derived_vault_section() -> None:
     assert "\n/.claude/\n" not in section
 
 
+def test_composed_gitignore_reincludes_every_vault_region() -> None:
+    """The distribution file ignores the PARA folders; a vault must track them.
+
+    Without this the failure is not cosmetic: `git add 04-Projects/` refuses
+    outright, so every pathspec-based staging path (the vault-autocommit hook)
+    stops committing the user's own work, silently.
+    """
+    release_blob = b"# distribution rules\n00-Inbox/\n03-Tasks/\n04-Projects/\n"
+
+    composed = apply_update._compose_gitignore(release_blob, Path("/unused")).decode()
+    section = composed.split(apply_update.GITIGNORE_SECTION_BEGIN, 1)[1]
+
+    for region in portable_contract.VAULT_REGIONS:
+        assert f"\n!/{region}/\n" in section, region
+
+    # the negations must come after the distribution's ignore rules, or they
+    # are dead letters: last match wins
+    assert composed.index("04-Projects/") < composed.index("!/04-Projects/")
+
+
+def test_composed_gitignore_vault_regions_track_the_contract() -> None:
+    """Derived from the contract, so a new region cannot be forgotten here."""
+    composed = apply_update._compose_gitignore(b"# rules\n", Path("/unused")).decode()
+    section = composed.split(apply_update.GITIGNORE_SECTION_BEGIN, 1)[1]
+
+    emitted = {
+        line[2:].rstrip("/")
+        for line in section.splitlines()
+        if line.startswith("!/") and "/" not in line[2:].rstrip("/")
+    }
+    assert set(portable_contract.VAULT_REGIONS) <= emitted
+
+
 def test_composed_gitignore_is_idempotent_and_replaces_stale_section() -> None:
     release_blob = b"# rules\n"
     once = apply_update._compose_gitignore(release_blob, Path("/unused"))
