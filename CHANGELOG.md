@@ -7,6 +7,32 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.96.1] — 🔎 Lens can read every role and planning capability (2026-08-13)
+
+The v1.96.0 catalogue was correctly signed but Lens refused it before deployment: two quarterly-planning requirements used Dex's internal underscore spelling instead of the public catalogue's hyphenated ID format. The canonical Lens URL stayed on the already-proven v1.95.2 catalogue, so nobody received the rejected file.
+
+**What this fixes for you:**
+
+* **The complete 55-capability catalogue now uses the exact contract Lens reads.** Quarterly planning and review keep their real room dependency, expressed as the valid `quarter-goals-room-enabled` requirement.
+* **The producer now catches this class of mismatch before signing.** Host requirements must use Lens catalogue IDs, duplicates are refused, and the exported cross-repository schema carries the same identifier and uniqueness rules as Lens's runtime verifier.
+* **The correction supersedes the rejected signed file honestly.** Catalogue version 3 replaces version 2 rather than rewriting the published v1.96.0 artifact.
+
+## [1.96.0] — 🧭 Lens can now find the Dex built for your role (2026-08-12)
+
+Dex Lens is the private guide that looks at your own AI setup and suggests useful Dex capabilities without changing anything. Its first expansion covered the everyday work almost everyone shares. This release adds the next layer: thirty adoptable capabilities for sales, product, marketing, engineering, finance, customer success, operations, design, career development, and quarterly planning.
+
+**What this changes for you:**
+
+* **Lens can recommend a role pack instead of a generic pile of commands.** It now understands work such as account planning, campaign review, architecture decisions, month-end close, customer health, operational metrics, and design-system review. Those skills remain off until you choose to adopt them.
+* **Optional rooms are visible without pretending they are standalone switches.** Career and quarterly-planning skills are presented as the bundles they really are, including the setup and connected tools each room needs.
+* **Every new recommendation says what is and is not proved.** All thirty additions have shipped instructions and adoption support, but none is labelled behaviourally verified yet. Lens will show them as *supported* until a real workflow test earns the stronger label.
+* **The thinner role skills now have real working methods.** Seventeen short prompts were expanded with source discipline, explicit uncertainty, role-specific calculations or review methods, human authority boundaries, and recovery checks. Thirteen already-deep skills had their remaining evidence and safety gaps closed.
+* **A changed dormant skill can no longer slip into the catalogue or an optional room.** Role packs resolve through Dex's release catalogue, while room skills carry exact current and published prior-release identities so a legitimate upgrade works without treating custom bytes as Dex-owned. Activation checks every source and target before changing anything, records the exact mutations, and rolls its bounded changes back if a later step fails.
+* **Career evidence and resume exports now stop at the human boundary.** The career hook surfaces a sourced candidate instead of silently saving it, and asks before any evidence is added. Resume exports use a new filename when one already exists, verify the saved bytes, and never overwrite the earlier file.
+* **Setup now survives an interruption without pretending it finished.** Onboarding and room changes reject links or malformed paths before touching the vault and refuse to continue when the lifecycle authority cannot run. Each bounded stage uses Dex's durable transaction record: a hard stop is recovered on restart, the completion marker appears only after the substantive setup is in place, and a committed catalogue adoption can rebuild a receipt lost in the final instant. Receipts name every committed transaction and every path that actually changed.
+
+Lens still works the same way at the trust boundary: it reads the signed public catalogue, examines the person's own system locally, and offers advice. It does not receive their private working material or apply a recommendation for them.
+
 ## [1.95.2] — 🔎 Dex Lens now sees more of the work Dex can help with (2026-08-12)
 
 Dex Lens is the private guide that looks at your own AI setup and suggests useful Dex capabilities without changing anything. It previously knew about six things Dex can do. It now knows about twenty-five: the everyday work around reviews, meetings, commitments, decisions, market thinking, and keeping your work recoverable.

@@ -14,10 +14,100 @@ import sys
 from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from core import portable_contract
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_portable_contract_v2_versions_the_new_room_pin_wire_shape() -> None:
+    v1_document = portable_contract.build_contract_document(contract_version=1)
+    v1_schema = portable_contract.build_contract_schema(contract_version=1)
+    v2_document = portable_contract.build_contract_document(contract_version=2)
+    v2_schema = portable_contract.build_contract_schema(contract_version=2)
+
+    assert portable_contract.CONTRACT_VERSION == 2
+    assert v1_schema["$id"] != v2_schema["$id"]
+    Draft202012Validator.check_schema(v1_schema)
+    Draft202012Validator.check_schema(v2_schema)
+    assert list(Draft202012Validator(v1_schema).iter_errors(v1_document)) == []
+    assert list(Draft202012Validator(v2_schema).iter_errors(v2_document)) == []
+
+    # A consumer can distinguish the historical v1 room shape from v2's
+    # release-authoritative skill pins. Neither wire shape masquerades as the
+    # other version.
+    assert list(Draft202012Validator(v2_schema).iter_errors(v1_document))
+    assert list(Draft202012Validator(v1_schema).iter_errors(v2_document))
+    assert all("skill_sources" not in room for room in v1_document["capabilities"].values())
+    assert all("skill_sources" in room for room in v2_document["capabilities"].values())
+
+
+def test_room_upgrade_ledger_preserves_all_published_payload_identities() -> None:
+    expected = {
+        "career-setup": {
+            (
+                "v1.95.2",
+                "12784bb4a2c5bb1edc786226b2e4108a34db85583c9d59ea80b1a941fb6b474c",
+                14824,
+            ),
+            (
+                "v1.70.0",
+                "06bfbd6de60a204449eb793508201431587d7c0b34b57d4b5c4a4421847e1f59",
+                14812,
+            ),
+        },
+        "career-coach": {
+            (
+                "v1.95.2",
+                "356de976657e23a399c19bd09f580e429cc0c3fc7da4a79095345b6ce8c8d352",
+                29547,
+            ),
+            (
+                "v1.83.0",
+                "ae9b0e67688e45a8e24233c28781a18a8b527eee0ab49e3999c8a4d5bc1fd26a",
+                29185,
+            ),
+            (
+                "v1.70.0",
+                "0bda287205a5f1674dcaada2f596e61505d63443518cab5dd350b0ec1b2885dd",
+                29179,
+            ),
+        },
+        "resume-builder": {
+            (
+                "v1.95.2",
+                "f759f12154a6b928ad4e16bf2bf82c363d6e9baf9cd9ddfedd639b60fc51d5de",
+                29649,
+            ),
+        },
+        "quarter-plan": {
+            (
+                "v1.95.2",
+                "08679c722b1555563e125a7bbc67ef1ccf1dfa367f522a5eb8565cea77fd937f",
+                9406,
+            ),
+        },
+        "quarter-review": {
+            (
+                "v1.95.2",
+                "069b339f63aa436b8ae01b16d97756b14f003f9069eb10c11827ed9abf5df794",
+                12851,
+            ),
+        },
+    }
+    document = portable_contract.build_contract_document(contract_version=2)
+    observed = {
+        pin["skill"]: {
+            (previous["release"], previous["sha256"], previous["byte_size"])
+            for previous in pin["previous_payloads"]
+        }
+        for room in document["capabilities"].values()
+        for pin in room["skill_sources"]
+        if pin["previous_payloads"]
+    }
+
+    assert observed == expected
 
 
 def _tracked_paths() -> list[str]:
@@ -295,6 +385,54 @@ def test_onboarding_context_operation_only_authorizes_the_live_profile() -> None
     assert allowed.action == "write-onboarding-context"
     assert refused.allowed is False
     assert refused.action == "outside-onboarding-context"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "System/user-profile.yaml",
+        "System/pillars.yaml",
+        "System/.onboarding-complete",
+        "System/.onboarding-session.json",
+        "CLAUDE.md",
+        ".mcp.json",
+        "core/paths.json",
+        "03-Tasks/Tasks.md",
+        "02-Week_Priorities/Week_Priorities.md",
+        ".claude/skills/career-setup/SKILL.md",
+        "05-Areas/Career/Evidence/README.md",
+    ],
+)
+def test_onboarding_provision_operation_authorizes_only_declared_outputs(path: str) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=True,
+        operation="onboarding-provision",
+    )
+
+    assert verdict.allowed is True
+    assert verdict.action == "write-onboarding-provision"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "System/.onboarding/other.json",
+        "System/credentials/token.json",
+        ".claude/skills/not-a-room-skill/SKILL.md",
+        "05-Areas/Career/private.md",
+        "README.md",
+    ],
+)
+def test_onboarding_provision_operation_refuses_adjacent_and_denied_paths(path: str) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="onboarding-provision",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action in {"deny", "outside-onboarding-provision"}
 
 
 @pytest.mark.parametrize(

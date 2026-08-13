@@ -742,12 +742,13 @@ def command_publish(args: argparse.Namespace, gh: Gh | None = None) -> int:
         # release: setting the prerelease flag in the SAME `gh release edit` as
         # `--draft=false` left the release marked as not-a-prerelease, which for the
         # beta lane would present a beta build to everyone as the current version.
-        # Applied on its own, the flag sticks. So: set the notes and the flags while
-        # the release is still hidden, then flip it public as its own operation.
+        # Applied on its own, the flag sticks. So: set the notes and prerelease
+        # state while the release is still hidden, then flip it public as its own
+        # operation. A stable release cannot be marked latest while it is a draft:
+        # GitHub rejects that combination with HTTP 422. Mark it latest only after
+        # the public-state readback below has proved it is no longer a draft.
         flags = ["edit", tag, "--notes-file", str(body_file)]
         flags.append("--prerelease=true" if want_prerelease else "--prerelease=false")
-        if not want_prerelease:
-            flags.append("--latest")
         result = gh.release(flags, check=False)
         if result.returncode != 0:
             raise ReleasePublishError(
@@ -790,6 +791,13 @@ def command_publish(args: argparse.Namespace, gh: Gh | None = None) -> int:
             raise ReleasePublishError(
                 f"{tag} is public but its prerelease flag is {final.is_prerelease}, "
                 f"and it could not be set to {want_prerelease}."
+            )
+    if not want_prerelease:
+        latest = gh.release(["edit", tag, "--latest"], check=False)
+        if latest.returncode != 0:
+            raise ReleasePublishError(
+                f"{tag} is public and verified but could not be marked latest: "
+                f"{latest.stderr.strip()}"
             )
     still_missing = [
         name

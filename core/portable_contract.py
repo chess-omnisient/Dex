@@ -38,7 +38,8 @@ import posixpath
 from dataclasses import dataclass
 from typing import Iterable
 
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 2
+SUPPORTED_CONTRACT_VERSIONS = (1, CONTRACT_VERSION)
 VAULT_SCHEMA_SUPPORTED = ">=1 <2"
 
 OWNERSHIP_CLASSES = ("brain", "vault", "seed", "generated", "runtime")
@@ -340,22 +341,132 @@ RULES: tuple[Rule, ...] = (
 # (vault-owned values). An ABSENT room is a VALID vault state: convergence and
 # repair must never recreate a room the user did not select.
 # ---------------------------------------------------------------------------
+
+
+def _room_skill_source(
+    room: str,
+    skill: str,
+    sha256: str,
+    byte_size: int,
+    *,
+    previous_payloads: tuple[tuple[str, str, int], ...] = (),
+) -> dict[str, object]:
+    """Declare current and safely replaceable prior release-owned payloads."""
+    return {
+        "room": room,
+        "skill": skill,
+        "source_path": (
+            f".claude/skills/_available/capabilities/{room}/skills/{skill}/SKILL.md"
+        ),
+        "target_path": f".claude/skills/{skill}/SKILL.md",
+        "sha256": sha256,
+        "byte_size": byte_size,
+        "previous_payloads": [
+            {
+                "release": release,
+                "sha256": previous_sha256,
+                "byte_size": previous_byte_size,
+            }
+            for release, previous_sha256, previous_byte_size in previous_payloads
+        ],
+    }
+
+
 CAPABILITIES: dict[str, dict[str, object]] = {
     "career": {
         "folders": ("05-Areas/Career",),
         "skills": ("career-setup", "career-coach", "resume-builder"),
+        "skill_sources": (
+            _room_skill_source(
+                "career",
+                "career-setup",
+                "155890770de4640fade1501881a8963c05751aaf3cdbfb2e9399009ff2bd726f",
+                20422,
+                previous_payloads=(
+                    (
+                        "v1.95.2",
+                        "12784bb4a2c5bb1edc786226b2e4108a34db85583c9d59ea80b1a941fb6b474c",
+                        14824,
+                    ),
+                    (
+                        "v1.70.0",
+                        "06bfbd6de60a204449eb793508201431587d7c0b34b57d4b5c4a4421847e1f59",
+                        14812,
+                    ),
+                ),
+            ),
+            _room_skill_source(
+                "career",
+                "career-coach",
+                "ff1997a5eb4092b0993425d57b048d0c8dcf16c1d37d62b2df443eaa6f836a6c",
+                36036,
+                previous_payloads=(
+                    (
+                        "v1.95.2",
+                        "356de976657e23a399c19bd09f580e429cc0c3fc7da4a79095345b6ce8c8d352",
+                        29547,
+                    ),
+                    (
+                        "v1.83.0",
+                        "ae9b0e67688e45a8e24233c28781a18a8b527eee0ab49e3999c8a4d5bc1fd26a",
+                        29185,
+                    ),
+                    (
+                        "v1.70.0",
+                        "0bda287205a5f1674dcaada2f596e61505d63443518cab5dd350b0ec1b2885dd",
+                        29179,
+                    ),
+                ),
+            ),
+            _room_skill_source(
+                "career",
+                "resume-builder",
+                "383ad20bca80a5594d09b36f5ea0cfaf84d03de3d9da51b78f569b8d56fb8444",
+                34352,
+                previous_payloads=((
+                    "v1.95.2",
+                    "f759f12154a6b928ad4e16bf2bf82c363d6e9baf9cd9ddfedd639b60fc51d5de",
+                    29649,
+                ),),
+            ),
+        ),
         "mcp": ("career_server", "resume_server"),
         "default_enabled": True,
     },
     "companies": {
         "folders": ("05-Areas/Companies",),
         "skills": (),
+        "skill_sources": (),
         "features": ("entity-engine.company-pages",),
         "default_enabled": True,
     },
     "quarter_goals": {
         "folders": ("01-Quarter_Goals",),
         "skills": ("quarter-plan", "quarter-review"),
+        "skill_sources": (
+            _room_skill_source(
+                "quarter_goals",
+                "quarter-plan",
+                "330b61f5e0d7c5a1eecbb3453b102fcdc795e7eaf13adf8a361a93bd0a06dc94",
+                14097,
+                previous_payloads=((
+                    "v1.95.2",
+                    "08679c722b1555563e125a7bbc67ef1ccf1dfa367f522a5eb8565cea77fd937f",
+                    9406,
+                ),),
+            ),
+            _room_skill_source(
+                "quarter_goals",
+                "quarter-review",
+                "a55db8afede1a60e7de564610a6110fc418a53a434e5ece59a3fab1074bd4fb1",
+                19152,
+                previous_payloads=((
+                    "v1.95.2",
+                    "069b339f63aa436b8ae01b16d97756b14f003f9069eb10c11827ed9abf5df794",
+                    12851,
+                ),),
+            ),
+        ),
         "config": "quarterly_planning",
         "default_enabled": True,
     },
@@ -374,6 +485,32 @@ MUTATION_POLICY: dict[str, str] = {
     "vault": "never",             # the user's; updates never write
     "runtime": "never",           # local machine state; updates never write
 }
+
+# First-run setup is a narrower authority than an update.  These are the only
+# file paths the provision planner may place in its crash-safe transaction.
+# Parent directories are created and recovered only as part of those file writes;
+# the provisioner never opens a separate empty-directory mutation path.
+ONBOARDING_PROVISION_PATHS = frozenset(
+    {
+        "System/user-profile.yaml",
+        "System/pillars.yaml",
+        "System/.onboarding-complete",
+        "System/.onboarding-session.json",
+        "CLAUDE.md",
+        ".mcp.json",
+        "core/paths.json",
+        "03-Tasks/Tasks.md",
+        "02-Week_Priorities/Week_Priorities.md",
+        "01-Quarter_Goals/Quarter_Goals.md",
+        "05-Areas/Career/Evidence/README.md",
+        "05-Areas/Companies/README.md",
+    }
+    | {
+        str(source["target_path"])
+        for room in CAPABILITIES.values()
+        for source in room.get("skill_sources", ())
+    }
+)
 
 CUSTOMIZATION_MIGRATION_SEAMS_VERSION = 0
 CUSTOMIZATION_MIGRATION_SEAM_PREFIXES = ("System/.dex/customization-migrations/",)
@@ -429,8 +566,49 @@ def update_write_verdict(
         "mcp-registration",
         "legacy-qmd-reconciliation",
         "onboarding-context",
+        "onboarding-provision",
     ):
         raise ValueError(f"unknown write operation: {operation}")
+
+    if operation == "onboarding-provision":
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "outside-onboarding-provision",
+                None,
+                None,
+            )
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        if candidate in ONBOARDING_PROVISION_PATHS:
+            return WriteVerdict(
+                candidate,
+                True,
+                "write-onboarding-provision",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-onboarding-provision",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
+        )
 
     if operation == "capability-state":
         try:
@@ -729,11 +907,78 @@ def legacy_shipped_runtime(paths: Iterable[str]) -> list[str]:
     ]
 
 
-def build_contract_schema() -> dict[str, object]:
-    """JSON Schema validating the committed contract document."""
+def build_contract_schema(
+    *,
+    contract_version: int = CONTRACT_VERSION,
+) -> dict[str, object]:
+    """JSON Schema for one supported portable-contract wire version."""
+    if contract_version not in SUPPORTED_CONTRACT_VERSIONS:
+        raise ValueError(f"unsupported portable contract version: {contract_version}")
+    capability_properties: dict[str, object] = {
+        "default_enabled": {"type": "boolean"},
+        "folders": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "minItems": 1,
+        },
+        "skills": {"type": "array", "items": {"type": "string"}},
+        "mcp": {"type": "array", "items": {"type": "string"}},
+        "features": {"type": "array", "items": {"type": "string"}},
+        "config": {"type": "string", "minLength": 1},
+    }
+    capability_required = ["default_enabled", "folders"]
+    if contract_version >= 2:
+        capability_required.extend(("skills", "skill_sources"))
+        capability_properties["skill_sources"] = {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "room",
+                    "skill",
+                    "source_path",
+                    "target_path",
+                    "sha256",
+                    "byte_size",
+                    "previous_payloads",
+                ],
+                "properties": {
+                    "room": {"type": "string", "minLength": 1},
+                    "skill": {"type": "string", "minLength": 1},
+                    "source_path": {"type": "string", "minLength": 1},
+                    "target_path": {"type": "string", "minLength": 1},
+                    "sha256": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$",
+                    },
+                    "byte_size": {"type": "integer", "minimum": 0},
+                    "previous_payloads": {
+                        "type": "array",
+                        "uniqueItems": True,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["release", "sha256", "byte_size"],
+                            "properties": {
+                                "release": {
+                                    "type": "string",
+                                    "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
+                                },
+                                "sha256": {
+                                    "type": "string",
+                                    "pattern": "^[0-9a-f]{64}$",
+                                },
+                                "byte_size": {"type": "integer", "minimum": 0},
+                            },
+                        },
+                    },
+                },
+            },
+        }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://dex/contracts/portable-vault.schema.json",
+        "$id": f"https://dex/contracts/portable-vault.v{contract_version}.schema.json",
         "title": "Dex Portable Vault Ownership Contract",
         "type": "object",
         "additionalProperties": False,
@@ -750,7 +995,7 @@ def build_contract_schema() -> dict[str, object]:
             "capabilities",
         ],
         "properties": {
-            "contract_version": {"type": "integer", "minimum": 1},
+            "contract_version": {"const": contract_version},
             "source": {"const": "core/portable_contract.py"},
             "vault_schema_supported": {"type": "string", "minLength": 1},
             "mutation_policy": {
@@ -833,19 +1078,8 @@ def build_contract_schema() -> dict[str, object]:
                 "additionalProperties": {
                     "type": "object",
                     "additionalProperties": False,
-                    "required": ["default_enabled", "folders"],
-                    "properties": {
-                        "default_enabled": {"type": "boolean"},
-                        "folders": {
-                            "type": "array",
-                            "items": {"type": "string", "minLength": 1},
-                            "minItems": 1,
-                        },
-                        "skills": {"type": "array", "items": {"type": "string"}},
-                        "mcp": {"type": "array", "items": {"type": "string"}},
-                        "features": {"type": "array", "items": {"type": "string"}},
-                        "config": {"type": "string", "minLength": 1},
-                    },
+                    "required": capability_required,
+                    "properties": capability_properties,
                 },
             },
         },
@@ -870,10 +1104,15 @@ def write_contract_package(dist_dir) -> dict[str, object]:
     return document
 
 
-def build_contract_document() -> dict[str, object]:
-    """The deterministic JSON view committed to packages/dex-contracts/dist."""
+def build_contract_document(
+    *,
+    contract_version: int = CONTRACT_VERSION,
+) -> dict[str, object]:
+    """The deterministic JSON view for one supported wire version."""
+    if contract_version not in SUPPORTED_CONTRACT_VERSIONS:
+        raise ValueError(f"unsupported portable contract version: {contract_version}")
     return {
-        "contract_version": CONTRACT_VERSION,
+        "contract_version": contract_version,
         "source": "core/portable_contract.py",
         "vault_schema_supported": VAULT_SCHEMA_SUPPORTED,
         "ownership_classes": list(OWNERSHIP_CLASSES),
@@ -900,6 +1139,7 @@ def build_contract_document() -> dict[str, object]:
             name: {
                 key: (list(value) if isinstance(value, tuple) else value)
                 for key, value in sorted(spec.items())
+                if contract_version >= 2 or key != "skill_sources"
             }
             for name, spec in sorted(CAPABILITIES.items())
         },
