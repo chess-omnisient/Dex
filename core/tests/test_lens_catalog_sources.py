@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -24,6 +26,65 @@ def _write(path: Path, content: bytes | str) -> bytes:
 
 def _pin(payload: bytes) -> tuple[str, int]:
     return hashlib.sha256(payload).hexdigest(), len(payload)
+
+
+def _git(root: Path, *arguments: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), *arguments],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.strip()
+
+
+def _split_release_tree(root: Path, *, source_tracked: bool = True) -> str:
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "tests@example.invalid")
+    _git(root, "config", "user.name", "Dex tests")
+    _git(root, "add", ".")
+    _git(root, "commit", "-qm", "release")
+
+    source = root / ".claude/skills/_available/capabilities/career/skills/career-setup/SKILL.md"
+    if not source_tracked:
+        payload = source.read_bytes()
+        _git(root, "rm", "-q", source.relative_to(root).as_posix())
+        _git(root, "commit", "-qm", "release without room source")
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(payload)
+
+    installed = _git(root, "rev-parse", "HEAD")
+    brain = root / ".dex/brain.git"
+    brain.parent.mkdir()
+    shutil.move(str(root / ".git"), brain)
+    _git(root, f"--git-dir={brain}", "update-ref", "refs/dex/installed", installed)
+    (brain / "dex-brain-v2").write_text(
+        json.dumps({"schemaVersion": 1, "role": "brain", "installed": installed}),
+        encoding="utf-8",
+    )
+
+    _git(root, "init", "-q")
+    (root / ".git/dex-vault-v2").write_text(
+        json.dumps({"schemaVersion": 1, "role": "vault"}),
+        encoding="utf-8",
+    )
+    topology = root / "System/.dex/topology.json"
+    topology.parent.mkdir(parents=True)
+    topology.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "topology": "brain-vault-split",
+                "vaultGitDir": ".git",
+                "brainGitDir": ".dex/brain.git",
+                "installedRelease": installed,
+                "environment": {"DEX_VAULT": str(root)},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return installed
 
 
 def _fixture(root: Path) -> dict[str, object]:
@@ -142,6 +203,35 @@ def test_closed_source_kinds_resolve_to_one_verified_pin(tmp_path: Path) -> None
         ".claude/skills/career-setup/SKILL.md",
     )
     assert all(pin.path.read_bytes() for pin in (active, lifecycle, room))
+
+
+def test_split_vault_uses_installed_brain_tree_for_source_identity(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    _split_release_tree(tmp_path)
+
+    room = _resolve(tmp_path, fixture["room"], fixture)
+
+    assert room.path.read_bytes()
+
+
+def test_split_vault_rejects_source_missing_from_installed_brain_tree(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    _split_release_tree(tmp_path, source_tracked=False)
+
+    with pytest.raises(SkillSourceError, match="not tracked.*installed.*tree"):
+        _resolve(tmp_path, fixture["room"], fixture)
+
+
+def test_split_vault_rejects_inconsistent_brain_identity(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    _split_release_tree(tmp_path)
+    marker = tmp_path / ".dex/brain.git/dex-brain-v2"
+    document = json.loads(marker.read_text(encoding="utf-8"))
+    document["installed"] = "0" * 40
+    marker.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(SkillSourceError, match="brain.*installed.*does not match"):
+        _resolve(tmp_path, fixture["room"], fixture)
 
 
 @pytest.mark.parametrize(
