@@ -37,7 +37,7 @@ from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
 from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry, PlanRejected
 from core.transaction.journal import Journal, JournalCorruptError
-from core.utils import dex_logger, launch_agents, preflight, release_channel
+from core.utils import apple_mail_health, dex_logger, launch_agents, preflight, release_channel
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
@@ -647,6 +647,7 @@ DEEP_CHECKS = (
     CheckDefinition("config.meeting_sources", "Configured meeting source", "_probe_meeting_sources"),
     CheckDefinition("update.post-canary", "Post-update canary", "_probe_post_update_canary"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
+    CheckDefinition("mail.apple-search", "Apple Mail search", "_probe_apple_mail_search"),
     CheckDefinition("qmd.live", "Semantic search", "_probe_qmd_live"),
     CheckDefinition("integrations.enabled", "Enabled integrations", "_probe_integrations_enabled"),
     CheckDefinition("mcp.importable", "MCP imports", "_probe_mcp_importable"),
@@ -5008,6 +5009,34 @@ def _probe_calendar_access(context: DoctorContext) -> ProbeResult:
             ),
         )
     return ProbeResult("OK", f"Calendar access works and {len(calendars)} calendar names were returned")
+
+
+def _apple_mail_cli_present() -> bool:
+    return shutil.which("apple-mail-mcp") is not None
+
+
+def _probe_apple_mail_search(context: DoctorContext) -> ProbeResult:
+    """Adapt the focused Apple Mail checker to Doctor's normalized result."""
+    result = apple_mail_health.probe(
+        apple_mail_health.Context(
+            home=context.home,
+            vault_root=context.vault_root,
+            now=context.now,
+            user_config_path=context.home / ".claude.json",
+            project_config_path=_mcp_config_path(context),
+            environment=os.environ,
+            macos=_is_macos(),
+            cli_present=_apple_mail_cli_present(),
+        )
+    )
+    heal = Heal(tier=3, action=result.action, applied=False) if result.action else None
+    return ProbeResult(
+        result.verdict,
+        result.detail,
+        heal,
+        feature_status=result.feature_status,
+        user_message=result.user_message,
+    )
 
 
 def _qmd_registered(config: dict[str, Any]) -> bool:
