@@ -31,7 +31,7 @@ if str(RUNNER_ROOT) in sys.path:
     sys.path.remove(str(RUNNER_ROOT))
 sys.path.insert(0, str(RUNNER_ROOT))
 
-from core.utils import release_channel
+from core.utils import dex_logger, release_channel
 
 SCHEMA_VERSION = 1
 HISTORY_LIMIT = 120
@@ -71,8 +71,8 @@ SENSITIVE_CONFIG_KEY = re.compile(
 
 
 def _missing_module_detail(error: ModuleNotFoundError) -> str:
-    module = error.name
-    if module == "core" or (isinstance(module, str) and module.startswith("core.")):
+    module = dex_logger.missing_module_name(error)
+    if dex_logger.is_dex_module(module):
         return (
             f"Dex's own code could not be loaded ({_one_line(error)}). "
             "This is a Dex checkup fault, not a missing Python package."
@@ -94,6 +94,7 @@ RUNNER_FALLBACK_RELATIVES = (
     Path("core/__init__.py"),
     Path("core/paths.py"),
     Path("core/utils/__init__.py"),
+    Path("core/utils/dex_logger.py"),
     Path("core/utils/release_channel.py"),
     Path("core/utils/smoke.py"),
     Path("core/utils/trust_registry.py"),

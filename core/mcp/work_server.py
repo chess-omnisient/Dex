@@ -69,6 +69,10 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+_LEAKED_TOOL_CALL_DELIMITER_RE = re.compile(
+    r'</context\s*>|<parameter\s+name\s*=',
+    re.IGNORECASE,
+)
 # QMD semantic search (optional - gracefully degrade if not available)
 try:
     from core.utils.qmd_query import is_qmd_available, vault_search
@@ -4398,6 +4402,18 @@ async def _handle_call_tool_inner(
         people = arguments.get('people', []) or []
         source = arguments.get('source', '') or ''
         stamp_source_line = arguments.get('stamp_source_line', '') or ''
+        if _LEAKED_TOOL_CALL_DELIMITER_RE.search(context):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": (
+                    "Malformed create_task arguments: context contains leaked "
+                    "tool-call delimiters."
+                ),
+                "suggestion": (
+                    "Retry create_task with plain context and pass metadata through "
+                    "the structured account and source fields."
+                ),
+            }, indent=2))]
         if source.startswith('meeting:'):
             source = source[len('meeting:'):]
         account_link = None
