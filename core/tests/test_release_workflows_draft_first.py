@@ -187,6 +187,18 @@ def test_stable_release_verifies_catalog_identity_before_publication() -> None:
     )
 
 
+def test_beta_release_verifies_both_catalog_identities_before_push() -> None:
+    workflow = _load(CI_WORKFLOW)
+    steps = workflow["jobs"]["build-release-beta"]["steps"]
+    named = {step["name"]: step for step in steps if "name" in step}
+    build = named["Build beta release branch"]["run"]
+
+    assert "set -euo pipefail" in build
+    assert "--release-ref release-beta --print-catalog-tag" in build
+    assert "--release-ref release-beta --source-ref beta" in build
+    assert 'test -n "$IDENTITY"' in build
+
+
 def test_the_stable_lane_keeps_the_non_cancelling_publish_lock() -> None:
     """The fleet proof shares this lock; a queued release must wait, not be cancelled."""
     stable = _load(CI_WORKFLOW)["jobs"]["build-release"]

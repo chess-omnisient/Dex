@@ -127,7 +127,7 @@ refresh_public_tags() {
 }
 
 assert_public_annotated_tag() {
-  local tag local_object advertised short commit
+  local tag local_object advertised identity
   tag="$1"
   if [ "$(git cat-file -t "$tag" 2>/dev/null || true)" != "tag" ]; then
     echo "public immutable tag is missing or is not annotated: $tag" >&2
@@ -140,12 +140,21 @@ assert_public_annotated_tag() {
     echo "public immutable tag identity does not match: $tag" >&2
     return 1
   fi
-  short="${tag##*-}"
-  commit="$(git rev-parse --verify "$tag^{commit}")"
-  case "$commit" in
-    "$short"*) ;;
-    *) echo "immutable tag suffix does not match its commit: $tag" >&2; return 1 ;;
-  esac
+  identity="$(python3 - "$tag" <<'PY'
+import sys
+from pathlib import Path
+
+from scripts.release_fleet import resolve_immutable_release
+
+release = resolve_immutable_release(Path.cwd(), sys.argv[1])
+print(f"{release.tag} -> {release.commit}")
+PY
+)"
+  if [ -z "$identity" ]; then
+    echo "public immutable tag identity observation was empty: $tag" >&2
+    return 1
+  fi
+  printf '%s\n' "$identity"
 }
 
 disk_kib() {
@@ -406,6 +415,15 @@ run_canary() {
     return 1
   fi
   CANDIDATE_TAG="${candidate_tags[0]}"
+  CANDIDATE_IDENTITY="$(
+    python3 scripts/check-release-catalog-tag-identity.py \
+      --release-ref release --source-ref candidate
+  )"
+  if [ -z "$CANDIDATE_IDENTITY" ]; then
+    echo "candidate release catalog identity observation was empty" >&2
+    return 1
+  fi
+  printf '%s\n' "$CANDIDATE_IDENTITY"
   FOLLOW_UP_CACHE="$WORK_ROOT/candidate-release.git"
   git init --bare --quiet "$FOLLOW_UP_CACHE"
   chmod 700 "$FOLLOW_UP_CACHE"

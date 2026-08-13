@@ -412,8 +412,7 @@ def resolve_immutable_release(repo: Path, tag: str) -> ImmutableRelease:
     tree = _git(repo, "rev-parse", f"{tag}^{{tree}}")
     if any(_HEX.fullmatch(value) is None for value in (tag_object, commit, tree)):
         raise FleetError(f"{tag}: journey target identity is malformed")
-    if not commit.startswith(match.group("short")):
-        raise FleetError(f"{tag}: tag suffix does not match its commit")
+    _assert_distribution_tag_suffix(repo, tag, match, commit)
     return ImmutableRelease(tag, tag_object, commit, tree, match.group("version"))
 
 
@@ -445,6 +444,77 @@ def _tag_file_if_present(repo: Path, tag: str, relative: str) -> bytes | None:
     if not result.stdout:
         return None
     return _tag_file(repo, tag, relative)
+
+
+def _catalog_source_for_distribution_tag(
+    repo: Path, tag: str, version: str
+) -> str | None:
+    """Return the source identity when this catalog canonically names ``tag``.
+
+    Historic tags minted before the catalog identity loop name their peeled
+    release commit instead. A catalog that names a different tag identifies
+    that historical contract; the observed tag must still match its peeled
+    release commit. Candidate publication uses the strict catalog checker and
+    never enters this compatibility path.
+    """
+
+    raw = _tag_file_if_present(repo, tag, "System/.release-catalog.json")
+    if raw is None:
+        return None
+
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise FleetError(
+                    f"{tag}: release catalog is malformed: duplicate key {key!r}"
+                )
+            result[key] = value
+        return result
+
+    try:
+        document = json.loads(raw, object_pairs_hook=unique_object)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise FleetError(f"{tag}: release catalog is malformed") from error
+    if not isinstance(document, Mapping):
+        raise FleetError(f"{tag}: release catalog is malformed")
+    release = document.get("release")
+    if not isinstance(release, Mapping):
+        raise FleetError(f"{tag}: release catalog is malformed")
+    catalog_tag = release.get("immutable_distribution_tag")
+    if catalog_tag is None:
+        source_commit = release.get("source_commit")
+        if isinstance(source_commit, str) and _HEX.fullmatch(source_commit) is not None:
+            return None
+        raise FleetError(f"{tag}: release catalog is malformed")
+    if (
+        not isinstance(catalog_tag, str)
+        or release.get("version") != version
+        or release.get("channel") != "release"
+    ):
+        raise FleetError(f"{tag}: release catalog is malformed")
+    canonical_tag = tag.replace("dist/archive/", "dist/release/", 1)
+    if catalog_tag not in {tag, canonical_tag}:
+        return None
+    source_commit = release.get("source_commit")
+    if not isinstance(source_commit, str) or _HEX.fullmatch(source_commit) is None:
+        raise FleetError(f"{tag}: canonical release catalog has no valid source commit")
+    expected_tag = f"dist/release/v{version}-{source_commit[:7]}"
+    if canonical_tag != expected_tag:
+        raise FleetError(f"{tag}: tag suffix does not match its catalog source commit")
+    return source_commit
+
+
+def _assert_distribution_tag_suffix(
+    repo: Path, tag: str, match: re.Match[str], peeled_commit: str
+) -> None:
+    catalog_source = _catalog_source_for_distribution_tag(
+        repo, tag, match.group("version")
+    )
+    expected_commit = catalog_source or peeled_commit
+    if not expected_commit.startswith(match.group("short")):
+        identity = "catalog source commit" if catalog_source else "commit"
+        raise FleetError(f"{tag}: tag suffix does not match its {identity}")
 
 
 def _strict_object(source: bytes, context: str, keys: frozenset[str]) -> dict[str, object]:
@@ -1031,8 +1101,8 @@ def discover_distribution_releases(repo: Path) -> tuple[DistributionRelease, ...
 
     for priority, tag, match in sorted(candidates, key=lambda item: (item[0], item[1])):
         commit = _git(repo, "rev-parse", f"{tag}^{{commit}}")
-        if priority < 2 and not commit.startswith(match.group("short")):
-            raise FleetError(f"{tag}: tag suffix does not match its commit")
+        if priority < 2:
+            _assert_distribution_tag_suffix(repo, tag, match, commit)
         if priority < 2:
             identity = (match.group("version"), match.group("short"))
             existing_commit = immutable_identities.setdefault(identity, commit)

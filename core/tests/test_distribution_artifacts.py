@@ -222,6 +222,7 @@ def _build_release_in_clone(
     source: str = "main",
     target: str = "release",
     name: str = "release-build",
+    preexisting_tags: set[str] | None = None,
 ) -> tuple[Path, set[str]]:
     """Build from the current checkout without ever switching its branches."""
     clone = _clone_repo(tmp_path, name)
@@ -243,6 +244,16 @@ def _build_release_in_clone(
         cwd=clone,
         check=True,
     )
+    if preexisting_tags is not None:
+        preexisting_tags.update(
+            subprocess.run(
+                ["git", "tag", "--list"],
+                cwd=clone,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.splitlines()
+        )
 
     command = ["bash", "scripts/build-release.sh"]
     if (source, target) != ("main", "release"):
@@ -564,15 +575,26 @@ def test_beta_release_branch_uses_same_stripping_and_manifest(tmp_path: Path) ->
     _assert_tau_absent_from_release_artifacts(
         clone, "release-beta", tmp_path / "beta-release.tar"
     )
-    beta_version = _git_json(clone, "release-beta:package.json")["version"]
-    beta_short_sha = subprocess.run(
-        ["git", "rev-parse", "--short", "release-beta"],
+    beta_catalog = _git_json(clone, "release-beta:System/.release-catalog.json")
+    beta_release = beta_catalog["release"]
+    beta_version = beta_release["version"]
+    beta_source_sha = subprocess.run(
+        ["git", "rev-parse", "beta"],
         cwd=clone,
         check=True,
         capture_output=True,
         text=True,
     ).stdout.strip()
-    beta_tag = f"dist/release-beta/v{beta_version}-{beta_short_sha}"
+    beta_tag = beta_release["immutable_distribution_tag"]
+    assert beta_release["source_commit"] == beta_source_sha
+    assert beta_tag == f"dist/release-beta/v{beta_version}-{beta_source_sha[:7]}"
+    assert subprocess.run(
+        ["git", "cat-file", "-t", beta_tag],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == "tag"
     assert subprocess.run(
         ["git", "rev-parse", f"{beta_tag}^{{}}"],
         cwd=clone,
@@ -1224,7 +1246,12 @@ def test_release_build_does_not_repeat_v1_96_2_catalog_tag_split(tmp_path: Path)
     }
     assert public_split["catalog_tag"] != public_split["minted_tag"]
 
-    clone, _ = _build_release_in_clone(tmp_path, name="catalog-tag-identity")
+    preexisting_tags: set[str] = set()
+    clone, _ = _build_release_in_clone(
+        tmp_path,
+        name="catalog-tag-identity",
+        preexisting_tags=preexisting_tags,
+    )
     catalog = _git_json(clone, "release:System/.release-catalog.json")
     catalog_tag = catalog["release"]["immutable_distribution_tag"]
     release_commit = subprocess.run(
@@ -1234,15 +1261,16 @@ def test_release_build_does_not_repeat_v1_96_2_catalog_tag_split(tmp_path: Path)
         capture_output=True,
         text=True,
     ).stdout.strip()
-    minted_tags = subprocess.run(
+    observed_tags = subprocess.run(
         ["git", "tag", "--list", f"dist/release/v{catalog['release']['version']}-*"],
         cwd=clone,
         check=True,
         capture_output=True,
         text=True,
     ).stdout.splitlines()
+    minted_tags = [tag for tag in observed_tags if tag not in preexisting_tags]
 
-    assert catalog_tag in minted_tags, (
+    assert minted_tags == [catalog_tag], (
         "release build repeated the v1.96.2 split: catalog names "
         f"{catalog_tag}, but the build minted {minted_tags}"
     )

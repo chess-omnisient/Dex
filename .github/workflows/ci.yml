@@ -535,10 +535,13 @@ jobs:
           bash scripts/build-release.sh --source beta --target release-beta
           RELEASE_TAG="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release-beta --print-catalog-tag)"
           test -n "$RELEASE_TAG"
-          git rev-parse --verify "refs/tags/$RELEASE_TAG"
+          IDENTITY="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release-beta --source-ref beta)"
+          test -n "$IDENTITY"
+          printf '%s\n' "$IDENTITY"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - name: Push beta release branch and immutable tag
         run: |
+          set -euo pipefail
           git push origin release-beta --force
           git push origin "${{ steps.release_build.outputs.release_tag }}"
       - name: Build self-contained vault bundle

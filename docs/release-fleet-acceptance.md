@@ -11,8 +11,9 @@ Every distinct tree behind a published release tag is a starting case. This
 means the `dist/release/v*` packages, historic `dist/archive/v*` distribution
 tags, and the older public `v*` release tags that predate that format. Archive
 tags preserve an immutable historic starting tree after its canonical
-distribution ref is retired; their version-and-commit suffix must still match
-the tagged commit. If two tags point at different trees—even when they share
+distribution ref is retired; legacy archives retain their version-and-commit
+suffix, while catalogs created under the current contract retain their source
+suffix and sanitized-release peel. If two tags point at different trees—even when they share
 the same version number—they are separate cases. Byte-identical trees are one
 case. A canonical and archive tag that claim the same version-and-commit
 identity but resolve to different commits are rejected as ambiguous.
