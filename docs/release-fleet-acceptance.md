@@ -220,16 +220,21 @@ formal fleet over the freshly discovered public cohort, and it passes
 `bridge_process_entry=True` for exactly one of them, so a release cannot be
 published having never started the bridge as a process.
 
-**It picks the newest release in the cohort, where the canary picks the oldest
-of its fixed starts, and that difference is the point.** The two vault shapes
-take different paths through the bridge: an old pre-split vault stops first at
-the topology approval, while a vault that is already brain/vault split skips
-that entirely — `run_bridge` records `already-brain-vault-split` and asks for no
-token — so its first approval gate is the delivered-release one. Two gates that
-both probed the oldest start would be correlated, and neither would ever watch
-the bridge reach the second of those gates as a real process.
-`bridge_process_entry_release()` owns that choice, so it is one function to
-change if the reasoning ever does.
+**It picks the newest historic start that is not already the pinned foundation,
+where the canary picks the oldest of its fixed starts, and that difference is
+the point.** The two vault shapes take different paths through the bridge: an
+old pre-split vault stops first at the topology approval, while a vault that is
+already brain/vault split skips that entirely — `run_bridge` records
+`already-brain-vault-split` and asks for no token — so its first approval gate
+is the delivered-release one. Two gates that both probed the oldest start would
+be correlated, and neither would ever watch the bridge reach the second of
+those gates as a real process.
+
+The pinned foundation itself is the wrong newest. The cohort is required to
+contain it, and its installer already leaves `refs/dex/installed` equal to the
+bridge pin, so `run_bridge` skips both approvals. A distinct same-version
+sibling is still eligible. `bridge_process_entry_release()` owns that choice, so
+it is one function to change if the reasoning ever does.
 
 After every case completes, `_assert_bridge_process_entry_ran` reads the
 evidence directory the probe leaves behind and requires exactly one, belonging

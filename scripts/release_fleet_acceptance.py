@@ -704,9 +704,10 @@ def bridge_process_entry_release(
 ) -> release_fleet.DistributionRelease | None:
     """Choose the one release that also starts the bridge as a process.
 
-    Deliberately the **newest** in the cohort, where the PR canary probes the
-    **oldest** of its fixed starts. Inheriting the canary's choice would leave
-    the two gates correlated, and they would then miss the same thing.
+    Deliberately the **newest historic start that is not already the pinned
+    foundation**, where the PR canary probes the **oldest** of its fixed starts.
+    Inheriting the canary's choice would leave the two gates correlated, and
+    they would then miss the same thing.
 
     They are not interchangeable, because the two vault shapes take different
     paths through the bridge. An old pre-split vault stops first at the topology
@@ -716,11 +717,30 @@ def bridge_process_entry_release(
     gate is the delivered-release one. Probing only the oldest start would mean
     no gate ever watched the bridge reach the second of those as a real process.
 
+    The pinned foundation itself is the wrong newest. The historic cohort is
+    required to contain it, and its installer fixture already has
+    ``refs/dex/installed`` and the split markers equal to the bridge pin. Then
+    ``run_bridge`` takes ``_foundation_is_installed`` and skips both topology
+    and delivered-release, so the process probe would never watch the APPLY
+    gate this exists to cover. A distinct same-version sibling (a semantic tag
+    with a different commit) is still eligible: installing it does not set the
+    pin, so it is the delivered-release shape.
+
     ``discover_distribution_releases`` sorts ascending by semantic version, so
-    the newest is the last entry.
+    the newest eligible start is the last remaining entry.
     """
 
-    return releases[-1] if releases else None
+    pin = FOUNDATION.identity()
+    candidates = tuple(
+        release
+        for release in releases
+        if (
+            release.tag != pin["tag"]
+            and release.commit != pin["commit"]
+            and release.tree != pin["tree"]
+        )
+    )
+    return candidates[-1] if candidates else None
 
 
 def _assert_bridge_process_entry_ran(

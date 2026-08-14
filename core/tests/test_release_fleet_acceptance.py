@@ -857,6 +857,61 @@ def test_the_formal_fleet_probes_the_newest_release_not_the_canary_s_oldest() ->
     assert acceptance.bridge_process_entry_release(()) is None
 
 
+def test_the_formal_fleet_does_not_probe_the_pinned_foundation() -> None:
+    """Newest can be the foundation itself. That start is the wrong shape.
+
+    The historic cohort is required to contain the exact pinned foundation.
+    Its installer fixture already has refs/dex/installed and the split markers
+    equal to the bridge pin, so run_bridge takes _foundation_is_installed and
+    skips both topology and delivered-release. The process probe would then
+    never watch the APPLY gate this change exists to cover.
+    """
+
+    acceptance = _acceptance()
+    already_split = _release("dist/release/v1.81.15-aaaaaaaa", "1.81.15", "a")
+    releases = (
+        _release("v1.51.0", "1.51.0", "1"),
+        already_split,
+        _foundation_release(),
+    )
+
+    designated = acceptance.bridge_process_entry_release(releases)
+
+    assert designated is not None
+    assert designated.tag == already_split.tag
+    assert designated.tag != FOUNDATION.tag
+    assert designated.commit != FOUNDATION.commit
+
+
+def test_a_distinct_same_version_sibling_of_the_foundation_is_still_eligible() -> None:
+    """Live newest is semantic v1.81.16, a different tree from the dist pin.
+
+    Installing that sibling does not set refs/dex/installed to the pin, so it
+    is the delivered-release shape this gate wants. Excluding every 1.81.16
+    identity would skip it for no reason.
+    """
+
+    acceptance = _acceptance()
+    sibling = _release("v1.81.16", "1.81.16", "s")
+    releases = (
+        _release("v1.51.0", "1.51.0", "1"),
+        _foundation_release(),
+        sibling,
+    )
+
+    designated = acceptance.bridge_process_entry_release(releases)
+
+    assert designated is not None
+    assert designated.tag == sibling.tag
+    assert designated.commit != FOUNDATION.commit
+
+
+def test_a_cohort_that_is_only_the_foundation_has_no_process_probe() -> None:
+    acceptance = _acceptance()
+
+    assert acceptance.bridge_process_entry_release((_foundation_release(),)) is None
+
+
 def test_platform_collector_requests_the_process_probe_for_exactly_one_release(
     tmp_path: Path,
 ) -> None:
@@ -902,6 +957,58 @@ def test_platform_collector_requests_the_process_probe_for_exactly_one_release(
     assert requested == [
         ("v1.51.0", False),
         ("dist/release/v1.80.5-2222222", True),
+    ]
+
+
+def test_platform_collector_skips_the_pinned_foundation_when_it_is_newest(
+    tmp_path: Path,
+) -> None:
+    acceptance = _acceptance()
+    already_split = _release("dist/release/v1.81.15-aaaaaaaa", "1.81.15", "a")
+    foundation = _foundation_release()
+    releases = (
+        _release("v1.51.0", "1.51.0", "1"),
+        already_split,
+        foundation,
+    )
+    asset_path, checksum_path = _bridge_pair(tmp_path)
+    requested: list[tuple[str, bool]] = []
+
+    def journey_runner(
+        _repo: Path,
+        *,
+        output: Path,
+        starting_tag: str,
+        foundation_tag: str,
+        follow_up_tag: str,
+        bridge_asset: Path,
+        bridge_checksum: Path,
+        controlled_approvals: bool,
+        bridge_process_entry: bool = False,
+    ) -> object:
+        del foundation_tag, follow_up_tag, bridge_asset, bridge_checksum
+        del controlled_approvals
+        requested.append((starting_tag, bridge_process_entry))
+        if bridge_process_entry:
+            _write_process_entry_evidence(output, starting_tag, releases)
+        return SimpleNamespace(case=_case_document(_case(starting_tag, "darwin")))
+
+    acceptance.collect_platform_runs(
+        tmp_path,
+        output=tmp_path,
+        releases=releases,
+        foundation_tag=FOUNDATION.tag,
+        follow_up_tag="dist/release/v1.81.17-3333333",
+        running_platform="darwin",
+        bridge_asset=asset_path,
+        bridge_checksum=checksum_path,
+        journey_runner=journey_runner,
+    )
+
+    assert requested == [
+        ("v1.51.0", False),
+        (already_split.tag, True),
+        (foundation.tag, False),
     ]
 
 
