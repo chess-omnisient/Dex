@@ -7,6 +7,7 @@ recorder, or claim that a live meeting-processing run succeeded.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -15,10 +16,32 @@ from core.utils.validators import validate_user_profile_config
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROFILE = REPO_ROOT / "System/user-profile-template.yaml"
+ONBOARDING = REPO_ROOT / ".claude/flows/onboarding.md"
 CLOSEOUT = REPO_ROOT / ".claude/skills/meeting-closeout/SKILL.md"
 PROCESS_AGENT = REPO_ROOT / ".claude/skills/process-meetings/AGENT_INSTRUCTIONS.md"
 PROCESS_ADAPTER = REPO_ROOT / ".agents/skills/process-meetings/SKILL.md"
 DAILY_AGENT = REPO_ROOT / ".claude/skills/daily-review/AGENT_INSTRUCTIONS.md"
+
+
+def _split_primary_list(raw: str, separator: str) -> list[str]:
+    primaries = [part.strip() for part in raw.split(separator) if part.strip()]
+    assert primaries, f"empty primary list from {raw!r}"
+    return primaries
+
+
+def _onboarding_persist_primaries() -> list[str]:
+    text = ONBOARDING.read_text(encoding="utf-8")
+    persist = text.split("**Persist the choice.**", 1)[1].split("\n", 1)[0]
+    match = re.search(r"set `primary` \(([^)]+)\)", persist)
+    assert match, "onboarding persist-choice primary list missing"
+    return _split_primary_list(match.group(1), "/")
+
+
+def _agent_instruction_primaries() -> list[str]:
+    text = PROCESS_AGENT.read_text(encoding="utf-8")
+    match = re.search(r"^  primary: (.+)$", text, re.M)
+    assert match, "process-meetings documented primary list missing"
+    return _split_primary_list(match.group(1), "|")
 
 
 def _section(body: str, start: str, end: str) -> str:
@@ -142,3 +165,29 @@ def test_contract_helper_rejects_removed_provider_neutral_capture_ids() -> None:
         pass
     else:
         raise AssertionError("contract accepted a provider-specific capture ID")
+
+
+def test_validate_user_profile_accepts_wispr_as_meeting_source_primary() -> None:
+    assert (
+        validate_user_profile_config(
+            {"meeting_sources": {"primary": "wispr", "notes_folder": ""}}
+        )
+        == []
+    )
+
+
+def test_onboarding_meeting_source_primaries_pass_the_validator() -> None:
+    primaries = _onboarding_persist_primaries()
+    assert "wispr" in primaries
+    for primary in primaries:
+        assert (
+            validate_user_profile_config({"meeting_sources": {"primary": primary}})
+            == []
+        ), primary
+
+
+def test_documented_meeting_source_primary_lists_stay_in_lockstep() -> None:
+    onboarding = _onboarding_persist_primaries()
+    instructions = _agent_instruction_primaries()
+    assert onboarding == instructions
+    assert "wispr" in onboarding

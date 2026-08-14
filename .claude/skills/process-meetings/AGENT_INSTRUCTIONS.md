@@ -26,7 +26,7 @@ shape is:
 
 ```yaml
 meeting_sources:
-  primary: granola | zoom | teams | exported-folder | none
+  primary: granola | zoom | teams | exported-folder | wispr | none
   notes_folder: "vault-relative/folder/or/empty"
 ```
 
