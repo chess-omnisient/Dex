@@ -7,6 +7,25 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.96.4] — 🧰 A clean Mac install finishes, and the desktop app can take over one background job (2026-08-14)
+
+A brand-new Mac could stop during first setup because Dex asked the computer for
+a helper it had not installed yet. Separately, the Dex Solo desktop app could not
+safely take over one existing Dex background job, so two copies of the same job
+could try to run.
+
+**What this fixes for you:**
+
+* **A clean install no longer depends on a leftover extra library.** First-time
+  setup checks its own files with tools that are already there, then installs
+  everything else in the right order.
+* **The desktop app can take over one existing background job without running it
+  twice.** It has to prove the old job is stopped first. Giving the job back
+  works the same way in reverse.
+* **Dex's own checkup stays honest about that handoff.** It ignores the
+  handed-over job only while the proof is still valid. If the proof goes stale,
+  the normal checkup takes over again.
+
 ## [1.96.3] — 🩺 Honest checkups, safer meetings, and releases you can verify (2026-08-13)
 
 This is a reliability release built from ten fixes that were tested together. The theme is
