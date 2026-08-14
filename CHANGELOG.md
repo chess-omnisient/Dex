@@ -7,18 +7,6 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.96.6] — You can tell Dex your meetings come from Wispr (2026-08-14)
-
-If you record meetings with Wispr Flow, Dex already understood those notes when they landed in your folder. The settings field that names where meetings come from still refused the word Wispr. Writing it was ignored. You had to leave the field blank or name a recorder you do not use.
-
-**What this fixes for you:**
-
-* **Wispr is now an honest answer for where meetings come from.** If that is your recorder, you can say so in settings.
-* **This does not connect Dex to Wispr.** Dex will not pull meetings from Wispr on its own. It only stops rejecting the name.
-* **Setup and settings now agree on the same list of names.** If one place offers a recorder name the other rejects, that mismatch is caught before it ships.
-
-A contributor found this after Dex already recognised their Wispr notes.
-
 ## [1.96.5] — 🧰 A brand-new Dex folder can finish setup even if first install left no history (2026-08-14)
 
 A person who had just installed Dex could get stuck in the first setup chat. Dex thought it had finished separating its own files from their notes, but the notes folder had no working history, and the safety copy that should have undone that step was damaged. Continue failed. Undo failed. Setup stopped before they could start.
