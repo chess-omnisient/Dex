@@ -722,3 +722,99 @@ test('ZIP and failed-preflight reports preserve a pre-existing user report befor
     assert.equal(fs.readFileSync(backup, 'utf8'), 'pre-existing user report\n');
   }
 });
+
+function makeBrokenFirstSetupVault() {
+  const root = makeGitFixture();
+  addV163MigrationMetadata(root);
+  fs.writeFileSync(path.join(root, 'CLAUDE.md'), '# Dex\n\n## USER_EXTENSIONS_START\n\n## USER_EXTENSIONS_END\n');
+  fs.mkdirSync(path.join(root, 'System'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'System', 'user-profile.yaml'), 'name: New User\n');
+  fs.mkdirSync(path.join(root, '03-Tasks'), { recursive: true });
+  fs.writeFileSync(path.join(root, '03-Tasks', 'Tasks.md'), '# Tasks\n');
+  git(root, 'add', 'CLAUDE.md', 'System/user-profile.yaml', '03-Tasks/Tasks.md');
+  git(root, 'commit', '--quiet', '-m', 'first vault files');
+  const head = git(root, 'rev-parse', 'HEAD');
+
+  const brain = path.join(root, '.dex', 'brain.git');
+  const archive = path.join(root, '.dex', 'pre-split-archive.git');
+  fs.mkdirSync(path.join(root, '.dex'), { recursive: true });
+  git(root, 'clone', '--quiet', '--bare', root, brain);
+  git(root, 'clone', '--quiet', '--bare', root, archive);
+  spawnSync('git', ['--git-dir', brain, 'update-ref', 'refs/dex/installed', head], {
+    encoding: 'utf8',
+  });
+  fs.writeFileSync(
+    path.join(brain, 'dex-brain-v2'),
+    `${JSON.stringify({ schemaVersion: 1, role: 'brain', installed: head }, null, 2)}\n`,
+  );
+  fs.writeFileSync(
+    path.join(archive, 'dex-pre-split-v2-archive.json'),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      migrationId: '2026-08-14T08:00:00.000Z',
+      preSplitHead: head,
+      releaseCommit: head,
+    }, null, 2)}\n`,
+  );
+  fs.mkdirSync(path.join(archive, 'refs', 'heads 2'), { recursive: true });
+  fs.writeFileSync(path.join(archive, 'refs', 'heads 2', 'main'), `${head}\n`);
+  fs.mkdirSync(path.join(archive, 'refs', 'remotes', 'upstream'), { recursive: true });
+  fs.writeFileSync(path.join(archive, 'refs', 'remotes', 'upstream', 'release'), `${'0'.repeat(40)}\n`);
+
+  fs.rmSync(path.join(root, '.git'), { recursive: true, force: true });
+  const topologyDir = path.join(root, 'System', '.dex');
+  fs.mkdirSync(topologyDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(topologyDir, 'topology.json'),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      topology: 'brain-vault-split',
+      vaultGitDir: '.git',
+      brainGitDir: '.dex/brain.git',
+      archiveGitDir: '.dex/pre-split-archive.git',
+      installedRelease: head,
+      environment: { DEX_VAULT: root },
+    }, null, 2)}\n`,
+  );
+  const migrator = require(MIGRATOR_PATH);
+  migrator.writeJournal(root, {
+    schemaVersion: 1,
+    status: 'complete',
+    startedAt: '2026-08-14T08:00:00.000Z',
+    nextPhase: 10,
+    preflight: { head, releaseCommit: head },
+    p9: { finalCommit: head },
+  });
+  return { root, head, archive, brain };
+}
+
+test('resume rebuilds a missing vault Git folder when the undo archive fails fsck', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const { root, archive } = makeBrokenFirstSetupVault();
+
+  assert.equal(fs.existsSync(path.join(root, '.git')), false);
+  assert.equal(
+    migrator.topologyDecision(migrator.inspectTopology(root)),
+    'restore-archive',
+  );
+  assert.throws(
+    () => migrator.restoreMigration(root),
+    /did not pass git fsck[\s\S]*--resume to rebuild the vault history/i,
+  );
+  assert.equal(fs.existsSync(path.join(root, '.git')), false);
+  assert.ok(fs.existsSync(archive));
+
+  assert.equal(migrator.main(['--resume'], root), 0);
+  assert.ok(fs.lstatSync(path.join(root, '.git')).isDirectory());
+  const vaultMarker = JSON.parse(
+    fs.readFileSync(path.join(root, '.git', 'dex-vault-v2'), 'utf8'),
+  );
+  assert.equal(vaultMarker.role, 'vault');
+  assert.equal(
+    migrator.topologyDecision(migrator.inspectTopology(root)),
+    'post-split',
+  );
+  assert.equal(git(root, 'rev-parse', '--is-inside-work-tree'), 'true');
+  assert.ok(fs.existsSync(archive));
+  assert.equal(migrator.main(['--resume'], root), 0);
+});

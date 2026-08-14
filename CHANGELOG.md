@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.96.5] — 🧰 A brand-new Dex folder can finish setup even if first install left no history (2026-08-14)
+
+A person who had just installed Dex could get stuck in the first setup chat. Dex thought it had finished separating its own files from their notes, but the notes folder had no working history, and the safety copy that should have undone that step was damaged. Continue failed. Undo failed. Setup stopped before they could start.
+
+**What this fixes for you:**
+
+* **Dex can rebuild the notes history from the files still in the folder.** Your notes stay put. Dex does not try to put a damaged safety copy back, and it does not invent a history it cannot prove.
+* **Install no longer says it is finished when that history is missing.** If the notes folder still has no working history, install stops and tells you the one repair command to run.
+* **Undo tells the truth when it cannot go back.** If the old copy is damaged and the notes history is already gone, Dex says the files are still there and that continuing will rebuild from those files. It no longer claims nothing was moved.
+
+A new user found this minutes after installing. Their notes were never deleted.
+
 ## [1.96.4] — 🧰 A clean Mac install finishes, and the desktop app can take over one background job (2026-08-14)
 
 A brand-new Mac could stop during first setup because Dex asked the computer for
