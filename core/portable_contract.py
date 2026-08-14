@@ -41,6 +41,19 @@ from typing import Iterable
 CONTRACT_VERSION = 2
 SUPPORTED_CONTRACT_VERSIONS = (1, CONTRACT_VERSION)
 VAULT_SCHEMA_SUPPORTED = ">=1 <2"
+ANALYTICS_ATTEMPT_RECEIPT_RELATIVE = "System/.dex/analytics-attempts.jsonl"
+AUTOMATION_OWNERSHIP_RELATIVE = "System/.dex/automation-ownership.json"
+AUTOMATION_OWNERSHIP_TRANSACTION_MAX_BYTES = 64 * 1024
+# A receipt retains a bounded rolling history. A prior release could write one
+# safe record beyond the retained cap, so the transaction has exactly that
+# extra recovery room to validate the full existing file before it keeps whole
+# newest records under the retained cap.
+ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES = 256 * 1024
+ANALYTICS_ATTEMPT_RECEIPT_MAX_RECORD_BYTES = 256
+ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES = (
+    ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES
+    + ANALYTICS_ATTEMPT_RECEIPT_MAX_RECORD_BYTES
+)
 
 OWNERSHIP_CLASSES = ("brain", "vault", "seed", "generated", "runtime")
 
@@ -285,6 +298,8 @@ RULES: tuple[Rule, ...] = (
        "immutable local lifecycle events and rebuildable state; never shipped or updated"),
     _r("runtime-lifecycle-activation", "System/.dex/lifecycle/activation.json", "file", "runtime",
        "old-engine bridge baseline marker; created locally on first lifecycle-engine run, never shipped"),
+    _r("runtime-automation-ownership", "System/.dex/automation-ownership.json", "file", "runtime",
+       "closed Dex Solo scheduler handoff state; transaction-owned and never shipped"),
     _r("runtime-onboarding-session", "System/.onboarding-session.json", "file", "runtime",
        "pre-engine onboarding scratch; deleted by receipt-declared finalization"),
     _r("runtime-dex-dir", "System/.dex", "dir", "runtime"),
@@ -333,6 +348,19 @@ RULES: tuple[Rule, ...] = (
        "with content"),
     _r("vault-trusted-mcps", "System/trusted-mcps.yaml", "file", "vault"),
 )
+
+
+def brain_paths_inside_vault_regions() -> tuple[str, ...]:
+    """Release-owned paths nested inside otherwise user-owned vault regions."""
+    region_prefixes = tuple(f"{region}/" for region in VAULT_REGIONS)
+    return tuple(
+        sorted(
+            rule.path
+            for rule in RULES
+            if rule.ownership == "brain" and rule.path.startswith(region_prefixes)
+        )
+    )
+
 
 # ---------------------------------------------------------------------------
 # Capability rooms (Decision C, Option 2). The meetings/people/tasks spine is
@@ -567,6 +595,8 @@ def update_write_verdict(
         "legacy-qmd-reconciliation",
         "onboarding-context",
         "onboarding-provision",
+        "analytics-receipt",
+        "automation-ownership",
     ):
         raise ValueError(f"unknown write operation: {operation}")
 
@@ -686,6 +716,86 @@ def update_write_verdict(
             candidate,
             False,
             "outside-onboarding-context",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
+        )
+
+    if operation == "automation-ownership":
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "outside-automation-ownership",
+                None,
+                None,
+            )
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        if candidate == AUTOMATION_OWNERSHIP_RELATIVE:
+            return WriteVerdict(
+                candidate,
+                True,
+                "write-automation-ownership",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-automation-ownership",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
+        )
+
+    if operation == "analytics-receipt":
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "outside-analytics-receipt",
+                None,
+                None,
+            )
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        if candidate == ANALYTICS_ATTEMPT_RECEIPT_RELATIVE:
+            return WriteVerdict(
+                candidate,
+                True,
+                "write-analytics-receipt",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-analytics-receipt",
             resolution.ownership if resolution is not None else None,
             resolution.rule_id if resolution is not None else None,
         )

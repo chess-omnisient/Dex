@@ -113,6 +113,22 @@ Longest-prefix rule wins; explicit file rules beat directory rules; deny beats a
 `resolve(path) -> {class, rule_id, deny: bool}`. Loader is pure stdlib (no pyyaml
 dependency in the hot path — JSON only), mirroring `core/path_contract.py`.
 
+### Installed-vault Git tracking
+
+The release repository's base `.gitignore` excludes the PARA regions because they
+contain shipped examples in the public source tree. An installed vault has the
+opposite ownership boundary: every path named by `VAULT_REGIONS` is re-included so
+the user's notes, tasks, projects, and resources remain eligible for private Git
+history. This vault-mode section is appended after the distribution rules because
+Git's last matching rule wins.
+
+The temporary exception is release-owned reference material still shipped inside
+`06-Resources/Dex_System/`. `brain_paths_inside_vault_regions()` derives those exact
+file paths from the ownership contract and the composer excludes each file again
+after re-including the region. The exclusion is deliberately per-file, never the
+whole directory, so a user note beside a shipped reference file remains user-owned
+and trackable. Secrets and other hard-denied paths remain excluded independently.
+
 ## Non-goals for PR-0
 No behavior change: nothing consumes the contract for writes yet. PR-1 (snapshot/journal
 core) and the migrator/updater ports build on it. `ownership.json` CJS bridge is

@@ -64,8 +64,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
-        "sha256": "311c9cdf45842936cee4a91d1ac116ce9e1eeae576c01aacdce989e44b912221",
-        "byte_size": 30797
+        "sha256": "ed6b1cb03cc69b597669cc3f0eb520b8769a28cc7730a0f054df10185c7ecf47",
+        "byte_size": 31420
       },
       "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
       "jobs_served": ["plan-my-work"],
@@ -106,8 +106,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-plan/SKILL.md",
-        "sha256": "23b5acf167fb02f41fa31fb75c38c366afab2263a53b0b4a9dcbdc62966b4bf2",
-        "byte_size": 12007
+        "sha256": "7e9383a02327f2d7afca9636acbbde2f9476a447193921cfcd70b97bca91f223",
+        "byte_size": 12240
       },
       "value": "Turns goals, capacity and open work into a weekly focus plan, so repeated work starts from priorities rather than a blank chat.",
       "jobs_served": ["plan-my-work"],
@@ -148,8 +148,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/process-meetings/SKILL.md",
-        "sha256": "eb7e819ed4c4e32fb5ec1f5477b249ec4bd6d8805870360107098d893a04642c",
-        "byte_size": 19094
+        "sha256": "480213daf8ebc321b89d9c9e3fef8ebeeba9ac05c8eecaeda13c4407a67bccb8",
+        "byte_size": 20528
       },
       "value": "Turns meeting material into people context and follow-up tasks, reducing the chance that decisions or promises disappear after the call.",
       "jobs_served": ["process-meetings", "keep-relationships-warm"],
@@ -364,8 +364,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-review/SKILL.md",
-        "sha256": "30b052197bb91b3b48d41021789ec577eaab394ec1a910001773c2c8e9319d16",
-        "byte_size": 18517
+        "sha256": "7972089ecf86d0ce8cc23281f490afabbd11ce8683856cf91479a856444ff905",
+        "byte_size": 19021
       },
       "value": "Reviews the week in concrete finished work and the patterns behind it, and deliberately refuses to invent a completion percentage that would make a bad week look measured.",
       "jobs_served": ["plan-my-work", "compound-learning"],
@@ -412,8 +412,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/meeting-prep/SKILL.md",
-        "sha256": "f0365cfcd014a836429498c306ae9accf71370f2dde06e9049da8334385d49ea",
-        "byte_size": 12203
+        "sha256": "02110d2093e22aeb472ed3ef05ae97e2e4773ce18ccac6aa6f1888daf0ce88b9",
+        "byte_size": 17660
       },
       "value": "Walks into the meeting already holding the attendees, the history and the open threads, instead of spending the last five minutes searching for them.",
       "jobs_served": ["process-meetings"],
@@ -421,6 +421,12 @@
       "prerequisites": ["A calendar entry, or simply the meeting named out loud.", "Some history worth gathering: earlier notes, people records or related project material."],
       "trade_offs": ["A brief is only as good as the history already captured; a genuinely first meeting has little to gather.", "Anything the brief claims should be checked against the real file before it is repeated in the room."],
       "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_meeting_prep_calendar_journey.py",
+          "summary": "Statically checks the calendar-first instruction contract and journey order across the inline skill and delegated research prompt, including required attendee filters, feature-status guidance, and the structured person-page handoff; it does not simulate Calendar MCP runtime behavior."
+        },
         {
           "kind": "test",
           "coverage": "supporting",

@@ -7,7 +7,97 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.96.2] — 🔒 A company network that inspects traffic no longer looks like a corrupt release (2026-08-13)
+## [1.96.3] — 🩺 Honest checkups, safer meetings, and releases you can verify (2026-08-13)
+
+This is a reliability release built from ten fixes that were tested together. The theme is
+simple: Dex should not guess when evidence is missing, call a broken connection “empty,” or
+claim a release identity that does not exist.
+
+### 🩺 Checkups now preserve the useful diagnosis
+
+Several health checks were flattening very different problems into the same generic answer.
+A missing Dex module could become package-reinstall advice, a slow semantic-search probe could
+make the whole checkup look broken, and Apple Mail list/read could look healthy while its
+separate search index was absent or stale.
+
+**What this fixes for you:**
+
+* **The original diagnosis survives.** Missing Dex files, missing third-party packages, and
+  optional components now get different explanations and different repair steps.
+* **“Could not tell” stays different from “broken.”** A timed-out search probe is reported as
+  unknown without contaminating the rest of the checkup.
+* **Apple Mail search is checked where search really lives.** Dex validates the configured
+  index, its searchable structure, every indexed mailbox's freshness, and safe file
+  permissions. The health check reads structural metadata, not message text.
+
+### 📅 Meeting work uses evidence instead of assumptions
+
+Four related faults could make meeting preparation and follow-up look confident while using
+the wrong attendee, recorder, calendar state, or event. The fixes now meet at the real
+execution seams instead of repeating hopeful instructions in several prompts.
+
+**What this fixes for you:**
+
+* **Meeting prep reads the calendar invite first.** Structured attendee identity is preserved
+  through delegated research, so two people with similar names are not silently collapsed.
+* **A broken calendar is never presented as an empty day.** Optional absence degrades calmly;
+  missing installation, permission failure, and unknown tool errors keep their real guidance.
+* **Configured meeting sources are honoured.** Granola is no longer assumed. Provider-neutral
+  capture IDs are used when safe, with the full vault-relative Markdown path as the
+  collision-safe fallback when two notes share a filename.
+* **Capture-to-calendar matching is deterministic and conservative.** A capture can inherit a
+  calendar identity only inside the five-minute window, with timezone-aware timestamps and
+  title/participant corroboration. Ties, naive timestamps, and events beyond the boundary stay
+  unmatched. Join links, dial-ins, access codes, locations, descriptions, conferencing data,
+  notes, and raw payloads never cross that boundary.
+
+### 🔒 Local receipts stay private, and malformed tasks stop at the door
+
+Dex can keep a small local record that a capability was attempted, but the helper doing that
+work could hang beyond the session-start budget. Separately, a leaked tool-call delimiter could
+be accepted as ordinary task text and saved as a corrupted task.
+
+**What this fixes for you:**
+
+* **Usage-attempt receipts are local, bounded, and content-free.** The complete helper process
+  is stopped after three seconds, including child processes. Its output is never relayed, it
+  does not retry, and this adds no endpoint, token, consent screen, or data collection.
+* **Corrupted task payloads are refused before any write.** Known delimiter shapes are rejected
+  at the Work tool boundary, while normal task text still round-trips unchanged.
+
+### 🧭 Fresh installs use the right capability identities
+
+The recent brain/vault split left three first-install checks looking for capability sources
+under their old identity. Existing upgraded vaults could work while a clean install stopped
+before Career, Companies, or Quarter Goals was provisioned.
+
+**What this fixes for you:**
+
+* **A brand-new install completes against the exact current vault sources.** The repair updates
+  the identities without weakening provenance checks or accepting a merely similar file.
+
+### 🧾 The permanent release name is finally honest
+
+Dex 1.96.2's catalog promised a permanent download tag derived from the source commit, but the
+release is built into a later sanitized commit. The promised name could not exist, and changing
+the real tag would have broken older updaters that correctly require the suffix to match the
+released commit.
+
+**What this fixes for you:**
+
+* **Published catalog v1 stays frozen and readable.** Existing installations keep the exact
+  contract they already understand.
+* **New releases use catalog v2's honest pattern.** The exact permanent tag is derived only
+  after the release commit exists, then checked locally and again after it is pushed.
+* **An empty or unreadable tag observation fails closed.** A release cannot pass merely because
+  the remote returned no evidence.
+* **Old update paths were tested, not assumed.** Twelve historic Dex versions completed the
+  release-shaped Mac journey against this change before it merged.
+
+Thanks to Chris Jackson for the detailed Doctor, Mail, Calendar, and meeting reports and source
+patches that exposed most of these trust failures.
+
+## [1.96.2] — 🛡️ Your history saves again, and company networks get an honest answer (2026-08-13)
 
 If you're on a corporate network that intercepts secure connections — Zscaler, Netskope, most large enterprises — or on a hotel or airport captive portal, Dex's daily update check could fail and report that the release evidence was **invalid**. That wording means something specific and alarming: that the version of Dex being offered looks tampered with. It was never true. What had actually happened is that Dex couldn't verify it was really talking to GitHub, because something on your network was sitting in the middle of the connection. Worse, Dex treated it as a permanent verdict and didn't try again, so the check stayed broken for exactly the people most likely to hit it.
 
@@ -18,6 +108,17 @@ If you're on a corporate network that intercepts secure connections — Zscaler,
 * **Dex still refuses to trust a certificate it can't verify, and there is no way to turn that off.** This release changes what Dex *tells* you and whether it *retries* — it does not change what Dex is willing to trust. There is no setting, visible or hidden, that makes Dex skip certificate checking, and there deliberately never will be: if something really is intercepting your connection to GitHub, that is exactly the moment Dex should stop.
 * **When something does go wrong, it's now diagnosable.** Update failures were being recorded as a bare category with the underlying error thrown away, which is why this particular fault took hours to track down. The underlying message is now kept — trimmed, single-line, and with anything credential-shaped stripped out before it's written anywhere.
 * **Several other failures stop being mislabelled too.** A missing file, a permissions problem, or a timed-out command were all being filed under the same "invalid evidence" heading as a genuinely bad release. Each now reports as itself.
+
+Chris Jackson found a second regression before this release went out: the rules Dex ships for its own source repository were also being copied into people's vaults. Those rules told Git to ignore the folders where their inbox, goals, tasks, projects, areas, resources, and archives live. The session snapshot hook could sometimes force past that rule, but an ordinary Git save refused the files outright — exactly when someone needed their local history as a safety net.
+
+**What this fixes for you:**
+
+* **Every personal working folder is tracked again.** Your inbox, goals, priorities, tasks, projects, areas, resources, and archives can all be saved in your local Git history after an install or update.
+* **Dex's own files stay out of your personal history.** Product files delivered inside Resources are still excluded, while your own notes beside them remain trackable.
+* **Secrets remain excluded.** Files such as `.env` stay ignored; repairing personal history does not weaken the privacy boundary.
+* **The release now proves the real recovery path.** The test installs the shipped rules through Dex's updater, creates real user and product files, commits them with Git, and inspects the resulting history. Removing the fix makes that test fail at the same command users hit.
+
+Thanks to Chris, who traced the missing-history symptom back to the generated vault rules and contributed both halves of the correction.
 
 ## [1.96.1] — 🔎 Lens can read every role and planning capability (2026-08-13)
 

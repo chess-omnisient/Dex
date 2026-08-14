@@ -699,7 +699,9 @@ Then:
      enabled: true
      anonymous: true
    ```
-3. Fire `analytics_consent_given` event.
+
+Do not emit an analytics consent event from this default setting. A default-on
+state is not an affirmative consent action.
 
 ---
 

@@ -24,6 +24,15 @@ import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
+_ANALYTICS_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+if _ANALYTICS_REPO_ROOT not in sys.path:
+    sys.path.insert(0, _ANALYTICS_REPO_ROOT)
+
+from core.mcp.analytics_receipts import (
+    surface_analytics_attempt,
+    unavailable_analytics_delivery,
+)
+
 # QMD semantic search (optional - gracefully degrade if not available)
 try:
     from utils.qmd_query import is_qmd_available, vault_search
@@ -31,14 +40,17 @@ try:
 except ImportError:
     HAS_QMD = False
 
-# Analytics helper (optional - gracefully degrade if not available)
+# Analytics receipts must remain observable in both direct-launch and package
+# import modes. If the helper cannot load, callers receive only the fixed safe
+# receipt failure below.
 try:
-    from analytics_helper import fire_event as _fire_analytics_event
+    from core.mcp.analytics_helper import fire_event as _fire_analytics_event
     HAS_ANALYTICS = True
 except ImportError:
     HAS_ANALYTICS = False
+
     def _fire_analytics_event(event_name, properties=None):
-        return {'fired': False, 'reason': 'analytics_not_available'}
+        return unavailable_analytics_delivery()
 
 # Ensure sibling modules (career_parser) and repo root are importable
 _mcp_dir = str(Path(__file__).parent)
@@ -443,10 +455,11 @@ async def handle_scan_evidence(arguments: dict) -> list[types.TextContent]:
         }
     }
     
-    try:
-        _fire_analytics_event('career_evidence_scanned')
-    except Exception:
-        pass
+    surface_analytics_attempt(
+        result,
+        _fire_analytics_event,
+        'career_evidence_scanned',
+    )
     
     return [types.TextContent(
         type="text",
@@ -526,29 +539,31 @@ async def handle_analyze_coverage(arguments: dict) -> list[types.TextContent]:
     evidence_files = scan_evidence_directory(EVIDENCE_DIR, date_range)
     
     if not evidence_files:
-        try:
-            _fire_analytics_event('career_coverage_analyzed')
-        except Exception:
-            pass
+        result = {
+            "success": True,
+            "target_level": ladder_data.get('target_level'),
+            "analysis_date": datetime.now().isoformat(),
+            "total_evidence_files": 0,
+            "note": "No evidence files found. Start capturing achievements with /career-coach",
+            "coverage_by_competency": [
+                {
+                    "competency": comp['category'],
+                    "evidence_count": 0,
+                    "coverage_level": "none",
+                    "example_files": [],
+                    "skills_mentioned": []
+                }
+                for comp in ladder_data['competencies']
+            ]
+        }
+        surface_analytics_attempt(
+            result,
+            _fire_analytics_event,
+            'career_coverage_analyzed',
+        )
         return [types.TextContent(
             type="text",
-            text=json.dumps({
-                "success": True,
-                "target_level": ladder_data.get('target_level'),
-                "analysis_date": datetime.now().isoformat(),
-                "total_evidence_files": 0,
-                "note": "No evidence files found. Start capturing achievements with /career-coach",
-                "coverage_by_competency": [
-                    {
-                        "competency": comp['category'],
-                        "evidence_count": 0,
-                        "coverage_level": "none",
-                        "example_files": [],
-                        "skills_mentioned": []
-                    }
-                    for comp in ladder_data['competencies']
-                ]
-            }, indent=2, cls=DateTimeEncoder)
+            text=json.dumps(result, indent=2, cls=DateTimeEncoder)
         )]
     
     # Analyze coverage
@@ -570,10 +585,11 @@ async def handle_analyze_coverage(arguments: dict) -> list[types.TextContent]:
         **coverage_analysis
     }
     
-    try:
-        _fire_analytics_event('career_coverage_analyzed')
-    except Exception:
-        pass
+    surface_analytics_attempt(
+        result,
+        _fire_analytics_event,
+        'career_coverage_analyzed',
+    )
     
     return [types.TextContent(
         type="text",
@@ -1198,10 +1214,11 @@ async def handle_promotion_readiness_score(arguments: dict) -> list[types.TextCo
         'score_breakdown': score_breakdown
     }
     
-    try:
-        _fire_analytics_event('promotion_readiness_checked')
-    except Exception:
-        pass
+    surface_analytics_attempt(
+        result,
+        _fire_analytics_event,
+        'promotion_readiness_checked',
+    )
     
     return [types.TextContent(
         type="text",

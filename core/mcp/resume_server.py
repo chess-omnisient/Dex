@@ -34,14 +34,26 @@ import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
-# Analytics helper (optional - gracefully degrade if not available)
+_ANALYTICS_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+if _ANALYTICS_REPO_ROOT not in sys.path:
+    sys.path.insert(0, _ANALYTICS_REPO_ROOT)
+
+from core.mcp.analytics_receipts import (
+    surface_analytics_attempt,
+    unavailable_analytics_delivery,
+)
+
+# Analytics receipts must remain observable in both direct-launch and package
+# import modes. If the helper cannot load, callers receive only the fixed safe
+# receipt failure below.
 try:
-    from analytics_helper import fire_event as _fire_analytics_event
+    from core.mcp.analytics_helper import fire_event as _fire_analytics_event
     HAS_ANALYTICS = True
 except ImportError:
     HAS_ANALYTICS = False
+
     def _fire_analytics_event(event_name, properties=None):
-        return {'fired': False, 'reason': 'analytics_not_available'}
+        return unavailable_analytics_delivery()
 
 # Ensure sibling modules (resume_parser) are importable
 _mcp_dir = str(Path(__file__).parent)
@@ -1038,10 +1050,11 @@ async def handle_compile_resume(arguments: dict) -> list[types.TextContent]:
         "message": "Resume compiled. Use export_resume to save to file."
     }
     
-    try:
-        _fire_analytics_event('resume_compiled')
-    except Exception:
-        pass
+    surface_analytics_attempt(
+        result,
+        _fire_analytics_event,
+        'resume_compiled',
+    )
     
     return [types.TextContent(
         type="text",
