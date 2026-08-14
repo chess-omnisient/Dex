@@ -21,6 +21,7 @@ CLOSEOUT = REPO_ROOT / ".claude/skills/meeting-closeout/SKILL.md"
 PROCESS_AGENT = REPO_ROOT / ".claude/skills/process-meetings/AGENT_INSTRUCTIONS.md"
 PROCESS_ADAPTER = REPO_ROOT / ".agents/skills/process-meetings/SKILL.md"
 DAILY_AGENT = REPO_ROOT / ".claude/skills/daily-review/AGENT_INSTRUCTIONS.md"
+VALIDATORS = REPO_ROOT / "core/utils/validators.py"
 
 
 def _split_primary_list(raw: str, separator: str) -> list[str]:
@@ -42,6 +43,22 @@ def _agent_instruction_primaries() -> list[str]:
     match = re.search(r"^  primary: (.+)$", text, re.M)
     assert match, "process-meetings documented primary list missing"
     return _split_primary_list(match.group(1), "|")
+
+
+def _template_primaries() -> list[str]:
+    text = PROFILE.read_text(encoding="utf-8")
+    match = re.search(r"^# primary: (.+)$", text, re.M)
+    assert match, "user-profile-template primary comment missing"
+    return _split_primary_list(match.group(1), "|")
+
+
+def _validator_allowed_primaries() -> set[str]:
+    text = VALIDATORS.read_text(encoding="utf-8")
+    match = re.search(r"allowed_primaries = \{([^}]+)\}", text)
+    assert match, "validators allowed_primaries set missing"
+    primaries = set(re.findall(r'"([^"]+)"', match.group(1)))
+    assert primaries, "validators allowed_primaries set is empty"
+    return primaries
 
 
 def _section(body: str, start: str, end: str) -> str:
@@ -176,6 +193,16 @@ def test_validate_user_profile_accepts_wispr_as_meeting_source_primary() -> None
     )
 
 
+def test_validate_user_profile_rejects_unknown_meeting_source_primary() -> None:
+    errors = validate_user_profile_config(
+        {"meeting_sources": {"primary": "not-a-recorder"}}
+    )
+    assert errors == [
+        "meeting_sources.primary must be granola, zoom, teams, "
+        "exported-folder, wispr, or none"
+    ]
+
+
 def test_onboarding_meeting_source_primaries_pass_the_validator() -> None:
     primaries = _onboarding_persist_primaries()
     assert "wispr" in primaries
@@ -189,5 +216,8 @@ def test_onboarding_meeting_source_primaries_pass_the_validator() -> None:
 def test_documented_meeting_source_primary_lists_stay_in_lockstep() -> None:
     onboarding = _onboarding_persist_primaries()
     instructions = _agent_instruction_primaries()
-    assert onboarding == instructions
-    assert "wispr" in onboarding
+    template = _template_primaries()
+    allowed = _validator_allowed_primaries()
+    assert onboarding == instructions == template
+    assert set(onboarding) == allowed
+    assert "wispr" in allowed
