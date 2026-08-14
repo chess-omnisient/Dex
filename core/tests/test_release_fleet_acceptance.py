@@ -218,6 +218,13 @@ def test_real_repository_derives_the_current_historic_tree_count() -> None:
     assert manifest["case_count"] > 0
     assert manifest["foundation"]["tag"] == "dist/release/v1.81.16-281202d"
 
+    designated = acceptance.bridge_process_entry_release(parsed)
+    assert designated is not None
+    assert designated.tag != FOUNDATION.tag
+    assert designated.commit != FOUNDATION.commit
+    assert designated.tree != FOUNDATION.tree
+    assert designated.tag != "v1.51.0"
+
 
 def _case(tag: str, platform: str) -> release_fleet.CaseResult:
     hashes = {"00-Inbox/keep.md": "a" * 64}
@@ -910,6 +917,54 @@ def test_a_cohort_that_is_only_the_foundation_has_no_process_probe() -> None:
     acceptance = _acceptance()
 
     assert acceptance.bridge_process_entry_release((_foundation_release(),)) is None
+
+
+def test_the_platform_floor_fails_when_only_the_foundation_is_eligible(
+    tmp_path: Path,
+) -> None:
+    """A one-row historic set is legal. It must not look like an empty cohort.
+
+    frozen_cohort_manifest accepts case_count >= 1 as long as the exact pin is
+    present. If that row is the pin, designated is None. The floor must still
+    fail closed, and the message must name that cause -- treating None as
+    "empty, so skip the probe" would go green with zero process starts.
+    """
+
+    acceptance = _acceptance()
+    releases = (_foundation_release(),)
+    asset_path, checksum_path = _bridge_pair(tmp_path)
+
+    def journey_runner(
+        _repo: Path,
+        *,
+        output: Path,
+        starting_tag: str,
+        foundation_tag: str,
+        follow_up_tag: str,
+        bridge_asset: Path,
+        bridge_checksum: Path,
+        controlled_approvals: bool,
+        bridge_process_entry: bool = False,
+    ) -> object:
+        del output, foundation_tag, follow_up_tag, bridge_asset, bridge_checksum
+        del controlled_approvals, bridge_process_entry
+        return SimpleNamespace(case=_case_document(_case(starting_tag, "darwin")))
+
+    with pytest.raises(acceptance.PlatformFleetFailure) as failure:
+        acceptance.collect_platform_runs(
+            tmp_path,
+            output=tmp_path,
+            releases=releases,
+            foundation_tag=FOUNDATION.tag,
+            follow_up_tag="dist/release/v1.81.17-3333333",
+            running_platform="darwin",
+            bridge_asset=asset_path,
+            bridge_checksum=checksum_path,
+            journey_runner=journey_runner,
+        )
+
+    assert "no historic start other than the pinned foundation" in str(failure.value)
+    assert failure.value.counts["discovered"] == 1
 
 
 def test_platform_collector_requests_the_process_probe_for_exactly_one_release(

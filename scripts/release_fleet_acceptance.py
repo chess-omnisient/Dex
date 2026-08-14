@@ -757,8 +757,15 @@ def _assert_bridge_process_entry_ran(
     """
 
     if designated is None:
+        if counts.get("discovered", 0) == 0:
+            raise PlatformFleetFailure(
+                "platform cohort was empty, so nothing started the bridge as a process",
+                dict(counts),
+            )
         raise PlatformFleetFailure(
-            "platform cohort was empty, so nothing started the bridge as a process",
+            "no historic start other than the pinned foundation can start "
+            "the bridge as a process: discovered "
+            f"{counts.get('discovered', 0)}",
             dict(counts),
         )
     expected = (
