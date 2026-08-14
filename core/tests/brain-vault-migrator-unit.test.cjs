@@ -723,14 +723,16 @@ test('ZIP and failed-preflight reports preserve a pre-existing user report befor
   }
 });
 
-function makeBrokenFirstSetupVault() {
+function makeBrokenFirstSetupVault(options = {}) {
   const root = makeGitFixture();
   addV163MigrationMetadata(root);
-  fs.writeFileSync(path.join(root, 'CLAUDE.md'), '# Dex\n\n## USER_EXTENSIONS_START\n\n## USER_EXTENSIONS_END\n');
+  const claude = '# Dex\n\n## USER_EXTENSIONS_START\n\n## USER_EXTENSIONS_END\n';
+  const tasks = '# Tasks\n';
+  fs.writeFileSync(path.join(root, 'CLAUDE.md'), claude);
   fs.mkdirSync(path.join(root, 'System'), { recursive: true });
   fs.writeFileSync(path.join(root, 'System', 'user-profile.yaml'), 'name: New User\n');
   fs.mkdirSync(path.join(root, '03-Tasks'), { recursive: true });
-  fs.writeFileSync(path.join(root, '03-Tasks', 'Tasks.md'), '# Tasks\n');
+  fs.writeFileSync(path.join(root, '03-Tasks', 'Tasks.md'), tasks);
   git(root, 'add', 'CLAUDE.md', 'System/user-profile.yaml', '03-Tasks/Tasks.md');
   git(root, 'commit', '--quiet', '-m', 'first vault files');
   const head = git(root, 'rev-parse', 'HEAD');
@@ -756,10 +758,12 @@ function makeBrokenFirstSetupVault() {
       releaseCommit: head,
     }, null, 2)}\n`,
   );
-  fs.mkdirSync(path.join(archive, 'refs', 'heads 2'), { recursive: true });
-  fs.writeFileSync(path.join(archive, 'refs', 'heads 2', 'main'), `${head}\n`);
-  fs.mkdirSync(path.join(archive, 'refs', 'remotes', 'upstream'), { recursive: true });
-  fs.writeFileSync(path.join(archive, 'refs', 'remotes', 'upstream', 'release'), `${'0'.repeat(40)}\n`);
+  if (options.corruptArchive !== false) {
+    fs.mkdirSync(path.join(archive, 'refs', 'heads 2'), { recursive: true });
+    fs.writeFileSync(path.join(archive, 'refs', 'heads 2', 'main'), `${head}\n`);
+    fs.mkdirSync(path.join(archive, 'refs', 'remotes', 'upstream'), { recursive: true });
+    fs.writeFileSync(path.join(archive, 'refs', 'remotes', 'upstream', 'release'), `${'0'.repeat(40)}\n`);
+  }
 
   fs.rmSync(path.join(root, '.git'), { recursive: true, force: true });
   const topologyDir = path.join(root, 'System', '.dex');
@@ -777,20 +781,27 @@ function makeBrokenFirstSetupVault() {
     }, null, 2)}\n`,
   );
   const migrator = require(MIGRATOR_PATH);
-  migrator.writeJournal(root, {
+  const journal = {
     schemaVersion: 1,
-    status: 'complete',
+    status: options.status || 'complete',
     startedAt: '2026-08-14T08:00:00.000Z',
-    nextPhase: 10,
+    nextPhase: options.nextPhase ?? 10,
     preflight: { head, releaseCommit: head },
     p9: { finalCommit: head },
-  });
-  return { root, head, archive, brain };
+  };
+  migrator.writeJournal(root, journal);
+  if (options.writeP3Plan) {
+    fs.writeFileSync(
+      path.join(root, 'System', '.dex', 'migration-v2-p3-files.json'),
+      `${JSON.stringify({ files: ['03-Tasks/Tasks.md'] }, null, 2)}\n`,
+    );
+  }
+  return { root, head, archive, brain, claude, tasks };
 }
 
 test('resume rebuilds a missing vault Git folder when the undo archive fails fsck', () => {
   const migrator = require(MIGRATOR_PATH);
-  const { root, archive } = makeBrokenFirstSetupVault();
+  const { root, archive, tasks, claude } = makeBrokenFirstSetupVault();
 
   assert.equal(fs.existsSync(path.join(root, '.git')), false);
   assert.equal(
@@ -815,6 +826,46 @@ test('resume rebuilds a missing vault Git folder when the undo archive fails fsc
     'post-split',
   );
   assert.equal(git(root, 'rev-parse', '--is-inside-work-tree'), 'true');
+  assert.equal(fs.readFileSync(path.join(root, '03-Tasks', 'Tasks.md'), 'utf8'), tasks);
+  assert.equal(fs.readFileSync(path.join(root, 'CLAUDE.md'), 'utf8'), claude);
+  assert.equal(`${git(root, 'show', 'HEAD:03-Tasks/Tasks.md')}\n`, tasks);
   assert.ok(fs.existsSync(archive));
+  assert.notEqual(spawnSync('git', ['--git-dir', archive, 'fsck', '--no-progress']).status, 0);
   assert.equal(migrator.main(['--resume'], root), 0);
+  assert.equal(fs.readFileSync(path.join(root, 'CLAUDE.md'), 'utf8'), claude);
+});
+
+test('resume rebuild stays finished even if the saved migration was mid-swap', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const { root, claude } = makeBrokenFirstSetupVault({
+    status: 'phase-complete',
+    nextPhase: 6,
+    writeP3Plan: true,
+  });
+
+  assert.equal(migrator.main(['--resume'], root), 0);
+  assert.equal(migrator.readJournal(root).status, 'complete');
+  assert.equal(migrator.readJournal(root).nextPhase, 10);
+  assert.equal(fs.readFileSync(path.join(root, 'CLAUDE.md'), 'utf8'), claude);
+  assert.equal(migrator.main(['--resume'], root), 0);
+  assert.equal(fs.readFileSync(path.join(root, 'CLAUDE.md'), 'utf8'), claude);
+});
+
+test('a healthy undo archive is restored instead of rebuilt from disk', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const { root, archive, head } = makeBrokenFirstSetupVault({ corruptArchive: false });
+
+  migrator.restoreMigration(root);
+  assert.equal(fs.existsSync(archive), false);
+  assert.equal(git(root, 'rev-parse', 'HEAD'), head);
+  assert.equal(fs.existsSync(path.join(root, '.git', 'dex-vault-v2')), false);
+});
+
+test('resume does not rebuild when the Dex brain history is missing', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const { root, brain } = makeBrokenFirstSetupVault();
+  fs.rmSync(brain, { recursive: true, force: true });
+
+  assert.equal(migrator.main(['--resume'], root), 1);
+  assert.equal(fs.existsSync(path.join(root, '.git')), false);
 });

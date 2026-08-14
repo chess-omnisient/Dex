@@ -1280,6 +1280,7 @@ function initializeVaultGitdir(
   heldBackPaths = [],
   trackedIgnore = null,
   embeddedRepositories = [],
+  options = {},
 ) {
   if (!exists(gitDirectory)) {
     fs.mkdirSync(path.dirname(gitDirectory), { recursive: true });
@@ -1291,7 +1292,9 @@ function initializeVaultGitdir(
   const remotes = safeRemoteNames(root, gitDirectory);
   for (const remote of remotes) gitDir(root, gitDirectory, ['remote', 'remove', remote]);
   writeVaultExcludes(root, gitDirectory, heldBackPaths, trackedIgnore, embeddedRepositories);
-  writeGitdirMarker(gitDirectory, VAULT_MARKER, { schemaVersion: 1, role: 'vault' });
+  if (options.writeMarker !== false) {
+    writeGitdirMarker(gitDirectory, VAULT_MARKER, { schemaVersion: 1, role: 'vault' });
+  }
 }
 
 function independentVaultInventory(root, heldBackPaths = [], trackedIgnore = null) {
@@ -1878,14 +1881,21 @@ function phase9Finalize(root, state) {
   console.log('P9 finalize complete: your vault and brain now have separate histories.');
 }
 
+class PreSplitArchiveError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'PreSplitArchiveError';
+  }
+}
+
 function archiveValidationError(detail, { vaultGitMissing = false } = {}) {
   if (vaultGitMissing) {
-    return new Error(
+    return new PreSplitArchiveError(
       `The pre-split archive ${detail}, so Dex cannot put the old layout back. `
       + 'Your notes are still in this folder. Run this migrator with --resume to rebuild the vault history from the files on disk.',
     );
   }
-  return new Error(`The pre-split archive ${detail}, so Dex refused to replace the current Git history. Restore the matching migration archive or contact Dex support; no Git folder was deleted.`);
+  return new PreSplitArchiveError(`The pre-split archive ${detail}, so Dex refused to replace the current Git history. Restore the matching migration archive or contact Dex support; no Git folder was deleted.`);
 }
 
 function validatePreSplitArchive(root, state) {
@@ -1954,6 +1964,19 @@ function canRebuildMissingVaultGit(root) {
   return !topology.rootGit && !topology.vaultStaging && Boolean(brainInstalledCommit(root));
 }
 
+function heldBackPathsForRebuild(root, state) {
+  if (Array.isArray(state.analysis?.heldBackPaths) && state.analysis.heldBackPaths.length > 0) {
+    return state.analysis.heldBackPaths;
+  }
+  try {
+    const payload = JSON.parse(fs.readFileSync(path.join(root, HELD_BACK_RELATIVE), 'utf8'));
+    return normalizeHeldBackPaths(payload.paths, portableContract());
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    return [];
+  }
+}
+
 function rebuildMissingVaultGit(root, state) {
   const rootGit = path.join(root, '.git');
   const installed = brainInstalledCommit(root);
@@ -1961,31 +1984,36 @@ function rebuildMissingVaultGit(root, state) {
     throw new Error('Dex cannot rebuild the vault history because the Dex brain history is missing or unreadable.');
   }
   const trackedIgnore = loadTrackedIgnoreState(root);
-  const heldBack = state.analysis?.heldBackPaths || [];
+  const heldBack = heldBackPathsForRebuild(root, state);
   const embedded = state.analysis?.embeddedRepositories || state.preflight?.embeddedRepositories || [];
-  initializeVaultGitdir(root, rootGit, heldBack, trackedIgnore, embedded);
-  const files = independentVaultInventory(root, heldBack, trackedIgnore).map((entry) => entry.path);
-  for (let start = 0; start < files.length; start += P3_BATCH_SIZE) {
-    const batch = files.slice(start, start + P3_BATCH_SIZE);
-    if (batch.length > 0) {
-      gitDir(root, rootGit, ['-c', 'core.excludesFile=/dev/null', 'add', '-f', '--', ...batch]);
+  try {
+    initializeVaultGitdir(root, rootGit, heldBack, trackedIgnore, embedded, { writeMarker: false });
+    const files = independentVaultInventory(root, heldBack, trackedIgnore).map((entry) => entry.path);
+    for (let start = 0; start < files.length; start += P3_BATCH_SIZE) {
+      const batch = files.slice(start, start + P3_BATCH_SIZE);
+      if (batch.length > 0) {
+        gitDir(root, rootGit, ['-c', 'core.excludesFile=/dev/null', 'add', '-f', '--', ...batch]);
+      }
     }
-  }
-  const head = gitDir(root, rootGit, ['rev-parse', '--verify', 'HEAD'], { allowFailure: true });
-  if (head.status !== 0) {
-    gitDir(root, rootGit, ['commit', '--quiet', '--allow-empty', '-m', 'Your vault — rebuilt from the files still in this folder']);
-  }
-  writeTopologySentinel(root, installed);
-  state.swapStage = 'vault-rebuilt-from-files';
-  if (exists(path.join(root, P3_FILES_RELATIVE)) && state.status !== 'complete') {
-    state.nextPhase = Math.max(state.nextPhase || 0, 6);
-    state.status = 'phase-complete';
-  } else {
+    const head = gitDir(root, rootGit, ['rev-parse', '--verify', 'HEAD'], { allowFailure: true });
+    if (head.status !== 0) {
+      gitDir(root, rootGit, ['commit', '--quiet', '--allow-empty', '-m', 'Your vault — rebuilt from the files still in this folder']);
+    }
+    const verified = gitDir(root, rootGit, ['rev-parse', '--verify', 'HEAD'], { allowFailure: true });
+    if (verified.status !== 0) {
+      throw new Error('Dex could not prove a vault history after rebuilding from the files on disk.');
+    }
+    writeGitdirMarker(rootGit, VAULT_MARKER, { schemaVersion: 1, role: 'vault' });
+    writeTopologySentinel(root, installed);
+    state.swapStage = 'vault-rebuilt-from-files';
     state.nextPhase = 10;
     state.status = 'complete';
+    writeJournal(root, state);
+    console.log('Rebuilt the vault Git history from the files still in this folder. The damaged undo copy was left untouched.');
+  } catch (error) {
+    if (exists(rootGit)) removePath(rootGit);
+    throw error;
   }
-  writeJournal(root, state);
-  console.log('Rebuilt the vault Git history from the files still in this folder. The damaged undo copy was left untouched.');
 }
 
 function uniqueDexPath(root, basename) {
@@ -2086,7 +2114,8 @@ function reconcileTopology(root, state) {
     if (canRebuildMissingVaultGit(root)) {
       try {
         validatePreSplitArchive(root, state);
-      } catch {
+      } catch (error) {
+        if (!(error instanceof PreSplitArchiveError)) throw error;
         rebuildMissingVaultGit(root, state);
         return;
       }

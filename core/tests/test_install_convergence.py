@@ -162,6 +162,7 @@ def test_install_refuses_to_claim_success_when_vault_git_is_missing(
     assert result.returncode != 0, result.stdout + result.stderr
     assert calls[1] == f"{MIGRATOR} --auto"
     assert "could not finish the brain/vault split" in result.stdout
+    assert "v1-to-v2-brain-vault-split.cjs --resume" in result.stdout
     assert "Dex installation complete" not in result.stdout
 
 
