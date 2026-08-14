@@ -213,6 +213,39 @@ vault with a real virtualenv and launches the real bridge in about three
 seconds, so the entry path is covered on Linux and on every pull request rather
 than only by the macOS job.
 
+### The formal fleet probes too, and deliberately probes a different shape
+
+The PR canary is not the release gate. `release_fleet_acceptance.py` runs the
+formal fleet over the freshly discovered public cohort, and it passes
+`bridge_process_entry=True` for exactly one of them, so a release cannot be
+published having never started the bridge as a process.
+
+**It picks the newest historic start that is not already the pinned foundation,
+where the canary picks the oldest of its fixed starts, and that difference is
+the point.** The two vault shapes take different paths through the bridge: an
+old pre-split vault stops first at the topology approval, while a vault that is
+already brain/vault split skips that entirely — `run_bridge` records
+`already-brain-vault-split` and asks for no token — so its first approval gate
+is the delivered-release one. Two gates that both probed the oldest start would
+be correlated, and neither would ever watch the bridge reach the second of
+those gates as a real process.
+
+The pinned foundation itself is the wrong newest. The cohort is required to
+contain it, and its installer already leaves `refs/dex/installed` equal to the
+bridge pin, so `run_bridge` skips both approvals. A distinct same-version
+sibling is still eligible. `bridge_process_entry_release()` owns that choice, so
+it is one function to change if the reasoning ever does.
+
+After every case completes, `_assert_bridge_process_entry_ran` reads the
+evidence directory the probe leaves behind and requires exactly one, belonging
+to the designated release. It checks the artifact rather than the intention: the
+probe is wired in by a single boolean, and a gate that can silently stop running
+is the failure this whole line of work exists to retire.
+
+That floor has been watched failing, not merely written: with the wiring removed
+the platform run turns red on *no release started the bridge as a top-level
+process*, and green again when it is restored.
+
 Within a journey, the foundation updater proves the exact follow-up identity
 before its final fetch into the private brain store. If and only if that final
 fetch raises `OfflineError`, the updater waits for the fixed 100 ms backoff and
