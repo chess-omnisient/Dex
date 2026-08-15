@@ -153,11 +153,15 @@ def test_skills_gap_reads_a_career_setup_ladder_with_competency_subheadings(
 
     payload = _skills_gap()
 
-    assert payload["required_skills_count"] > 0
+    assert payload["required_skills_count"] == 3
     assert payload["success"] is True
-    joined = " ".join(payload["skills_gap"] + [
-        item["skill"] for item in payload.get("actively_developed", [])
-    ] + [
-        item["skill"] for item in payload.get("stale_skills", [])
-    ])
-    assert "Product Strategy" in joined or "Set multi-quarter product direction" in joined
+    required = (
+        payload["skills_gap"]
+        + [item["skill"] for item in payload.get("actively_developed", [])]
+        + [item["skill"] for item in payload.get("stale_skills", [])]
+    )
+    assert required == [
+        "Product Strategy",
+        "Technical Depth",
+        "Stakeholder Leadership",
+    ]

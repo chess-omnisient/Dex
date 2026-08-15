@@ -817,11 +817,11 @@ def _required_skills_from_ladder() -> list[str]:
     required_skills = []
     seen = set()
     for competency in ladder_data.get("competencies") or []:
-        for skill in [competency.get("category"), *(competency.get("target_level_requirements") or [])]:
-            if not skill or skill in seen:
-                continue
-            seen.add(skill)
-            required_skills.append(skill)
+        skill = competency.get("category")
+        if not skill or skill in seen:
+            continue
+        seen.add(skill)
+        required_skills.append(skill)
     return required_skills
 
 
