@@ -652,6 +652,7 @@ DEEP_CHECKS = (
     CheckDefinition("granola.query_path", "Granola meeting sync", "_probe_granola_query_path"),
     CheckDefinition("pipedrive.connection", "Pipedrive CRM", "_probe_pipedrive_connection"),
     CheckDefinition("config.meeting_sources", "Configured meeting source", "_probe_meeting_sources"),
+    CheckDefinition("config.claude_composition", "CLAUDE customisations live", "_probe_claude_composition"),
     CheckDefinition("update.post-canary", "Post-update canary", "_probe_post_update_canary"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
     CheckDefinition("mail.apple-search", "Apple Mail search", "_probe_apple_mail_search"),
@@ -960,6 +961,13 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
     except Exception as error:
         errors.append(f"Capability-room heal failed: {_one_line(error)}")
 
+    try:
+        composition_action = _heal_claude_composition(context)
+        if composition_action:
+            actions.setdefault("config.claude_composition", []).append(composition_action)
+    except Exception as error:
+        errors.append(f"CLAUDE.md refresh failed: {_one_line(error)}")
+
     if planned:
         try:
             preview = lifecycle_service._preview_transaction(
@@ -1113,6 +1121,12 @@ def collect(
                 result = replace(
                     result,
                     detail=f"{result.detail.rstrip('.')} after a safe Tier-1 reconciliation",
+                    heal=Heal(tier=1, action="; ".join(check_actions) + ".", applied=True),
+                )
+            if definition.id == "config.claude_composition" and check_actions:
+                result = replace(
+                    result,
+                    detail=f"{result.detail.rstrip('.')} after a safe refresh",
                     heal=Heal(tier=1, action="; ".join(check_actions) + ".", applied=True),
                 )
             results[definition.id] = result
@@ -4752,6 +4766,91 @@ def _probe_meeting_sources(context: DoctorContext) -> ProbeResult:
             "— if your meeting tool should already be exporting, check that export",
         )
     return ProbeResult("OK", f"Meeting-notes folder '{folder}' exists and contains notes")
+
+
+def _heal_claude_composition(context: DoctorContext) -> str | None:
+    """Write CLAUDE.md when its bytes have drifted from the custom block.
+
+    The everyday hook is mtime-gated, so a stale CLAUDE.md written after the
+    custom file will not be repaired by "send any message". This force path
+    compares bytes and writes when they differ.
+    """
+    from core.utils.claude_composition import CUSTOM, recompose_if_needed
+
+    custom_path = context.vault_root / CUSTOM
+    if custom_path.is_symlink() or not custom_path.is_file():
+        return None
+    result = recompose_if_needed(context.vault_root, force=True)
+    if result == "recomposed":
+        return "refreshed CLAUDE.md so your customisations are live"
+    return None
+
+
+def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
+    """Check that CLAUDE.md actually carries the user's current custom block.
+
+    This is not the fix; the UserPromptSubmit refresh hook is. This probe is the
+    detector for that hook having failed, which is why a drift finding says the
+    refresh did not run rather than merely that the block is out of date.
+
+    The test is byte-for-byte against a fresh composition, not a timestamp
+    comparison. mtime false-positives on a touch and misses content-only
+    changes after a restore, and there is no window in which staleness is
+    acceptable: an instruction written five minutes ago is exactly as inert as
+    one written five weeks ago.
+    """
+    from core.update.apply_update import CompositionError
+    from core.utils.claude_composition import (
+        CLAUDE,
+        CUSTOM,
+        RecomposeUnavailable,
+        compose_current,
+    )
+
+    custom_path = context.vault_root / CUSTOM
+    if not custom_path.is_file():
+        return ProbeResult("OFF", "No personal customisations to keep in step", feature_status="off")
+
+    claude_path = context.vault_root / CLAUDE
+    if not claude_path.is_file():
+        return ProbeResult(
+            "BROKEN",
+            f"{CUSTOM} exists but {CLAUDE} does not, so none of your customisations are loaded",
+            Heal(tier=2, action="Run /dex-update to compose CLAUDE.md.", applied=False),
+        )
+
+    try:
+        expected = compose_current(context.vault_root)
+    except RecomposeUnavailable as error:
+        return ProbeResult(
+            "UNKNOWN",
+            f"Could not check whether your customisations are live ({_one_line(error)})",
+        )
+    except CompositionError as error:
+        return ProbeResult(
+            "BROKEN",
+            f"Your customisations cannot be composed ({_one_line(error)}), so they are not loaded",
+            Heal(tier=2, action="Check the USER_EXTENSIONS markers in the release template.", applied=False),
+        )
+
+    try:
+        live = claude_path.read_bytes()
+    except OSError as error:
+        return ProbeResult("UNKNOWN", f"{CLAUDE} could not be read ({_one_line(error)})")
+
+    if live == expected:
+        return ProbeResult("OK", "Your CLAUDE.md customisations are live")
+
+    return ProbeResult(
+        "BROKEN",
+        f"{CLAUDE} does not match {CUSTOM}, so some of your personal instructions are "
+        "not being loaded. The refresh that should keep these in step has not run",
+        # Not "send any message": the everyday refresh is mtime-gated, and in
+        # this exact case CLAUDE.md is the newer file, so that route no-ops and
+        # the user is left following advice that cannot work. Name the one that
+        # forces on bytes.
+        Heal(tier=2, action="Run /dex-doctor to put your customisations back in force.", applied=False),
+    )
 
 
 def _probe_post_update_canary(context: DoctorContext) -> ProbeResult:

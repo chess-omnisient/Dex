@@ -66,6 +66,7 @@ DEEP_IDS = [
     "granola.query_path",
     "pipedrive.connection",
     "config.meeting_sources",
+    "config.claude_composition",
     "update.post-canary",
     "calendar.access",
     "mail.apple-search",
