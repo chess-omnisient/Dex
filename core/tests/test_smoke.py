@@ -1039,6 +1039,7 @@ def test_all_journeys_share_one_runner_generation(monkeypatch, tmp_path: Path) -
     assert [journey["verdict"] for journey in run.report["journeys"]] == ["OK", "OK"]
 
 
+@pytest.mark.xdist_group("serial_sensitive")
 def test_hanging_journey_is_killed_and_returns_exit_two(monkeypatch, tmp_path: Path) -> None:
     vault = _write_valid_vault(tmp_path)
 
@@ -1070,6 +1071,35 @@ def test_hanging_journey_is_killed_and_returns_exit_two(monkeypatch, tmp_path: P
     # depends on host load. Both are the same correct kill behavior (UNKNOWN + exit 2),
     # so assert the shared core of the message.
     assert "timed out" in run.report["journeys"][0]["detail"]
+
+
+@pytest.mark.xdist_group("serial_sensitive")
+def test_hanging_journey_timeout_survives_killpg_permission_error(
+    monkeypatch, tmp_path: Path
+) -> None:
+    # Observed on macOS CI (PR 541 tests (1)): killpg raised
+    # PermissionError(1, "Operation not permitted") and the hanging-journey
+    # test then saw "journey harness failed: [Errno 1] Operation not permitted"
+    # instead of a timeout. Drive the JSON process helper directly so a
+    # missing vault .venv cannot hide the kill path.
+    def deny_killpg(_process_group_id: int, _requested_signal: int) -> None:
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(smoke.os, "killpg", deny_killpg)
+    started = time.monotonic()
+    result, failed = smoke._run_json_process(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        cwd=tmp_path,
+        env=os.environ,
+        timeout_seconds=0.5,
+        label="journey",
+    )
+
+    assert time.monotonic() - started < 30
+    assert failed is True
+    assert result["verdict"] == "UNKNOWN"
+    assert "timed out" in result["detail"]
+    assert "Operation not permitted" not in result["detail"]
 
 
 def test_timed_out_journey_kills_delayed_descendants(monkeypatch, tmp_path: Path) -> None:
