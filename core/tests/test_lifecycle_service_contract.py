@@ -8,6 +8,7 @@ import json
 import plistlib
 import re
 import shutil
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -509,6 +510,28 @@ def test_release_delivery_is_non_mutating_and_exposed_only_through_the_lifecycle
         {"vault_root": str(vault)},
         response,
     )
+
+
+def test_release_delivery_reports_missing_channel_reader_dependency(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vault = tmp_path / "vault"
+    profile = vault / "System" / "user-profile.yaml"
+    profile.parent.mkdir(parents=True)
+    profile.write_text("updates:\n  channel: stable\n", encoding="utf-8")
+    monkeypatch.setitem(sys.modules, "yaml", None)
+
+    response = service.deliver_latest_release(vault)
+
+    assert response == {
+        "api_version": service.api_version,
+        "status": "not-delivered",
+        "evidence": {
+            "status": "UNKNOWN",
+            "reason": "missing-dependency",
+        },
+    }
 
 
 def test_legacy_release_delivery_operation_is_a_non_mutating_bridge(tmp_path: Path) -> None:
