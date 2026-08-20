@@ -98,6 +98,7 @@ RELEASE_BUILD_INPUTS = (
     "scripts/check-catalog-coverage.py",
     "scripts/check-release-catalog-tag-identity.py",
     "scripts/check-tau-removal.py",
+    "scripts/compose-vault-gitignore.py",
     "scripts/dex_update_bridge.py",
     "scripts/generate-manifest.sh",
     "scripts/generate-release-catalog.py",
@@ -279,6 +280,61 @@ def _build_release_in_clone(
         text=True,
     )
     return clone, set(result.stdout.splitlines())
+
+
+def test_first_release_with_vault_gitignore_repair_tracks_para_files(
+    tmp_path: Path,
+) -> None:
+    """The release bytes must be vault-safe before an older updater writes them.
+
+    A release cannot rely on a composer introduced by that same release: the
+    already-running updater plans and writes the release before its replacement
+    module is installed.  Exercise the built release artifact directly, which
+    is therefore the earliest seam shared by every historic updater.
+    """
+    clone, members = _build_release_in_clone(
+        tmp_path,
+        name="release-vault-gitignore",
+    )
+    assert ".gitignore" in members
+    release_gitignore = subprocess.run(
+        ["git", "show", "release:.gitignore"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+    ).stdout
+
+    vault = tmp_path / "vault-gitignore"
+    vault.mkdir()
+    (vault / ".gitignore").write_bytes(release_gitignore)
+    user_paths = (
+        "00-Inbox/capture.md",
+        "04-Projects/active.md",
+        "07-Archives/finished.md",
+    )
+    for relative in (*user_paths, ".env", "README.md"):
+        target = vault / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("fixture\n", encoding="utf-8")
+    subprocess.run(["git", "init", "--quiet"], cwd=vault, check=True)
+
+    user_check = subprocess.run(
+        ["git", "check-ignore", "-v", "--", *user_paths],
+        cwd=vault,
+        capture_output=True,
+        text=True,
+    )
+    assert user_check.returncode == 1, user_check.stdout
+    assert user_check.stdout == ""
+
+    protected_check = subprocess.run(
+        ["git", "check-ignore", "--", ".env", "README.md"],
+        cwd=vault,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert set(protected_check.stdout.splitlines()) == {".env", "README.md"}
 
 
 def _run_tau_check(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -745,6 +801,7 @@ def test_raw_vault_bundle_has_package_profile_manifest_agreement(tmp_path: Path)
         package = json.load(archive.extractfile("./package.json"))
         profile = json.load(archive.extractfile("./System/.release-evidence-profile.json"))
         manifest = archive.extractfile("./System/.installed-files.manifest").read().decode().splitlines()
+        gitignore = archive.extractfile("./.gitignore").read().decode()
         shipped = {
             member.name.removeprefix("./")
             for member in archive.getmembers()
@@ -753,6 +810,9 @@ def test_raw_vault_bundle_has_package_profile_manifest_agreement(tmp_path: Path)
     }
     assert package["version"] == profile["release_version"]
     assert profile["profile"] == "legacy-v1"
+    assert "\n!/04-Projects/\n" in gitignore
+    assert "\n.env\n" in gitignore
+    assert "\n/README.md\n" in gitignore
     for script_name in (
         "test:hooks",
         "test:scripts",

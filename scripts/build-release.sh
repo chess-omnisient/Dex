@@ -76,8 +76,9 @@ CATALOG_GENERATOR=$(mktemp)
 CATALOG_COVERAGE_CHECKER=$(mktemp)
 CATALOG_IDENTITY_CHECKER=$(mktemp)
 JOURNEY_PROTOCOL_CHECK=$(mktemp)
+GITIGNORE_COMPOSER=$(mktemp)
 MATCHES_FILE=$(mktemp)
-trap 'rm -f "$DISTIGNORE" "$TAU_CHECKER" "$CATALOG_GENERATOR" "$CATALOG_COVERAGE_CHECKER" "$CATALOG_IDENTITY_CHECKER" "$JOURNEY_PROTOCOL_CHECK" "$MATCHES_FILE"' EXIT
+trap 'rm -f "$DISTIGNORE" "$TAU_CHECKER" "$CATALOG_GENERATOR" "$CATALOG_COVERAGE_CHECKER" "$CATALOG_IDENTITY_CHECKER" "$JOURNEY_PROTOCOL_CHECK" "$GITIGNORE_COMPOSER" "$MATCHES_FILE"' EXIT
 if ! git show "$SOURCE_BRANCH:.distignore" > "$DISTIGNORE"; then
     echo "Error: .distignore not found in selected source '$SOURCE_BRANCH'." >&2
     exit 1
@@ -124,6 +125,7 @@ SOURCE_SHA=$(git rev-parse "$SOURCE_BRANCH")
 git show "$SOURCE_SHA:scripts/generate-release-catalog.py" > "$CATALOG_GENERATOR"
 git show "$SOURCE_SHA:scripts/check-catalog-coverage.py" > "$CATALOG_COVERAGE_CHECKER"
 git show "$SOURCE_SHA:scripts/check-release-catalog-tag-identity.py" > "$CATALOG_IDENTITY_CHECKER"
+git show "$SOURCE_SHA:scripts/compose-vault-gitignore.py" > "$GITIGNORE_COMPOSER"
 SOURCE_PACKAGE_SIZE=$(git cat-file -s "$SOURCE_SHA:package.json" 2>/dev/null || true)
 if ! [[ "$SOURCE_PACKAGE_SIZE" =~ ^[0-9]+$ ]] || [ "$SOURCE_PACKAGE_SIZE" -gt 1048576 ]; then
     echo "Error: selected source package.json is missing or exceeds 1 MiB." >&2
@@ -242,6 +244,14 @@ python3 "$CATALOG_COVERAGE_CHECKER" --release-root "$REPO_ROOT"
 git add -- "$MANIFEST" "$CATALOG" "$BRIDGE_RELEASE" \
     packages/dex-contracts/dist/release-catalog-v1.schema.json \
     packages/dex-contracts/dist/release-catalog-v2.schema.json
+
+# A release must carry vault-safe ignore bytes before an already-running old
+# updater plans it. A composer introduced by this same release arrives one
+# write too late, so make the immutable release artifact safe at build time.
+# Run after every other staging operation because these vault-side rules
+# deliberately ignore release-owned paths such as core/ and packages/.
+python3 "$GITIGNORE_COMPOSER" .gitignore
+git add -- .gitignore
 
 if git diff --cached --quiet; then
     echo "Nothing to remove — release branch matches main."

@@ -71,6 +71,10 @@ sh "$REPO_ROOT/scripts/resolve-distignore-files.sh" \
 
 rsync -a --files-from="$INCLUDED_FILES" ./ "$STAGING_DIR/"
 
+# Match the release branch exactly: historic updaters can write these bytes
+# before the replacement updater module has been installed.
+python3 "$REPO_ROOT/scripts/compose-vault-gitignore.py" "$STAGING_DIR/.gitignore"
+
 # Keep package metadata identical to the release branch transformation.
 node - "$STAGING_DIR/package.json" <<'NODE'
 const fs = require('node:fs');
