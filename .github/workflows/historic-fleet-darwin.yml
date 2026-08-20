@@ -20,6 +20,7 @@ on:
       - scripts/build-release.sh
       - scripts/build-vault-bundle.sh
       - scripts/check-release-catalog-tag-identity.py
+      - scripts/compose-vault-gitignore.py
       - scripts/dex_update_bridge.py
       - scripts/release_fleet.py
       - scripts/release_fleet_acceptance.py
