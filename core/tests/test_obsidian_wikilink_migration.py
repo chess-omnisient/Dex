@@ -18,7 +18,7 @@ def _write(path: Path, content: str) -> None:
 
 def _git(vault: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", "-c", "user.name=Dex Test", "-c", "user.email=test@example.invalid", *args],
+        ["git", "-c", "user.name=Dex Test", "-c", "user.email=test@example.com", *args],
         cwd=vault,
         check=True,
         capture_output=True,
