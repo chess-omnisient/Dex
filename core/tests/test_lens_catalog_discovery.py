@@ -82,3 +82,18 @@ def test_discovery_rejects_symlinked_skill_payload(tmp_path: Path) -> None:
 
     with pytest.raises(LensDiscoveryError, match="not a regular file"):
         discover_active_skills(tmp_path)
+
+
+def test_discovery_rejects_symlinked_first_party_skill_directory(tmp_path: Path) -> None:
+    target = tmp_path / "outside-skill"
+    target.mkdir()
+    (target / "SKILL.md").write_text(
+        "---\nname: linked\ndescription: Useful.\n---\n",
+        encoding="utf-8",
+    )
+    skills_root = tmp_path / ".claude" / "skills"
+    skills_root.mkdir(parents=True)
+    (skills_root / "linked").symlink_to(target, target_is_directory=True)
+
+    with pytest.raises(LensDiscoveryError, match="skill directory is missing or unsafe"):
+        discover_active_skills(tmp_path)

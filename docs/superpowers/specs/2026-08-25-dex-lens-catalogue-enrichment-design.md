@@ -1,6 +1,6 @@
 # Dex Lens Catalogue Enrichment Design
 
-**Status:** Approved direction; implementation has not started.
+**Status:** Guarded implementation complete; publication is held until Dex Lens releases a compatible schema and verifier.
 
 **Decision:** Ship the active-skill correction through the current signed v2
 catalogue first. Build the four-class model as a guarded preview that cannot enter
@@ -278,9 +278,9 @@ The `active-skill` variant keeps every currently required skill field unchanged:
 
 The three new variants use closed implementation fields:
 
-- `mcp-server`: `server_name`, `source_path`, `tool_count`, `example_tools`;
-- `scheduled-automation`: `source_path`, `installer_path`, `program_target`,
-  `cadence`;
+- `mcp-server`: `server_name`, `source_paths`, `tool_count`, `example_tools`;
+- `scheduled-automation`: `automation_label`, `source_paths`, `installer_path`,
+  `program_target`, `cadence`, `run_at_load`;
 - `system-engine`: `source_paths`, `component_count`, `example_components`.
 
 Every variant has `additionalProperties: false`. The Lens Pydantic model uses a

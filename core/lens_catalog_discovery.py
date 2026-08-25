@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.lens_catalog_sources import SkillSourceError, require_release_file
+
 SKILL_ID = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 TOOL_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -121,7 +123,9 @@ def discover_active_skills(release_root: Path) -> tuple[SkillCandidate, ...]:
         skill_id = directory.name
         if skill_id == "_available" or skill_id.startswith("anthropic-"):
             continue
-        if directory.is_symlink() or not directory.is_dir():
+        if directory.is_symlink():
+            raise LensDiscoveryError(f"active skill directory is missing or unsafe: {directory}")
+        if not directory.is_dir():
             continue
         if SKILL_ID.fullmatch(skill_id) is None:
             raise LensDiscoveryError(f"active skill directory is not kebab-case: {skill_id!r}")
@@ -207,15 +211,17 @@ def discover_mcp_server_source(release_root: Path, path: Path) -> McpServerCandi
 
     root = release_root.resolve(strict=True)
     relative = path.relative_to(root).as_posix()
-    if path.is_symlink() or not path.is_file():
-        raise LensDiscoveryError(f"MCP server source is missing or unsafe: {relative}")
+    try:
+        path = require_release_file(root, relative, context=f"MCP server {relative}")
+    except SkillSourceError as error:
+        raise LensDiscoveryError(str(error)) from error
     try:
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source, filename=relative)
     except (OSError, UnicodeError, SyntaxError) as error:
         raise LensDiscoveryError(f"cannot parse MCP server {relative}: {error}") from error
 
-    server_names: set[str] = set()
+    server_names: list[str] = []
     registered_tools: set[str] = set()
     dispatched_tools: set[str] = set()
     has_list_tools = False
@@ -224,7 +230,7 @@ def discover_mcp_server_source(release_root: Path, path: Path) -> McpServerCandi
             call_name = _call_name(node)
             if call_name == "Server" and node.args:
                 if (server_name := _string(node.args[0])) is not None:
-                    server_names.add(server_name)
+                    server_names.append(server_name)
             elif call_name == "Tool":
                 tool_name = _keyword_string(node, "name")
                 if tool_name is None and node.args:
@@ -240,7 +246,7 @@ def discover_mcp_server_source(release_root: Path, path: Path) -> McpServerCandi
         raise LensDiscoveryError(
             f"expected exactly one literal Server name in {relative}; found {sorted(server_names)}"
         )
-    server_name = next(iter(server_names))
+    server_name = server_names[0]
     if not server_name.startswith("dex-"):
         raise LensDiscoveryError(f"MCP server {relative} does not use a dex- server name")
     if not has_list_tools:
@@ -292,8 +298,11 @@ def _automation_cadence(payload: dict[str, object], *, source: str) -> str:
             unit = "second" if amount == 1 else "seconds"
         return f"every {amount} {unit}{suffix}"
     calendar = payload.get("StartCalendarInterval")
-    if isinstance(calendar, dict) and type(calendar.get("Hour")) is int and type(calendar.get("Minute", 0)) is int:
-        return f"daily at {calendar['Hour']:02d}:{calendar.get('Minute', 0):02d}{suffix}"
+    if isinstance(calendar, dict) and set(calendar) <= {"Hour", "Minute"}:
+        hour = calendar.get("Hour")
+        minute = calendar.get("Minute", 0)
+        if type(hour) is int and 0 <= hour <= 23 and type(minute) is int and 0 <= minute <= 59:
+            return f"daily at {hour:02d}:{minute:02d}{suffix}"
     raise LensDiscoveryError(f"scheduled automation {source} has an unsupported cadence")
 
 
@@ -303,10 +312,11 @@ def discover_scheduled_automations(release_root: Path) -> tuple[ScheduledAutomat
     root = release_root.resolve(strict=True)
     candidates: list[ScheduledAutomationCandidate] = []
     for source, installer in AUTOMATION_INSTALLERS.items():
-        path = root / source
-        installer_path = root / installer
-        if path.is_symlink() or not path.is_file() or installer_path.is_symlink() or not installer_path.is_file():
-            raise LensDiscoveryError(f"scheduled automation source or installer is missing: {source}, {installer}")
+        try:
+            path = require_release_file(root, source, context=f"scheduled automation source {source}")
+            require_release_file(root, installer, context=f"scheduled automation installer {installer}")
+        except SkillSourceError as error:
+            raise LensDiscoveryError(str(error)) from error
         try:
             with path.open("rb") as handle:
                 payload = plistlib.load(handle)
@@ -333,9 +343,10 @@ def discover_scheduled_automations(release_root: Path) -> tuple[ScheduledAutomat
     backup_installer = "core/backup/install_backup_job.py"
     backup_target = "core/backup/backup_vault.py"
     for relative in (backup_installer, backup_target):
-        path = root / relative
-        if path.is_symlink() or not path.is_file():
-            raise LensDiscoveryError(f"backup automation source is missing or unsafe: {relative}")
+        try:
+            require_release_file(root, relative, context=f"backup automation source {relative}")
+        except SkillSourceError as error:
+            raise LensDiscoveryError(str(error)) from error
     candidates.append(
         ScheduledAutomationCandidate(
             capability_id="dex-vault-backup",
@@ -352,10 +363,17 @@ def discover_scheduled_automations(release_root: Path) -> tuple[ScheduledAutomat
 
 def _safe_files(root: Path, paths: list[Path], *, capability_id: str) -> tuple[str, ...]:
     result = []
-    for path in sorted(set(paths)):
-        if path.is_symlink() or not path.is_file():
-            raise LensDiscoveryError(f"system engine {capability_id} has a missing or unsafe component: {path}")
-        result.append(path.relative_to(root).as_posix())
+    seen: set[str] = set()
+    for path in sorted(paths):
+        relative = path.relative_to(root).as_posix()
+        if relative in seen:
+            raise LensDiscoveryError(f"system engine {capability_id} repeats component {relative}")
+        seen.add(relative)
+        try:
+            require_release_file(root, relative, context=f"system engine {capability_id} component")
+        except SkillSourceError as error:
+            raise LensDiscoveryError(str(error)) from error
+        result.append(relative)
     if not result:
         raise LensDiscoveryError(f"system engine {capability_id} resolved no components")
     return tuple(result)

@@ -55,7 +55,7 @@
 ### Task 4: Produce the example and exact Dex Lens schema delta
 
 **Files:**
-- Create: `docs/examples/dex-lens-catalogue-enriched-preview.json`
+- Create: `docs/examples/dex-lens-catalog-enriched-preview.json`
 - Create: `docs/dex-lens-catalogue-enriched-schema-delta.md`
 - Modify: `core/tests/test_dex_lens_catalog_generation.py`
 

@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
+import pytest
+
 from core.lens_catalog_discovery import (
+    LensDiscoveryError,
+    _automation_cadence,
+    discover_mcp_server_source,
     discover_mcp_servers,
     discover_scheduled_automations,
     discover_system_engines,
@@ -13,6 +19,23 @@ from core.lens_catalog_discovery import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENRICHED_REGISTRY = REPO_ROOT / "core/lens-catalog/enriched-registry.json"
+
+
+def _write_mcp_server(root: Path, *, duplicate_server: bool = False) -> Path:
+    path = root / "core/mcp/example_server.py"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    second_server = 'shadow = Server("dex-example")\n' if duplicate_server else ""
+    path.write_text(
+        "from mcp.server import Server\n"
+        "from mcp.types import Tool\n\n"
+        'server = Server("dex-example")\n'
+        f"{second_server}"
+        "@server.list_tools()\n"
+        "async def list_tools():\n"
+        '    return [Tool(name="example_tool", description="Example.", inputSchema={})]\n',
+        encoding="utf-8",
+    )
+    return path
 
 
 def test_discovers_exact_core_mcp_boundary_and_131_tools() -> None:
@@ -39,6 +62,33 @@ def test_discovers_exact_core_mcp_boundary_and_131_tools() -> None:
     assert all(tuple(sorted(server.example_tools)) == server.example_tools for server in servers)
 
 
+def test_mcp_discovery_rejects_untracked_source(tmp_path: Path) -> None:
+    source = _write_mcp_server(tmp_path)
+    subprocess.run(["git", "-C", str(tmp_path), "init", "-q"], check=True)
+
+    with pytest.raises(LensDiscoveryError, match="not tracked"):
+        discover_mcp_server_source(tmp_path, source)
+
+
+def test_mcp_discovery_rejects_symlinked_parent(tmp_path: Path) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    source = _write_mcp_server(real.parent)
+    source.rename(real / source.name)
+    source.parent.rmdir()
+    source.parent.symlink_to(real, target_is_directory=True)
+
+    with pytest.raises(LensDiscoveryError, match="symlink"):
+        discover_mcp_server_source(tmp_path, source.parent / source.name)
+
+
+def test_mcp_discovery_rejects_duplicate_literal_server_declarations(tmp_path: Path) -> None:
+    source = _write_mcp_server(tmp_path, duplicate_server=True)
+
+    with pytest.raises(LensDiscoveryError, match="exactly one literal Server name"):
+        discover_mcp_server_source(tmp_path, source)
+
+
 def test_discovers_four_plists_and_daily_backup_scheduler() -> None:
     automations = discover_scheduled_automations(REPO_ROOT)
 
@@ -52,6 +102,21 @@ def test_discovers_four_plists_and_daily_backup_scheduler() -> None:
     assert all(item.source_paths for item in automations)
     assert all(item.installer_path for item in automations)
     assert all(item.program_target for item in automations)
+
+
+@pytest.mark.parametrize(
+    "calendar",
+    [
+        {"Hour": 24, "Minute": 0},
+        {"Hour": 12, "Minute": 60},
+        {"Hour": 12, "Minute": 0, "Weekday": 1},
+    ],
+)
+def test_automation_cadence_rejects_invalid_or_nondaily_calendar_fields(
+    calendar: dict[str, int],
+) -> None:
+    with pytest.raises(LensDiscoveryError, match="unsupported cadence"):
+        _automation_cadence({"StartCalendarInterval": calendar}, source="invalid.plist")
 
 
 def test_discovers_four_reviewed_system_engine_groups() -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import importlib.util
 import json
 import os
 import subprocess
@@ -214,6 +215,14 @@ def _generate_enriched(output_dir: Path, *extra: str) -> subprocess.CompletedPro
         capture_output=True,
         text=True,
     )
+
+
+def _load_generator_module():
+    spec = importlib.util.spec_from_file_location("dex_lens_catalog_generator", GENERATOR)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> None:
@@ -437,7 +446,7 @@ def test_generator_orders_active_entries_by_discovery_not_registry(tmp_path: Pat
     ]
 
 
-def test_enriched_preview_requires_a_lens_0_1_8_schema(tmp_path: Path) -> None:
+def test_enriched_preview_requires_a_lens_0_1_9_schema(tmp_path: Path) -> None:
     missing = _generate_enriched(tmp_path / "missing")
 
     assert missing.returncode == 1
@@ -445,7 +454,7 @@ def test_enriched_preview_requires_a_lens_0_1_8_schema(tmp_path: Path) -> None:
     assert _lens_artifacts(tmp_path) == []
 
 
-def test_lens_0_1_8_schema_proposal_still_accepts_the_legacy_phase1_shape(
+def test_lens_0_1_9_schema_proposal_still_accepts_the_legacy_phase1_shape(
     tmp_path: Path, signing_key_b64: str
 ) -> None:
     _registry(tmp_path)
@@ -463,6 +472,102 @@ def test_enriched_preview_refuses_signing_and_release_names(tmp_path: Path) -> N
     assert result.returncode == 1
     assert "enriched previews cannot be signed or published" in result.stderr
     assert not (tmp_path / "dist").exists()
+
+
+@pytest.mark.parametrize(
+    "signing_options",
+    [
+        ("--test-deterministic-signature",),
+        ("--signing-key-env", "UNUSED_PREVIEW_KEY"),
+        ("--key-id", "preview-key-must-not-be-overridden"),
+    ],
+)
+def test_enriched_preview_refuses_every_signing_option(
+    tmp_path: Path, signing_options: tuple[str, ...]
+) -> None:
+    result = _generate_enriched(
+        tmp_path / "dist",
+        "--lens-schema",
+        str(ENRICHED_SCHEMA),
+        *signing_options,
+    )
+
+    assert result.returncode == 1
+    assert "enriched previews cannot use signing options" in result.stderr
+    assert not (tmp_path / "dist").exists()
+
+
+@pytest.mark.parametrize(
+    "abbreviated_options",
+    [
+        ("--test",),
+        ("--test-deterministic-signatur",),
+        ("--signing-key-e", "UNUSED_PREVIEW_KEY"),
+        ("--key", "preview-key-must-not-be-overridden"),
+    ],
+)
+def test_enriched_preview_refuses_abbreviated_signing_options(
+    tmp_path: Path, abbreviated_options: tuple[str, ...]
+) -> None:
+    result = _generate_enriched(
+        tmp_path / "dist",
+        "--lens-schema",
+        str(ENRICHED_SCHEMA),
+        *abbreviated_options,
+    )
+
+    assert result.returncode == 2
+    assert "unrecognized arguments" in result.stderr
+    assert not (tmp_path / "dist").exists()
+
+
+def test_enriched_preview_rejects_an_id_already_used_by_a_skill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    generator = _load_generator_module()
+    registry = json.loads((REPO_ROOT / "core/lens-catalog/enriched-registry.json").read_text())
+    collision = json.loads(json.dumps(registry["entries"][0]))
+    collision["id"] = "daily-plan"
+    registry["entries"].append(collision)
+    registry_path = tmp_path / "enriched-registry.json"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+    monkeypatch.setattr(generator, "ENRICHED_REGISTRY_PATH", registry_path)
+
+    with pytest.raises(generator.LensCatalogError, match="duplicates existing capability id 'daily-plan'"):
+        generator._build_enriched_catalogue(REPO_ROOT)
+
+
+@pytest.mark.parametrize(
+    ("discovery_name", "capability_class"),
+    [
+        ("discover_mcp_servers", "mcp-server"),
+        ("discover_scheduled_automations", "scheduled-automation"),
+        ("discover_system_engines", "system-engine"),
+    ],
+)
+def test_enriched_preview_rejects_duplicate_discovered_capability_ids(
+    monkeypatch: pytest.MonkeyPatch,
+    discovery_name: str,
+    capability_class: str,
+) -> None:
+    generator = _load_generator_module()
+    discover = getattr(generator, discovery_name)
+    candidate = discover(REPO_ROOT)[0]
+    monkeypatch.setattr(generator, discovery_name, lambda _root: (candidate, candidate))
+
+    with pytest.raises(
+        generator.LensCatalogError,
+        match=rf"{capability_class} discovery produced duplicate capability id {candidate.capability_id!r}",
+    ):
+        generator._build_enriched_catalogue(REPO_ROOT)
+
+
+def test_enriched_schema_declares_capability_id_uniqueness() -> None:
+    schema = json.loads(ENRICHED_SCHEMA.read_text(encoding="utf-8"))
+    capabilities = schema["$defs"]["CatalogueV2"]["properties"]["capabilities"]
+
+    assert capabilities["uniqueItems"] is True
+    assert capabilities["x-dex-lens-unique-by"] == "capability_id"
 
 
 def test_enriched_preview_validates_all_four_classes_but_current_schema_rejects_it(tmp_path: Path) -> None:

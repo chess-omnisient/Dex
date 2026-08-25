@@ -14,7 +14,7 @@ import sys
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Protocol, TypeVar
 
 import jsonschema
 
@@ -70,6 +70,26 @@ IMPACT_TIERS = frozenset({"core", "high", "medium", "niche"})
 
 class LensCatalogError(RuntimeError):
     """The publisher-owned registry cannot produce a trusted Lens catalog."""
+
+
+class _DiscoveredCandidate(Protocol):
+    capability_id: str
+
+
+_CandidateT = TypeVar("_CandidateT", bound=_DiscoveredCandidate)
+
+
+def _index_discovered_candidates(
+    candidates: tuple[_CandidateT, ...], *, capability_class: str
+) -> dict[str, _CandidateT]:
+    indexed: dict[str, _CandidateT] = {}
+    for candidate in candidates:
+        if candidate.capability_id in indexed:
+            raise LensCatalogError(
+                f"{capability_class} discovery produced duplicate capability id {candidate.capability_id!r}"
+            )
+        indexed[candidate.capability_id] = candidate
+    return indexed
 
 
 def _closed_json(path: Path) -> object:
@@ -638,11 +658,16 @@ def _build_enriched_catalogue(release_root: Path) -> tuple[int, str, dict[str, o
 
     try:
         discovered = {
-            "mcp-server": {item.capability_id: item for item in discover_mcp_servers(release_root)},
-            "scheduled-automation": {
-                item.capability_id: item for item in discover_scheduled_automations(release_root)
-            },
-            "system-engine": {item.capability_id: item for item in discover_system_engines(release_root)},
+            "mcp-server": _index_discovered_candidates(
+                discover_mcp_servers(release_root), capability_class="mcp-server"
+            ),
+            "scheduled-automation": _index_discovered_candidates(
+                discover_scheduled_automations(release_root),
+                capability_class="scheduled-automation",
+            ),
+            "system-engine": _index_discovered_candidates(
+                discover_system_engines(release_root), capability_class="system-engine"
+            ),
         }
     except LensDiscoveryError as error:
         raise LensCatalogError(f"enriched capability discovery failed: {error}") from error
@@ -652,6 +677,7 @@ def _build_enriched_catalogue(release_root: Path) -> tuple[int, str, dict[str, o
         raise LensCatalogError(f"{ENRICHED_REGISTRY_PATH} entries must be a non-empty array")
     annotations: dict[str, tuple[str, Mapping[str, object], int]] = {}
     annotated_by_class = {capability_class: set() for capability_class in discovered}
+    existing_capability_ids = {entry["capability_id"] for entry in catalogue["capabilities"]}
     for index, raw_annotation in enumerate(annotations_raw):
         context = f"enriched entry {index}"
         annotation = _mapping(raw_annotation, context=context)
@@ -674,6 +700,8 @@ def _build_enriched_catalogue(release_root: Path) -> tuple[int, str, dict[str, o
             raise LensCatalogError(f"{context} id must be a Lens catalogue id")
         if capability_id in annotations:
             raise LensCatalogError(f"duplicate enriched entry id {capability_id!r}")
+        if capability_id in existing_capability_ids:
+            raise LensCatalogError(f"{context} duplicates existing capability id {capability_id!r}")
         capability_class = _text(
             annotation.get("capability_class"), context=f"{context} capability_class", max_length=32
         )
@@ -854,7 +882,7 @@ def generate_enriched_preview(
     issued_at: str | None = None,
     key_id: str = "dex-core-lens-1",
 ) -> Path:
-    """Write one unsigned, non-release preview for the Lens 0.1.8 contract."""
+    """Write one unsigned, non-release preview for the Lens 0.1.9 contract."""
 
     release_root = release_root.resolve()
     issued = _parse_issued_at(issued_at or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"))
@@ -877,7 +905,7 @@ def generate_enriched_preview(
         release_root,
         envelope,
         schema_path=lens_schema.resolve(),
-        required_lens_version="0.1.8",
+        required_lens_version="0.1.9",
     )
     destination = output_dir / "dex-lens-catalog-enriched-preview.json"
     _atomic_write(destination, (_canonical_json(envelope) + "\n").encode("utf-8"))
@@ -885,7 +913,8 @@ def generate_enriched_preview(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--release-root", type=Path, default=Path.cwd())
     parser.add_argument("--output-dir", type=Path, default=Path("dist"))
     parser.add_argument("--issued-at")
@@ -895,14 +924,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--test-deterministic-signature", action="store_true")
     parser.add_argument("--enriched-preview", action="store_true")
     parser.add_argument("--lens-schema", type=Path)
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw_argv)
 
     try:
         if args.enriched_preview:
             if args.sign:
                 raise LensCatalogError("enriched previews cannot be signed or published")
+            signing_options = ("--signing-key-env", "--test-deterministic-signature", "--key-id")
+            if any(
+                argument == option or argument.startswith(f"{option}=")
+                for argument in raw_argv
+                for option in signing_options
+            ):
+                raise LensCatalogError("enriched previews cannot use signing options")
             if args.lens_schema is None:
-                raise LensCatalogError("--enriched-preview requires --lens-schema from Dex Lens 0.1.8 or newer")
+                raise LensCatalogError("--enriched-preview requires --lens-schema from Dex Lens 0.1.9 or newer")
             preview = generate_enriched_preview(
                 args.release_root,
                 output_dir=args.output_dir,

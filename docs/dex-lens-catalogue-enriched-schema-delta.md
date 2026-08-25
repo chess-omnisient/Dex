@@ -2,9 +2,9 @@
 
 **Purpose:** This is the exact cross-repository contract Dex Lens must implement before Dex Core may sign or publish a four-class catalogue.
 
-**Minimum Lens release:** `0.1.8`
+**Minimum compatible Lens release:** `0.1.9` (proposed)
 
-**Current release gate:** A live GitHub release check on 25 August 2026 found `v0.1.7` as the latest `davekilleen/dex-lens` release. Dex Core's enriched output therefore remains an unsigned preview. A branch, commit, or local package version does not lift this gate; the `v0.1.8` (or newer) release and exported schema must be publicly verifiable first.
+**Current release gate:** A live GitHub release and tag check on 25 August 2026 confirmed `v0.1.8` as the latest `davekilleen/dex-lens` release. Its exported catalogue schema still requires the skill-shaped fields on every entry and does not define the four class-specific models below. The generated enriched example produces 190 validation errors against that tagged schema. Dex Core's enriched output therefore remains an unsigned preview until a `v0.1.9` (or newer) release exports this complete contract. A release number alone does not lift the gate; the released schema and verifier must pass both legacy and enriched catalogues.
 
 The executable proposal is [the enriched preview schema](../core/tests/fixtures/dex-lens-catalogue-enriched-preview.schema.json). The generated four-class example is [the enriched preview catalogue](examples/dex-lens-catalog-enriched-preview.json).
 
@@ -146,9 +146,9 @@ EnrichedCatalogueCapabilityEntryV2 = Annotated[
 
 Change `CatalogueV2.capabilities` to a tuple of the rollout-compatible union. Keep its existing `uniqueItems`, `x-dex-lens-unique-by: capability_id`, maximum 300 entries, duplicate-ID validator, and closed job-reference validator.
 
-## 4. Mandatory 0.1.8 transition compatibility
+## 4. Mandatory 0.1.9 transition compatibility
 
-Lens must release before Core publishes the enriched catalogue. Therefore Lens 0.1.8 must accept both:
+Lens must release before Core publishes the enriched catalogue. Therefore the next compatible Lens release must accept both:
 
 1. the current signed, skill-only catalogue, whose entries do not carry the three new fields; and
 2. the enriched discriminated entries.
@@ -178,7 +178,7 @@ Do not hand-edit the generated schema. Regenerate it from `SignedCatalogueEnvelo
 The exported producer schema must:
 
 - retain the required Lens dialect and `x-dex-lens-unique-by` vocabulary;
-- add root annotation `x-dex-lens-minimum-version: "0.1.8"` so Core's preview guard can verify the compatible Lens floor;
+- add root annotation `x-dex-lens-minimum-version: "0.1.9"` so Core's preview guard can verify the compatible Lens floor;
 - define the five closed entry branches described above;
 - preserve `signature` as required and non-empty for a published envelope;
 - preserve all metadata, job taxonomy, expiry, unique-ID, and cross-reference rules.
@@ -220,7 +220,7 @@ Add negative tests for:
 - duplicate capability IDs across different classes;
 - unknown job references;
 - parked or dormant entries entering the active recommendation set;
-- the old 0.1.7 model rejecting the enriched example;
+- the released 0.1.8 model rejecting the enriched example, documenting the compatibility boundary;
 - invalid signature, unknown key, expiry, rollback, and cache-tamper cases remaining fail-closed.
 
 Run at minimum:
@@ -236,7 +236,7 @@ Use the Lens repository's own virtual environment and command names if they diff
 ## 8. Landing and publication order
 
 1. Merge the Dex Lens model, verifier, ranking, tests, and generated schema together.
-2. Release Dex Lens `v0.1.8` or newer.
+2. Release Dex Lens `v0.1.9` or newer with this complete contract.
 3. Verify the GitHub release/tag, installable artifact, and exported schema all contain the enriched contract and still accept the live legacy catalogue.
 4. Vendor that exact released schema into Dex Core and replace the proposal fixture in Core's validation command.
 5. Re-run Core's default Phase 1 generator against the legacy-compatible released schema.

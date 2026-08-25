@@ -60,4 +60,3 @@
 3. Inspect the envelope: 66 capabilities, eight jobs, no dormant/vendor IDs, `catalog_version: 4`, and populated `metadata.produced_at`.
 4. Run `python3 -m pytest core/tests/test_lens_catalog_discovery.py core/tests/test_dex_lens_catalog_generation.py -q` and `python3 -m ruff check core/lens_catalog_discovery.py scripts/generate-dex-lens-catalog.py core/tests/test_lens_catalog_discovery.py core/tests/test_dex_lens_catalog_generation.py`.
 5. Read the complete Phase 1 diff and commit any verification-only corrections.
-
