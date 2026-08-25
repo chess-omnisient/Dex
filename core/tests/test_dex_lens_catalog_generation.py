@@ -113,14 +113,18 @@ def _registry(root: Path) -> None:
                 "catalog_version": 7,
                 "jobs": [
                     {
-                        "job_id": "plan-my-day",
-                        "title": "Plan my day",
-                        "description": "Turn calendar and tasks into one realistic daily plan.",
+                        "job_id": job_id,
+                        "title": job_id.replace("-", " ").title(),
+                        "description": f"Exercise the documented {job_id.replace('-', ' ')} job.",
                     }
+                    for job_id in CANONICAL_JOB_IDS
                 ],
                 "entries": [
                     {
                         "id": "daily-plan",
+                        "capability_class": "active-skill",
+                        "impact_tier": "core",
+                        "availability": "active",
                         "source": {
                             "kind": "active-skill",
                             "path": ".claude/skills/daily-plan/SKILL.md",
@@ -128,7 +132,7 @@ def _registry(root: Path) -> None:
                             "byte_size": len(skill_bytes),
                         },
                         "value": "Helps a person choose what matters today before work scatters.",
-                        "jobs_served": ["plan-my-day"],
+                        "jobs_served": ["start-each-day-focused"],
                         "foundation_capabilities": [
                             "context-orientation",
                             "scoped-agency-human-control",
@@ -203,9 +207,12 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
     assert envelope["metadata"]["producer"] == "Dex Core release pipeline v1.94.0"
     assert envelope["metadata"]["core_release"] == "v1.94.0"
     assert envelope["metadata"]["key_id"] == "dex-core-lens-1"
-    assert envelope["catalogue"]["jobs_taxonomy"][0]["job_id"] == "plan-my-day"
-    assert envelope["catalogue"]["jobs_taxonomy"][0]["label"] == "Plan my day"
+    assert envelope["metadata"]["produced_at"] == "2026-08-11T12:00:00Z"
+    assert tuple(job["job_id"] for job in envelope["catalogue"]["jobs_taxonomy"]) == CANONICAL_JOB_IDS
     capability = envelope["catalogue"]["capabilities"][0]
+    assert "capability_class" not in capability
+    assert "impact_tier" not in capability
+    assert "availability" not in capability
     assert capability["capability_id"] == "daily-plan"
     assert capability["title"] == "Daily Plan"
     assert capability["summary"] == "Use when planning a day."
@@ -297,6 +304,116 @@ def test_generator_rejects_unknown_job_and_foundation_references(tmp_path: Path)
     assert "unknown job reference" in result.stderr
 
 
+def test_generator_requires_the_documented_eight_job_taxonomy(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    registry_path = tmp_path / "core/lens-catalog/registry.json"
+    data = json.loads(registry_path.read_text())
+    data["jobs"].append(
+        {
+            "job_id": "invented-ninth-job",
+            "title": "Invented ninth job",
+            "description": "This taxonomy must not drift from the documented eight.",
+        }
+    )
+    _write(registry_path, json.dumps(data))
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 1
+    assert "must contain the documented eight Jobs to Be Done" in result.stderr
+
+
+def test_generator_rejects_discovered_active_skill_without_annotation(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    _skill(tmp_path, "unannotated-skill")
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 1
+    assert "active skill annotations do not match discovery" in result.stderr
+    assert "missing annotations: unannotated-skill" in result.stderr
+
+
+def test_generator_rejects_stale_active_annotation(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    registry_path = tmp_path / "core/lens-catalog/registry.json"
+    data = json.loads(registry_path.read_text())
+    data["entries"][0]["id"] = "stale-skill"
+    _write(registry_path, json.dumps(data))
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 1
+    assert "active skill annotations do not match discovery" in result.stderr
+    assert "stale annotations: stale-skill" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("availability", "maybe", "availability must be active or dormant"),
+        ("capability_class", "workflow", "capability_class must be active-skill"),
+        ("impact_tier", "massive", "impact_tier must be core, high, medium, or niche"),
+    ],
+)
+def test_generator_rejects_unknown_internal_classification(
+    tmp_path: Path,
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    _registry(tmp_path)
+    registry_path = tmp_path / "core/lens-catalog/registry.json"
+    data = json.loads(registry_path.read_text())
+    data["entries"][0][field] = value
+    _write(registry_path, json.dumps(data))
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 1
+    assert message in result.stderr
+
+
+def test_generator_ignores_unannotated_vendored_skills(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    _skill(tmp_path, "anthropic-pdf", description="Vendored third-party PDF skill.")
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text())
+    assert [entry["capability_id"] for entry in envelope["catalogue"]["capabilities"]] == ["daily-plan"]
+
+
+def test_generator_orders_active_entries_by_discovery_not_registry(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    alpha_bytes = _skill(tmp_path, "alpha-skill", description="Use alpha safely.")
+    registry_path = tmp_path / "core/lens-catalog/registry.json"
+    data = json.loads(registry_path.read_text())
+    alpha = json.loads(json.dumps(data["entries"][0]))
+    alpha["id"] = "alpha-skill"
+    alpha["source"] = {
+        "kind": "active-skill",
+        "path": ".claude/skills/alpha-skill/SKILL.md",
+        "sha256": hashlib.sha256(alpha_bytes).hexdigest(),
+        "byte_size": len(alpha_bytes),
+    }
+    alpha["evidence"][0]["reference"] = ".claude/skills/alpha-skill/SKILL.md"
+    alpha["evidence"][0].pop("coverage", None)
+    alpha["evidence"][0]["kind"] = "runtime-path"
+    data["entries"].append(alpha)
+    _write(registry_path, json.dumps(data))
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text())
+    assert [entry["capability_id"] for entry in envelope["catalogue"]["capabilities"]] == [
+        "alpha-skill",
+        "daily-plan",
+    ]
+
+
 def test_generator_rejects_unshipped_or_stale_source(tmp_path: Path) -> None:
     _registry(tmp_path)
     data = json.loads((tmp_path / "core/lens-catalog/registry.json").read_text())
@@ -318,11 +435,11 @@ def test_generator_rejects_unshipped_or_stale_source(tmp_path: Path) -> None:
 
 
 def _adoptable_registry(root: Path, source_kind: str) -> Path:
-    """Turn the synthetic entry into a dormant lifecycle or room capability."""
+    """Append a dormant lifecycle or room annotation beside the active fixture."""
     _registry(root)
     registry_path = root / "core/lens-catalog/registry.json"
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
-    entry = registry["entries"][0]
+    entry = json.loads(json.dumps(registry["entries"][0]))
     if source_kind == "lifecycle-skill":
         entry_id = "account-plan"
         relative = ".claude/skills/_available/sales/account-plan/SKILL.md"
@@ -394,22 +511,23 @@ def _adoptable_registry(root: Path, source_kind: str) -> Path:
             "skill": entry_id,
         }
     entry["id"] = entry_id
+    entry["availability"] = "dormant"
+    entry["impact_tier"] = "medium"
+    registry["entries"].append(entry)
     _write(registry_path, json.dumps(registry))
     return root / relative
 
 
 @pytest.mark.parametrize("source_kind", ("lifecycle-skill", "room-skill"))
-def test_generator_resolves_adoptable_source_without_an_active_copy(tmp_path: Path, source_kind: str) -> None:
+def test_generator_validates_but_does_not_publish_dormant_skill_source(tmp_path: Path, source_kind: str) -> None:
     source = _adoptable_registry(tmp_path, source_kind)
 
     result = _generate(tmp_path)
 
     assert result.returncode == 0, result.stderr
     envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text(encoding="utf-8"))
-    capability = envelope["catalogue"]["capabilities"][0]
-    assert capability["summary"] in source.read_text(encoding="utf-8")
-    assert not (tmp_path / f".claude/skills/{capability['capability_id']}/SKILL.md").exists()
-    assert "source" not in capability
+    assert [capability["capability_id"] for capability in envelope["catalogue"]["capabilities"]] == ["daily-plan"]
+    assert source.is_file(), "the dormant source was not actually present for resolver validation"
 
 
 def test_generator_rejects_mutated_room_source_before_signing_or_publication(
@@ -882,10 +1000,10 @@ def test_shipped_registry_builds_the_release_catalogue(tmp_path: Path, signing_k
     envelope = json.loads((tmp_path / f"dist/dex-lens-catalog-v{version}.json").read_text())
     assert envelope["signature"], "the real catalogue was written without a signature"
     assert envelope["metadata"]["core_release"] == f"v{version}"
-    registry = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
     assert [capability["capability_id"] for capability in envelope["catalogue"]["capabilities"]] == [
-        entry["id"] for entry in registry["entries"]
+        candidate.capability_id for candidate in discover_active_skills(REPO_ROOT)
     ]
+    assert len(envelope["catalogue"]["capabilities"]) == 66
 
 
 def _rewrite_registry_evidence(root: Path, evidence: list[dict[str, str]]) -> None:

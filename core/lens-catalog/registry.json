@@ -4911,7 +4911,7 @@
         }
       ],
       "brief": {
-        "goal": "Orient in the Dex Core codebase: prints the released version, what's merged-but-not-released, and where the architecture map + inventory live. Use at the start of any dex-core development or investigation, or whenever you're unsure what's shipped vs built-locally vs prototype.",
+        "goal": "Orient a Dex Core contributor in release truth, local changes and the canonical architecture maps.",
         "method_outline": [
           "Inspect the current local state and the person's request.",
           "Run the Dex Orient workflow within its documented safety boundary.",
@@ -5593,7 +5593,7 @@
         }
       ],
       "brief": {
-        "goal": "Interactive post-onboarding tour that adapts to whatever data exists (calendar, Granola, or none). Use right after onboarding, or when the user says 'show me around', 'how do I start'. Also use proactively when the vault is < 7 days old. Not for the initial setup itself; use `setup`.",
+        "goal": "Give a new Dex user a practical post-onboarding tour that adapts to the data already available.",
         "method_outline": [
           "Inspect the current local state and the person's request.",
           "Run the Getting Started workflow within its documented safety boundary.",

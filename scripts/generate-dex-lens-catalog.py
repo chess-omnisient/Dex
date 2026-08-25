@@ -22,6 +22,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
+from core.lens_catalog_discovery import LensDiscoveryError, discover_active_skills
 from core.lens_catalog_sources import SkillSourceError, resolve_skill_source
 
 REGISTRY_PATH = Path("core/lens-catalog/registry.json")
@@ -47,6 +48,17 @@ FOUNDATION_CAPABILITIES = frozenset(
         "compounding-correctability",
     }
 )
+CANONICAL_JOB_IDS = (
+    "capture-without-friction",
+    "start-each-day-focused",
+    "track-people-and-relationships",
+    "manage-tasks-reliably",
+    "reflect-and-improve-continuously",
+    "keep-projects-on-track",
+    "track-career-growth",
+    "evolve-the-system-itself",
+)
+IMPACT_TIERS = frozenset({"core", "high", "medium", "niche"})
 
 
 class LensCatalogError(RuntimeError):
@@ -378,13 +390,14 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
                 "confirmed_gap_signals": (f"The Lens session finds a gap related to {job_id.replace('-', ' ')}.",),
             }
         )
+    if tuple(job["job_id"] for job in jobs) != CANONICAL_JOB_IDS:
+        raise LensCatalogError("jobs must contain the documented eight Jobs to Be Done in canonical order")
 
     entries_raw = registry["entries"]
     if not isinstance(entries_raw, list) or not entries_raw:
         raise LensCatalogError("entries must be a non-empty array")
-    entries = []
+    classified_entries: list[tuple[int, str, str, Mapping[str, object]]] = []
     seen_entries: set[str] = set()
-    seen_targets: dict[str, str] = {}
     for index, raw_entry in enumerate(entries_raw):
         context = f"entry {index}"
         entry = _mapping(raw_entry, context=context)
@@ -392,6 +405,9 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
             entry,
             {
                 "id",
+                "capability_class",
+                "impact_tier",
+                "availability",
                 "source",
                 "value",
                 "jobs_served",
@@ -411,10 +427,62 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
         if entry_id in seen_entries:
             raise LensCatalogError(f"duplicate entry id {entry_id!r}")
         seen_entries.add(entry_id)
+        capability_class = _text(
+            entry.get("capability_class"), context=f"{context} capability_class", max_length=32
+        )
+        if capability_class != "active-skill":
+            raise LensCatalogError(f"{context} capability_class must be active-skill")
+        impact_tier = _text(entry.get("impact_tier"), context=f"{context} impact_tier", max_length=16)
+        if impact_tier not in IMPACT_TIERS:
+            raise LensCatalogError(f"{context} impact_tier must be core, high, medium, or niche")
+        availability = _text(entry.get("availability"), context=f"{context} availability", max_length=16)
+        if availability not in {"active", "dormant"}:
+            raise LensCatalogError(f"{context} availability must be active or dormant")
+        classified_entries.append((index, entry_id, availability, entry))
+
+    try:
+        discovered = discover_active_skills(release_root)
+    except LensDiscoveryError as error:
+        raise LensCatalogError(f"active skill discovery failed: {error}") from error
+    discovered_by_id = {candidate.capability_id: candidate for candidate in discovered}
+    active_annotations = {
+        entry_id: (index, entry)
+        for index, entry_id, availability, entry in classified_entries
+        if availability == "active"
+    }
+    vendored_annotations = sorted(entry_id for entry_id in active_annotations if entry_id.startswith("anthropic-"))
+    if vendored_annotations:
+        raise LensCatalogError(
+            "active skill annotations must not be a vendored skill: " + ", ".join(vendored_annotations)
+        )
+    missing_annotations = sorted(set(discovered_by_id) - set(active_annotations))
+    stale_annotations = sorted(set(active_annotations) - set(discovered_by_id))
+    if missing_annotations or stale_annotations:
+        details = []
+        if missing_annotations:
+            details.append("missing annotations: " + ", ".join(missing_annotations))
+        if stale_annotations:
+            details.append("stale annotations: " + ", ".join(stale_annotations))
+        raise LensCatalogError("active skill annotations do not match discovery (" + "; ".join(details) + ")")
+
+    dormant_entries = [item for item in classified_entries if item[2] == "dormant"]
+    ordered_entries = [
+        (active_annotations[candidate.capability_id][0], candidate.capability_id, "active", active_annotations[candidate.capability_id][1])
+        for candidate in discovered
+    ] + dormant_entries
+
+    entries = []
+    seen_targets: dict[str, str] = {}
+    for index, entry_id, availability, entry in ordered_entries:
+        context = f"entry {index}"
         source = _source(entry, release_root, context=context)
         expected_target = f".claude/skills/{entry_id}/SKILL.md"
         if source["target_path"] != expected_target:
             raise LensCatalogError(f"{context} resolved source target must match entry id {entry_id!r}")
+        if availability == "active" and source["kind"] != "active-skill":
+            raise LensCatalogError(f"{context} active annotation must use an active-skill source")
+        if availability == "dormant" and source["kind"] == "active-skill":
+            raise LensCatalogError(f"{context} dormant annotation must use a dormant skill source")
         target_owner = seen_targets.setdefault(str(source["target_path"]), entry_id)
         if target_owner != entry_id:
             raise LensCatalogError(f"{context} resolved source target duplicates entry {target_owner!r}")
@@ -439,11 +507,13 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
             if version not in released_versions:
                 raise LensCatalogError(f"{context} changed_in has no shipped source in CHANGELOG.md: {version}")
         compatibility = _compatibility(entry.get("compatibility"), context=context)
+        if availability == "dormant":
+            continue
         entries.append(
             {
                 "capability_id": entry_id,
                 "title": _human_title(entry_id),
-                "summary": _skill_description(release_root / str(source["path"])),
+                "summary": discovered_by_id[entry_id].description,
                 "value": _text(entry.get("value"), context=f"{context} value"),
                 "jobs": jobs_served,
                 "prerequisites": _text_tuple(entry.get("prerequisites"), context=f"{context} prerequisites"),
