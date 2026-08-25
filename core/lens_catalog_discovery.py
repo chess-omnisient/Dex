@@ -41,6 +41,7 @@ class McpServerCandidate:
 @dataclass(frozen=True, slots=True)
 class ScheduledAutomationCandidate:
     capability_id: str
+    automation_label: str
     cadence: str
     source_paths: tuple[str, ...]
     installer_path: str
@@ -319,7 +320,8 @@ def discover_scheduled_automations(release_root: Path) -> tuple[ScheduledAutomat
             raise LensDiscoveryError(f"scheduled automation {source} has no literal program target")
         candidates.append(
             ScheduledAutomationCandidate(
-                capability_id=label,
+                capability_id=f"dex-{label.removeprefix('com.dex.').replace('.', '-')}",
+                automation_label=label,
                 cadence=_automation_cadence(payload, source=source),
                 source_paths=(source, installer),
                 installer_path=installer,
@@ -337,6 +339,7 @@ def discover_scheduled_automations(release_root: Path) -> tuple[ScheduledAutomat
     candidates.append(
         ScheduledAutomationCandidate(
             capability_id="dex-vault-backup",
+            automation_label="com.dex.vault-backup",
             cadence="daily at a user-selected time",
             source_paths=(backup_installer, backup_target),
             installer_path=backup_installer,

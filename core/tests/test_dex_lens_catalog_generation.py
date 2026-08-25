@@ -10,6 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import jsonschema
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
@@ -20,6 +21,8 @@ from core.lens_catalog_sources import SkillSourceError, resolve_skill_source
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = REPO_ROOT / "scripts/generate-dex-lens-catalog.py"
 REAL_REGISTRY = REPO_ROOT / "core/lens-catalog/registry.json"
+ENRICHED_SCHEMA = REPO_ROOT / "core/tests/fixtures/dex-lens-catalogue-enriched-preview.schema.json"
+ENRICHED_EXAMPLE = REPO_ROOT / "docs/examples/dex-lens-catalog-enriched-preview.json"
 
 WAVE3_IDS = (
     "account-plan",
@@ -185,6 +188,26 @@ def _generate(root: Path, *extra: str) -> subprocess.CompletedProcess[str]:
             str(root / "dist"),
             "--issued-at",
             "2026-08-11T12:00:00Z",
+            *extra,
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _generate_enriched(output_dir: Path, *extra: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(GENERATOR),
+            "--release-root",
+            str(REPO_ROOT),
+            "--output-dir",
+            str(output_dir),
+            "--issued-at",
+            "2026-08-25T12:00:00Z",
+            "--enriched-preview",
             *extra,
         ],
         cwd=REPO_ROOT,
@@ -412,6 +435,74 @@ def test_generator_orders_active_entries_by_discovery_not_registry(tmp_path: Pat
         "alpha-skill",
         "daily-plan",
     ]
+
+
+def test_enriched_preview_requires_a_lens_0_1_8_schema(tmp_path: Path) -> None:
+    missing = _generate_enriched(tmp_path / "missing")
+
+    assert missing.returncode == 1
+    assert "requires --lens-schema" in missing.stderr
+    assert _lens_artifacts(tmp_path) == []
+
+
+def test_lens_0_1_8_schema_proposal_still_accepts_the_legacy_phase1_shape(
+    tmp_path: Path, signing_key_b64: str
+) -> None:
+    _registry(tmp_path)
+    result = _generate_signed(tmp_path, signing_key_b64)
+
+    assert result.returncode == 0, result.stderr
+    envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text())
+    schema = json.loads(ENRICHED_SCHEMA.read_text())
+    jsonschema.Draft202012Validator(schema).validate(envelope)
+
+
+def test_enriched_preview_refuses_signing_and_release_names(tmp_path: Path) -> None:
+    result = _generate_enriched(tmp_path / "dist", "--lens-schema", str(ENRICHED_SCHEMA), "--sign")
+
+    assert result.returncode == 1
+    assert "enriched previews cannot be signed or published" in result.stderr
+    assert not (tmp_path / "dist").exists()
+
+
+def test_enriched_preview_validates_all_four_classes_but_current_schema_rejects_it(tmp_path: Path) -> None:
+    output = tmp_path / "dist"
+    result = _generate_enriched(output, "--lens-schema", str(ENRICHED_SCHEMA))
+
+    assert result.returncode == 0, result.stderr
+    assert sorted(path.name for path in output.iterdir()) == ["dex-lens-catalog-enriched-preview.json"]
+    envelope = json.loads((output / "dex-lens-catalog-enriched-preview.json").read_text())
+    assert envelope["signature"] == "UNSIGNED-PREVIEW-NOT-FOR-PUBLICATION"
+    assert envelope["metadata"]["produced_at"] == "2026-08-25T12:00:00Z"
+    classes = [entry["capability_class"] for entry in envelope["catalogue"]["capabilities"]]
+    assert {item: classes.count(item) for item in set(classes)} == {
+        "active-skill": 95,
+        "mcp-server": 10,
+        "scheduled-automation": 5,
+        "system-engine": 4,
+    }
+    availability = [entry["availability"] for entry in envelope["catalogue"]["capabilities"]]
+    assert {item: availability.count(item) for item in set(availability)} == {
+        "active": 84,
+        "dormant": 29,
+        "parked": 1,
+    }
+    current_schema = json.loads(
+        (REPO_ROOT / "core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json").read_text()
+    )
+    with pytest.raises(jsonschema.ValidationError, match="Additional properties are not allowed"):
+        jsonschema.Draft202012Validator(current_schema).validate(envelope)
+
+
+def test_committed_enriched_example_is_generator_output_and_matches_proposed_schema(tmp_path: Path) -> None:
+    result = _generate_enriched(tmp_path, "--lens-schema", str(ENRICHED_SCHEMA))
+
+    assert result.returncode == 0, result.stderr
+    generated = json.loads((tmp_path / "dex-lens-catalog-enriched-preview.json").read_text())
+    committed = json.loads(ENRICHED_EXAMPLE.read_text())
+    assert committed == generated
+    schema = json.loads(ENRICHED_SCHEMA.read_text())
+    jsonschema.Draft202012Validator(schema).validate(committed)
 
 
 def test_generator_rejects_unshipped_or_stale_source(tmp_path: Path) -> None:

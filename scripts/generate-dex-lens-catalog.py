@@ -22,10 +22,17 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from core.lens_catalog_discovery import LensDiscoveryError, discover_active_skills
+from core.lens_catalog_discovery import (
+    LensDiscoveryError,
+    discover_active_skills,
+    discover_mcp_servers,
+    discover_scheduled_automations,
+    discover_system_engines,
+)
 from core.lens_catalog_sources import SkillSourceError, resolve_skill_source
 
 REGISTRY_PATH = Path("core/lens-catalog/registry.json")
+ENRICHED_REGISTRY_PATH = Path("core/lens-catalog/enriched-registry.json")
 LENS_CATALOG_SCHEMA_PATH = Path("core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json")
 PACKAGE_PATH = Path("package.json")
 CHANGELOG_PATH = Path("CHANGELOG.md")
@@ -345,17 +352,34 @@ def _compatibility(value: object, *, context: str) -> dict[str, object]:
     }
 
 
-def _validate_against_lens_schema(release_root: Path, envelope: Mapping[str, object]) -> None:
-    schema = _closed_json(release_root / LENS_CATALOG_SCHEMA_PATH)
+def _validate_against_lens_schema(
+    release_root: Path,
+    envelope: Mapping[str, object],
+    *,
+    schema_path: Path | None = None,
+    required_lens_version: str | None = None,
+) -> None:
+    selected_schema = schema_path or release_root / LENS_CATALOG_SCHEMA_PATH
+    schema = _mapping(_closed_json(selected_schema), context=str(selected_schema))
+    if required_lens_version is not None and schema.get("x-dex-lens-minimum-version") != required_lens_version:
+        raise LensCatalogError(
+            f"enriched preview schema must declare x-dex-lens-minimum-version {required_lens_version}"
+        )
     wire_envelope = json.loads(_canonical_json(envelope))
     try:
         jsonschema.Draft202012Validator(schema).validate(wire_envelope)
     except jsonschema.ValidationError as error:
         path = ".".join(str(part) for part in error.absolute_path) or "<root>"
-        raise LensCatalogError(f"emitted Lens catalogue violates vendored schema at {path}: {error.message}") from error
+        label = "enriched preview" if required_lens_version is not None else "emitted Lens catalogue"
+        raise LensCatalogError(f"{label} violates the supplied Lens schema at {path}: {error.message}") from error
 
 
-def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
+def _build_catalogue(
+    release_root: Path,
+    *,
+    include_dormant: bool = False,
+    enriched: bool = False,
+) -> tuple[int, str, dict[str, object]]:
     registry = _mapping(_closed_json(release_root / REGISTRY_PATH), context=str(REGISTRY_PATH))
     _exact_fields(registry, {"registry_version", "catalog_version", "jobs", "entries"}, context=str(REGISTRY_PATH))
     if registry["registry_version"] != REGISTRY_VERSION:
@@ -486,7 +510,7 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
         target_owner = seen_targets.setdefault(str(source["target_path"]), entry_id)
         if target_owner != entry_id:
             raise LensCatalogError(f"{context} resolved source target duplicates entry {target_owner!r}")
-        jobs_served = _text_tuple(entry.get("jobs_served"), context=f"{context} jobs_served", max_length=128)
+        jobs_served = _catalog_id_tuple(entry.get("jobs_served"), context=f"{context} jobs_served")
         for job_id in jobs_served:
             if job_id not in seen_jobs:
                 raise LensCatalogError(f"{context} has unknown job reference: {job_id}")
@@ -507,13 +531,21 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
             if version not in released_versions:
                 raise LensCatalogError(f"{context} changed_in has no shipped source in CHANGELOG.md: {version}")
         compatibility = _compatibility(entry.get("compatibility"), context=context)
-        if availability == "dormant":
+        if availability == "dormant" and not include_dormant:
             continue
+        summary = (
+            discovered_by_id[entry_id].description
+            if availability == "active"
+            else _skill_description(release_root / str(source["path"]))
+        )
         entries.append(
             {
                 "capability_id": entry_id,
                 "title": _human_title(entry_id),
-                "summary": discovered_by_id[entry_id].description,
+                "summary": summary,
+                "capability_class": entry["capability_class"],
+                "impact_tier": entry["impact_tier"],
+                "availability": availability,
                 "value": _text(entry.get("value"), context=f"{context} value"),
                 "jobs": jobs_served,
                 "prerequisites": _text_tuple(entry.get("prerequisites"), context=f"{context} prerequisites"),
@@ -539,6 +571,15 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
         "jobs_taxonomy": jobs,
         "capabilities": [
             {
+                **(
+                    {
+                        "capability_class": entry["capability_class"],
+                        "impact_tier": entry["impact_tier"],
+                        "availability": entry["availability"],
+                    }
+                    if enriched
+                    else {}
+                ),
                 "capability_id": entry["capability_id"],
                 "title": entry["title"],
                 "summary": entry["summary"],
@@ -563,6 +604,171 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
         },
     }
     return catalog_version, release_version, catalogue
+
+
+def _preview_title(capability_id: str) -> str:
+    words = capability_id.removeprefix("com.dex.").replace(".", "-").split("-")
+    return " ".join({"dex": "Dex", "mcp": "MCP"}.get(word, word.capitalize()) for word in words)
+
+
+def _preview_evidence(source_paths: tuple[str, ...], *, title: str) -> tuple[dict[str, str], ...]:
+    return (
+        {
+            "level": "supported",
+            "source": f"runtime-path: {source_paths[0]}",
+            "summary": f"The shipped source tree contains the reviewed {title} implementation.",
+            "limitations": "Source presence proves Dex ships the implementation, not that it is configured or healthy on a Lens user's system.",
+        },
+    )
+
+
+def _build_enriched_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
+    catalog_version, release_version, catalogue = _build_catalogue(
+        release_root,
+        include_dormant=True,
+        enriched=True,
+    )
+    registry = _mapping(
+        _closed_json(release_root / ENRICHED_REGISTRY_PATH),
+        context=str(ENRICHED_REGISTRY_PATH),
+    )
+    _exact_fields(registry, {"registry_version", "entries"}, context=str(ENRICHED_REGISTRY_PATH))
+    if registry.get("registry_version") != 1:
+        raise LensCatalogError(f"{ENRICHED_REGISTRY_PATH} has an unsupported registry version")
+
+    try:
+        discovered = {
+            "mcp-server": {item.capability_id: item for item in discover_mcp_servers(release_root)},
+            "scheduled-automation": {
+                item.capability_id: item for item in discover_scheduled_automations(release_root)
+            },
+            "system-engine": {item.capability_id: item for item in discover_system_engines(release_root)},
+        }
+    except LensDiscoveryError as error:
+        raise LensCatalogError(f"enriched capability discovery failed: {error}") from error
+
+    annotations_raw = registry.get("entries")
+    if not isinstance(annotations_raw, list) or not annotations_raw:
+        raise LensCatalogError(f"{ENRICHED_REGISTRY_PATH} entries must be a non-empty array")
+    annotations: dict[str, tuple[str, Mapping[str, object], int]] = {}
+    annotated_by_class = {capability_class: set() for capability_class in discovered}
+    for index, raw_annotation in enumerate(annotations_raw):
+        context = f"enriched entry {index}"
+        annotation = _mapping(raw_annotation, context=context)
+        _exact_fields(
+            annotation,
+            {
+                "id",
+                "capability_class",
+                "impact_tier",
+                "availability",
+                "value",
+                "jobs_served",
+                "prerequisites",
+                "trade_offs",
+            },
+            context=context,
+        )
+        capability_id = _text(annotation.get("id"), context=f"{context} id", max_length=81)
+        if CATALOG_ID.fullmatch(capability_id) is None:
+            raise LensCatalogError(f"{context} id must be a Lens catalogue id")
+        if capability_id in annotations:
+            raise LensCatalogError(f"duplicate enriched entry id {capability_id!r}")
+        capability_class = _text(
+            annotation.get("capability_class"), context=f"{context} capability_class", max_length=32
+        )
+        if capability_class not in discovered:
+            raise LensCatalogError(f"{context} has an unsupported capability_class")
+        impact_tier = _text(annotation.get("impact_tier"), context=f"{context} impact_tier", max_length=16)
+        if impact_tier not in IMPACT_TIERS:
+            raise LensCatalogError(f"{context} impact_tier must be core, high, medium, or niche")
+        availability = _text(annotation.get("availability"), context=f"{context} availability", max_length=16)
+        if availability not in {"active", "parked"}:
+            raise LensCatalogError(f"{context} availability must be active or parked")
+        annotations[capability_id] = (capability_class, annotation, index)
+        annotated_by_class[capability_class].add(capability_id)
+
+    for capability_class, candidates in discovered.items():
+        missing = sorted(set(candidates) - annotated_by_class[capability_class])
+        stale = sorted(annotated_by_class[capability_class] - set(candidates))
+        if missing or stale:
+            details = []
+            if missing:
+                details.append("missing annotations: " + ", ".join(missing))
+            if stale:
+                details.append("stale annotations: " + ", ".join(stale))
+            raise LensCatalogError(
+                f"{capability_class} annotations do not match discovery (" + "; ".join(details) + ")"
+            )
+
+    known_jobs = {job["job_id"] for job in catalogue["jobs_taxonomy"]}
+    preview_entries = list(catalogue["capabilities"])
+    for capability_id, (capability_class, annotation, index) in annotations.items():
+        context = f"enriched entry {index}"
+        candidate = discovered[capability_class][capability_id]
+        expected_availability = getattr(candidate, "availability", "active")
+        if annotation["availability"] != expected_availability:
+            raise LensCatalogError(
+                f"{context} availability {annotation['availability']!r} does not match discovered {expected_availability!r}"
+            )
+        jobs = _catalog_id_tuple(annotation.get("jobs_served"), context=f"{context} jobs_served")
+        for job_id in jobs:
+            if job_id not in known_jobs:
+                raise LensCatalogError(f"{context} has unknown job reference: {job_id}")
+        title = _preview_title(capability_id)
+        if capability_class == "mcp-server":
+            source_paths = (candidate.source_path,)
+            summary = (
+                f"{candidate.server_name} exposes {candidate.tool_count} local MCP tools; "
+                f"examples include {', '.join(candidate.example_tools)}."
+            )
+            class_fields = {
+                "server_name": candidate.server_name,
+                "tool_count": candidate.tool_count,
+                "example_tools": candidate.example_tools,
+                "source_paths": source_paths,
+            }
+        elif capability_class == "scheduled-automation":
+            source_paths = candidate.source_paths
+            summary = f"Runs {candidate.program_target} {candidate.cadence}."
+            class_fields = {
+                "automation_label": candidate.automation_label,
+                "cadence": candidate.cadence,
+                "source_paths": source_paths,
+                "installer_path": candidate.installer_path,
+                "program_target": candidate.program_target,
+                "run_at_load": candidate.run_at_load,
+            }
+        else:
+            source_paths = candidate.source_paths
+            state = " Parked: it is not wired into the live product." if candidate.availability == "parked" else ""
+            summary = f"Groups {candidate.component_count} shipped source components.{state}"
+            class_fields = {
+                "source_paths": source_paths,
+                "component_count": candidate.component_count,
+                "example_components": candidate.example_components,
+            }
+        preview_entries.append(
+            {
+                "capability_id": capability_id,
+                "capability_class": capability_class,
+                "impact_tier": annotation["impact_tier"],
+                "availability": annotation["availability"],
+                "title": title,
+                "summary": summary,
+                "value": _text(annotation.get("value"), context=f"{context} value", max_length=1200),
+                "jobs": jobs,
+                "prerequisites": _text_tuple(
+                    annotation.get("prerequisites"), context=f"{context} prerequisites"
+                ),
+                "trade_offs": _text_tuple(annotation.get("trade_offs"), context=f"{context} trade_offs"),
+                "evidence": _preview_evidence(source_paths, title=title),
+                "release_provenance": "core-release",
+                **class_fields,
+            }
+        )
+    catalogue["capabilities"] = preview_entries
+    return catalog_version + 1, release_version, catalogue
 
 
 def _signature(payload: str, *, signing_key_env: str, key_id: str, test_deterministic: bool) -> str:
@@ -640,6 +846,44 @@ def generate_lens_catalog(
     return destination, latest
 
 
+def generate_enriched_preview(
+    release_root: Path,
+    *,
+    output_dir: Path,
+    lens_schema: Path,
+    issued_at: str | None = None,
+    key_id: str = "dex-core-lens-1",
+) -> Path:
+    """Write one unsigned, non-release preview for the Lens 0.1.8 contract."""
+
+    release_root = release_root.resolve()
+    issued = _parse_issued_at(issued_at or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"))
+    catalog_version, release_version, catalogue = _build_enriched_catalogue(release_root)
+    metadata = {
+        "contract_version": CONTRACT_VERSION,
+        "catalog_version": catalog_version,
+        "produced_at": issued.isoformat().replace("+00:00", "Z"),
+        "expires_at": (issued + timedelta(days=30)).isoformat().replace("+00:00", "Z"),
+        "producer": f"Dex Core enriched preview v{release_version}",
+        "core_release": f"v{release_version}",
+        "key_id": key_id,
+    }
+    envelope = {
+        "metadata": metadata,
+        "catalogue": catalogue,
+        "signature": "UNSIGNED-PREVIEW-NOT-FOR-PUBLICATION",
+    }
+    _validate_against_lens_schema(
+        release_root,
+        envelope,
+        schema_path=lens_schema.resolve(),
+        required_lens_version="0.1.8",
+    )
+    destination = output_dir / "dex-lens-catalog-enriched-preview.json"
+    _atomic_write(destination, (_canonical_json(envelope) + "\n").encode("utf-8"))
+    return destination
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--release-root", type=Path, default=Path.cwd())
@@ -649,9 +893,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--signing-key-env", default="DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64")
     parser.add_argument("--key-id", default="dex-core-lens-1")
     parser.add_argument("--test-deterministic-signature", action="store_true")
+    parser.add_argument("--enriched-preview", action="store_true")
+    parser.add_argument("--lens-schema", type=Path)
     args = parser.parse_args(argv)
 
     try:
+        if args.enriched_preview:
+            if args.sign:
+                raise LensCatalogError("enriched previews cannot be signed or published")
+            if args.lens_schema is None:
+                raise LensCatalogError("--enriched-preview requires --lens-schema from Dex Lens 0.1.8 or newer")
+            preview = generate_enriched_preview(
+                args.release_root,
+                output_dir=args.output_dir,
+                lens_schema=args.lens_schema,
+                issued_at=args.issued_at,
+                key_id=args.key_id,
+            )
+            print(f"Wrote unsigned preview {preview}")
+            return 0
+        if args.lens_schema is not None:
+            raise LensCatalogError("--lens-schema is only valid with --enriched-preview")
         versioned, latest = generate_lens_catalog(
             args.release_root,
             output_dir=args.output_dir,

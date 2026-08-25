@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from core.lens_catalog_discovery import (
@@ -11,6 +12,7 @@ from core.lens_catalog_discovery import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+ENRICHED_REGISTRY = REPO_ROOT / "core/lens-catalog/enriched-registry.json"
 
 
 def test_discovers_exact_core_mcp_boundary_and_131_tools() -> None:
@@ -41,10 +43,10 @@ def test_discovers_four_plists_and_daily_backup_scheduler() -> None:
     automations = discover_scheduled_automations(REPO_ROOT)
 
     assert [(item.capability_id, item.cadence) for item in automations] == [
-        ("com.dex.changelog-checker", "every 6 hours; also at load"),
-        ("com.dex.learning-review", "daily at 17:00"),
-        ("com.dex.meeting-intel", "every 30 minutes; also at load"),
-        ("com.dex.smoke-nightly", "daily at 03:15"),
+        ("dex-changelog-checker", "every 6 hours; also at load"),
+        ("dex-learning-review", "daily at 17:00"),
+        ("dex-meeting-intel", "every 30 minutes; also at load"),
+        ("dex-smoke-nightly", "daily at 03:15"),
         ("dex-vault-backup", "daily at a user-selected time"),
     ]
     assert all(item.source_paths for item in automations)
@@ -69,3 +71,21 @@ def test_discovers_four_reviewed_system_engine_groups() -> None:
     temperature = next(item for item in engines if item.capability_id == "entity-temperature-engine")
     assert "core/entity_engine/temperature.py" in temperature.source_paths
     assert "core/entity_engine/cooling.py" in temperature.source_paths
+
+
+def test_enriched_registry_exactly_annotates_every_non_skill_candidate() -> None:
+    registry = json.loads(ENRICHED_REGISTRY.read_text(encoding="utf-8"))
+    entries = registry["entries"]
+    discovered = {
+        "mcp-server": {item.capability_id for item in discover_mcp_servers(REPO_ROOT)},
+        "scheduled-automation": {item.capability_id for item in discover_scheduled_automations(REPO_ROOT)},
+        "system-engine": {item.capability_id for item in discover_system_engines(REPO_ROOT)},
+    }
+
+    assert registry["registry_version"] == 1
+    assert len(entries) == 19
+    assert len({entry["id"] for entry in entries}) == 19
+    for capability_class, expected_ids in discovered.items():
+        assert {entry["id"] for entry in entries if entry["capability_class"] == capability_class} == expected_ids
+    assert all(entry["impact_tier"] in {"core", "high", "medium", "niche"} for entry in entries)
+    assert all(entry["availability"] in {"active", "parked"} for entry in entries)
