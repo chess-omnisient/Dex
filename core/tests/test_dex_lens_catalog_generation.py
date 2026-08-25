@@ -14,6 +14,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
 
+from core.lens_catalog_discovery import discover_active_skills
 from core.lens_catalog_sources import SkillSourceError, resolve_skill_source
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -57,6 +58,16 @@ WAVE3_ROOM_IDS = frozenset(
 )
 WAVE3_ACTIVE_IDS = frozenset({"pipeline-sync"})
 WAVE3_LIFECYCLE_IDS = frozenset(WAVE3_IDS) - WAVE3_ROOM_IDS - WAVE3_ACTIVE_IDS
+CANONICAL_JOB_IDS = (
+    "capture-without-friction",
+    "start-each-day-focused",
+    "track-people-and-relationships",
+    "manage-tasks-reliably",
+    "reflect-and-improve-continuously",
+    "keep-projects-on-track",
+    "track-career-growth",
+    "evolve-the-system-itself",
+)
 
 
 def _signed_payload(envelope: dict) -> str:
@@ -723,18 +734,37 @@ def test_broken_registry_refusal_is_not_a_signing_failure(tmp_path: Path, signin
 # root, so pin drift fails on the pull request that causes it.
 
 
+def test_real_registry_annotates_the_complete_active_set_and_marks_dormant_entries() -> None:
+    registry = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
+    discovered_ids = {candidate.capability_id for candidate in discover_active_skills(REPO_ROOT)}
+    active_entries = [entry for entry in registry["entries"] if entry["availability"] == "active"]
+    dormant_entries = [entry for entry in registry["entries"] if entry["availability"] == "dormant"]
+
+    assert registry["catalog_version"] == 4
+    assert tuple(job["job_id"] for job in registry["jobs"]) == CANONICAL_JOB_IDS
+    assert len(registry["entries"]) == 95
+    assert len(active_entries) == 66
+    assert len(dormant_entries) == 29
+    assert {entry["id"] for entry in active_entries} == discovered_ids
+    assert all(entry["capability_class"] == "active-skill" for entry in registry["entries"])
+    assert {entry["impact_tier"] for entry in registry["entries"]} <= {"core", "high", "medium", "niche"}
+    assert all(set(entry["jobs_served"]) <= set(CANONICAL_JOB_IDS) for entry in registry["entries"])
+
+
 def test_wave3_source_partition_is_exact_and_resolves_to_unique_targets() -> None:
     registry = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
-    wave3 = registry["entries"][-len(WAVE3_IDS) :]
+    by_id = {entry["id"]: entry for entry in registry["entries"]}
+    wave3 = [by_id[entry_id] for entry_id in WAVE3_IDS]
 
-    assert registry["catalog_version"] == 3
-    assert len(registry["jobs"]) == 11
-    assert [job["job_id"] for job in registry["jobs"][-2:]] == [
-        "run-my-role",
-        "grow-my-career",
-    ]
-    assert len(registry["entries"]) == 55
+    assert registry["catalog_version"] == 4
+    assert len(registry["jobs"]) == 8
+    assert len(registry["entries"]) == 95
     assert tuple(entry["id"] for entry in wave3) == WAVE3_IDS
+    assert all(entry["capability_class"] == "active-skill" for entry in wave3)
+    assert all(
+        entry["availability"] == ("active" if entry["id"] in WAVE3_ACTIVE_IDS else "dormant")
+        for entry in wave3
+    )
     assert all(
         evidence.get("coverage") == "supporting"
         for entry in wave3
