@@ -40,6 +40,8 @@ def test_shipped_skills_pin_the_scoped_customization_journey() -> None:
         "## Deeply customised setup",
         1,
     )[1].split("## Five-group preview", 1)[0]
+    assert "python3 core/utils/doctor.py --deep" in update_section
+    assert "If the collector itself fails to run" in update_section
     assert (
         "`customization_assessment.identity.customization_count` is at least 1"
         in update_section

@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -49,6 +50,9 @@ from core.utils import (
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
 QMD_STATUS_TIMEOUT_SECONDS = 10
+# In-process hang bound. Individual subprocess probes already use 10–35s
+# timeouts; those do not bound a heal or probe that never returns.
+CHECK_TIMEOUT_SECONDS = 30
 
 # The nightly ledger is written once a night, so two days tolerates a single
 # missed run before the ledger is treated as stopped rather than merely quiet.
@@ -667,6 +671,53 @@ DEEP_CHECKS = (
     CheckDefinition("backup.freshness", "Vault backups", "_probe_backup_freshness"),
 )
 
+_CHECK_FEATURES = {
+    definition.id: definition.feature
+    for definition in (*QUICK_CHECKS, *DEEP_CHECKS)
+}
+
+
+def _progress(message: str) -> None:
+    """Narrate collector stages on stderr without touching the JSON report.
+
+    Silence used to mean the process was still working. A hang inside a heal
+    or probe produced no output until SIGTERM (exit 143). Status labels use
+    the shipped feature names and verdicts.
+    """
+    print(message, file=sys.stderr, flush=True)
+
+
+def _speak_status(feature: str, verdict: str) -> None:
+    _progress(f"{feature} {verdict}")
+
+
+def _feature_name(check_id: str) -> str:
+    return _CHECK_FEATURES.get(check_id, check_id)
+
+
+def _run_bounded(operation, timeout_seconds: float):
+    """Run operation in a daemon thread; raise TimeoutError if it exceeds the bound.
+
+    The worker is not killed. A stuck heal or probe may keep running in the
+    background; the collector continues so one hang cannot mute the rest.
+    """
+    outcome: dict[str, Any] = {}
+
+    def runner() -> None:
+        try:
+            outcome["value"] = operation()
+        except Exception as error:
+            outcome["error"] = error
+
+    worker = threading.Thread(target=runner, daemon=True)
+    worker.start()
+    worker.join(timeout_seconds)
+    if worker.is_alive():
+        raise TimeoutError("timed out")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome.get("value")
+
 
 def _one_line(value: object) -> str:
     return " ".join(str(value).split()) or value.__class__.__name__
@@ -835,6 +886,26 @@ def _tighten_env_permissions(context: DoctorContext) -> None:
         os.close(descriptor)
 
 
+def _t1_stage(
+    errors: list[str],
+    error_prefix: str,
+    operation,
+    *,
+    check_id: str,
+    error_types: tuple[type[BaseException], ...] = (Exception,),
+):
+    """Time-box one Tier-1 heal; a timeout is reported and later stages continue."""
+    try:
+        return _run_bounded(operation, CHECK_TIMEOUT_SECONDS)
+    except TimeoutError as error:
+        errors.append(f"{error_prefix}: {_one_line(error)}")
+        _speak_status(_feature_name(check_id), "UNKNOWN")
+        return None
+    except error_types as error:
+        errors.append(f"{error_prefix}: {_one_line(error)}")
+        return None
+
+
 def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[str]]:
     """Preview and apply contract-authorized Tier-1 repairs through the service.
 
@@ -855,7 +926,8 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             f"receipt-declared transaction writes: {names}"
         )
 
-    try:
+    def _plan_paths_export() -> None:
+        nonlocal planned_paths_export
         expected_paths = _paths_export_for(context)
         current_paths: object = None
         try:
@@ -877,13 +949,21 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 )
             )
             planned_paths_export = True
-    except Exception as error:
-        errors.append(f"Path-export heal failed: {_one_line(error)}")
 
-    try:
-        shipped_executables = _repo_shipped_executables(context)
-    except Exception as error:
-        errors.append(f"Executable-mode heal failed: {_one_line(error)}")
+    _t1_stage(
+        errors,
+        "Path-export heal failed",
+        _plan_paths_export,
+        check_id="vault.structure",
+    )
+
+    shipped_executables = _t1_stage(
+        errors,
+        "Executable-mode heal failed",
+        lambda: _repo_shipped_executables(context),
+        check_id="vault.structure",
+    )
+    if shipped_executables is None:
         shipped_executables = []
     for script in shipped_executables:
         try:
@@ -907,7 +987,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
         except OSError as error:
             errors.append(f"Executable-mode heal failed for {script}: {_one_line(error)}")
 
-    try:
+    def _heal_env() -> None:
         finding = _env_permission_finding(context)
         if finding is not None and finding.auto_tighten:
             # Metadata-only repair: never reads, copies, or snapshots the
@@ -918,12 +998,18 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             actions.setdefault("vault.configs", []).append(
                 "tightened .env to owner-only permissions"
             )
-    except OSError as error:
-        errors.append(f".env permission heal failed: {_one_line(error)}")
+
+    _t1_stage(
+        errors,
+        ".env permission heal failed",
+        _heal_env,
+        check_id="vault.configs",
+        error_types=(OSError,),
+    )
 
     dead_letter_path = context.vault_root / "System" / ".dex" / "entity-dead-letter.jsonl"
     if dead_letter_path.exists():
-        try:
+        def _heal_dead_letters() -> None:
             healed = _requeue_entity_dead_letters(context)
             requeued = healed["requeued"]
             if requeued:
@@ -931,20 +1017,30 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 actions.setdefault("entity.engine", []).append(
                     f"re-queued {requeued} dead-lettered entity {noun} with retry counters reset"
                 )
-        except Exception as error:
-            errors.append(f"Entity-write heal failed: {_one_line(error)}")
 
-    try:
+        _t1_stage(
+            errors,
+            "Entity-write heal failed",
+            _heal_dead_letters,
+            check_id="entity.engine",
+        )
+
+    def _heal_preflight() -> None:
         acknowledged = _acknowledge_resolved_preflight_errors(context)
         if acknowledged:
             noun = "error" if acknowledged == 1 else "errors"
             actions.setdefault("preflight.queue", []).append(
                 f"acknowledged {acknowledged} resolved preflight {noun}"
             )
-    except Exception as error:
-        errors.append(f"Preflight-queue heal failed: {_one_line(error)}")
 
-    try:
+    _t1_stage(
+        errors,
+        "Preflight-queue heal failed",
+        _heal_preflight,
+        check_id="preflight.queue",
+    )
+
+    def _heal_rooms() -> None:
         room_health = _probe_capability_rooms(context)
         if (
             room_health.verdict == "BROKEN"
@@ -962,18 +1058,28 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             actions.setdefault("capabilities.rooms", []).append(
                 "reconciled capability room assets without deleting user content"
             )
-    except Exception as error:
-        errors.append(f"Capability-room heal failed: {_one_line(error)}")
 
-    try:
+    _t1_stage(
+        errors,
+        "Capability-room heal failed",
+        _heal_rooms,
+        check_id="capabilities.rooms",
+    )
+
+    def _heal_composition() -> None:
         composition_action = _heal_claude_composition(context)
         if composition_action:
             actions.setdefault("config.claude_composition", []).append(composition_action)
-    except Exception as error:
-        errors.append(f"CLAUDE.md refresh failed: {_one_line(error)}")
+
+    _t1_stage(
+        errors,
+        "CLAUDE.md refresh failed",
+        _heal_composition,
+        check_id="config.claude_composition",
+    )
 
     if planned:
-        try:
+        def _commit_planned() -> None:
             preview = lifecycle_service._preview_transaction(
                 context.vault_root,
                 planned,
@@ -985,9 +1091,6 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 purpose="doctor-tier-1",
                 approved_token=str(preview["approval_token"]),
             )
-        except Exception as error:
-            errors.append(f"Tier-1 transaction failed: {_one_line(error)}")
-        else:
             if planned_paths_export:
                 actions.setdefault("vault.structure", []).append("regenerated core/paths.json")
             if planned_executables:
@@ -995,6 +1098,13 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 actions.setdefault("vault.structure", []).append(
                     f"restored executable {noun} on {', '.join(planned_executables)}"
                 )
+
+        _t1_stage(
+            errors,
+            "Tier-1 transaction failed",
+            _commit_planned,
+            check_id="vault.structure",
+        )
 
     return actions, errors
 
@@ -1034,6 +1144,7 @@ def collect(
     failed: list[dict[str, str]] = []
 
     t1_actions: dict[str, list[str]] = {}
+    _progress("dex-doctor")
     if heal:
         try:
             t1_actions, t1_errors = _apply_t1_heals(context)
@@ -1049,8 +1160,12 @@ def collect(
         for definition in definitions:
             if definition.id == "doctor.self":
                 continue
+            probe = globals()[definition.probe]
             try:
-                result = globals()[definition.probe](context)
+                result = _run_bounded(
+                    lambda current=probe: current(context),
+                    CHECK_TIMEOUT_SECONDS,
+                )
             except Exception as error:
                 error_text = _actionable_probe_error(error)
                 failed.append({"id": definition.id, "error": error_text})
@@ -1134,6 +1249,7 @@ def collect(
                     heal=Heal(tier=1, action="; ".join(check_actions) + ".", applied=True),
                 )
             results[definition.id] = result
+            _speak_status(definition.feature, result.verdict)
     finally:
         _end_launch_agent_scan_scope(context)
 
@@ -1198,6 +1314,7 @@ def collect(
         report["checks"] = [_result_json(definition, results[definition.id]) for definition in definitions]
         report["summary"] = _summary(report["checks"])
 
+    _speak_status(_feature_name("doctor.self"), results["doctor.self"].verdict)
     return report
 
 

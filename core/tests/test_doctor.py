@@ -9,6 +9,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 import venv
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -1571,6 +1572,148 @@ def test_main_heal_flag_invokes_t1_and_still_returns_json(monkeypatch, context, 
     assert doctor.main(["--heal"], context=context) == 0
     assert json.loads(capsys.readouterr().out)["mode"] == "quick"
     assert calls == [context]
+
+
+def test_heal_speaks_on_stderr_before_and_during_checks(monkeypatch, context, capsys):
+    """Visible life starts before the first check and each check speaks as it finishes."""
+    monkeypatch.setattr(doctor, "_apply_t1_heals", lambda _context: ({}, []))
+    seen_before_first = []
+
+    def first_probe(_context):
+        seen_before_first.append(capsys.readouterr().err)
+        return doctor.ProbeResult("OK", "Stub probe completed.")
+
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr(doctor, "_probe_vault_structure", first_probe)
+
+    exit_code = doctor.main(["--heal"], context=context)
+    captured = capsys.readouterr()
+    report = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert seen_before_first[0].splitlines()[0] == "dex-doctor"
+    assert "Vault structure OK" in captured.err.splitlines()
+    assert "Vault configuration OK" in captured.err.splitlines()
+    assert "Doctor instruments OK" in captured.err.splitlines()
+    assert "dex-doctor" not in captured.out
+    assert report["mode"] == "quick"
+
+
+def test_stuck_check_times_out_and_later_checks_still_speak(monkeypatch, context):
+    monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
+    monkeypatch.setattr(doctor, "_apply_t1_heals", lambda _context: ({}, []))
+    spoken: list[str] = []
+    real_progress = doctor._progress
+    monkeypatch.setattr(
+        doctor,
+        "_progress",
+        lambda message: spoken.append(message) or real_progress(message),
+    )
+    order: list[str] = []
+
+    def hang(_context):
+        order.append("hang")
+        time.sleep(30)
+        order.append("hang-finished")
+        return doctor.ProbeResult("OK", "should not count")
+
+    def later(_context):
+        order.append("later")
+        return doctor.ProbeResult("OFF", "Later check ran.")
+
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr(doctor, "_probe_vault_structure", hang)
+    monkeypatch.setattr(doctor, "_probe_vault_configs", later)
+
+    started = time.monotonic()
+    report = doctor.collect(heal=True, context=context)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 5
+    assert order == ["hang", "later"]
+    assert _check(report, "vault.structure")["verdict"] == "UNKNOWN"
+    assert "timed out" in _check(report, "vault.structure")["detail"]
+    assert _check(report, "vault.configs")["verdict"] == "OFF"
+    assert _check(report, "doctor.self")["verdict"] == "BROKEN"
+    assert {"id": "vault.structure", "error": "timed out"} in report["instruments"]["failed"]
+    assert spoken[0] == "dex-doctor"
+    assert spoken.index("Vault structure UNKNOWN") < spoken.index("Vault configuration OFF")
+
+
+def test_stuck_heal_is_reported_and_later_heals_and_checks_still_run(monkeypatch, context):
+    monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
+    (context.vault_root / "core" / "paths.json").write_text("{}\n")
+    order: list[str] = []
+
+    def hang_executables(_context):
+        order.append("exec")
+        time.sleep(30)
+        return []
+
+    def env_finding(_context):
+        order.append("env")
+        return None
+
+    def later_probe(_context):
+        order.append("probe")
+        return doctor.ProbeResult("OK", "Stub probe completed.")
+
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr(doctor, "_probe_vault_configs", later_probe)
+    monkeypatch.setattr(doctor, "_paths_export_for", lambda _context: {})
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", hang_executables)
+    monkeypatch.setattr(doctor, "_env_permission_finding", env_finding)
+    monkeypatch.setattr(doctor, "_acknowledge_resolved_preflight_errors", lambda _context: 0)
+    monkeypatch.setattr(doctor, "_heal_claude_composition", lambda _context: None)
+    monkeypatch.setattr(
+        doctor,
+        "_probe_capability_rooms",
+        lambda _context: doctor.ProbeResult("OK", "rooms"),
+    )
+
+    started = time.monotonic()
+    report = doctor.collect(heal=True, context=context)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 5
+    assert order == ["exec", "env", "probe"]
+    assert _check(report, "vault.configs")["verdict"] == "OK"
+    assert _check(report, "doctor.self")["verdict"] == "BROKEN"
+    assert "Executable-mode heal failed: timed out" in report["instruments"]["failed"][0]["error"]
+
+
+def test_stuck_deep_assessment_does_not_mute_later_deep_checks(monkeypatch, context):
+    monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
+    _stub_probes(monkeypatch)
+
+    def hang(_context):
+        time.sleep(30)
+        return doctor.ProbeResult("OK", "should not count")
+
+    def later(_context):
+        return doctor.ProbeResult(
+            "OK",
+            "migration status ran",
+            structured_detail={"capsules": [], "truncated": False, "pending": False},
+        )
+
+    monkeypatch.setattr(doctor, "_probe_customization_assessment", hang)
+    monkeypatch.setattr(doctor, "_probe_customization_migration_status", later)
+
+    report = doctor.collect(deep=True, context=context)
+
+    assert _check(report, "customizations.assessment")["verdict"] == "UNKNOWN"
+    assert "timed out" in _check(report, "customizations.assessment")["detail"]
+    assert _check(report, "customizations.migration-status")["verdict"] == "OK"
+    assert "customization_assessment" not in report
+    assert report["customization_migration_status"]["pending"] is False
+    assert _check(report, "doctor.self")["verdict"] == "BROKEN"
+
+
+def test_doctor_skill_keeps_collector_stderr_visible():
+    skill = (REPO_ROOT / ".claude/skills/dex-doctor/SKILL.md").read_text(encoding="utf-8")
+    assert "doctor.py --heal 2>/dev/null" not in skill
+    assert "python3 core/utils/doctor.py --heal" in skill
 
 
 def test_main_deep_flag_runs_the_deep_registry(monkeypatch, context, capsys):
