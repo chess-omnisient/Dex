@@ -86,7 +86,11 @@ earlier update approval as approval for this connection change.
 ## Deeply customised setup
 
 Before applying an update, collect the deep Doctor report with
-`python3 core/utils/doctor.py --deep`. If the collector itself fails to run: that IS the
+`python3 core/utils/doctor.py --deep`. This returns JSON on stdout: every check with a
+verdict (`OK` / `OFF` / `BROKEN` / `UNKNOWN`), any
+Tier-1 heals already applied, and an `instruments` block saying whether the doctor itself
+ran completely. While it runs, stderr prints `Checking this Dex install (read-only)...`.
+If the collector itself fails to run: that IS the
 finding. Report it first, with the error. Use that report to decide whether to offer this
 branch. Offer it when `customization_assessment.completeness` is `OK` and
 `customization_assessment.identity.customization_count` is at least 1, or when the user says
