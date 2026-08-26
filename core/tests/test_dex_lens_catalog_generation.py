@@ -22,8 +22,9 @@ from core.lens_catalog_sources import SkillSourceError, resolve_skill_source
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = REPO_ROOT / "scripts/generate-dex-lens-catalog.py"
 REAL_REGISTRY = REPO_ROOT / "core/lens-catalog/registry.json"
-ENRICHED_SCHEMA = REPO_ROOT / "core/tests/fixtures/dex-lens-catalogue-enriched-preview.schema.json"
+RELEASED_LENS_SCHEMA = REPO_ROOT / "core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json"
 ENRICHED_EXAMPLE = REPO_ROOT / "docs/examples/dex-lens-catalog-enriched-preview.json"
+LENS_0_1_9_SCHEMA_SHA256 = "5bddeeca587ce50b22bd96b42ee4d45f12d039be0d9d233aa025e0ce904d42c7"
 
 WAVE3_IDS = (
     "account-plan",
@@ -212,6 +213,33 @@ def _generate_enriched(output_dir: Path, *extra: str) -> subprocess.CompletedPro
             *extra,
         ],
         cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _generate_enriched_release(
+    output_dir: Path, signing_key_b64: str
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(GENERATOR),
+            "--release-root",
+            str(REPO_ROOT),
+            "--output-dir",
+            str(output_dir),
+            "--issued-at",
+            "2026-08-26T10:00:00Z",
+            "--enriched",
+            "--sign",
+            "--signing-key-env",
+            "DEX_LENS_TEST_KEY",
+            "--key-id",
+            "dex-core-lens-test",
+        ],
+        cwd=REPO_ROOT,
+        env={"DEX_LENS_TEST_KEY": signing_key_b64},
         capture_output=True,
         text=True,
     )
@@ -454,7 +482,7 @@ def test_enriched_preview_requires_a_lens_0_1_9_schema(tmp_path: Path) -> None:
     assert _lens_artifacts(tmp_path) == []
 
 
-def test_lens_0_1_9_schema_proposal_still_accepts_the_legacy_phase1_shape(
+def test_released_lens_0_1_9_schema_still_accepts_the_legacy_phase1_shape(
     tmp_path: Path, signing_key_b64: str
 ) -> None:
     _registry(tmp_path)
@@ -462,12 +490,14 @@ def test_lens_0_1_9_schema_proposal_still_accepts_the_legacy_phase1_shape(
 
     assert result.returncode == 0, result.stderr
     envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text())
-    schema = json.loads(ENRICHED_SCHEMA.read_text())
+    schema = json.loads(RELEASED_LENS_SCHEMA.read_text())
     jsonschema.Draft202012Validator(schema).validate(envelope)
 
 
 def test_enriched_preview_refuses_signing_and_release_names(tmp_path: Path) -> None:
-    result = _generate_enriched(tmp_path / "dist", "--lens-schema", str(ENRICHED_SCHEMA), "--sign")
+    result = _generate_enriched(
+        tmp_path / "dist", "--lens-schema", str(RELEASED_LENS_SCHEMA), "--sign"
+    )
 
     assert result.returncode == 1
     assert "enriched previews cannot be signed or published" in result.stderr
@@ -488,7 +518,7 @@ def test_enriched_preview_refuses_every_signing_option(
     result = _generate_enriched(
         tmp_path / "dist",
         "--lens-schema",
-        str(ENRICHED_SCHEMA),
+        str(RELEASED_LENS_SCHEMA),
         *signing_options,
     )
 
@@ -512,7 +542,7 @@ def test_enriched_preview_refuses_abbreviated_signing_options(
     result = _generate_enriched(
         tmp_path / "dist",
         "--lens-schema",
-        str(ENRICHED_SCHEMA),
+        str(RELEASED_LENS_SCHEMA),
         *abbreviated_options,
     )
 
@@ -562,17 +592,35 @@ def test_enriched_preview_rejects_duplicate_discovered_capability_ids(
         generator._build_enriched_catalogue(REPO_ROOT)
 
 
-def test_enriched_schema_declares_capability_id_uniqueness() -> None:
-    schema = json.loads(ENRICHED_SCHEMA.read_text(encoding="utf-8"))
+def test_vendored_lens_schema_is_exact_v0_1_9_release() -> None:
+    schema_bytes = RELEASED_LENS_SCHEMA.read_bytes()
+    schema = json.loads(schema_bytes)
+
+    assert hashlib.sha256(schema_bytes).hexdigest() == LENS_0_1_9_SCHEMA_SHA256
+    assert schema["x-dex-lens-minimum-version"] == "0.1.9"
+    assert [
+        branch["$ref"].rsplit("/", 1)[1]
+        for branch in schema["$defs"]["CatalogueCapabilityEntryV2"]["oneOf"]
+    ] == [
+        "LegacySkillCapabilityEntryV2",
+        "ActiveSkillCapabilityEntryV2",
+        "McpServerCapabilityEntryV2",
+        "ScheduledAutomationCapabilityEntryV2",
+        "SystemEngineCapabilityEntryV2",
+    ]
+
+
+def test_released_enriched_schema_declares_capability_id_uniqueness() -> None:
+    schema = json.loads(RELEASED_LENS_SCHEMA.read_text(encoding="utf-8"))
     capabilities = schema["$defs"]["CatalogueV2"]["properties"]["capabilities"]
 
     assert capabilities["uniqueItems"] is True
     assert capabilities["x-dex-lens-unique-by"] == "capability_id"
 
 
-def test_enriched_preview_validates_all_four_classes_but_current_schema_rejects_it(tmp_path: Path) -> None:
+def test_enriched_preview_validates_all_four_classes_against_released_schema(tmp_path: Path) -> None:
     output = tmp_path / "dist"
-    result = _generate_enriched(output, "--lens-schema", str(ENRICHED_SCHEMA))
+    result = _generate_enriched(output, "--lens-schema", str(RELEASED_LENS_SCHEMA))
 
     assert result.returncode == 0, result.stderr
     assert sorted(path.name for path in output.iterdir()) == ["dex-lens-catalog-enriched-preview.json"]
@@ -592,22 +640,50 @@ def test_enriched_preview_validates_all_four_classes_but_current_schema_rejects_
         "dormant": 29,
         "parked": 1,
     }
-    current_schema = json.loads(
-        (REPO_ROOT / "core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json").read_text()
-    )
-    with pytest.raises(jsonschema.ValidationError, match="Additional properties are not allowed"):
-        jsonschema.Draft202012Validator(current_schema).validate(envelope)
+    released_schema = json.loads(RELEASED_LENS_SCHEMA.read_text())
+    jsonschema.Draft202012Validator(released_schema).validate(envelope)
 
 
-def test_committed_enriched_example_is_generator_output_and_matches_proposed_schema(tmp_path: Path) -> None:
-    result = _generate_enriched(tmp_path, "--lens-schema", str(ENRICHED_SCHEMA))
+def test_committed_enriched_example_is_generator_output_and_matches_released_schema(tmp_path: Path) -> None:
+    result = _generate_enriched(tmp_path, "--lens-schema", str(RELEASED_LENS_SCHEMA))
 
     assert result.returncode == 0, result.stderr
     generated = json.loads((tmp_path / "dex-lens-catalog-enriched-preview.json").read_text())
     committed = json.loads(ENRICHED_EXAMPLE.read_text())
     assert committed == generated
-    schema = json.loads(ENRICHED_SCHEMA.read_text())
+    schema = json.loads(RELEASED_LENS_SCHEMA.read_text())
     jsonschema.Draft202012Validator(schema).validate(committed)
+
+
+def test_signed_enriched_release_path_emits_catalogue_version_five(
+    tmp_path: Path, signing_key_b64: str
+) -> None:
+    result = _generate_enriched_release(tmp_path, signing_key_b64)
+
+    assert result.returncode == 0, result.stderr
+    release_version = json.loads((REPO_ROOT / "package.json").read_text())["version"]
+    expected = [
+        "dex-lens-catalog-latest.json",
+        "dex-lens-catalog-latest.json.sha256",
+        f"dex-lens-catalog-v{release_version}.json",
+        f"dex-lens-catalog-v{release_version}.json.sha256",
+    ]
+    assert sorted(path.name for path in tmp_path.iterdir()) == expected
+    envelope = json.loads((tmp_path / "dex-lens-catalog-latest.json").read_text())
+    assert envelope["metadata"]["catalog_version"] == 5
+    assert envelope["metadata"]["producer"] == (
+        f"Dex Core enriched release pipeline v{release_version}"
+    )
+    classes = [entry["capability_class"] for entry in envelope["catalogue"]["capabilities"]]
+    assert {item: classes.count(item) for item in set(classes)} == {
+        "active-skill": 95,
+        "mcp-server": 10,
+        "scheduled-automation": 5,
+        "system-engine": 4,
+    }
+    assert len(base64.b64decode(envelope["signature"], validate=True)) == 64
+    schema = json.loads(RELEASED_LENS_SCHEMA.read_text())
+    jsonschema.Draft202012Validator(schema).validate(envelope)
 
 
 def test_generator_rejects_unshipped_or_stale_source(tmp_path: Path) -> None:
