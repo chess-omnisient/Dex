@@ -7,7 +7,9 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.2] — 🧰 Undo works after a Dex version update (2026-08-26)
+## [1.97.1] — 🔎 Dex Lens can now see the wider Dex system (2026-08-26)
+
+### After a version update, you can undo it
 
 You could update Dex, have something break, ask to undo, and be told there was
 nothing to undo. The update looked finished. Undo had no version to go back to.
@@ -25,7 +27,7 @@ nothing to undo. The update looked finished. Undo had no version to go back to.
 
 Chris Jackson found that a real version update left undo with nothing to act on.
 
-## [1.97.1] — 🔎 Dex Lens can now see the wider Dex system (2026-08-26)
+### Dex Lens can now see the wider Dex system
 
 Dex Lens could see the skills that ship with Dex, but not the connected-tool servers,
 scheduled automations, or system engines around them. That made the catalogue accurate
