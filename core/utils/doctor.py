@@ -671,28 +671,17 @@ DEEP_CHECKS = (
     CheckDefinition("backup.freshness", "Vault backups", "_probe_backup_freshness"),
 )
 
-_CHECK_FEATURES = {
-    definition.id: definition.feature
-    for definition in (*QUICK_CHECKS, *DEEP_CHECKS)
-}
+HEAL_PROGRESS = "Apply safe Tier-1 repairs before checking."
+CHECK_PROGRESS = "Checking this Dex install (read-only)..."
 
 
 def _progress(message: str) -> None:
     """Narrate collector stages on stderr without touching the JSON report.
 
     Silence used to mean the process was still working. A hang inside a heal
-    or probe produced no output until SIGTERM (exit 143). Status labels use
-    the shipped feature names and verdicts.
+    or probe produced no output until SIGTERM (exit 143).
     """
     print(message, file=sys.stderr, flush=True)
-
-
-def _speak_status(feature: str, verdict: str) -> None:
-    _progress(f"{feature} {verdict}")
-
-
-def _feature_name(check_id: str) -> str:
-    return _CHECK_FEATURES.get(check_id, check_id)
 
 
 def _run_bounded(operation, timeout_seconds: float):
@@ -891,7 +880,6 @@ def _t1_stage(
     error_prefix: str,
     operation,
     *,
-    check_id: str,
     error_types: tuple[type[BaseException], ...] = (Exception,),
 ):
     """Time-box one Tier-1 heal; a timeout is reported and later stages continue."""
@@ -899,7 +887,6 @@ def _t1_stage(
         return _run_bounded(operation, CHECK_TIMEOUT_SECONDS)
     except TimeoutError as error:
         errors.append(f"{error_prefix}: {_one_line(error)}")
-        _speak_status(_feature_name(check_id), "UNKNOWN")
         return None
     except error_types as error:
         errors.append(f"{error_prefix}: {_one_line(error)}")
@@ -954,14 +941,12 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
         errors,
         "Path-export heal failed",
         _plan_paths_export,
-        check_id="vault.structure",
     )
 
     shipped_executables = _t1_stage(
         errors,
         "Executable-mode heal failed",
         lambda: _repo_shipped_executables(context),
-        check_id="vault.structure",
     )
     if shipped_executables is None:
         shipped_executables = []
@@ -1003,7 +988,6 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
         errors,
         ".env permission heal failed",
         _heal_env,
-        check_id="vault.configs",
         error_types=(OSError,),
     )
 
@@ -1022,7 +1006,6 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             errors,
             "Entity-write heal failed",
             _heal_dead_letters,
-            check_id="entity.engine",
         )
 
     def _heal_preflight() -> None:
@@ -1037,7 +1020,6 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
         errors,
         "Preflight-queue heal failed",
         _heal_preflight,
-        check_id="preflight.queue",
     )
 
     def _heal_rooms() -> None:
@@ -1063,7 +1045,6 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
         errors,
         "Capability-room heal failed",
         _heal_rooms,
-        check_id="capabilities.rooms",
     )
 
     def _heal_composition() -> None:
@@ -1075,7 +1056,6 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
         errors,
         "CLAUDE.md refresh failed",
         _heal_composition,
-        check_id="config.claude_composition",
     )
 
     if planned:
@@ -1103,7 +1083,6 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             errors,
             "Tier-1 transaction failed",
             _commit_planned,
-            check_id="vault.structure",
         )
 
     return actions, errors
@@ -1144,8 +1123,8 @@ def collect(
     failed: list[dict[str, str]] = []
 
     t1_actions: dict[str, list[str]] = {}
-    _progress("dex-doctor")
     if heal:
+        _progress(HEAL_PROGRESS)
         try:
             t1_actions, t1_errors = _apply_t1_heals(context)
             if t1_errors:
@@ -1153,6 +1132,7 @@ def collect(
         except Exception as error:
             failed.append({"id": "doctor.self", "error": _one_line(error)})
 
+    _progress(CHECK_PROGRESS)
     # One classification pass over ~/Library/LaunchAgents is shared by
     # jobs.loaded and jobs.fresh instead of re-parsing every plist twice.
     _begin_launch_agent_scan_scope(context)
@@ -1249,7 +1229,6 @@ def collect(
                     heal=Heal(tier=1, action="; ".join(check_actions) + ".", applied=True),
                 )
             results[definition.id] = result
-            _speak_status(definition.feature, result.verdict)
     finally:
         _end_launch_agent_scan_scope(context)
 
@@ -1314,7 +1293,6 @@ def collect(
         report["checks"] = [_result_json(definition, results[definition.id]) for definition in definitions]
         report["summary"] = _summary(report["checks"])
 
-    _speak_status(_feature_name("doctor.self"), results["doctor.self"].verdict)
     return report
 
 

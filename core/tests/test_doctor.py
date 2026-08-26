@@ -1575,7 +1575,7 @@ def test_main_heal_flag_invokes_t1_and_still_returns_json(monkeypatch, context, 
 
 
 def test_heal_speaks_on_stderr_before_and_during_checks(monkeypatch, context, capsys):
-    """Visible life starts before the first check and each check speaks as it finishes."""
+    """Visible life starts before the first check; progress is the two shipped sentences."""
     monkeypatch.setattr(doctor, "_apply_t1_heals", lambda _context: ({}, []))
     seen_before_first = []
 
@@ -1591,15 +1591,17 @@ def test_heal_speaks_on_stderr_before_and_during_checks(monkeypatch, context, ca
     report = json.loads(captured.out)
 
     assert exit_code == 0
-    assert seen_before_first[0].splitlines()[0] == "dex-doctor"
-    assert "Vault structure OK" in captured.err.splitlines()
-    assert "Vault configuration OK" in captured.err.splitlines()
-    assert "Doctor instruments OK" in captured.err.splitlines()
-    assert "dex-doctor" not in captured.out
+    assert seen_before_first[0].splitlines() == [
+        doctor.HEAL_PROGRESS,
+        doctor.CHECK_PROGRESS,
+    ]
+    assert captured.err == ""
+    assert doctor.HEAL_PROGRESS not in captured.out
+    assert doctor.CHECK_PROGRESS not in captured.out
     assert report["mode"] == "quick"
 
 
-def test_stuck_check_times_out_and_later_checks_still_speak(monkeypatch, context):
+def test_stuck_check_times_out_and_later_checks_still_run(monkeypatch, context):
     monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
     monkeypatch.setattr(doctor, "_apply_t1_heals", lambda _context: ({}, []))
     spoken: list[str] = []
@@ -1636,13 +1638,19 @@ def test_stuck_check_times_out_and_later_checks_still_speak(monkeypatch, context
     assert _check(report, "vault.configs")["verdict"] == "OFF"
     assert _check(report, "doctor.self")["verdict"] == "BROKEN"
     assert {"id": "vault.structure", "error": "timed out"} in report["instruments"]["failed"]
-    assert spoken[0] == "dex-doctor"
-    assert spoken.index("Vault structure UNKNOWN") < spoken.index("Vault configuration OFF")
+    assert spoken == [doctor.HEAL_PROGRESS, doctor.CHECK_PROGRESS]
 
 
 def test_stuck_heal_is_reported_and_later_heals_and_checks_still_run(monkeypatch, context):
     monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
     (context.vault_root / "core" / "paths.json").write_text("{}\n")
+    spoken: list[str] = []
+    real_progress = doctor._progress
+    monkeypatch.setattr(
+        doctor,
+        "_progress",
+        lambda message: spoken.append(message) or real_progress(message),
+    )
     order: list[str] = []
 
     def hang_executables(_context):
@@ -1680,10 +1688,18 @@ def test_stuck_heal_is_reported_and_later_heals_and_checks_still_run(monkeypatch
     assert _check(report, "vault.configs")["verdict"] == "OK"
     assert _check(report, "doctor.self")["verdict"] == "BROKEN"
     assert "Executable-mode heal failed: timed out" in report["instruments"]["failed"][0]["error"]
+    assert spoken == [doctor.HEAL_PROGRESS, doctor.CHECK_PROGRESS]
 
 
 def test_stuck_deep_assessment_does_not_mute_later_deep_checks(monkeypatch, context):
     monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
+    spoken: list[str] = []
+    real_progress = doctor._progress
+    monkeypatch.setattr(
+        doctor,
+        "_progress",
+        lambda message: spoken.append(message) or real_progress(message),
+    )
     _stub_probes(monkeypatch)
 
     def hang(_context):
@@ -1708,6 +1724,7 @@ def test_stuck_deep_assessment_does_not_mute_later_deep_checks(monkeypatch, cont
     assert "customization_assessment" not in report
     assert report["customization_migration_status"]["pending"] is False
     assert _check(report, "doctor.self")["verdict"] == "BROKEN"
+    assert spoken == [doctor.CHECK_PROGRESS]
 
 
 def test_doctor_skill_keeps_collector_stderr_visible():

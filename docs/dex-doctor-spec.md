@@ -142,7 +142,7 @@ stub all external probes.
 - `--heal` applies T1 only (tmp vault fixture: missing dir gets created; nothing else touched)
 - JSON contract shape (keys, verdict enum) — this is the skill's API
 - freshness thresholds honored only when job installed
-- `--heal` prints `dex-doctor` on stderr immediately, then each check's feature and verdict as it finishes or times out; JSON stays on stdout at the end
+- `--heal` prints `Apply safe Tier-1 repairs before checking.` on stderr immediately, then `Checking this Dex install (read-only)...` before the read-only pass; JSON stays on stdout at the end
 - a probe that exceeds the per-check bound is `UNKNOWN` with `instruments.failed` populated, `doctor.self` `BROKEN`, and later probes still run
 
 ## Non-goals (v1)
