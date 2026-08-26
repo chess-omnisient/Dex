@@ -31,9 +31,9 @@ from core.lifecycle.conflict import (
     build_conflict_resolution_preview,
 )
 from core.lifecycle.engine import (
+    DELIVERED_RELEASE_ITEM_ID,
     AdoptionReceipt,
     AdoptionReceiptPersistenceError,
-    DELIVERED_RELEASE_ITEM_ID,
     TopologyMigrationError,
     build_delivered_release_receipt,
     build_topology_migration_preview,
