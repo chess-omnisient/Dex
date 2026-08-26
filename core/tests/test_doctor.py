@@ -1,6 +1,7 @@
 """Contract tests for the /dex-doctor collector."""
 
 import hashlib
+import inspect
 import json
 import os
 import plistlib
@@ -9,6 +10,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import threading
 import time
 import venv
 from datetime import datetime, timedelta, timezone
@@ -1602,6 +1604,7 @@ def test_heal_speaks_on_stderr_before_and_during_checks(monkeypatch, context, ca
 
 
 def test_stuck_check_times_out_and_later_checks_still_run(monkeypatch, context):
+    """A stuck probe is time-boxed so later probes still run. Heals are not this path."""
     monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
     monkeypatch.setattr(doctor, "_apply_t1_heals", lambda _context: ({}, []))
     spoken: list[str] = []
@@ -1641,35 +1644,44 @@ def test_stuck_check_times_out_and_later_checks_still_run(monkeypatch, context):
     assert spoken == [doctor.HEAL_PROGRESS, doctor.CHECK_PROGRESS]
 
 
-def test_stuck_heal_is_reported_and_later_heals_and_checks_still_run(monkeypatch, context):
-    monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
-    (context.vault_root / "core" / "paths.json").write_text("{}\n")
-    spoken: list[str] = []
-    real_progress = doctor._progress
-    monkeypatch.setattr(
-        doctor,
-        "_progress",
-        lambda message: spoken.append(message) or real_progress(message),
-    )
-    order: list[str] = []
+def test_t1_heal_path_does_not_wrap_mutations_in_run_bounded():
+    """Heals must not go through `_run_bounded`. That helper abandons a daemon worker."""
+    assert "_run_bounded" not in inspect.getsource(doctor._t1_stage)
+    assert "_run_bounded" not in inspect.getsource(doctor._apply_t1_heals)
 
-    def hang_executables(_context):
-        order.append("exec")
-        time.sleep(30)
+
+def test_heals_are_not_abandoned_in_a_daemon_thread(monkeypatch, context):
+    """A heal that outlasts the probe bound must finish on the collector thread.
+
+    Wrapping heals in `_run_bounded` would start a daemon worker, time out, and
+    leave the mutation running after later heals and probes begin.
+    """
+    monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
+    bounded_calls: list[float] = []
+    real_bounded = doctor._run_bounded
+
+    def spy_bounded(operation, timeout_seconds):
+        bounded_calls.append(timeout_seconds)
+        return real_bounded(operation, timeout_seconds)
+
+    monkeypatch.setattr(doctor, "_run_bounded", spy_bounded)
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    (context.vault_root / "core" / "paths.json").write_text("{}\n")
+    caller = threading.get_ident()
+    seen: list[tuple[str, int]] = []
+
+    def slow_executables(_context):
+        seen.append(("exec", threading.get_ident()))
+        time.sleep(0.45)
         return []
 
     def env_finding(_context):
-        order.append("env")
+        seen.append(("env", threading.get_ident()))
         return None
 
-    def later_probe(_context):
-        order.append("probe")
-        return doctor.ProbeResult("OK", "Stub probe completed.")
-
-    _stub_probes(monkeypatch)
-    monkeypatch.setattr(doctor, "_probe_vault_configs", later_probe)
     monkeypatch.setattr(doctor, "_paths_export_for", lambda _context: {})
-    monkeypatch.setattr(doctor, "_repo_shipped_executables", hang_executables)
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", slow_executables)
     monkeypatch.setattr(doctor, "_env_permission_finding", env_finding)
     monkeypatch.setattr(doctor, "_acknowledge_resolved_preflight_errors", lambda _context: 0)
     monkeypatch.setattr(doctor, "_heal_claude_composition", lambda _context: None)
@@ -1680,15 +1692,49 @@ def test_stuck_heal_is_reported_and_later_heals_and_checks_still_run(monkeypatch
     )
 
     started = time.monotonic()
-    report = doctor.collect(heal=True, context=context)
+    actions, errors = doctor._apply_t1_heals(context)
     elapsed = time.monotonic() - started
 
-    assert elapsed < 5
-    assert order == ["exec", "env", "probe"]
-    assert _check(report, "vault.configs")["verdict"] == "OK"
-    assert _check(report, "doctor.self")["verdict"] == "BROKEN"
-    assert "Executable-mode heal failed: timed out" in report["instruments"]["failed"][0]["error"]
-    assert spoken == [doctor.HEAL_PROGRESS, doctor.CHECK_PROGRESS]
+    assert bounded_calls == []
+    assert elapsed >= 0.4
+    assert [name for name, _ident in seen] == ["exec", "env"]
+    assert all(ident == caller for _name, ident in seen)
+    assert errors == []
+    assert actions == {}
+
+
+def test_heal_failure_stays_in_thread_and_later_heals_still_run(monkeypatch, context):
+    caller = threading.get_ident()
+    seen: list[tuple[str, int]] = []
+
+    def fail_executables(_context):
+        seen.append(("exec", threading.get_ident()))
+        raise RuntimeError("exec boom")
+
+    def env_finding(_context):
+        seen.append(("env", threading.get_ident()))
+        return None
+
+    (context.vault_root / "core" / "paths.json").write_text("{}\n")
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(doctor, "_paths_export_for", lambda _context: {})
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", fail_executables)
+    monkeypatch.setattr(doctor, "_env_permission_finding", env_finding)
+    monkeypatch.setattr(doctor, "_acknowledge_resolved_preflight_errors", lambda _context: 0)
+    monkeypatch.setattr(doctor, "_heal_claude_composition", lambda _context: None)
+    monkeypatch.setattr(
+        doctor,
+        "_probe_capability_rooms",
+        lambda _context: doctor.ProbeResult("OK", "rooms"),
+    )
+
+    actions, errors = doctor._apply_t1_heals(context)
+
+    assert [name for name, _ident in seen] == ["exec", "env"]
+    assert all(ident == caller for _name, ident in seen)
+    assert errors == ["Executable-mode heal failed: exec boom"]
+    assert actions == {}
 
 
 def test_stuck_deep_assessment_does_not_mute_later_deep_checks(monkeypatch, context):

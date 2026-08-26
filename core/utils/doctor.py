@@ -50,8 +50,9 @@ from core.utils import (
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
 QMD_STATUS_TIMEOUT_SECONDS = 10
-# In-process hang bound. Individual subprocess probes already use 10–35s
-# timeouts; those do not bound a heal or probe that never returns.
+# In-process hang bound for probes only. Individual subprocess probes already
+# use 10–35s timeouts; those do not bound a probe that never returns. Heals
+# stay in-process and must finish or fail in-thread.
 CHECK_TIMEOUT_SECONDS = 30
 
 # The nightly ledger is written once a night, so two days tolerates a single
@@ -678,17 +679,18 @@ CHECK_PROGRESS = "Checking this Dex install (read-only)..."
 def _progress(message: str) -> None:
     """Narrate collector stages on stderr without touching the JSON report.
 
-    Silence used to mean the process was still working. A hang inside a heal
-    or probe produced no output until SIGTERM (exit 143).
+    Silence used to mean the process was still working. A hang inside a probe
+    produced no output until SIGTERM (exit 143). A stuck repair can still run
+    long; heals are not time-boxed and must finish or fail in-thread.
     """
     print(message, file=sys.stderr, flush=True)
 
 
 def _run_bounded(operation, timeout_seconds: float):
-    """Run operation in a daemon thread; raise TimeoutError if it exceeds the bound.
+    """Run a probe in a daemon thread; raise TimeoutError if it exceeds the bound.
 
-    The worker is not killed. A stuck heal or probe may keep running in the
-    background; the collector continues so one hang cannot mute the rest.
+    Heals are not wrapped here. The worker is not killed: a stuck probe may
+    keep running in the background so one hang cannot mute later probes.
     """
     outcome: dict[str, Any] = {}
 
@@ -882,12 +884,9 @@ def _t1_stage(
     *,
     error_types: tuple[type[BaseException], ...] = (Exception,),
 ):
-    """Time-box one Tier-1 heal; a timeout is reported and later stages continue."""
+    """Run one Tier-1 heal in-process. Failures stay in-thread; later stages continue."""
     try:
-        return _run_bounded(operation, CHECK_TIMEOUT_SECONDS)
-    except TimeoutError as error:
-        errors.append(f"{error_prefix}: {_one_line(error)}")
-        return None
+        return operation()
     except error_types as error:
         errors.append(f"{error_prefix}: {_one_line(error)}")
         return None

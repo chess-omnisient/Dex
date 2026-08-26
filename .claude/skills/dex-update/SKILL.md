@@ -86,8 +86,8 @@ earlier update approval as approval for this connection change.
 ## Deeply customised setup
 
 Before applying an update, collect the deep Doctor report with
-`python3 core/utils/doctor.py --deep`. This returns JSON on stdout: every check with a
-verdict (`OK` / `OFF` / `BROKEN` / `UNKNOWN`), any
+`python3 core/utils/doctor.py --deep`. JSON is stdout-only; progress is stderr.
+This returns JSON on stdout: every check with a verdict (`OK` / `OFF` / `BROKEN` / `UNKNOWN`), any
 Tier-1 heals already applied, and an `instruments` block saying whether the doctor itself
 ran completely. While it runs, stderr prints `Checking this Dex install (read-only)...`.
 If the collector itself fails to run: that IS the

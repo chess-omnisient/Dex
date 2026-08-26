@@ -144,6 +144,7 @@ stub all external probes.
 - freshness thresholds honored only when job installed
 - `--heal` prints `Apply safe Tier-1 repairs before checking.` on stderr immediately, then `Checking this Dex install (read-only)...` before the read-only pass; JSON stays on stdout at the end
 - a probe that exceeds the per-check bound is `UNKNOWN` with `instruments.failed` populated, `doctor.self` `BROKEN`, and later probes still run
+- Tier-1 heals run in-process (not in a daemon thread). A heal failure is reported in-thread and later heals still run. Tests fail if a heal is abandoned in a daemon thread.
 
 ## Non-goals (v1)
 
