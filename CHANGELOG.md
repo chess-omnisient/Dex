@@ -7,6 +7,27 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.1] — 🔎 Dex Lens can now see the wider Dex system (2026-08-26)
+
+Dex Lens could see the skills that ship with Dex, but not the connected-tool servers,
+scheduled automations, or system engines around them. That made the catalogue accurate
+but incomplete, and it left beta testers without a clear picture of which broader Dex
+capabilities were active, optional, or deliberately parked.
+
+**What this improves for you:**
+
+* **Dex Lens now receives the full 114-entry Dex catalogue.** It covers 95 skills,
+  10 connected-tool servers, five scheduled automations, and four system engines,
+  organised around the same eight jobs as before.
+* **Optional does not get mistaken for active.** The 29 dormant skills remain marked
+  dormant, so Lens can explain that they exist without pretending they are installed.
+* **Parked work stays parked.** The ritual-intelligence engine appears for honest
+  system awareness but cannot be recommended as an active capability.
+* **The trust boundary remains intact.** The catalogue is validated by the released
+  Dex Lens contract and signed only inside Dex's protected release process.
+
+The Phase 2 catalogue review and the released Dex Lens v0.1.9 verifier shaped this release.
+
 ## [1.97.0] — 🔎 Dex Lens sees every active skill, and Obsidian setup tells the truth (2026-08-26)
 
 Dex Lens could show only a hand-curated slice of what Dex can do, so the catalogue
