@@ -7,6 +7,24 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.2] — 🧰 Undo works after a Dex version update (2026-08-26)
+
+You could update Dex, have something break, ask to undo, and be told there was
+nothing to undo. The update looked finished. Undo had no version to go back to.
+
+**What this fixes for you:**
+
+* **Undo can reverse a version update.** After Dex applies a new version, that
+  version shows up in the same undo list as other Dex changes. Asking to go
+  back restores the previous Dex files and the previous installed version.
+* **Your notes stay yours.** Undo puts Dex's own files back. The notes you
+  wrote stay as they were.
+* **Undo only offers a version it can still reverse.** If the safety copy is
+  still there, Dex will show it. If that copy is gone, Dex says so instead of
+  pretending it can go back.
+
+Chris Jackson found that a real version update left undo with nothing to act on.
+
 ## [1.97.1] — 🔎 Dex Lens can now see the wider Dex system (2026-08-26)
 
 Dex Lens could see the skills that ship with Dex, but not the connected-tool servers,
