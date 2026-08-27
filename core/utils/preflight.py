@@ -157,15 +157,21 @@ def list_process_cmdlines() -> list[str] | None:
         result = subprocess.run(
             ["ps", "-axww", "-o", "command="],
             capture_output=True,
-            text=True,
             timeout=2,
             check=False,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError):
         return None
     if result.returncode != 0:
         return None
-    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    raw = result.stdout
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        stdout = raw.decode("utf-8", "replace")
+    else:
+        stdout = raw
+    return [line.strip() for line in stdout.splitlines() if line.strip()]
 
 
 def script_is_live(script_path: Path, cmdlines: list[str]) -> bool:

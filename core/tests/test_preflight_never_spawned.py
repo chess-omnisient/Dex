@@ -58,6 +58,17 @@ def test_never_spawned_when_siblings_live_and_work_mcp_has_no_process(
     }
 
 
+def _disable_proc_process_table(monkeypatch) -> None:
+    original_is_dir = Path.is_dir
+
+    def is_dir(self, *args, **kwargs):
+        if str(self) == "/proc":
+            return False
+        return original_is_dir(self, *args, **kwargs)
+
+    monkeypatch.setattr(preflight.Path, "is_dir", is_dir)
+
+
 def test_stays_quiet_when_the_process_table_cannot_be_read(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -71,6 +82,47 @@ def test_stays_quiet_when_the_process_table_cannot_be_read(
         )
         is None
     )
+
+
+def test_ps_scan_replaces_undecodable_command_lines_and_still_notices(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    scripts = _write_core_servers(tmp_path, ("work-mcp", "calendar-mcp"))
+    monkeypatch.setattr(preflight, "check_server", lambda _name: {"status": "ok"})
+    _disable_proc_process_table(monkeypatch)
+
+    class Result:
+        returncode = 0
+        stdout = f"python {scripts['calendar-mcp']}\n".encode() + b"\xff not utf8\n"
+
+    monkeypatch.setattr(preflight.subprocess, "run", lambda *_args, **_kwargs: Result())
+
+    health = preflight.run_preflight()
+    cmdlines = preflight.list_process_cmdlines()
+
+    assert cmdlines is not None
+    assert any("not utf8" in line for line in cmdlines)
+    assert health["servers"]["work-mcp"]["humanError"] == "Task Manager cannot start"
+
+
+def test_ps_scan_stays_quiet_when_command_lines_cannot_be_decoded(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    _write_core_servers(tmp_path, ("work-mcp", "calendar-mcp"))
+    monkeypatch.setattr(preflight, "check_server", lambda _name: {"status": "ok"})
+    _disable_proc_process_table(monkeypatch)
+
+    def boom(*_args, **_kwargs):
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "bad")
+
+    monkeypatch.setattr(preflight.subprocess, "run", boom)
+
+    assert preflight.list_process_cmdlines() is None
+    health = preflight.run_preflight()
+    assert health["servers"]["work-mcp"]["status"] == "ok"
+    assert "humanError" not in health["servers"]["work-mcp"]
 
 
 def test_stays_quiet_when_no_sibling_core_mcp_is_live(tmp_path: Path, monkeypatch) -> None:
