@@ -99,6 +99,22 @@ def test_step1_checks_session_connectors_without_waiting_on_dex_config() -> None
     assert enabled_lines[0].lstrip().startswith("2."), enabled_lines[0]
 
 
+def test_dex_config_skip_requires_gmail_not_any_workspace_query() -> None:
+    """A Calendar-healthy, Gmail-broken Dex config must not skip to label setup."""
+
+    step1 = _step1(_body())
+    dex_config = next(
+        line
+        for line in step1.splitlines()
+        if line.lstrip().startswith("2.") and "Dex config" in line
+    )
+    lowered = dex_config.lower()
+    assert "gmail" in lowered
+    assert "calendar or drive responding is not enough" in lowered
+    assert "if gmail fails" in lowered
+    assert "if healthy and responding" not in lowered
+
+
 def test_step3_does_not_add_a_second_server_when_gmail_session_connector_is_healthy() -> None:
     step3 = _step3(_body())
     lowered = step3.lower()

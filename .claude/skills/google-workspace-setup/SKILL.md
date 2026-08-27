@@ -61,7 +61,7 @@ Do not treat `System/integrations/config.yaml` as the only connectedness signal.
 1. **Session connectors already available.** Inspect the tools already present in this session for Gmail, Google Calendar, and Google Drive.
    - A **Calendar-only** or **Drive-only** connector is not a full Google Workspace connection. Do not skip setup in those cases — this skill's job includes email, and those connectors do not provide Gmail.
    - If a **Gmail** session connector is available, try a test query (search a recent email) **without** requiring Dex config to be enabled first. If Gmail responds, treat email as already connected: do not add a second MCP server, and skip to **Step 5** (Configure Labels). Note missing Calendar or Drive tools, but do not install a duplicate Gmail server when Gmail already works.
-2. **Dex config.** Check `System/integrations/config.yaml` for `google-workspace.enabled: true`. If enabled, try a test query via `google-workspace-mcp`. If healthy and responding, skip to **Step 5**.
+2. **Dex config.** Check `System/integrations/config.yaml` for `google-workspace.enabled: true`. If enabled, try a **Gmail** test query via `google-workspace-mcp` (search a recent email). Calendar or Drive responding is not enough to skip. If Gmail responds, skip to **Step 5**. If Gmail fails, continue to Step 2 even when Calendar looks healthy — do not bypass re-auth.
 3. If Gmail is not healthy on either path, continue to Step 2.
 
 ### Step 2: Explain What We're Setting Up
