@@ -143,10 +143,11 @@ def test_feedback_skill_invokes_client_with_vault_interpreter() -> None:
     skill = _read(".claude/skills/feedback/SKILL.md")
 
     assert 'python3 .claude/skills/feedback/scripts/feedback_client.py' not in skill
+    assert "|| python3" not in skill
     assert "${CLAUDE_DIR:-}/.venv/bin/python" in skill
     assert "${VAULT_PATH:-}/.venv/bin/python" in skill
     assert 'FEEDBACK_PYTHON="python3"' in skill
     for subcommand in ("check", "report", "status", "answer"):
         assert f'"$FEEDBACK_PYTHON" .claude/skills/feedback/scripts/feedback_client.py {subcommand}' in skill
-    assert "`link` subcommand" in skill
-    assert '"$FEEDBACK_PYTHON"' in skill.split("`link` subcommand", 1)[1]
+    assert "do not switch to bare `python3` even if the printed example uses it" in skill
+    assert 'run the `link` subcommand with `"$FEEDBACK_PYTHON"`' in skill
