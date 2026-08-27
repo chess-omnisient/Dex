@@ -65,8 +65,8 @@ Check `00-Inbox/Meetings/` for this week's meeting notes, then read
 **If `provider` is `google`:** use Google Workspace MCP, not calendar-mcp event tools:
 
 ```
-Use: list_calendars
-Use: get_events(time_min="{{WEEK_START_DATE}}", time_max="{{TARGET_DATE_PLUS_1}}", detailed=true)
+Use: calendar_list_calendars()
+Use: calendar_get_events(time_min="{{WEEK_START_DATE}}", time_max="{{TARGET_DATE_PLUS_1}}", detailed=true)
 ```
 
 Apply CLAUDE.md's **Calendar response confidence contract** to the outcome: a missing or failing Google Workspace calendar tool is not an empty week. If the tools are unavailable or not connected, point to `/google-workspace-setup` using that skill's existing copy. Do not invent new privacy or consent language.

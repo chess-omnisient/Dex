@@ -89,9 +89,9 @@ Read `calendar.provider` from `System/user-profile.yaml` before any calendar cal
 **If `provider` is `google`:** use Google Workspace MCP, not calendar-mcp event tools:
 
 ```
-Use: list_calendars
-Use: get_events(time_min="[week start]", time_max="[day after week end]", detailed=true)
-Use: analyze_calendar_capacity(days_ahead=7, events=[...mapped from get_events...])
+Use: calendar_list_calendars()
+Use: calendar_get_events(time_min="[week start]", time_max="[day after week end]", detailed=true)
+Use: analyze_calendar_capacity(days_ahead=7, events=[...mapped from calendar_get_events...])
 ```
 
 Map returned events into the shape `analyze_calendar_capacity` expects (`title`, `date` as `YYYY-MM-DD`, `duration_minutes`, `attendees`, `all_day`). Apply CLAUDE.md's **Calendar response confidence contract** to the outcome: a missing or failing Google Workspace calendar tool is not an empty week, and do not call `analyze_calendar_capacity` with missing results. If the tools are unavailable or not connected, point to `/google-workspace-setup` using that skill's existing copy. Do not invent new privacy or consent language.
@@ -425,6 +425,6 @@ After generating the file, provide a summary:
 
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
-| Calendar | calendar-mcp, or google-workspace-mcp when `calendar.provider` is `google` | Apple: `calendar_get_events_with_attendees`. Google: `list_calendars`, `get_events` |
+| Calendar | calendar-mcp, or google-workspace-mcp when `calendar.provider` is `google` | Apple: `calendar_get_events_with_attendees`. Google: `calendar_list_calendars`, `calendar_get_events` |
 | Work | work-mcp | `list_tasks`, `get_quarterly_goals`, `get_goal_status`, `create_weekly_priority`, `analyze_calendar_capacity`, `classify_task_effort`, `suggest_task_scheduling`, `get_commitments_due` |
 | Granola | granola-mcp | `granola_get_today_meetings` (optional) |

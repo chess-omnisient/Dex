@@ -764,7 +764,7 @@ The plan works at multiple levels:
 
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
-| Calendar | calendar-mcp, or google-workspace-mcp when `calendar.provider` is `google` | Apple: `calendar_get_today`, `calendar_get_events_with_attendees`. Google: `list_calendars`, `get_events` |
+| Calendar | calendar-mcp, or google-workspace-mcp when `calendar.provider` is `google` | Apple: `calendar_get_today`, `calendar_get_events_with_attendees`. Google: `calendar_list_calendars`, `calendar_get_events` |
 | Reminders | calendar-mcp | `reminders_list_items`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed` |
 | Granola | granola-mcp | `granola_get_recent_meetings` |
 | Work | work-mcp | `list_tasks`, `get_week_progress`, `get_meeting_context`, `get_commitments_due`, `analyze_calendar_capacity`, `suggest_task_scheduling` |

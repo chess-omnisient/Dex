@@ -33,8 +33,8 @@ def test_planning_skills_read_calendar_provider_before_calendar_calls() -> None:
         assert "google-workspace-mcp" in body or "Google Workspace MCP" in body, (
             f"{label} has no Google Calendar path"
         )
-        assert "list_calendars" in body, f"{label} Google path never lists calendars"
-        assert "get_events" in body, f"{label} Google path never reads events"
+        assert "calendar_list_calendars" in body, f"{label} Google path never lists calendars"
+        assert "calendar_get_events" in body, f"{label} Google path never reads events"
         if path in {DAILY_SKILL, WEEK_REVIEW_SKILL}:
             continue
         assert "Do not invent new privacy or consent language" in body, (
@@ -48,7 +48,14 @@ def test_google_calendar_path_does_not_call_eventkit_event_tools() -> None:
         body = path.read_text(encoding="utf-8")
         google_section = body.split("**If `provider` is `google`:**", 1)[1]
         google_section = google_section.split("**If `provider` is `none`:**", 1)[0]
-        assert "calendar_get_" not in google_section
+        assert "calendar_list_calendars" in google_section
+        assert "calendar_get_events" in google_section
+        assert "calendar_get_today" not in google_section
+        assert "calendar_get_events_with_attendees" not in google_section
+        assert "Use: get_events" not in google_section
+        assert "Use: list_calendars" not in google_section
+        assert "`get_events`" not in google_section
+        assert "`list_calendars`" not in google_section
         assert "calendar-mcp event tools" in google_section
 
 

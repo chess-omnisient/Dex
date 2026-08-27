@@ -204,3 +204,39 @@ def test_known_use_directive_reference_passes() -> None:
     )
 
     assert findings == []
+
+
+def test_planning_skills_instruct_dex_calendar_tools_not_unprefixed_aliases() -> None:
+    """Google calendar routing names Dex MCP tools, not unprefixed aliases.
+
+    calendar_list_calendars and calendar_get_events are defined on
+    dex-calendar-mcp. The existence gate fails if skills instruct
+    list_calendars / get_events, which are not Dex catalog tools.
+    """
+    checker = _load_checker()
+    allowlisted = checker.parse_allowlist(
+        (REPO_ROOT / "scripts" / "instructed-tools-allowlist.txt").read_text(
+            encoding="utf-8"
+        )
+    )
+    defined = checker.collect_defined_tools()
+    assert "list_calendars" not in allowlisted
+    assert "get_events" not in allowlisted
+    assert "calendar_list_calendars" in defined
+    assert "calendar_get_events" in defined
+
+    for relative in (
+        ".claude/skills/daily-plan/AGENT_INSTRUCTIONS.md",
+        ".claude/skills/daily-plan/SKILL.md",
+        ".claude/skills/week-plan/SKILL.md",
+        ".claude/skills/week-review/AGENT_INSTRUCTIONS.md",
+        ".claude/skills/week-review/SKILL.md",
+    ):
+        path = REPO_ROOT / relative
+        findings = checker.find_unknown_references(
+            path.read_text(encoding="utf-8"),
+            path.relative_to(REPO_ROOT),
+            defined,
+            allowlisted,
+        )
+        assert findings == [], relative
