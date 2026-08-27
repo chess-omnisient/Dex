@@ -70,6 +70,8 @@ def test_google_workspace_setup_records_google_calendar_provider() -> None:
     assert "If `calendar.provider` is already `apple`, leave it" in body
     assert "If `calendar.provider` is missing and `work_calendar` is set, leave it" in body
     assert "Gmail-only connection must not change the calendar source" in body
+    assert "System/user-profile.yaml" in body
+    assert "not in `System/integrations/config.yaml`" in body
 
 
 def test_doctor_skill_does_not_treat_calendar_as_eventkit_only() -> None:
