@@ -35,8 +35,9 @@ Only when delivery returns its exact release identity, ask
 that identity. Show every returned write and ask: “Apply this exact update?”
 Only a fresh explicit yes to that unchanged preview permits
 `execute_approved_delivered_release` with the same preview and approval token.
-Render its lifecycle receipt. If delivery, preview, or execution refuses, stop;
-no vault-content change was made.
+Render its lifecycle receipt. Then ask `read_lifecycle_state` — the applied
+version now appears in the same rewind list `/dex-rollback` uses. If delivery,
+preview, or execution refuses, stop; no vault-content change was made.
 
 **Immediately after a successful apply, run the post-update canary** — one
 read-only walk through the same doors every later command will use. From the
@@ -47,6 +48,11 @@ failure, treat it as part of this update, not a separate errand: tell the user
 plainly that the update applied but something is wrong underneath, and run
 `/dex-doctor` now. Never report the update as complete while the canary is
 failing.
+
+Newly written `.claude/skills/*/SKILL.md` files are live in this session.
+The host slash list may still omit them until the next session; that does not
+make them unavailable. If the user asks for a skill that now has a SKILL.md
+on disk, Read that file and follow it. Do not tell them to restart first.
 
 If the service reports UNKNOWN, conflict, changed evidence, an unsafe path, or a rejected transaction, stop. Explain the refusal in ordinary language and leave the vault untouched. A refusal is a safety result, not an invitation to work around the engine.
 
@@ -286,9 +292,10 @@ Ask one direct question: “Apply this exact update?” for an adoption preview,
 
 ## Receipt view
 
-After success, render the receipt returned by `execute_approved_adoption` or `execute_approved_conflict_resolution`:
+After success, render the receipt returned by `execute_approved_adoption`,
+`execute_approved_conflict_resolution`, or `execute_approved_delivered_release`:
 
-- adopted items;
+- adopted items (a version update appears as `dex-release` at the installed version);
 - transaction identifier;
 - every receipt-declared file;
 - snapshot reference;
