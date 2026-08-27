@@ -299,6 +299,21 @@ def test_find_company_for_attendees_can_pin_an_exact_structured_name(
     assert match["domains"] == ["northwind.example.org"]
 
 
+def test_find_company_for_attendees_skips_an_empty_email_host(
+    meeting_context_vault: dict[str, Path],
+) -> None:
+    company = meeting_context_vault["companies"] / "Northwind.md"
+    company.write_text(
+        render_company_page("Northwind", ["acme.com"]),
+        encoding="utf-8",
+    )
+
+    assert work_server.find_company_for_attendees(["broken@"]) is None
+    assert work_server.find_company_for_attendees(["Jane <jane@>"]) is None
+    result = _call_meeting_context("broken@")
+    assert result["related_company"] is None
+
+
 def test_find_company_for_attendees_skips_consumer_mail_domains(
     meeting_context_vault: dict[str, Path],
     monkeypatch: pytest.MonkeyPatch,

@@ -3167,9 +3167,11 @@ def _attendee_email_domain(attendee: str) -> Optional[str]:
     """Return the host from an attendee email, if one is present."""
     if '@' not in attendee:
         return None
-    domain = attendee.rsplit('@', 1)[1]
-    domain = domain.strip().strip('>').split()[0].rstrip('.,;')
-    return domain or None
+    host = attendee.rsplit('@', 1)[1].strip().strip('>')
+    if not host:
+        return None
+    token = host.split(None, 1)[0].rstrip('.,;')
+    return token or None
 
 
 def _company_match_record(
