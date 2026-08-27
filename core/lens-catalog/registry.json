@@ -5560,8 +5560,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/google-workspace-setup/SKILL.md",
-        "sha256": "1315f76bfa9f738cf23b4ecd5de575350c2b4f231539a39177de54cf2bf7f7a8",
-        "byte_size": 10002
+        "sha256": "fc328db7f6cf4a4de9ab9af2a2e47096670b8689f46558da398d543ada0b1919",
+        "byte_size": 11291
       },
       "value": "Connect Google Workspace (Gmail, Calendar, Docs) for email-aware planning and meeting prep.",
       "jobs_served": [

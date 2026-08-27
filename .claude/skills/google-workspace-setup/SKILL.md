@@ -56,10 +56,11 @@ Dex reads your email **on demand** -- nothing is stored permanently. Emails are 
 
 ### Step 1: Check if Already Connected
 
-1. Check `System/integrations/config.yaml` for `google-workspace.enabled: true`
-2. If enabled, try a test query via Google Workspace MCP (e.g., search for a recent email)
-3. If healthy and responding, skip to **Step 5** (Configure Labels)
-4. If the tool is not available or errors, continue to Step 2
+Do not treat `System/integrations/config.yaml` as the only connectedness signal. Google Workspace may already be usable through **session connectors** — Gmail, Google Calendar, or Google Drive tools already available in this session — even when that file does not say `google-workspace.enabled: true`.
+
+1. **Session connectors already available.** Inspect the tools already present in this session for Gmail, Google Calendar, and Google Drive. If any of those connectors are available, try a test query (search a recent email, or list today's calendar events) **without** requiring Dex config to be enabled first. If they respond, treat Google Workspace as already connected: do not add a second MCP server, and skip to **Step 5** (Configure Labels).
+2. **Dex config.** Check `System/integrations/config.yaml` for `google-workspace.enabled: true`. If enabled, try a test query via `google-workspace-mcp`. If healthy and responding, skip to **Step 5**.
+3. If neither path is healthy and responding, continue to Step 2.
 
 ### Step 2: Explain What We're Setting Up
 
@@ -87,6 +88,8 @@ Wait for confirmation.
 
 ### Step 3: Add the Google Workspace MCP Server
 
+If Step 1 already found a healthy session connector, skip this step — do not register a second Google Workspace server.
+
 Check the user's MCP configuration. If `google-workspace-mcp` is not listed:
 
 1. Explain what we're adding:
@@ -94,7 +97,7 @@ Check the user's MCP configuration. If `google-workspace-mcp` is not listed:
 ```
 I need to add the Google Workspace connector to your Dex configuration.
 
-This is an open-source bridge (github.com/taylorwilsdon/google_workspace_mcp)
+This is an open-source bridge (`google-workspace-mcp`)
 that connects to Google's APIs via OAuth. Your credentials stay on your machine.
 ```
 
@@ -109,6 +112,8 @@ that connects to Google's APIs via OAuth. Your credentials stay on your machine.
   }
 }
 ```
+
+The config key, the `npx` package, and the name in the explanation must all be `google-workspace-mcp`. Do not substitute a different repository or package name.
 
 3. Tell the user the MCP server needs to restart for changes to take effect.
 
@@ -275,7 +280,7 @@ Google OAuth tokens typically last 1 hour, but refresh tokens are longer-lived. 
 
 ### "Google Workspace MCP not found"
 
-The server might not be in your configuration. Re-run `/google-workspace-setup` and it will detect and fix this.
+First check whether session connectors for Gmail, Google Calendar, or Google Drive are already available in this session. If they are healthy, Dex can use those and does not need a second server. If they are not, re-run `/google-workspace-setup` and it will detect and add `google-workspace-mcp`.
 
 ### Permission Errors
 
@@ -307,8 +312,8 @@ Some organizations restrict OAuth access for third-party apps:
 
 If the user runs `/google-workspace-setup` when already configured:
 
-1. Check current status via a test query
-2. Show current config from `System/integrations/config.yaml`
+1. Check current status via a test query — including session connectors already available in this session, not only `System/integrations/config.yaml`
+2. Show current config from `System/integrations/config.yaml` if present
 3. Offer options:
    - Update watched labels
    - Change write preferences (auto-draft vs ask each time)
