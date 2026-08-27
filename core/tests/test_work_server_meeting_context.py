@@ -202,6 +202,18 @@ def test_get_company_domains_still_reads_a_legacy_domains_table(
     assert work_server.get_company_domains(company) == ["acme.com", "acme.org"]
 
 
+def test_get_company_domains_reads_inline_bold_domains(
+    meeting_context_vault: dict[str, Path],
+) -> None:
+    company = meeting_context_vault["companies"] / "Inline_Co.md"
+    company.write_text(
+        "# Inline Co\n\n**Domains:** acme.com\n",
+        encoding="utf-8",
+    )
+
+    assert work_server.get_company_domains(company) == ["acme.com"]
+
+
 def test_meeting_context_does_not_pin_a_company_from_a_body_mention(
     meeting_context_vault: dict[str, Path],
 ) -> None:

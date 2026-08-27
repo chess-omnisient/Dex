@@ -1136,6 +1136,13 @@ def find_people_at_company(company_name: str) -> List[Dict[str, Any]]:
     
     return people
 
+def _structured_company_fields(company_filepath: Path) -> tuple[str, List[str]]:
+    """Return page name and domains from structured fields only."""
+    entity = parse_entity_page(company_filepath)
+    name = entity.get('name') or company_filepath.stem.replace('_', ' ')
+    return name, list(entity.get('domains') or [])
+
+
 def get_company_domains(company_filepath: Path) -> List[str]:
     """Extract domains from a company page's structured fields.
 
@@ -1146,8 +1153,7 @@ def get_company_domains(company_filepath: Path) -> List[str]:
     if not company_filepath.exists():
         return []
 
-    entity = parse_entity_page(company_filepath)
-    return list(entity.get('domains') or [])
+    return _structured_company_fields(company_filepath)[1]
 
 # ============================================================================
 # PEOPLE DIRECTORY INDEX
@@ -3225,9 +3231,7 @@ def find_company_for_attendees(attendees: List[str], domains: List[str] = None) 
     name_match = None
     for company_file in COMPANIES_DIR.glob('*.md'):
         try:
-            entity = parse_entity_page(company_file)
-            company_name = entity.get('name') or company_file.stem.replace('_', ' ')
-            company_domains = list(entity.get('domains') or [])
+            company_name, company_domains = _structured_company_fields(company_file)
             structured_domains = {
                 registrable_domain(domain)
                 for domain in company_domains
