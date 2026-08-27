@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## Unreleased — 🔎 Dex Lens catalogue tells the complete release truth
+## [1.97.2] — 🔎 Dex Lens catalogue tells the complete release truth (2026-08-27)
 
 Dex's architecture inventory could see the optional Pipedrive server and its 15 tools,
 but the catalogue used by Dex Lens could not. Separately, the catalogue described the
