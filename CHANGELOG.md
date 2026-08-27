@@ -7,21 +7,6 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.4] — 🏢 Meeting prep stops attaching the wrong company (2026-08-27)
-
-If another company's notes mentioned someone on your call, Dex could treat that
-company as the one you were meeting. That made meeting prep open the wrong page.
-
-**What this fixes for you:**
-
-* **The company on a meeting is the one that matches.** Dex uses the email
-  domain or the company name on the company page. A mention in someone else's
-  notes is no longer enough.
-* **Domains stored at the top of a company page are used.** Older pages that
-  list domains in a table still work.
-
----
-
 ## [1.97.3] — ↩️ After an update you can undo it, and Doctor talks while it heals (2026-08-27)
 
 An update could look finished while undo had nothing to go back to. New skills
