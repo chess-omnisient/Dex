@@ -13,6 +13,10 @@ from core.lens_catalog_sources import SkillSourceError, require_release_file
 SKILL_ID = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 TOOL_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+MCP_SERVER_GLOBS: tuple[str, ...] = (
+    "core/mcp/*_server.py",
+    "core/integrations/*/*_server.py",
+)
 
 
 class LensDiscoveryError(RuntimeError):
@@ -265,13 +269,26 @@ def discover_mcp_server_source(release_root: Path, path: Path) -> McpServerCandi
     )
 
 
+def mcp_server_sources(release_root: Path) -> tuple[Path, ...]:
+    """Return every reviewed MCP server source in a release tree."""
+
+    root = release_root.resolve(strict=True)
+    sources = {
+        path
+        for pattern in MCP_SERVER_GLOBS
+        for path in root.glob(pattern)
+        if path.is_file()
+    }
+    return tuple(sorted(sources, key=lambda path: path.relative_to(root).as_posix()))
+
+
 def discover_mcp_servers(release_root: Path) -> tuple[McpServerCandidate, ...]:
     """Discover the reviewed Core MCP boundary and its literal exposed tools."""
 
     root = release_root.resolve(strict=True)
     candidates = [
         discover_mcp_server_source(root, path)
-        for path in sorted((root / "core" / "mcp").glob("*_server.py"))
+        for path in mcp_server_sources(root)
     ]
     return tuple(sorted(candidates, key=lambda item: (item.server_name, item.source_path)))
 
