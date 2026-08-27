@@ -629,16 +629,16 @@ def test_enriched_preview_validates_all_four_classes_against_released_schema(tmp
     assert envelope["metadata"]["produced_at"] == "2026-08-25T12:00:00Z"
     classes = [entry["capability_class"] for entry in envelope["catalogue"]["capabilities"]]
     assert {item: classes.count(item) for item in set(classes)} == {
-        "active-skill": 95,
-        "mcp-server": 10,
+        "active-skill": 94,
+        "mcp-server": 11,
         "scheduled-automation": 5,
-        "system-engine": 4,
+        "system-engine": 5,
     }
     availability = [entry["availability"] for entry in envelope["catalogue"]["capabilities"]]
     assert {item: availability.count(item) for item in set(availability)} == {
         "active": 84,
         "dormant": 29,
-        "parked": 1,
+        "parked": 2,
     }
     released_schema = json.loads(RELEASED_LENS_SCHEMA.read_text())
     jsonschema.Draft202012Validator(released_schema).validate(envelope)
@@ -655,7 +655,7 @@ def test_committed_enriched_example_is_generator_output_and_matches_released_sch
     jsonschema.Draft202012Validator(schema).validate(committed)
 
 
-def test_signed_enriched_release_path_emits_catalogue_version_five(
+def test_signed_enriched_release_path_emits_catalogue_version_six(
     tmp_path: Path, signing_key_b64: str
 ) -> None:
     result = _generate_enriched_release(tmp_path, signing_key_b64)
@@ -670,20 +670,38 @@ def test_signed_enriched_release_path_emits_catalogue_version_five(
     ]
     assert sorted(path.name for path in tmp_path.iterdir()) == expected
     envelope = json.loads((tmp_path / "dex-lens-catalog-latest.json").read_text())
-    assert envelope["metadata"]["catalog_version"] == 5
+    assert envelope["metadata"]["catalog_version"] == 6
     assert envelope["metadata"]["producer"] == (
         f"Dex Core enriched release pipeline v{release_version}"
     )
     classes = [entry["capability_class"] for entry in envelope["catalogue"]["capabilities"]]
     assert {item: classes.count(item) for item in set(classes)} == {
-        "active-skill": 95,
-        "mcp-server": 10,
+        "active-skill": 94,
+        "mcp-server": 11,
         "scheduled-automation": 5,
-        "system-engine": 4,
+        "system-engine": 5,
     }
     assert len(base64.b64decode(envelope["signature"], validate=True)) == 64
     schema = json.loads(RELEASED_LENS_SCHEMA.read_text())
     jsonschema.Draft202012Validator(schema).validate(envelope)
+
+
+def test_corrected_catalogue_has_complete_truthful_identity_sets(
+    tmp_path: Path, signing_key_b64: str
+) -> None:
+    result = _generate_enriched_release(tmp_path, signing_key_b64)
+
+    assert result.returncode == 0, result.stderr
+    envelope = json.loads((tmp_path / "dex-lens-catalog-latest.json").read_text())
+    entries = envelope["catalogue"]["capabilities"]
+    by_id = {entry["capability_id"]: entry for entry in entries}
+
+    assert envelope["metadata"]["catalog_version"] == 6
+    assert len(entries) == len(by_id) == 115
+    assert "connect" not in by_id
+    assert by_id["dex-pipedrive-mcp"]["tool_count"] == 15
+    assert by_id["connection-manager-engine"]["availability"] == "parked"
+    assert sum(entry.get("tool_count", 0) for entry in entries) == 146
 
 
 def test_generator_rejects_unshipped_or_stale_source(tmp_path: Path) -> None:
@@ -1130,10 +1148,10 @@ def test_real_registry_annotates_the_complete_active_set_and_marks_dormant_entri
     active_entries = [entry for entry in registry["entries"] if entry["availability"] == "active"]
     dormant_entries = [entry for entry in registry["entries"] if entry["availability"] == "dormant"]
 
-    assert registry["catalog_version"] == 4
+    assert registry["catalog_version"] == 5
     assert tuple(job["job_id"] for job in registry["jobs"]) == CANONICAL_JOB_IDS
-    assert len(registry["entries"]) == 95
-    assert len(active_entries) == 66
+    assert len(registry["entries"]) == 94
+    assert len(active_entries) == 65
     assert len(dormant_entries) == 29
     assert {entry["id"] for entry in active_entries} == discovered_ids
     assert all(entry["capability_class"] == "active-skill" for entry in registry["entries"])
@@ -1146,9 +1164,9 @@ def test_wave3_source_partition_is_exact_and_resolves_to_unique_targets() -> Non
     by_id = {entry["id"]: entry for entry in registry["entries"]}
     wave3 = [by_id[entry_id] for entry_id in WAVE3_IDS]
 
-    assert registry["catalog_version"] == 4
+    assert registry["catalog_version"] == 5
     assert len(registry["jobs"]) == 8
-    assert len(registry["entries"]) == 95
+    assert len(registry["entries"]) == 94
     assert tuple(entry["id"] for entry in wave3) == WAVE3_IDS
     assert all(entry["capability_class"] == "active-skill" for entry in wave3)
     assert all(
@@ -1275,7 +1293,7 @@ def test_shipped_registry_builds_the_release_catalogue(tmp_path: Path, signing_k
     assert [capability["capability_id"] for capability in envelope["catalogue"]["capabilities"]] == [
         candidate.capability_id for candidate in discover_active_skills(REPO_ROOT)
     ]
-    assert len(envelope["catalogue"]["capabilities"]) == 66
+    assert len(envelope["catalogue"]["capabilities"]) == 65
 
 
 def _rewrite_registry_evidence(root: Path, evidence: list[dict[str, str]]) -> None:
