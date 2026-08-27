@@ -34,6 +34,22 @@ not_started), warnings for priorities with no activity.
 
 ### 1.2 Calendar + Capacity
 
+Read `calendar.provider` from `System/user-profile.yaml` before any calendar call.
+
+**If `provider` is `google`:** use Google Workspace MCP, not calendar-mcp event tools:
+
+```
+Use: list_calendars
+Use: get_events(time_min="{{TARGET_DATE}}", time_max="{{TARGET_DATE_PLUS_1}}", detailed=true)
+Use: analyze_calendar_capacity(days_ahead=1, events=[...mapped from get_events...])
+```
+
+Map returned events into the shape `analyze_calendar_capacity` expects (`title`, `date` as `YYYY-MM-DD`, `duration_minutes`, `attendees`, `all_day`). Apply CLAUDE.md's **Calendar response confidence contract** to the outcome: a missing or failing Google Workspace calendar tool is not an empty day, and do not call `analyze_calendar_capacity` with missing results. If the tools are unavailable or not connected, point to `/google-workspace-setup` using that skill's existing copy. Do not invent new privacy or consent language.
+
+**If `provider` is `none`:** skip calendar gathering. Do not call calendar-mcp event tools. Do not treat the day as open.
+
+**If `provider` is `apple`, missing, or any other value:** use calendar-mcp:
+
 ```
 Use: calendar_get_events_with_attendees(start_date="{{TARGET_DATE}}", end_date="{{TARGET_DATE_PLUS_1}}")
 Use: analyze_calendar_capacity(days_ahead=1, events=[...from above...])

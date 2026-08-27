@@ -216,6 +216,15 @@ google-workspace:
 
 If the file already exists, only update the `google-workspace:` section. Preserve other integration configs.
 
+If `System/user-profile.yaml` has `calendar.provider` set to `none` or the field is missing, set:
+
+```yaml
+calendar:
+  provider: google
+```
+
+Keep any existing `work_calendar` value. If `calendar.provider` is already `apple`, leave it — Apple Calendar remains the calendar source. Do not invent new privacy or consent language; this only records which calendar daily planning should read.
+
 ### Step 8: Confirm with Capability Cascade
 
 ```
