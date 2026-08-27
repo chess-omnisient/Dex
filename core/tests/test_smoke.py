@@ -324,7 +324,7 @@ def test_mcp_startup_reports_never_spawned_work_mcp_without_isolated_mcp_json(
     monkeypatch.setattr(
         preflight,
         "list_process_cmdlines",
-        lambda: ["python /Users/example/Dex/core/mcp/calendar_server.py"],
+        lambda: ["python core/mcp/calendar_server.py"],
     )
 
     assert not (vault / ".mcp.json").exists()
