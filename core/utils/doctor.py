@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -37,11 +38,26 @@ from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
 from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry, PlanRejected
 from core.transaction.journal import Journal, JournalCorruptError
-from core.utils import apple_mail_health, dex_logger, launch_agents, preflight, release_channel
+from core.utils import (
+    apple_mail_health,
+    automation_ownership,
+    dex_logger,
+    launch_agents,
+    preflight,
+    release_channel,
+)
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
 QMD_STATUS_TIMEOUT_SECONDS = 10
+# In-process hang bound for probes only. Individual subprocess probes already
+# use 10–35s timeouts; those do not bound a probe that never returns. Heals
+# stay in-process and must finish or fail in-thread.
+CHECK_TIMEOUT_SECONDS = 30
+
+# The nightly ledger is written once a night, so two days tolerates a single
+# missed run before the ledger is treated as stopped rather than merely quiet.
+SMOKE_LEDGER_STALE_AFTER = timedelta(days=2)
 MISSING_PACKAGES_DETAIL = (
     "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
     "then re-run /dex-doctor"
@@ -645,6 +661,7 @@ DEEP_CHECKS = (
     CheckDefinition("granola.query_path", "Granola meeting sync", "_probe_granola_query_path"),
     CheckDefinition("pipedrive.connection", "Pipedrive CRM", "_probe_pipedrive_connection"),
     CheckDefinition("config.meeting_sources", "Configured meeting source", "_probe_meeting_sources"),
+    CheckDefinition("config.claude_composition", "CLAUDE customisations live", "_probe_claude_composition"),
     CheckDefinition("update.post-canary", "Post-update canary", "_probe_post_update_canary"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
     CheckDefinition("mail.apple-search", "Apple Mail search", "_probe_apple_mail_search"),
@@ -654,6 +671,43 @@ DEEP_CHECKS = (
     CheckDefinition("smoke.journeys", "End-to-end smoke journeys", "_probe_smoke_journeys"),
     CheckDefinition("backup.freshness", "Vault backups", "_probe_backup_freshness"),
 )
+
+HEAL_PROGRESS = "Apply safe Tier-1 repairs before checking."
+CHECK_PROGRESS = "Checking this Dex install (read-only)..."
+
+
+def _progress(message: str) -> None:
+    """Narrate collector stages on stderr without touching the JSON report.
+
+    Silence used to mean the process was still working. A hang inside a probe
+    produced no output until SIGTERM (exit 143). A stuck repair can still run
+    long; heals are not time-boxed and must finish or fail in-thread.
+    """
+    print(message, file=sys.stderr, flush=True)
+
+
+def _run_bounded(operation, timeout_seconds: float):
+    """Run a probe in a daemon thread; raise TimeoutError if it exceeds the bound.
+
+    Heals are not wrapped here. The worker is not killed: a stuck probe may
+    keep running in the background so one hang cannot mute later probes.
+    """
+    outcome: dict[str, Any] = {}
+
+    def runner() -> None:
+        try:
+            outcome["value"] = operation()
+        except Exception as error:
+            outcome["error"] = error
+
+    worker = threading.Thread(target=runner, daemon=True)
+    worker.start()
+    worker.join(timeout_seconds)
+    if worker.is_alive():
+        raise TimeoutError("timed out")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome.get("value")
 
 
 def _one_line(value: object) -> str:
@@ -823,6 +877,21 @@ def _tighten_env_permissions(context: DoctorContext) -> None:
         os.close(descriptor)
 
 
+def _t1_stage(
+    errors: list[str],
+    error_prefix: str,
+    operation,
+    *,
+    error_types: tuple[type[BaseException], ...] = (Exception,),
+):
+    """Run one Tier-1 heal in-process. Failures stay in-thread; later stages continue."""
+    try:
+        return operation()
+    except error_types as error:
+        errors.append(f"{error_prefix}: {_one_line(error)}")
+        return None
+
+
 def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[str]]:
     """Preview and apply contract-authorized Tier-1 repairs through the service.
 
@@ -843,7 +912,8 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             f"receipt-declared transaction writes: {names}"
         )
 
-    try:
+    def _plan_paths_export() -> None:
+        nonlocal planned_paths_export
         expected_paths = _paths_export_for(context)
         current_paths: object = None
         try:
@@ -865,13 +935,19 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 )
             )
             planned_paths_export = True
-    except Exception as error:
-        errors.append(f"Path-export heal failed: {_one_line(error)}")
 
-    try:
-        shipped_executables = _repo_shipped_executables(context)
-    except Exception as error:
-        errors.append(f"Executable-mode heal failed: {_one_line(error)}")
+    _t1_stage(
+        errors,
+        "Path-export heal failed",
+        _plan_paths_export,
+    )
+
+    shipped_executables = _t1_stage(
+        errors,
+        "Executable-mode heal failed",
+        lambda: _repo_shipped_executables(context),
+    )
+    if shipped_executables is None:
         shipped_executables = []
     for script in shipped_executables:
         try:
@@ -895,7 +971,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
         except OSError as error:
             errors.append(f"Executable-mode heal failed for {script}: {_one_line(error)}")
 
-    try:
+    def _heal_env() -> None:
         finding = _env_permission_finding(context)
         if finding is not None and finding.auto_tighten:
             # Metadata-only repair: never reads, copies, or snapshots the
@@ -906,12 +982,17 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             actions.setdefault("vault.configs", []).append(
                 "tightened .env to owner-only permissions"
             )
-    except OSError as error:
-        errors.append(f".env permission heal failed: {_one_line(error)}")
+
+    _t1_stage(
+        errors,
+        ".env permission heal failed",
+        _heal_env,
+        error_types=(OSError,),
+    )
 
     dead_letter_path = context.vault_root / "System" / ".dex" / "entity-dead-letter.jsonl"
     if dead_letter_path.exists():
-        try:
+        def _heal_dead_letters() -> None:
             healed = _requeue_entity_dead_letters(context)
             requeued = healed["requeued"]
             if requeued:
@@ -919,20 +1000,28 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 actions.setdefault("entity.engine", []).append(
                     f"re-queued {requeued} dead-lettered entity {noun} with retry counters reset"
                 )
-        except Exception as error:
-            errors.append(f"Entity-write heal failed: {_one_line(error)}")
 
-    try:
+        _t1_stage(
+            errors,
+            "Entity-write heal failed",
+            _heal_dead_letters,
+        )
+
+    def _heal_preflight() -> None:
         acknowledged = _acknowledge_resolved_preflight_errors(context)
         if acknowledged:
             noun = "error" if acknowledged == 1 else "errors"
             actions.setdefault("preflight.queue", []).append(
                 f"acknowledged {acknowledged} resolved preflight {noun}"
             )
-    except Exception as error:
-        errors.append(f"Preflight-queue heal failed: {_one_line(error)}")
 
-    try:
+    _t1_stage(
+        errors,
+        "Preflight-queue heal failed",
+        _heal_preflight,
+    )
+
+    def _heal_rooms() -> None:
         room_health = _probe_capability_rooms(context)
         if (
             room_health.verdict == "BROKEN"
@@ -950,11 +1039,26 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             actions.setdefault("capabilities.rooms", []).append(
                 "reconciled capability room assets without deleting user content"
             )
-    except Exception as error:
-        errors.append(f"Capability-room heal failed: {_one_line(error)}")
+
+    _t1_stage(
+        errors,
+        "Capability-room heal failed",
+        _heal_rooms,
+    )
+
+    def _heal_composition() -> None:
+        composition_action = _heal_claude_composition(context)
+        if composition_action:
+            actions.setdefault("config.claude_composition", []).append(composition_action)
+
+    _t1_stage(
+        errors,
+        "CLAUDE.md refresh failed",
+        _heal_composition,
+    )
 
     if planned:
-        try:
+        def _commit_planned() -> None:
             preview = lifecycle_service._preview_transaction(
                 context.vault_root,
                 planned,
@@ -966,9 +1070,6 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 purpose="doctor-tier-1",
                 approved_token=str(preview["approval_token"]),
             )
-        except Exception as error:
-            errors.append(f"Tier-1 transaction failed: {_one_line(error)}")
-        else:
             if planned_paths_export:
                 actions.setdefault("vault.structure", []).append("regenerated core/paths.json")
             if planned_executables:
@@ -976,6 +1077,12 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 actions.setdefault("vault.structure", []).append(
                     f"restored executable {noun} on {', '.join(planned_executables)}"
                 )
+
+        _t1_stage(
+            errors,
+            "Tier-1 transaction failed",
+            _commit_planned,
+        )
 
     return actions, errors
 
@@ -1016,6 +1123,7 @@ def collect(
 
     t1_actions: dict[str, list[str]] = {}
     if heal:
+        _progress(HEAL_PROGRESS)
         try:
             t1_actions, t1_errors = _apply_t1_heals(context)
             if t1_errors:
@@ -1023,6 +1131,7 @@ def collect(
         except Exception as error:
             failed.append({"id": "doctor.self", "error": _one_line(error)})
 
+    _progress(CHECK_PROGRESS)
     # One classification pass over ~/Library/LaunchAgents is shared by
     # jobs.loaded and jobs.fresh instead of re-parsing every plist twice.
     _begin_launch_agent_scan_scope(context)
@@ -1030,8 +1139,12 @@ def collect(
         for definition in definitions:
             if definition.id == "doctor.self":
                 continue
+            probe = globals()[definition.probe]
             try:
-                result = globals()[definition.probe](context)
+                result = _run_bounded(
+                    lambda current=probe: current(context),
+                    CHECK_TIMEOUT_SECONDS,
+                )
             except Exception as error:
                 error_text = _actionable_probe_error(error)
                 failed.append({"id": definition.id, "error": error_text})
@@ -1106,6 +1219,12 @@ def collect(
                 result = replace(
                     result,
                     detail=f"{result.detail.rstrip('.')} after a safe Tier-1 reconciliation",
+                    heal=Heal(tier=1, action="; ".join(check_actions) + ".", applied=True),
+                )
+            if definition.id == "config.claude_composition" and check_actions:
+                result = replace(
+                    result,
+                    detail=f"{result.detail.rstrip('.')} after a safe refresh",
                     heal=Heal(tier=1, action="; ".join(check_actions) + ".", applied=True),
                 )
             results[definition.id] = result
@@ -2586,6 +2705,7 @@ def _resolved_interpreter(raw: str, context: DoctorContext) -> str | None:
 
 
 _OWNED = "owned"
+_OFFLOADED = "offloaded"
 _STALE = "stale"
 _FOREIGN = "foreign"
 _UNREADABLE = "unreadable"
@@ -2596,7 +2716,7 @@ class LaunchAgentRecord:
     """One launch agent's classification, computed once per doctor run."""
 
     plist: Path
-    classification: str  # "owned" | "stale" | "foreign" | "unreadable"
+    classification: str  # "owned" | "offloaded" | "stale" | "foreign" | "unreadable"
     label: str
     data: dict[str, Any] | None = None
     error_detail: str | None = None  # unreadable only
@@ -2627,7 +2747,28 @@ def _classify_launch_agents(context: DoctorContext) -> LaunchAgentScan:
     except (OSError, RuntimeError):
         vault_root = context.vault_root
     records: list[LaunchAgentRecord] = []
+    offloaded = {
+        claim["plist_relative_path"]: claim
+        for claim in automation_ownership.valid_claims(
+            context.vault_root,
+            home_root=context.home,
+        )
+    }
     for plist, dex_named in _installed_launch_agents(context):
+        try:
+            plist_relative = plist.relative_to(context.home).as_posix()
+        except ValueError:
+            plist_relative = ""
+        offloaded_claim = offloaded.get(plist_relative)
+        if offloaded_claim is not None:
+            records.append(
+                LaunchAgentRecord(
+                    plist=plist,
+                    classification=_OFFLOADED,
+                    label=offloaded_claim["automation_id"],
+                )
+            )
+            continue
         try:
             data = _plist_data(plist)
         except PermissionError:
@@ -2717,9 +2858,13 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     unknowns = []
     runtime_labels = []
     skipped_count = 0
+    offloaded_count = 0
     owned_count = 0
     stale_count = 0
     for record in scan.records:
+        if record.classification == _OFFLOADED:
+            offloaded_count += 1
+            continue
         if record.classification == _UNREADABLE:
             # A corrupt plist could belong to this vault, but a filename alone
             # cannot establish that safely. Surface the uncertainty instead of
@@ -2794,12 +2939,20 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
                     unknowns.append(f"{label} is loaded but has no observable LastExitStatus")
                 elif status["last_exit_status"] != 0:
                     issues.append((2, f"{label} last exited with status {status['last_exit_status']}"))
+    offloaded_note = (
+        f"{offloaded_count} launch agent{' is' if offloaded_count == 1 else 's are'} "
+        "owned by Dex Solo and offloaded from Core"
+        if offloaded_count
+        else ""
+    )
     if not owned_count and not issues:
         if unknowns:
             return ProbeResult(
                 "UNKNOWN",
                 _with_skipped_launch_agents("; ".join(unknowns), skipped_count),
             )
+        if offloaded_note:
+            return ProbeResult("OK", _with_skipped_launch_agents(offloaded_note, skipped_count))
         return ProbeResult(
             "OFF",
             _with_skipped_launch_agents("No launch agents for this vault are installed", skipped_count),
@@ -2819,6 +2972,8 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
         if sum(1 for issue_tier, _detail in issues if issue_tier == 2) > stale_count:
             action_parts.append("repair or reload the named launch agent only after explicit approval")
         detail_parts = [detail for _tier, detail in issues]
+        if offloaded_note:
+            detail_parts.append(offloaded_note)
         detail_parts.extend(unknowns)
         return ProbeResult(
             "BROKEN",
@@ -2833,7 +2988,14 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     return ProbeResult(
         "OK",
         _with_skipped_launch_agents(
-            f"All {owned_count} installed launch agents for this vault are loaded with valid interpreters",
+            "; ".join(
+                part
+                for part in (
+                    f"All {owned_count} installed launch agents for this vault are loaded with valid interpreters",
+                    offloaded_note,
+                )
+                if part
+            ),
             skipped_count,
         ),
     )
@@ -2868,6 +3030,15 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     installed = sorted(
         {record.label for record in scan.records if record.classification == _OWNED}
     )
+    offloaded = sorted(
+        {record.label for record in scan.records if record.classification == _OFFLOADED}
+    )
+    offloaded_note = (
+        f"{len(offloaded)} launch agent{' is' if len(offloaded) == 1 else 's are'} "
+        "owned by Dex Solo and offloaded from Core"
+        if offloaded
+        else ""
+    )
     monitored = []
     monitored_ids = set()
     unregistered = []
@@ -2900,7 +3071,8 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
         if unknowns:
             return ProbeResult("UNKNOWN", _with_coverage_note("; ".join(unknowns)))
         return ProbeResult(
-            "OFF", _with_coverage_note("No shipped Dex freshness jobs are installed")
+            "OFF",
+            _with_coverage_note(offloaded_note or "No shipped Dex freshness jobs are installed"),
         )
 
     stale = []
@@ -2919,7 +3091,14 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     return ProbeResult(
         "OK",
         _with_coverage_note(
-            f"All {len(monitored)} installed job promises are within their promised cadence"
+            "; ".join(
+                part
+                for part in (
+                    f"All {len(monitored)} installed job promises are within their promised cadence",
+                    offloaded_note,
+                )
+                if part
+            )
         ),
     )
 
@@ -4687,6 +4866,91 @@ def _probe_meeting_sources(context: DoctorContext) -> ProbeResult:
     return ProbeResult("OK", f"Meeting-notes folder '{folder}' exists and contains notes")
 
 
+def _heal_claude_composition(context: DoctorContext) -> str | None:
+    """Write CLAUDE.md when its bytes have drifted from the custom block.
+
+    The everyday hook is mtime-gated, so a stale CLAUDE.md written after the
+    custom file will not be repaired by "send any message". This force path
+    compares bytes and writes when they differ.
+    """
+    from core.utils.claude_composition import CUSTOM, recompose_if_needed
+
+    custom_path = context.vault_root / CUSTOM
+    if custom_path.is_symlink() or not custom_path.is_file():
+        return None
+    result = recompose_if_needed(context.vault_root, force=True)
+    if result == "recomposed":
+        return "refreshed CLAUDE.md so your customisations are live"
+    return None
+
+
+def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
+    """Check that CLAUDE.md actually carries the user's current custom block.
+
+    This is not the fix; the UserPromptSubmit refresh hook is. This probe is the
+    detector for that hook having failed, which is why a drift finding says the
+    refresh did not run rather than merely that the block is out of date.
+
+    The test is byte-for-byte against a fresh composition, not a timestamp
+    comparison. mtime false-positives on a touch and misses content-only
+    changes after a restore, and there is no window in which staleness is
+    acceptable: an instruction written five minutes ago is exactly as inert as
+    one written five weeks ago.
+    """
+    from core.update.apply_update import CompositionError
+    from core.utils.claude_composition import (
+        CLAUDE,
+        CUSTOM,
+        RecomposeUnavailable,
+        compose_current,
+    )
+
+    custom_path = context.vault_root / CUSTOM
+    if not custom_path.is_file():
+        return ProbeResult("OFF", "No personal customisations to keep in step", feature_status="off")
+
+    claude_path = context.vault_root / CLAUDE
+    if not claude_path.is_file():
+        return ProbeResult(
+            "BROKEN",
+            f"{CUSTOM} exists but {CLAUDE} does not, so none of your customisations are loaded",
+            Heal(tier=2, action="Run /dex-update to compose CLAUDE.md.", applied=False),
+        )
+
+    try:
+        expected = compose_current(context.vault_root)
+    except RecomposeUnavailable as error:
+        return ProbeResult(
+            "UNKNOWN",
+            f"Could not check whether your customisations are live ({_one_line(error)})",
+        )
+    except CompositionError as error:
+        return ProbeResult(
+            "BROKEN",
+            f"Your customisations cannot be composed ({_one_line(error)}), so they are not loaded",
+            Heal(tier=2, action="Check the USER_EXTENSIONS markers in the release template.", applied=False),
+        )
+
+    try:
+        live = claude_path.read_bytes()
+    except OSError as error:
+        return ProbeResult("UNKNOWN", f"{CLAUDE} could not be read ({_one_line(error)})")
+
+    if live == expected:
+        return ProbeResult("OK", "Your CLAUDE.md customisations are live")
+
+    return ProbeResult(
+        "BROKEN",
+        f"{CLAUDE} does not match {CUSTOM}, so some of your personal instructions are "
+        "not being loaded. The refresh that should keep these in step has not run",
+        # Not "send any message": the everyday refresh is mtime-gated, and in
+        # this exact case CLAUDE.md is the newer file, so that route no-ops and
+        # the user is left following advice that cannot work. Name the one that
+        # forces on bytes.
+        Heal(tier=2, action="Run /dex-doctor to put your customisations back in force.", applied=False),
+    )
+
+
 def _probe_post_update_canary(context: DoctorContext) -> ProbeResult:
     """Read the post-update canary's receipt so a failed canary stays visible.
 
@@ -5439,6 +5703,19 @@ def _probe_smoke_history(context: DoctorContext) -> ProbeResult:
 
     latest = entries[-1]
     latest_timestamp = _smoke_timestamp(latest)
+    if latest_timestamp is not None and context.now - latest_timestamp > SMOKE_LEDGER_STALE_AFTER:
+        # Report the ledger having stopped, not the verdict it stopped on. Without
+        # this the newest entry is presented as the current state however old it
+        # is, so a ledger that stopped weeks ago reads exactly like last night's
+        # run and the one fact worth knowing -- that these checks are no longer
+        # running -- is the only one never stated.
+        days = (context.now - latest_timestamp).days
+        return ProbeResult(
+            "UNKNOWN",
+            f"nightly checks have not run since {latest_timestamp.isoformat()} "
+            f"({days} days ago), so the last recorded verdict describes that run "
+            "and not the system now",
+        )
     journeys = latest["journeys"]
     broken = [journey for journey in journeys if journey["verdict"] == "BROKEN"]
     unknown = [journey for journey in journeys if journey["verdict"] == "UNKNOWN"]

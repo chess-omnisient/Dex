@@ -443,7 +443,7 @@
       "path": "CLAUDE.md",
       "kind": "file",
       "ownership": "generated",
-      "note": "composed from the shipped template plus vault-owned CLAUDE-custom.md"
+      "note": "composed from the shipped template plus vault-owned CLAUDE-custom.md and System/user-profile.yaml"
     },
     {
       "id": "brain-commercial-license",
@@ -487,6 +487,13 @@
       "kind": "dir",
       "ownership": "runtime",
       "note": "post-commit lifecycle receipts; local runtime evidence, never shipped"
+    },
+    {
+      "id": "runtime-automation-ownership",
+      "path": "System/.dex/automation-ownership.json",
+      "kind": "file",
+      "ownership": "runtime",
+      "note": "closed Dex Solo scheduler handoff state; transaction-owned and never shipped"
     },
     {
       "id": "generated-health-state",

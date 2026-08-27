@@ -41,10 +41,10 @@ jobs:
     env:
       VAULT_PATH: core/tests/fixtures/vault
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         id: setup-python
         with:
           python-version: '3.12'
@@ -146,10 +146,10 @@ jobs:
       VAULT_PATH: core/tests/fixtures/vault
       COVERAGE_FILE: coverage-shard-${{ matrix.shard }}.data
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
           cache: pip
@@ -218,10 +218,10 @@ jobs:
       - name: Require every shard green
         run: |
           [ "${{ needs.tests.result }}" = "success" ] || { echo "Shard matrix result: ${{ needs.tests.result }} — failing the suite verdict." >&2; exit 1; }
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
           cache: pip
@@ -280,7 +280,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
@@ -355,7 +355,8 @@ jobs:
           .lens-venv/bin/python -m pip install --quiet 'cryptography>=42' jsonschema
           .lens-venv/bin/python scripts/generate-dex-lens-catalog.py \
             --release-root "$PWD" \
-            --output-dir "$OUTPUT_DIR"
+            --output-dir "$OUTPUT_DIR" \
+            --enriched
           VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
           test -f "$OUTPUT_DIR/dex-lens-catalog-v$VERSION.json"
           test -f "$OUTPUT_DIR/dex-lens-catalog-v$VERSION.json.sha256"
@@ -375,7 +376,7 @@ jobs:
       release_sha: ${{ steps.release_guard.outputs.release_sha || steps.release_build.outputs.release_sha }}
       already_published: ${{ steps.release_guard.outputs.already_published }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       # A second artifact for one version makes every update check ambiguous,
@@ -431,11 +432,12 @@ jobs:
         id: release_build
         if: steps.release_guard.outputs.already_published != 'true'
         run: |
+          set -euo pipefail
           bash scripts/build-release.sh
           echo "release_sha=$(git rev-parse release)" >> "$GITHUB_OUTPUT"
-          VERSION="$(node -p "require('./package.json').version")"
-          RELEASE_TAG="dist/release/v${VERSION}-$(git rev-parse --short release)"
-          git rev-parse --verify "refs/tags/$RELEASE_TAG"
+          RELEASE_TAG="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release --print-release-tag)"
+          test -n "$RELEASE_TAG"
+          python3 scripts/check-release-catalog-tag-identity.py --release-ref release
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - name: Build self-contained vault bundle
         if: steps.release_guard.outputs.already_published != 'true'
@@ -443,8 +445,8 @@ jobs:
       - name: Generate signed Dex Lens catalog
         if: steps.release_guard.outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
         env:
-          # Front Desk release review and Lens M1 verifier confirmation are required before
-          # setting DEX_LENS_CATALOG_RELEASE_GATE_ENABLED=true for a live release.
+          # Dex Lens v0.1.9 release verification and Front Desk release review are required
+          # before setting DEX_LENS_CATALOG_RELEASE_GATE_ENABLED=true for a live release.
           # The value must be a base64-encoded Ed25519 PEM private key stored as an
           # environment secret; no generated private key belongs in the repo.
           DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64: ${{ secrets.DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64 }}
@@ -462,6 +464,7 @@ jobs:
           .lens-venv/bin/python scripts/generate-dex-lens-catalog.py \
             --release-root "$PWD" \
             --output-dir dist \
+            --enriched \
             --sign \
             --key-id dex-core-lens-1
       - name: Upload Dex Lens catalog for Pages
@@ -477,8 +480,10 @@ jobs:
       - name: Push release branch and immutable tag
         if: steps.release_guard.outputs.already_published != 'true'
         run: |
+          set -euo pipefail
           git push origin release --force
           git push origin "${{ steps.release_build.outputs.release_tag }}"
+          python3 scripts/check-release-catalog-tag-identity.py --release-ref release --remote origin
       # The ONLY step that makes a stable release public, and it does so last:
       # attach every asset, read each one back off the release and compare it to
       # what was built, and only then flip the draft public. A failure anywhere here
@@ -514,7 +519,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -528,13 +533,17 @@ jobs:
       - name: Build beta release branch
         id: release_build
         run: |
+          set -euo pipefail
           bash scripts/build-release.sh --source beta --target release-beta
-          VERSION="$(node -p "require('./package.json').version")"
-          RELEASE_TAG="dist/release-beta/v${VERSION}-$(git rev-parse --short release-beta)"
-          git rev-parse --verify "refs/tags/$RELEASE_TAG"
+          RELEASE_TAG="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release-beta --source-ref beta --print-release-tag)"
+          test -n "$RELEASE_TAG"
+          IDENTITY="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release-beta --source-ref beta)"
+          test -n "$IDENTITY"
+          printf '%s\n' "$IDENTITY"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - name: Push beta release branch and immutable tag
         run: |
+          set -euo pipefail
           git push origin release-beta --force
           git push origin "${{ steps.release_build.outputs.release_tag }}"
       - name: Build self-contained vault bundle
@@ -569,8 +578,8 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
       - name: Download release health inputs
@@ -604,7 +613,7 @@ jobs:
       - name: Configure GitHub Pages
         id: pages
         continue-on-error: true
-        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b  # v5
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
       - name: Explain Pages setup skip
         if: steps.pages.outcome != 'success'
         run: echo "::notice::Health page not deployed because GitHub Pages is not enabled. Enable Settings → Pages → GitHub Actions."

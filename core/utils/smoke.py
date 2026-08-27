@@ -90,9 +90,13 @@ MCP_ONCE_CONSENT_DETAIL = "valid fresh single-use consent token is required"
 MCP_ONCE_TOKEN_PREFIX = "dex-mcp-once-consent-"
 MCP_ONCE_TOKEN_MAX_AGE_SECONDS = 120.0
 TRUSTED_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
+RUNNER_EXTERNAL_RELATIVES = frozenset(
+    {Path("packages/dex-contracts/dist/portable-vault.contract.json")}
+)
 RUNNER_FALLBACK_RELATIVES = (
     Path("core/__init__.py"),
     Path("core/paths.py"),
+    Path("core/portable_contract.py"),
     Path("core/utils/__init__.py"),
     Path("core/utils/dex_logger.py"),
     Path("core/utils/release_channel.py"),
@@ -100,6 +104,7 @@ RUNNER_FALLBACK_RELATIVES = (
     Path("core/utils/trust_registry.py"),
     Path("core/utils/update_verifier.py"),
     Path("core/utils/validators.py"),
+    *RUNNER_EXTERNAL_RELATIVES,
 )
 CONTENT_VERIFIED_SENSITIVE_DEPENDENCIES = frozenset(
     {
@@ -977,7 +982,10 @@ def _materialize_runner(destination: Path) -> Path:
         if (
             relative.is_absolute()
             or not relative.parts
-            or relative.parts[0] != "core"
+            or (
+                relative.parts[0] != "core"
+                and relative not in RUNNER_EXTERNAL_RELATIVES
+            )
             or any(part in {"", ".", ".."} for part in relative.parts)
         ):
             raise JourneySafetySkip(f"tracked runner path is unsafe: {relative}")
@@ -1232,11 +1240,31 @@ def _preparation_command(
     return command
 
 
+def _kill_process_handle(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        process.kill()
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=0.2)
+    except subprocess.TimeoutExpired:
+        pass
+
+
 def _terminate_process_group(process: subprocess.Popen[str]) -> None:
     if os.name == "posix":
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
+            return
+        except PermissionError:
+            # macOS CI can deny killpg with EPERM while the child is still
+            # ours to kill, or while the group is already being reaped.
+            # Fall back to the process handle so a timeout stays a timeout
+            # instead of "journey harness failed: Operation not permitted".
+            _kill_process_handle(process)
             return
         if process.poll() is None:
             try:
@@ -1245,13 +1273,7 @@ def _terminate_process_group(process: subprocess.Popen[str]) -> None:
                 pass
         return
 
-    if process.poll() is not None:
-        return
-    process.kill()
-    try:
-        process.wait(timeout=0.2)
-    except subprocess.TimeoutExpired:
-        pass
+    _kill_process_handle(process)
 
 
 def _decode_child_result(stdout: str) -> dict[str, str]:
@@ -1292,7 +1314,10 @@ def _run_json_process(
         try:
             stdout, stderr = process.communicate(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
-            _terminate_process_group(process)
+            try:
+                _terminate_process_group(process)
+            except OSError:
+                _kill_process_handle(process)
             if process.stdout is not None:
                 process.stdout.close()
             if process.stderr is not None:
@@ -1314,7 +1339,10 @@ def _run_json_process(
         return _decode_child_result(stdout), False
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         if process is not None:
-            _terminate_process_group(process)
+            try:
+                _terminate_process_group(process)
+            except OSError:
+                _kill_process_handle(process)
         return {"verdict": "UNKNOWN", "detail": f"{label} harness failed: {_one_line(exc)}"}, True
 
 
@@ -1367,7 +1395,16 @@ def _harness_failure_run(
 
 
 def _safe_temporary_parent(source: Path) -> Path:
-    candidates = (Path("/private/tmp"), Path("/tmp"), Path("/var/tmp"), Path(tempfile.gettempdir()))
+    # Honour an explicit host temp directory first when it is outside the
+    # live vault. CI and managed runners commonly put /tmp on a small tmpfs;
+    # ignoring TMPDIR can exhaust that filesystem even when normal disk was
+    # deliberately supplied for the smoke proof.
+    candidates = (
+        Path(tempfile.gettempdir()),
+        Path("/private/tmp"),
+        Path("/var/tmp"),
+        Path("/tmp"),
+    )
     for candidate in candidates:
         try:
             resolved = candidate.resolve(strict=True)
@@ -2017,7 +2054,17 @@ def _missing_release_ref_reason(channel: str, *, server: bool = False) -> str:
 
 
 def _git_tree_paths(repo_root: Path, treeish: str) -> set[str] | None:
-    command = _git_command(repo_root, "ls-tree", "-r", "-z", "--name-only", treeish, "--", "core")
+    command = _git_command(
+        repo_root,
+        "ls-tree",
+        "-r",
+        "-z",
+        "--name-only",
+        treeish,
+        "--",
+        "core",
+        *(relative.as_posix() for relative in RUNNER_EXTERNAL_RELATIVES),
+    )
     if command is None:
         return None
     result = subprocess.run(

@@ -49,7 +49,7 @@ def test_doctor_report_is_normalized_across_the_complete_registry():
     # checks. This literal is a deliberate tripwire, and parallel branches can
     # each bump it to the same stale value while merging cleanly — so it is set
     # from the complete registry's measured size, not from either branch's guess.
-    assert len(envelope.results) == 36
+    assert len(envelope.results) == 37
     assert [result.id for result in envelope.results] == [
         f"doctor.core/{definition.id}"
         for definition in (*doctor.QUICK_CHECKS, *doctor.DEEP_CHECKS)

@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -127,6 +128,36 @@ def test_installer_routes_bootstrap_config_to_sanctioned_provision_contract() ->
     assert "--install-config-only" in installer
     assert "System/.mcp.json.example > .mcp.json" not in installer
     assert "mcp_path.write_text" not in installer
+
+
+def test_install_config_preflight_needs_no_global_pyyaml(tmp_path: Path) -> None:
+    """The pre-venv installer seam must run on the standard library alone."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            str(REPO_ROOT / "core/capabilities.py"),
+            "--preflight-mutation-targets",
+            "--vault",
+            str(vault),
+            "--contract",
+            str(CONTRACT_PATH),
+            "--mutation-targets-json",
+            '[{"path":".mcp.json","kind":"file"}]',
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {
+        "mutation_targets": [{"kind": "file", "path": ".mcp.json"}],
+        "preflight": "passed",
+    }
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")

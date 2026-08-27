@@ -1,6 +1,7 @@
 """Contract tests for the /dex-doctor collector."""
 
 import hashlib
+import inspect
 import json
 import os
 import plistlib
@@ -9,6 +10,8 @@ import shutil
 import stat
 import subprocess
 import sys
+import threading
+import time
 import venv
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -28,7 +31,7 @@ from core.tests.lifecycle_test_helpers import (
     write_manifest,
 )
 from core.transaction.engine import PlanRejected
-from core.utils import doctor, release_channel
+from core.utils import automation_ownership, doctor, release_channel
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCTOR_PATH = Path(__file__).resolve().parents[1] / "utils" / "doctor.py"
@@ -66,6 +69,7 @@ DEEP_IDS = [
     "granola.query_path",
     "pipedrive.connection",
     "config.meeting_sources",
+    "config.claude_composition",
     "update.post-canary",
     "calendar.access",
     "mail.apple-search",
@@ -175,6 +179,32 @@ def _write_plist(context, label):
     return plist
 
 
+def _write_solo_automation_claim(context, plist, label):
+    relative = plist.relative_to(context.home).as_posix()
+    sidecar = context.vault_root / automation_ownership.SIDECAR_RELATIVE
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    sidecar.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "claims": [
+                    {
+                        "automation_id": label,
+                        "owner_id": "dex-solo",
+                        "plist_relative_path": relative,
+                        "plist_sha256": hashlib.sha256(plist.read_bytes()).hexdigest(),
+                    }
+                ],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return sidecar
+
+
 def _write_entity_probe_files(context, *, mode="auto", unresolved=None):
     runtime = context.vault_root / "System" / ".dex"
     runtime.mkdir(parents=True, exist_ok=True)
@@ -195,23 +225,29 @@ def _write_entity_probe_files(context, *, mode="auto", unresolved=None):
     }))
 
 
-def _write_release_catalog(context, *, content=b"release skill\n"):
+def _write_release_catalog(context, *, content=b"release skill\n", catalog_version=2):
     item_path = ".claude/skills/fixture-item/SKILL.md"
     manifest = write_manifest(context.vault_root, [item_path])
     write_file(context.vault_root, item_path, content)
-    document = with_catalog_identity(
-        {
-            "catalog_version": 1,
-            "release": {
+    release_identity = {
                 "version": "1.64.0",
                 "channel": "release",
-                "immutable_distribution_tag": "dist/release/v1.64.0-0123456",
                 "source_commit": SOURCE_COMMIT,
                 "manifest": {
                     "path": "System/.installed-files.manifest",
                     "sha256": hashlib.sha256(manifest).hexdigest(),
                 },
-            },
+            }
+    if catalog_version == 1:
+        release_identity["immutable_distribution_tag"] = "dist/release/v1.64.0-0123456"
+    else:
+        release_identity["immutable_distribution_tag_pattern"] = (
+            "dist/release/v1.64.0-<release-commit-prefix>"
+        )
+    document = with_catalog_identity(
+        {
+            "catalog_version": catalog_version,
+            "release": release_identity,
             "items": [
                 {
                     "id": "fixture-item",
@@ -770,8 +806,11 @@ def test_release_catalog_probe_is_calmly_off_for_older_installs(context):
     assert "normal for older Dex releases" in result.detail
 
 
-def test_release_catalog_probe_reports_valid_version_without_writing(context):
-    _write_release_catalog(context)
+@pytest.mark.parametrize("catalog_version", (1, 2))
+def test_release_catalog_probe_reports_valid_version_without_writing(
+    context, catalog_version
+):
+    _write_release_catalog(context, catalog_version=catalog_version)
     before = _tree_snapshot(context.vault_root)
 
     result = doctor._probe_release_catalog(context)
@@ -1104,6 +1143,47 @@ def test_smoke_history_reports_latest_healthy_run(context):
 
     assert result.verdict == "OK"
     assert result.detail == f"last verified {(NOW - timedelta(hours=1)).isoformat()} (1 journeys OK)"
+
+
+def test_smoke_history_reports_a_stopped_ledger_rather_than_its_last_verdict(context):
+    """A ledger that stopped must say so, not replay the verdict it stopped on."""
+    stopped_at = NOW - timedelta(days=8)
+    _write_smoke_history(context, _smoke_entry(stopped_at))
+
+    result = doctor._probe_smoke_history(context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "have not run since" in result.detail
+    assert "8 days ago" in result.detail
+    assert "not the system now" in result.detail
+
+
+def test_smoke_history_staleness_outranks_a_stale_broken_verdict(context):
+    """Staleness is the finding. An old BROKEN is not evidence about now either.
+
+    Reporting the old verdict here would send someone chasing a failure that may
+    have been fixed days ago, while the live problem is that nothing is checking.
+    """
+    _write_smoke_history(
+        context,
+        _smoke_entry(NOW - timedelta(days=10)),
+        _smoke_entry(NOW - timedelta(days=9), broken=1),
+    )
+
+    result = doctor._probe_smoke_history(context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "have not run since" in result.detail
+
+
+def test_smoke_history_still_reports_a_recent_run_normally(context):
+    """The bound must not swallow a ledger that is simply current."""
+    _write_smoke_history(context, _smoke_entry(NOW - timedelta(hours=20)))
+
+    result = doctor._probe_smoke_history(context)
+
+    assert result.verdict == "OK"
+    assert "have not run since" not in result.detail
 
 
 def test_smoke_history_attributes_config_mtime(context):
@@ -1494,6 +1574,209 @@ def test_main_heal_flag_invokes_t1_and_still_returns_json(monkeypatch, context, 
     assert doctor.main(["--heal"], context=context) == 0
     assert json.loads(capsys.readouterr().out)["mode"] == "quick"
     assert calls == [context]
+
+
+def test_heal_speaks_on_stderr_before_and_during_checks(monkeypatch, context, capsys):
+    """Visible life starts before the first check; progress is the two shipped sentences."""
+    monkeypatch.setattr(doctor, "_apply_t1_heals", lambda _context: ({}, []))
+    seen_before_first = []
+
+    def first_probe(_context):
+        seen_before_first.append(capsys.readouterr().err)
+        return doctor.ProbeResult("OK", "Stub probe completed.")
+
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr(doctor, "_probe_vault_structure", first_probe)
+
+    exit_code = doctor.main(["--heal"], context=context)
+    captured = capsys.readouterr()
+    report = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert seen_before_first[0].splitlines() == [
+        doctor.HEAL_PROGRESS,
+        doctor.CHECK_PROGRESS,
+    ]
+    assert captured.err == ""
+    assert doctor.HEAL_PROGRESS not in captured.out
+    assert doctor.CHECK_PROGRESS not in captured.out
+    assert report["mode"] == "quick"
+
+
+def test_stuck_check_times_out_and_later_checks_still_run(monkeypatch, context):
+    """A stuck probe is time-boxed so later probes still run. Heals are not this path."""
+    monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
+    monkeypatch.setattr(doctor, "_apply_t1_heals", lambda _context: ({}, []))
+    spoken: list[str] = []
+    real_progress = doctor._progress
+    monkeypatch.setattr(
+        doctor,
+        "_progress",
+        lambda message: spoken.append(message) or real_progress(message),
+    )
+    order: list[str] = []
+
+    def hang(_context):
+        order.append("hang")
+        time.sleep(30)
+        order.append("hang-finished")
+        return doctor.ProbeResult("OK", "should not count")
+
+    def later(_context):
+        order.append("later")
+        return doctor.ProbeResult("OFF", "Later check ran.")
+
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr(doctor, "_probe_vault_structure", hang)
+    monkeypatch.setattr(doctor, "_probe_vault_configs", later)
+
+    started = time.monotonic()
+    report = doctor.collect(heal=True, context=context)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 5
+    assert order == ["hang", "later"]
+    assert _check(report, "vault.structure")["verdict"] == "UNKNOWN"
+    assert "timed out" in _check(report, "vault.structure")["detail"]
+    assert _check(report, "vault.configs")["verdict"] == "OFF"
+    assert _check(report, "doctor.self")["verdict"] == "BROKEN"
+    assert {"id": "vault.structure", "error": "timed out"} in report["instruments"]["failed"]
+    assert spoken == [doctor.HEAL_PROGRESS, doctor.CHECK_PROGRESS]
+
+
+def test_t1_heal_path_does_not_wrap_mutations_in_run_bounded():
+    """Heals must not go through `_run_bounded`. That helper abandons a daemon worker."""
+    assert "_run_bounded" not in inspect.getsource(doctor._t1_stage)
+    assert "_run_bounded" not in inspect.getsource(doctor._apply_t1_heals)
+
+
+def test_heals_are_not_abandoned_in_a_daemon_thread(monkeypatch, context):
+    """A heal that outlasts the probe bound must finish on the collector thread.
+
+    Wrapping heals in `_run_bounded` would start a daemon worker, time out, and
+    leave the mutation running after later heals and probes begin.
+    """
+    monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
+    bounded_calls: list[float] = []
+    real_bounded = doctor._run_bounded
+
+    def spy_bounded(operation, timeout_seconds):
+        bounded_calls.append(timeout_seconds)
+        return real_bounded(operation, timeout_seconds)
+
+    monkeypatch.setattr(doctor, "_run_bounded", spy_bounded)
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    (context.vault_root / "core" / "paths.json").write_text("{}\n")
+    caller = threading.get_ident()
+    seen: list[tuple[str, int]] = []
+
+    def slow_executables(_context):
+        seen.append(("exec", threading.get_ident()))
+        time.sleep(0.45)
+        return []
+
+    def env_finding(_context):
+        seen.append(("env", threading.get_ident()))
+        return None
+
+    monkeypatch.setattr(doctor, "_paths_export_for", lambda _context: {})
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", slow_executables)
+    monkeypatch.setattr(doctor, "_env_permission_finding", env_finding)
+    monkeypatch.setattr(doctor, "_acknowledge_resolved_preflight_errors", lambda _context: 0)
+    monkeypatch.setattr(doctor, "_heal_claude_composition", lambda _context: None)
+    monkeypatch.setattr(
+        doctor,
+        "_probe_capability_rooms",
+        lambda _context: doctor.ProbeResult("OK", "rooms"),
+    )
+
+    started = time.monotonic()
+    actions, errors = doctor._apply_t1_heals(context)
+    elapsed = time.monotonic() - started
+
+    assert bounded_calls == []
+    assert elapsed >= 0.4
+    assert [name for name, _ident in seen] == ["exec", "env"]
+    assert all(ident == caller for _name, ident in seen)
+    assert errors == []
+    assert actions == {}
+
+
+def test_heal_failure_stays_in_thread_and_later_heals_still_run(monkeypatch, context):
+    caller = threading.get_ident()
+    seen: list[tuple[str, int]] = []
+
+    def fail_executables(_context):
+        seen.append(("exec", threading.get_ident()))
+        raise RuntimeError("exec boom")
+
+    def env_finding(_context):
+        seen.append(("env", threading.get_ident()))
+        return None
+
+    (context.vault_root / "core" / "paths.json").write_text("{}\n")
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(doctor, "_paths_export_for", lambda _context: {})
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", fail_executables)
+    monkeypatch.setattr(doctor, "_env_permission_finding", env_finding)
+    monkeypatch.setattr(doctor, "_acknowledge_resolved_preflight_errors", lambda _context: 0)
+    monkeypatch.setattr(doctor, "_heal_claude_composition", lambda _context: None)
+    monkeypatch.setattr(
+        doctor,
+        "_probe_capability_rooms",
+        lambda _context: doctor.ProbeResult("OK", "rooms"),
+    )
+
+    actions, errors = doctor._apply_t1_heals(context)
+
+    assert [name for name, _ident in seen] == ["exec", "env"]
+    assert all(ident == caller for _name, ident in seen)
+    assert errors == ["Executable-mode heal failed: exec boom"]
+    assert actions == {}
+
+
+def test_stuck_deep_assessment_does_not_mute_later_deep_checks(monkeypatch, context):
+    monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
+    spoken: list[str] = []
+    real_progress = doctor._progress
+    monkeypatch.setattr(
+        doctor,
+        "_progress",
+        lambda message: spoken.append(message) or real_progress(message),
+    )
+    _stub_probes(monkeypatch)
+
+    def hang(_context):
+        time.sleep(30)
+        return doctor.ProbeResult("OK", "should not count")
+
+    def later(_context):
+        return doctor.ProbeResult(
+            "OK",
+            "migration status ran",
+            structured_detail={"capsules": [], "truncated": False, "pending": False},
+        )
+
+    monkeypatch.setattr(doctor, "_probe_customization_assessment", hang)
+    monkeypatch.setattr(doctor, "_probe_customization_migration_status", later)
+
+    report = doctor.collect(deep=True, context=context)
+
+    assert _check(report, "customizations.assessment")["verdict"] == "UNKNOWN"
+    assert "timed out" in _check(report, "customizations.assessment")["detail"]
+    assert _check(report, "customizations.migration-status")["verdict"] == "OK"
+    assert "customization_assessment" not in report
+    assert report["customization_migration_status"]["pending"] is False
+    assert _check(report, "doctor.self")["verdict"] == "BROKEN"
+    assert spoken == [doctor.CHECK_PROGRESS]
+
+
+def test_doctor_skill_keeps_collector_stderr_visible():
+    skill = (REPO_ROOT / ".claude/skills/dex-doctor/SKILL.md").read_text(encoding="utf-8")
+    assert "doctor.py --heal 2>/dev/null" not in skill
+    assert "python3 core/utils/doctor.py --heal" in skill
 
 
 def test_main_deep_flag_runs_the_deep_registry(monkeypatch, context, capsys):
@@ -1953,6 +2236,67 @@ def test_jobs_loaded_distinguishes_not_installed_from_unloaded(monkeypatch, cont
     assert result.heal.tier == 2
 
 
+def test_doctor_treats_valid_solo_claim_as_app_owned_and_offloaded(monkeypatch, context):
+    plist = _write_plist(context, "com.dex.meeting-intel")
+    _write_solo_automation_claim(context, plist, "com.dex.meeting-intel")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    def launchctl_must_not_run(*_args, **_kwargs):
+        raise AssertionError("Core must not inspect launchd state for an offloaded job")
+
+    monkeypatch.setattr(doctor, "_launchctl_status", launchctl_must_not_run)
+
+    loaded = doctor._probe_jobs_loaded(context)
+    fresh = doctor._probe_jobs_fresh(context)
+
+    assert loaded.verdict == "OK"
+    assert "owned by Dex Solo and offloaded from Core" in loaded.detail
+    assert fresh.verdict == "OFF"
+    assert "owned by Dex Solo and offloaded from Core" in fresh.detail
+
+
+def test_doctor_does_not_call_valid_solo_claim_broken_or_stale(monkeypatch, context):
+    former_vault = context.home.parent / "old-vault"
+    _write_breadcrumb(context, former_vault)
+    plist = _write_plist(context, "com.dex.example-job")
+    with plist.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": "com.dex.example-job",
+                "ProgramArguments": ["/bin/bash", str(former_vault / ".scripts/job.sh")],
+            },
+            handle,
+        )
+    _write_solo_automation_claim(context, plist, "com.dex.example-job")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "OK"
+    assert "offloaded" in result.detail
+    assert "old location" not in result.detail
+
+
+def test_doctor_rejects_stale_solo_plist_evidence(monkeypatch, context):
+    plist = _write_plist(context, "com.dex.meeting-intel")
+    _write_solo_automation_claim(context, plist, "com.dex.meeting-intel")
+    plist.write_bytes(plist.read_bytes() + b"\n")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_launchctl_domain_check", lambda: None)
+    monkeypatch.setattr(doctor, "_plist_interpreter", lambda _plist: "/bin/bash")
+    monkeypatch.setattr(
+        doctor,
+        "_launchctl_status",
+        lambda _label: {"loaded": False, "last_exit_status": None},
+    )
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "BROKEN"
+    assert "not loaded" in result.detail
+    assert "offloaded" not in result.detail
+
+
 def test_jobs_loaded_skips_foreign_product_plists(monkeypatch, context, foreign_launch_agents):
     monkeypatch.setattr(doctor, "_is_macos", lambda: True)
 
@@ -2201,8 +2545,9 @@ def test_jobs_loaded_reports_missing_program_script_as_broken_t2(monkeypatch, co
 
 
 def test_launchctl_domain_failure_is_an_unknown_instrument(monkeypatch, context):
-    _write_plist(context, "com.dex.meeting-intel")
+    plist = _write_plist(context, "com.dex.meeting-intel")
     monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_plist_interpreter", lambda candidate: "/bin/bash" if candidate == plist else None)
     monkeypatch.setattr(
         doctor,
         "_launchctl_domain_check",

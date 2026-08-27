@@ -26,7 +26,7 @@ shape is:
 
 ```yaml
 meeting_sources:
-  primary: granola | zoom | teams | exported-folder | none
+  primary: granola | zoom | teams | exported-folder | wispr | none
   notes_folder: "vault-relative/folder/or/empty"
 ```
 
@@ -111,6 +111,36 @@ For each meeting file:
 2. Check whether person/company pages need updating
 3. Check whether tasks need extracting (unchecked items in the "For Me"
    section, no `tasks-extracted` marker)
+
+### Match capture identity to Calendar when both inputs exist
+
+This is the only matching boundary. Daily review delegates meeting ingestion
+here, and meeting prep has no capture to match, so neither owns a copy of this
+policy.
+
+For each synced note with an ISO `capture_started_at` value that includes `Z`
+or a numeric UTC offset:
+
+1. Apply CLAUDE.md's **Calendar response confidence contract**, then call
+   `calendar_get_events_with_attendees` for that calendar date (fetch once
+   per date and reuse the result).
+2. Call `match_capture_to_calendar` with a `capture` containing only the note's
+   `title`, `capture_started_at` as `start_time`, and attendee identities, plus
+   the Calendar response's `events` array as `calendar_events` (not the whole
+   Calendar response object).
+3. If it returns `status: matched`, use its `identity` only (title, normalized
+   start time, attendees) as the meeting identity for the rest of this run. If
+   the returned title differs, update the note's title frontmatter and heading
+   before the person/company/task steps.
+4. If it returns `unmatched` or `ambiguous`, leave the capture identity alone.
+   Never widen the five-minute limit or guess a timezone. If Calendar is not
+   connected or errors, continue with the capture unchanged.
+
+The matcher owns nearest-time, title, participant, ambiguity, and poor-title
+rules. Do not reproduce them in prose or make a second judgment. Import
+**identity only**: never copy join URLs, dial-ins, access codes, locations,
+descriptions, notes, conferencing data, or any other invite payload into the
+meeting note or person/company pages.
 
 ---
 

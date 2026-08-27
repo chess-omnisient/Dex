@@ -48,10 +48,18 @@ def validate_user_profile_config(config: object) -> list[str]:
     if isinstance(meeting_sources, Mapping):
         if "primary" in meeting_sources:
             primary = meeting_sources["primary"]
-            allowed_primaries = {"granola", "zoom", "teams", "exported-folder", "none"}
+            allowed_primaries = {
+                "granola",
+                "zoom",
+                "teams",
+                "exported-folder",
+                "wispr",
+                "none",
+            }
             if not isinstance(primary, str) or primary not in allowed_primaries:
                 errors.append(
-                    "meeting_sources.primary must be granola, zoom, teams, exported-folder, or none"
+                    "meeting_sources.primary must be granola, zoom, teams, "
+                    "exported-folder, wispr, or none"
                 )
         if "notes_folder" in meeting_sources and not isinstance(
             meeting_sources["notes_folder"], str
@@ -64,9 +72,9 @@ def validate_user_profile_config(config: object) -> list[str]:
             errors.append("feedback.review_mode must be always-review or auto-send")
     capabilities = config.get("capabilities")
     if isinstance(capabilities, Mapping):
-        from core.capabilities import room_ids
+        from core.portable_contract import CAPABILITIES
 
-        declared = set(room_ids())
+        declared = set(CAPABILITIES)
         for room, state in capabilities.items():
             if room not in declared:
                 errors.append(f"capabilities contains unknown room {room!r}")

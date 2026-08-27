@@ -7,6 +7,227 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.2] — 🔎 Dex Lens catalogue tells the complete release truth (2026-08-27)
+
+Dex's architecture inventory could see the optional Pipedrive server and its 15 tools,
+but the catalogue used by Dex Lens could not. Separately, the catalogue described the
+general `/connect` doorway as available even though Core's security decision still holds
+that doorway back.
+
+**What this improves for you:**
+
+* **Dex Lens can account for all 11 connected-tool servers and 146 tools.** Core now
+  uses one source of truth for both its architecture inventory and its Lens catalogue.
+* **Held work is no longer presented as usable.** The underlying connection manager
+  remains visible as parked groundwork, while the unreleased `/connect` instructions
+  stay out of the active skill list.
+* **The next catalogue has a new identity.** The corrected enriched candidate is
+  catalogue version 6 with 115 entries. It is not published by this change.
+
+## [1.97.1] — 🔎 Dex Lens can now see the wider Dex system (2026-08-26)
+
+Dex Lens could see the skills that ship with Dex, but not the connected-tool servers,
+scheduled automations, or system engines around them. That made the catalogue accurate
+but incomplete, and it left beta testers without a clear picture of which broader Dex
+capabilities were active, optional, or deliberately parked.
+
+**What this improves for you:**
+
+* **Dex Lens now receives the full 114-entry Dex catalogue.** It covers 95 skills,
+  10 connected-tool servers, five scheduled automations, and four system engines,
+  organised around the same eight jobs as before.
+* **Optional does not get mistaken for active.** The 29 dormant skills remain marked
+  dormant, so Lens can explain that they exist without pretending they are installed.
+* **Parked work stays parked.** The ritual-intelligence engine appears for honest
+  system awareness but cannot be recommended as an active capability.
+* **The trust boundary remains intact.** The catalogue is validated by the released
+  Dex Lens contract and signed only inside Dex's protected release process.
+
+The Phase 2 catalogue review and the released Dex Lens v0.1.9 verifier shaped this release.
+
+## [1.97.0] — 🔎 Dex Lens sees every active skill, and Obsidian setup tells the truth (2026-08-26)
+
+Dex Lens could show only a hand-curated slice of what Dex can do, so the catalogue
+fell behind the skills that actually ship. Separately, Obsidian setup could say its
+Mac background sync was working while it was repeatedly crashing, and a brand-new
+vault could have its placeholder pages or Dex's own product notes mistaken for
+personal content during wiki-link setup.
+
+**What this improves for you:**
+
+* **Dex Lens now sees all 66 active Dex skills.** They are organised around eight
+  clear jobs and come from the exact release people install. Vendor examples and
+  dormant optional skills stay out instead of inflating the picture.
+* **The broader experimental catalogue stays closed.** Dex has a guarded preview
+  of automations, connected tools, and system engines, but this release does not
+  sign or publish it before Lens can verify it safely.
+* **Obsidian background sync no longer calls a crash “installed.”** Setup pins a
+  compatible Python version and checks that the Mac job actually stayed healthy.
+* **Wiki-link setup changes only the right notes.** Placeholder pages, Dex product
+  files, and code examples are left alone, and recovery points at the exact safe
+  copy instead of suggesting a history-rewriting command.
+
+The catalogue audit and two Obsidian setup failures shaped this release.
+
+## [1.96.8] — 🧰 Dex still knows who you are after an update, and Mail search checkup stops a false alarm (2026-08-21)
+
+After the first setup, an update could greet you like a stranger. Your name, role, company size, working style, and focus areas snapped back to “Not yet configured,” even though the settings file from setup still had the real values. Nothing warned you. Separately, Mail search checkup could say the search index was broken when the index was actually current, because the checkup process itself could not read Mail.
+
+**What this fixes for you:**
+
+* **Your profile stays after an update.** Dex rereads the settings you already filled in and puts your name, role, company size, working style, and focus areas back into the main instructions. It no longer pretends you never finished setup.
+* **A brand-new folder still starts blank.** Until you finish the first setup, those lines stay empty. Dex does not invent a profile.
+* **The notes you added for yourself still survive.** The personal-instructions block is unchanged.
+* **Mail search checkup no longer calls a current index broken.** If the index is up to date and only the checkup helper cannot see Mail, Dex says it does not know, instead of telling you Mail search is broken.
+
+Amit Godbole caught the profile wipe by reading the update preview. Chris Jackson found the Mail false alarm. v1.96.7 never shipped a Mac file; this is the first download with these fixes.
+
+## [1.96.7] — 🧰 Dex still knows who you are after an update, and Mail search checkup stops a false alarm (2026-08-20)
+
+After the first setup, an update could greet you like a stranger. Your name, role, company size, working style, and focus areas snapped back to “Not yet configured,” even though the settings file from setup still had the real values. Nothing warned you. Separately, Mail search checkup could say the search index was broken when the index was actually current, because the checkup process itself could not read Mail.
+
+**What this fixes for you:**
+
+* **Your profile stays after an update.** Dex rereads the settings you already filled in and puts your name, role, company size, working style, and focus areas back into the main instructions. It no longer pretends you never finished setup.
+* **A brand-new folder still starts blank.** Until you finish the first setup, those lines stay empty. Dex does not invent a profile.
+* **The notes you added for yourself still survive.** The personal-instructions block is unchanged.
+* **Mail search checkup no longer calls a current index broken.** If the index is up to date and only the checkup helper cannot see Mail, Dex says it does not know, instead of telling you Mail search is broken.
+
+Amit Godbole caught the profile wipe by reading the update preview. Chris Jackson found the Mail false alarm.
+
+## [1.96.6] — 🧰 Your promotion score uses real evidence, and Mail search checkup tells the truth (2026-08-17)
+
+The promotion score could look confident while using made-up points. Skills were always 15. Growth was always 5. Evidence sitting in the Evidence folder — the place career setup itself uses — counted as nothing. Separately, Mail search checkup could look healthy when it could not actually see Mail, or when the search index was missing, empty, or unreadable. And if you record meetings with Wispr, Dex already understood those notes, but settings still refused the word Wispr.
+
+**What this fixes for you:**
+
+* **The promotion score now uses your real evidence.** Files in the Evidence folder count. Skills and growth come from that same evidence, not from made-up points. An empty folder scores 0, not 15 or 5.
+* **Mail search checkup tells the truth.** If the checkup cannot see your Mail folder, or the search index is missing, empty, or unreadable, it says so. It no longer calls that healthy.
+* **You can name Wispr as where meetings come from.** If that is your recorder, you can say so in settings. This does not connect Dex to Wispr or pull meetings on its own. It only stops rejecting the name.
+
+Two people reported the score and the Mail checkup. A contributor found the Wispr name after Dex already recognised their notes.
+
+## [1.96.5] — 🧰 A brand-new Dex folder can finish setup even if first install left no history (2026-08-14)
+
+A person who had just installed Dex could get stuck in the first setup chat. Dex thought it had finished separating its own files from their notes, but the notes folder had no working history, and the safety copy that should have undone that step was damaged. Continue failed. Undo failed. Setup stopped before they could start.
+
+**What this fixes for you:**
+
+* **Dex can rebuild the notes history from the files still in the folder.** Your notes stay put. Dex does not try to put a damaged safety copy back, and it does not invent a history it cannot prove.
+* **Install no longer says it is finished when that history is missing.** If the notes folder still has no working history, install stops and tells you the one repair command to run.
+* **Undo tells the truth when it cannot go back.** If the old copy is damaged and the notes history is already gone, Dex says the files are still there and that continuing will rebuild from those files. It no longer claims nothing was moved.
+
+A new user found this minutes after installing. Their notes were never deleted.
+
+## [1.96.4] — 🧰 A clean Mac install finishes, and the desktop app can take over one background job (2026-08-14)
+
+A brand-new Mac could stop during first setup because Dex asked the computer for
+a helper it had not installed yet. Separately, the Dex Solo desktop app could not
+safely take over one existing Dex background job, so two copies of the same job
+could try to run.
+
+**What this fixes for you:**
+
+* **A clean install no longer depends on a leftover extra library.** First-time
+  setup checks its own files with tools that are already there, then installs
+  everything else in the right order.
+* **The desktop app can take over one existing background job without running it
+  twice.** It has to prove the old job is stopped first. Giving the job back
+  works the same way in reverse.
+* **Dex's own checkup stays honest about that handoff.** It ignores the
+  handed-over job only while the proof is still valid. If the proof goes stale,
+  the normal checkup takes over again.
+
+## [1.96.3] — 🩺 Honest checkups, safer meetings, and releases you can verify (2026-08-13)
+
+This is a reliability release built from ten fixes that were tested together. The theme is
+simple: Dex should not guess when evidence is missing, call a broken connection “empty,” or
+claim a release identity that does not exist.
+
+### 🩺 Checkups now preserve the useful diagnosis
+
+Several health checks were flattening very different problems into the same generic answer.
+A missing Dex module could become package-reinstall advice, a slow semantic-search probe could
+make the whole checkup look broken, and Apple Mail list/read could look healthy while its
+separate search index was absent or stale.
+
+**What this fixes for you:**
+
+* **The original diagnosis survives.** Missing Dex files, missing third-party packages, and
+  optional components now get different explanations and different repair steps.
+* **“Could not tell” stays different from “broken.”** A timed-out search probe is reported as
+  unknown without contaminating the rest of the checkup.
+* **Apple Mail search is checked where search really lives.** Dex validates the configured
+  index, its searchable structure, every indexed mailbox's freshness, and safe file
+  permissions. The health check reads structural metadata, not message text.
+
+### 📅 Meeting work uses evidence instead of assumptions
+
+Four related faults could make meeting preparation and follow-up look confident while using
+the wrong attendee, recorder, calendar state, or event. The fixes now meet at the real
+execution seams instead of repeating hopeful instructions in several prompts.
+
+**What this fixes for you:**
+
+* **Meeting prep reads the calendar invite first.** Structured attendee identity is preserved
+  through delegated research, so two people with similar names are not silently collapsed.
+* **A broken calendar is never presented as an empty day.** Optional absence degrades calmly;
+  missing installation, permission failure, and unknown tool errors keep their real guidance.
+* **Configured meeting sources are honoured.** Granola is no longer assumed. Provider-neutral
+  capture IDs are used when safe, with the full vault-relative Markdown path as the
+  collision-safe fallback when two notes share a filename.
+* **Capture-to-calendar matching is deterministic and conservative.** A capture can inherit a
+  calendar identity only inside the five-minute window, with timezone-aware timestamps and
+  title/participant corroboration. Ties, naive timestamps, and events beyond the boundary stay
+  unmatched. Join links, dial-ins, access codes, locations, descriptions, conferencing data,
+  notes, and raw payloads never cross that boundary.
+
+### 🔒 Local receipts stay private, and malformed tasks stop at the door
+
+Dex can keep a small local record that a capability was attempted, but the helper doing that
+work could hang beyond the session-start budget. Separately, a leaked tool-call delimiter could
+be accepted as ordinary task text and saved as a corrupted task.
+
+**What this fixes for you:**
+
+* **Usage-attempt receipts are local, bounded, and content-free.** The complete helper process
+  is stopped after three seconds, including child processes. Its output is never relayed, it
+  does not retry, and this adds no endpoint, token, consent screen, or data collection.
+* **Corrupted task payloads are refused before any write.** Known delimiter shapes are rejected
+  at the Work tool boundary, while normal task text still round-trips unchanged.
+
+### 🧭 Fresh installs use the right capability identities
+
+The recent brain/vault split left three first-install checks looking for capability sources
+under their old identity. Existing upgraded vaults could work while a clean install stopped
+before Career, Companies, or Quarter Goals was provisioned.
+
+**What this fixes for you:**
+
+* **A brand-new install completes against the exact current vault sources.** The repair updates
+  the identities without weakening provenance checks or accepting a merely similar file.
+
+### 🧾 The permanent release name is finally honest
+
+Dex 1.96.2's catalog promised a permanent download tag derived from the source commit, but the
+release is built into a later sanitized commit. The promised name could not exist, and changing
+the real tag would have broken older updaters that correctly require the suffix to match the
+released commit.
+
+**What this fixes for you:**
+
+* **Published catalog v1 stays frozen and readable.** Existing installations keep the exact
+  contract they already understand.
+* **New releases use catalog v2's honest pattern.** The exact permanent tag is derived only
+  after the release commit exists, then checked locally and again after it is pushed.
+* **An empty or unreadable tag observation fails closed.** A release cannot pass merely because
+  the remote returned no evidence.
+* **Old update paths were tested, not assumed.** Twelve historic Dex versions completed the
+  release-shaped Mac journey against this change before it merged.
+
+Thanks to Chris Jackson for the detailed Doctor, Mail, Calendar, and meeting reports and source
+patches that exposed most of these trust failures.
+
 ## [1.96.2] — 🛡️ Your history saves again, and company networks get an honest answer (2026-08-13)
 
 If you're on a corporate network that intercepts secure connections — Zscaler, Netskope, most large enterprises — or on a hotel or airport captive portal, Dex's daily update check could fail and report that the release evidence was **invalid**. That wording means something specific and alarming: that the version of Dex being offered looks tampered with. It was never true. What had actually happened is that Dex couldn't verify it was really talking to GitHub, because something on your network was sitting in the middle of the connection. Worse, Dex treated it as a permanent verdict and didn't try again, so the check stayed broken for exactly the people most likely to hit it.

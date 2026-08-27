@@ -1094,6 +1094,8 @@ class UpdateVerifier:
         self._budget = ExecutionBudget.start(self.wall_clock_seconds)
         self.git.use_budget(self._budget)
         try:
+            if channel == "missing-dependency":
+                return {"status": STATUS_UNKNOWN, "reason": "missing-dependency"}
             if channel not in _VALID_CHANNELS:
                 return {"status": STATUS_UNKNOWN, "reason": "channel-invalid"}
             if channel != "stable":

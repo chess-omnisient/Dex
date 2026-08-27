@@ -4,7 +4,9 @@
 set -e  # Exit on error
 
 VAULT_PATH="${VAULT_PATH:-$(pwd)}"
-PLIST_PATH="$HOME/Library/LaunchAgents/com.dex.obsidian-sync.plist"
+LABEL="com.dex.obsidian-sync"
+PLIST_PATH="$HOME/Library/LaunchAgents/$LABEL.plist"
+PINNED_PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin"
 
 # Never point machine-wide background jobs at a temporary checkout. A git
 # worktree marks .git as a file; a real clone or plain vault does not.
@@ -26,10 +28,19 @@ if [[ "$OSTYPE" != "darwin"* ]]; then
     exit 1
 fi
 
-# Check if watchdog is installed
-if ! python3 -c "import watchdog" 2>/dev/null; then
+# launchd does not inherit the user's shell PATH. Pin the same supported
+# interpreter for dependency setup and the background job.
+PYTHON_BIN="$(command -v python3 || true)"
+if [[ -z "$PYTHON_BIN" ]] || ! "$PYTHON_BIN" -c "import sys; raise SystemExit(sys.version_info < (3, 10))" 2>/dev/null; then
+    echo "Error: Obsidian sync requires Python 3.10 or newer."
+    echo "Install a current Python, then run this installer again."
+    exit 1
+fi
+
+# Check if watchdog is installed for the exact interpreter launchd will run.
+if ! "$PYTHON_BIN" -c "import watchdog" 2>/dev/null; then
     echo "Installing watchdog package..."
-    pip3 install watchdog
+    "$PYTHON_BIN" -m pip install watchdog
 fi
 
 echo "Installing Dex Obsidian Sync Daemon..."
@@ -44,16 +55,18 @@ cat > "$PLIST_PATH" <<EOF
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.dex.obsidian-sync</string>
+    <string>$LABEL</string>
     <key>ProgramArguments</key>
     <array>
-        <string>python3</string>
+        <string>$PYTHON_BIN</string>
         <string>$VAULT_PATH/core/obsidian/sync_daemon.py</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>
         <key>VAULT_PATH</key>
         <string>$VAULT_PATH</string>
+        <key>PATH</key>
+        <string>$PINNED_PATH</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>
@@ -68,7 +81,7 @@ cat > "$PLIST_PATH" <<EOF
 EOF
 
 # Unload existing agent if running
-if launchctl list | grep -q "com.dex.obsidian-sync"; then
+if launchctl list | grep -q "$LABEL"; then
     echo "Stopping existing daemon..."
     launchctl unload "$PLIST_PATH" 2>/dev/null || true
 fi
@@ -77,9 +90,11 @@ fi
 echo "Starting daemon..."
 launchctl load "$PLIST_PATH"
 
-# Wait a moment and check if it started
+# Wait a moment and check whether it stayed running. A crash-looping launchd
+# job still appears in `launchctl list`, but its last exit status is non-zero.
 sleep 2
-if launchctl list | grep -q "com.dex.obsidian-sync"; then
+DAEMON_STATUS="$(launchctl list | awk -v label="$LABEL" '$3 == label { print $2; exit }')"
+if [[ "$DAEMON_STATUS" == "0" ]]; then
     echo ""
     echo "✅ Sync daemon installed and started successfully!"
     echo ""
@@ -95,7 +110,11 @@ if launchctl list | grep -q "com.dex.obsidian-sync"; then
     echo "The daemon will automatically start on login."
 else
     echo ""
-    echo "⚠️  Daemon may not have started successfully."
+    if [[ -n "$DAEMON_STATUS" ]]; then
+        echo "⚠️  Daemon exited with exit status $DAEMON_STATUS."
+    else
+        echo "⚠️  Daemon may not have started successfully."
+    fi
     echo "Check the error log: $VAULT_PATH/System/obsidian-sync-error.log"
     exit 1
 fi
