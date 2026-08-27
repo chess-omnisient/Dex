@@ -241,7 +241,7 @@ Use the Lens repository's own virtual environment and command names if they diff
 4. **Complete in the Core promotion change:** The exact released producer schema replaces the old Lens schema and the proposal fixture is removed.
 5. **Complete in the Core promotion change:** The legacy Phase 1 generator validates against the transition schema.
 6. **Complete in the Core promotion change:** The enriched generator validates against the same schema and a test-signed 114-entry envelope verifies through the released Lens wheel.
-7. **Publication boundary:** The stable Core release workflow invokes `--enriched --sign`, producing catalogue version 5 and the normal versioned/`latest` artifacts. The production signing key remains only in the protected release environment.
+7. **Publication boundary:** The stable Core release workflow invokes `--enriched --sign` and writes the normal versioned/`latest` artifacts. It produced the live catalogue version 5 from Core v1.97.1; current source would produce the corrected version 6 candidate. The production signing key remains only in the protected release environment.
 8. **Current unpublished correction:** Core now discovers the optional Pipedrive server through the same canonical inventory, removes the held `/connect` skill from the active set, and represents the underlying connection manager as parked. The resulting version 6 candidate has 115 entries and 146 tools.
 
 `--enriched-preview` still refuses `--sign` and writes only `dex-lens-catalog-enriched-preview.json`. Production signing uses the distinct `--enriched` path, so an obviously labelled preview can never be uploaded accidentally.
