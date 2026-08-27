@@ -32,6 +32,8 @@ def test_daily_plan_delegated_prompt_includes_previous_working_day_notes() -> No
         assert "Do not skip this step silently" in text
         assert "lookup_person" in text
         assert "none for that named date" in text
+        assert "Recent Interactions" in text
+        assert "Do not create person pages" in text
 
     assert "Previous-working-day notes: [found YYYY-MM-DD `path`, or none for YYYY-MM-DD]" in report
     assert "{{Previous-working-day notes: found YYYY-MM-DD `path` / none for YYYY-MM-DD}}" in skill

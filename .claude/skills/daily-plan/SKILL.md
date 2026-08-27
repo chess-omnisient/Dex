@@ -77,7 +77,7 @@ confirmations, inbound external task review, pushing focus tasks to Reminders,
 and usage tracking. These need the user, so they must not be delegated.
 
 Previous-working-day notes (Step 5.10c) are gathering, not the yesterday's
-review check. That step lives in `AGENT_INSTRUCTIONS.md` so a customisation of
+review check. That step lives in `AGENT_INSTRUCTIONS.md` so a customization of
 it reaches the subagent. The written plan must show the post-condition: notes
 found for a named date/file, or none.
 
