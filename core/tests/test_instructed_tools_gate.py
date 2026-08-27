@@ -206,12 +206,12 @@ def test_known_use_directive_reference_passes() -> None:
     assert findings == []
 
 
-def test_planning_skills_instruct_dex_calendar_tools_not_unprefixed_aliases() -> None:
-    """Google calendar routing names Dex MCP tools, not unprefixed aliases.
+def test_planning_skills_allowlist_google_workspace_calendar_tools() -> None:
+    """Google calendar routing names the Google Workspace MCP tools.
 
-    calendar_list_calendars and calendar_get_events are defined on
-    dex-calendar-mcp. The existence gate fails if skills instruct
-    list_calendars / get_events, which are not Dex catalog tools.
+    list_calendars and get_events are not Dex catalog tools; they live on
+    the separately installed Google Workspace connector, the same way Teams
+    tools are allowlisted. Dex calendar_* names would call Apple Calendar.
     """
     checker = _load_checker()
     allowlisted = checker.parse_allowlist(
@@ -220,10 +220,8 @@ def test_planning_skills_instruct_dex_calendar_tools_not_unprefixed_aliases() ->
         )
     )
     defined = checker.collect_defined_tools()
-    assert "list_calendars" not in allowlisted
-    assert "get_events" not in allowlisted
-    assert "calendar_list_calendars" in defined
-    assert "calendar_get_events" in defined
+    assert "list_calendars" in allowlisted
+    assert "get_events" in allowlisted
 
     for relative in (
         ".claude/skills/daily-plan/AGENT_INSTRUCTIONS.md",

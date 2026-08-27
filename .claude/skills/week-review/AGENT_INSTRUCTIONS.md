@@ -64,11 +64,11 @@ Check `00-Inbox/Meetings/` for this week's meeting notes, then read
 
 **If `provider` is `google`:** use Google Workspace MCP, not calendar-mcp event tools.
 
-Read `calendar.work_calendar` from the same profile. Pass it as calendar_id. If it is missing or `primary`, use `primary`. Set max_results high enough that a stacked week is not truncated.
+Read `calendar.work_calendar` from the same profile. Call `list_calendars(detailed=true)` first. Match `work_calendar` against a returned calendar summary, id, or primary flag, then pass that calendar's id. If `work_calendar` is missing or `primary`, use `primary`. Do not pass a display name as calendar_id. Set max_results high enough that a stacked week is not truncated.
 
 ```
-Use: calendar_list_calendars(detailed=true)
-Use: calendar_get_events(time_min="{{WEEK_START_DATE}}", time_max="{{TARGET_DATE_PLUS_1}}", calendar_id="<calendar.work_calendar or primary>", max_results=2500, detailed=true)
+Use: list_calendars(detailed=true)
+Use: get_events(time_min="{{WEEK_START_DATE}}", time_max="{{TARGET_DATE_PLUS_1}}", calendar_id="<resolved id or primary>", max_results=2500, detailed=true)
 ```
 
 Apply CLAUDE.md's **Calendar response confidence contract** to the outcome: a missing or failing Google Workspace calendar tool is not an empty week. If the tools are unavailable or not connected, point to `/google-workspace-setup` using that skill's existing copy. Do not invent new privacy or consent language.
