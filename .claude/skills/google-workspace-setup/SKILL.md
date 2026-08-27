@@ -178,10 +178,10 @@ Save their preference. Map choice 1 to `draft_and_send: true`, choice 2 to `draf
 
 ### Step 6: Test the Connection
 
-Run a quick test to confirm everything works:
+Run a quick test to confirm everything works. **Email is the connectedness bar.** Calendar is extra.
 
-1. Search for a recent email (e.g., from the last 24 hours)
-2. Verify calendar access (list today's events)
+1. **Email (required).** Search for a recent email (e.g., from the last 24 hours). If this fails, troubleshoot before proceeding — do not write `google-workspace.enabled: true` until Gmail responds.
+2. **Calendar (optional).** If a Calendar connector is available, list today's events. If Calendar is missing — including a Gmail-only session connector — note it and continue. Do not block saving config on a missing calendar.
 
 Show a brief summary:
 
@@ -189,11 +189,10 @@ Show a brief summary:
 **Quick test results:**
 - Email search: Working (found [N] recent emails)
 - Calendar: Working (found [N] events today)
-
-Everything looks good!
+  # or: Not available in this session — email still counts as connected
 ```
 
-If either fails, troubleshoot before proceeding.
+If email works, proceed to Step 7 even when Calendar is missing. Only email failure blocks saving configuration.
 
 ### Step 7: Save Configuration
 

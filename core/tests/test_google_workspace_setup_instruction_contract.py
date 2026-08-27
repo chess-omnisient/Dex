@@ -35,6 +35,10 @@ def _step3(body: str) -> str:
     return _section(body, "### Step 3: Add the Google Workspace MCP Server", "### Step 4:")
 
 
+def _step6(body: str) -> str:
+    return _section(body, "### Step 6: Test the Connection", "### Step 7:")
+
+
 def test_step3_prose_and_config_name_the_same_install_identity() -> None:
     """The explanation and the config block must name one package, not two."""
 
@@ -122,3 +126,17 @@ def test_calendar_or_drive_alone_does_not_skip_gmail_setup() -> None:
         assert "calendar-only" in lowered or "calendar or drive" in lowered
         assert "not" in lowered
         assert "skip" in lowered or "not enough" in lowered
+
+
+def test_gmail_only_connection_test_still_saves_config() -> None:
+    """Missing calendar must not block writing google-workspace.enabled after Gmail works."""
+
+    step6 = _step6(_body())
+    lowered = step6.lower()
+    assert "email is the connectedness bar" in lowered
+    assert "required" in lowered
+    assert "optional" in lowered
+    assert "do not block saving config" in lowered
+    assert "gmail-only" in lowered
+    assert "only email failure blocks saving configuration" in lowered
+    assert "if either fails" not in lowered
