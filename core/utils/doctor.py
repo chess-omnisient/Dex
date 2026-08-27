@@ -5173,17 +5173,6 @@ def _calendar_list_result(context: DoctorContext) -> dict[str, Any]:
 
 _GOOGLE_CALENDAR_SETUP_ACTION = "Run /google-workspace-setup to connect Google Calendar."
 _GOOGLE_CALENDAR_LIST_URL = "https://www.googleapis.com/calendar/v3/users/me/calendarList"
-_GOOGLE_CALENDAR_MCP_NAMES = {
-    "google",
-    "google-calendar",
-    "google-workspace",
-    "google-workspace-mcp",
-}
-_GOOGLE_CALENDAR_MCP_MARKERS = (
-    "google-workspace-mcp",
-    "google_workspace_mcp",
-    "mcp-google-calendar",
-)
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -5216,32 +5205,6 @@ def _configured_calendar_settings(context: DoctorContext) -> tuple[str | None, s
 def _configured_work_calendar(context: DoctorContext) -> str | None:
     _provider, configured = _configured_calendar_settings(context)
     return configured
-
-
-def _google_calendar_mcp_registered(context: DoctorContext) -> bool:
-    try:
-        config = _load_mcp_config(context)
-    except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError, TypeError):
-        return False
-    servers = config.get("mcpServers", {})
-    if not isinstance(servers, dict):
-        return False
-    for name, entry in servers.items():
-        if str(name).casefold() in _GOOGLE_CALENDAR_MCP_NAMES:
-            return True
-        if not isinstance(entry, dict):
-            continue
-        args = entry.get("args", [])
-        blob = " ".join(
-            [
-                str(name),
-                str(entry.get("command", "")),
-                *[str(argument) for argument in args if isinstance(argument, str)],
-            ]
-        ).casefold()
-        if any(marker in blob for marker in _GOOGLE_CALENDAR_MCP_MARKERS):
-            return True
-    return False
 
 
 def _google_calendar_token_payload(context: DoctorContext) -> dict[str, Any] | None:
@@ -5345,12 +5308,6 @@ def _google_calendar_setup_heal() -> Heal:
 
 
 def _probe_google_calendar_access(context: DoctorContext, configured: str | None) -> ProbeResult:
-    if not _google_calendar_mcp_registered(context):
-        return ProbeResult(
-            "BROKEN",
-            "Google Calendar is configured but the Google Workspace connector is not registered",
-            _google_calendar_setup_heal(),
-        )
     result = _google_calendar_list_result(context)
     if not result.get("success"):
         detail = _one_line(result.get("error", "Google Calendar list failed"))

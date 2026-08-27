@@ -4284,7 +4284,7 @@ def test_google_calendar_provider_skips_eventkit(monkeypatch, context):
     assert "1 calendar" in result.detail
 
 
-def test_google_calendar_provider_without_connector_is_broken_not_eventkit(
+def test_google_calendar_provider_without_connector_is_unknown_not_eventkit(
     monkeypatch,
     context,
 ):
@@ -4302,10 +4302,42 @@ def test_google_calendar_provider_without_connector_is_broken_not_eventkit(
 
     missing = doctor._probe_calendar_access(context)
 
-    assert missing.verdict == "BROKEN"
-    assert "google-workspace-setup" in missing.heal.action
+    assert missing.verdict == "UNKNOWN"
+    assert missing.heal is None
+    assert "live calendar list could not be completed" in missing.detail
     assert "EventKit" not in missing.detail
-    assert "System Settings" not in (missing.heal.action if missing.heal else "")
+
+
+def test_google_calendar_provider_without_mcp_lists_when_token_is_present(
+    monkeypatch,
+    context,
+):
+    _write_valid_configs(context, calendar="primary", calendar_provider="google")
+    monkeypatch.setattr(
+        doctor,
+        "_calendar_permission_status",
+        lambda _context: pytest.fail("Google calendar must not probe EventKit permission"),
+    )
+    monkeypatch.setattr(
+        doctor,
+        "_calendar_list_result",
+        lambda _context: pytest.fail("Google calendar must not list EventKit calendars"),
+    )
+    monkeypatch.setattr(
+        doctor,
+        "_google_calendar_list_result",
+        lambda _context: {
+            "success": True,
+            "calendars": ["Work"],
+            "calendar_ids": ["primary"],
+            "primary_id": "primary",
+        },
+    )
+
+    result = doctor._probe_calendar_access(context)
+
+    assert result.verdict == "OK"
+    assert "1 calendar" in result.detail
 
 
 def test_google_calendar_missing_token_is_unknown_not_broken(monkeypatch, context):
