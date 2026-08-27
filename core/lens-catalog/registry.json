@@ -52,8 +52,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
-        "sha256": "579345c38cf39ff73fa5f178b9aac80b71e28f8a1e6648618b832ed78961a01d",
-        "byte_size": 32932
+        "sha256": "4f4bfce7329ba488d74fd5ca4c0366e607602e5fca2f2bb6a356ff47ef7a6c64",
+        "byte_size": 33273
       },
       "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
       "jobs_served": [
@@ -122,8 +122,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-plan/SKILL.md",
-        "sha256": "7e9383a02327f2d7afca9636acbbde2f9476a447193921cfcd70b97bca91f223",
-        "byte_size": 12240
+        "sha256": "bcda1a3712f9c91335bd9f373dd3177c289cb7c355655dd069592683a0d9e795",
+        "byte_size": 13904
       },
       "value": "Turns goals, capacity and open work into a weekly focus plan, so repeated work starts from priorities rather than a blank chat.",
       "jobs_served": [
@@ -267,8 +267,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-doctor/SKILL.md",
-        "sha256": "a0f4a09485b27d56622f0506c7a6c2244a37fa7c7424df22a6d56649d9fb6f5c",
-        "byte_size": 17721
+        "sha256": "ddbd555c2b3edbedf9848753ab014849040b5f3274b48460cef57cf6fc2ceb7d",
+        "byte_size": 17858
       },
       "value": "Gives the person an honest system check: what works, what is off, what is broken and what should not be guessed.",
       "jobs_served": [
@@ -564,8 +564,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-review/SKILL.md",
-        "sha256": "cc07404a8f174739e9e3028638f358f74f24c366b6c646edc4bf26fa8714dbea",
-        "byte_size": 19027
+        "sha256": "7c8d1a8cab205c8f6d30ac4f3c0b4cc46a2b59c5ff5b832edd81c88ae715f78c",
+        "byte_size": 19136
       },
       "value": "Reviews the week in concrete finished work and the patterns behind it, and deliberately refuses to invent a completion percentage that would make a bad week look measured.",
       "jobs_served": [
@@ -5560,8 +5560,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/google-workspace-setup/SKILL.md",
-        "sha256": "65a6a4a6b58f943ea6eea9ce04d778fc5885b2cc6f239fd155176aeee44e9ea1",
-        "byte_size": 12450
+        "sha256": "53d0dd2fe08b6440fc2ed6013bcf821ec231cbeb3c4fff0413a47357454fae6b",
+        "byte_size": 13368
       },
       "value": "Connect Google Workspace (Gmail, Calendar, Docs) for email-aware planning and meeting prep.",
       "jobs_served": [
