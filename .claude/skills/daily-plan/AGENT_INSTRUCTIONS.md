@@ -36,11 +36,13 @@ not_started), warnings for priorities with no activity.
 
 Read `calendar.provider` from `System/user-profile.yaml` before any calendar call.
 
-**If `provider` is `google`:** use Google Workspace MCP, not calendar-mcp event tools:
+**If `provider` is `google`:** use Google Workspace MCP, not calendar-mcp event tools.
+
+Read `calendar.work_calendar` from the same profile. Pass it as calendar_id. If it is missing or `primary`, use `primary`. Set max_results high enough that a stacked day is not truncated.
 
 ```
-Use: calendar_list_calendars()
-Use: calendar_get_events(time_min="{{TARGET_DATE}}", time_max="{{TARGET_DATE_PLUS_1}}", detailed=true)
+Use: calendar_list_calendars(detailed=true)
+Use: calendar_get_events(time_min="{{TARGET_DATE}}", time_max="{{TARGET_DATE_PLUS_1}}", calendar_id="<calendar.work_calendar or primary>", max_results=2500, detailed=true)
 Use: analyze_calendar_capacity(days_ahead=1, events=[...mapped from calendar_get_events...])
 ```
 

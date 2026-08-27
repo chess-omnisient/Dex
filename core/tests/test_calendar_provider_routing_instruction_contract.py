@@ -50,6 +50,9 @@ def test_google_calendar_path_does_not_call_eventkit_event_tools() -> None:
         google_section = google_section.split("**If `provider` is `none`:**", 1)[0]
         assert "calendar_list_calendars" in google_section
         assert "calendar_get_events" in google_section
+        assert "calendar_id" in google_section
+        assert "work_calendar" in google_section
+        assert "max_results=2500" in google_section
         assert "calendar_get_today" not in google_section
         assert "calendar_get_events_with_attendees" not in google_section
         assert "Use: get_events" not in google_section

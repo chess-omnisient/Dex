@@ -4344,6 +4344,38 @@ def test_google_calendar_auth_failure_is_broken_with_setup_heal(monkeypatch, con
     assert result.heal.action == "Run /google-workspace-setup to connect Google Calendar."
 
 
+def test_google_calendar_expired_token_with_refresh_is_unknown_not_broken(
+    monkeypatch,
+    context,
+):
+    _write_valid_configs(context, calendar_provider="google")
+    _write_mcp_config(
+        context,
+        {"google-workspace-mcp": {"command": "npx", "args": ["-y", "google-workspace-mcp"]}},
+    )
+    token_path = context.vault_root / "System" / ".gmail-oauth-token.json"
+    token_path.write_text(
+        '{"access_token": "expired", "refresh_token": "still-valid"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        doctor,
+        "_google_calendar_list_result",
+        lambda _context: {"success": False, "error": "Unauthorized", "http_status": 401},
+    )
+    monkeypatch.setattr(
+        doctor,
+        "_calendar_permission_status",
+        lambda _context: pytest.fail("Google calendar must not probe EventKit permission"),
+    )
+
+    result = doctor._probe_calendar_access(context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "live calendar list could not be completed" in result.detail
+    assert result.heal is None
+
+
 def test_google_calendar_missing_configured_name(monkeypatch, context):
     _write_valid_configs(context, calendar="Team Calendar", calendar_provider="google")
     _write_mcp_config(

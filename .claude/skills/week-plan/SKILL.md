@@ -86,11 +86,13 @@ Get all open tasks and:
 
 Read `calendar.provider` from `System/user-profile.yaml` before any calendar call.
 
-**If `provider` is `google`:** use Google Workspace MCP, not calendar-mcp event tools:
+**If `provider` is `google`:** use Google Workspace MCP, not calendar-mcp event tools.
+
+Read `calendar.work_calendar` from the same profile. Pass it as calendar_id. If it is missing or `primary`, use `primary`. Set max_results high enough that a stacked week is not truncated.
 
 ```
-Use: calendar_list_calendars()
-Use: calendar_get_events(time_min="[week start]", time_max="[day after week end]", detailed=true)
+Use: calendar_list_calendars(detailed=true)
+Use: calendar_get_events(time_min="[week start]", time_max="[day after week end]", calendar_id="<calendar.work_calendar or primary>", max_results=2500, detailed=true)
 Use: analyze_calendar_capacity(days_ahead=7, events=[...mapped from calendar_get_events...])
 ```
 

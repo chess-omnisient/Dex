@@ -5244,7 +5244,7 @@ def _google_calendar_mcp_registered(context: DoctorContext) -> bool:
     return False
 
 
-def _google_calendar_access_token(context: DoctorContext) -> str | None:
+def _google_calendar_token_payload(context: DoctorContext) -> dict[str, Any] | None:
     path = context.vault_root / "System" / ".gmail-oauth-token.json"
     if not path.is_file():
         return None
@@ -5252,18 +5252,35 @@ def _google_calendar_access_token(context: DoctorContext) -> str | None:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
-    if not isinstance(payload, dict):
-        return None
-    for key in ("access_token", "token"):
+    return payload if isinstance(payload, dict) else None
+
+
+def _google_calendar_token_value(payload: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
         value = payload.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
     nested = payload.get("token")
     if isinstance(nested, dict):
-        value = nested.get("access_token")
-        if isinstance(value, str) and value.strip():
-            return value.strip()
+        for key in keys:
+            value = nested.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
     return None
+
+
+def _google_calendar_access_token(context: DoctorContext) -> str | None:
+    payload = _google_calendar_token_payload(context)
+    if payload is None:
+        return None
+    return _google_calendar_token_value(payload, "access_token", "token")
+
+
+def _google_calendar_has_refresh_token(context: DoctorContext) -> bool:
+    payload = _google_calendar_token_payload(context)
+    if payload is None:
+        return False
+    return _google_calendar_token_value(payload, "refresh_token") is not None
 
 
 def _google_calendar_list_result(context: DoctorContext) -> dict[str, Any]:
@@ -5345,6 +5362,11 @@ def _probe_google_calendar_access(context: DoctorContext, configured: str | None
                 "Google Calendar is configured but a live calendar list could not be completed",
             )
         status = result.get("http_status")
+        if status == 401 and _google_calendar_has_refresh_token(context):
+            return ProbeResult(
+                "UNKNOWN",
+                "Google Calendar is configured but a live calendar list could not be completed",
+            )
         if status in {401, 403} or "denied" in detail.lower() or "permission" in detail.lower():
             return ProbeResult("BROKEN", detail, _google_calendar_setup_heal())
         return ProbeResult("UNKNOWN", f"Google Calendar list could not complete: {detail}")
