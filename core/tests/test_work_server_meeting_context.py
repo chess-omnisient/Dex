@@ -130,3 +130,19 @@ def test_meeting_context_does_not_match_a_longer_underscored_person_name(
     result = _call_meeting_context("Chris Kim")
 
     assert result["outstanding_tasks"] == []
+
+
+def test_meeting_context_does_not_resolve_a_longer_person_page_name(
+    meeting_context_vault: dict[str, Path],
+) -> None:
+    person = meeting_context_vault["people"] / "External" / "Chris_Kimball.md"
+    person.parent.mkdir(parents=True)
+    person.write_text(
+        "# Chris Kimball\n\n- [ ] Send Chris Kimball the review\n",
+        encoding="utf-8",
+    )
+
+    result = _call_meeting_context("Chris Kim")
+
+    assert result["attendee_details"] == []
+    assert result["outstanding_tasks"] == []

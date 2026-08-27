@@ -3241,16 +3241,19 @@ def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = N
     # Get attendee details from People directory
     attendee_pages: Dict[str, List[Path]] = {}
     for attendee in attendees:
-        attendee_normalized = attendee.lower().replace(' ', '_')
+        attendee_normalized = re.sub(r'[\s_]+', ' ', attendee).strip().casefold()
         
         # Check both Internal and External directories
         for subdir in ['External', 'Internal']:
             people_subdir = get_people_dir() / subdir
             if not people_subdir.exists():
                 continue
-            
+
             for person_file in people_subdir.glob('*.md'):
-                if attendee_normalized in person_file.stem.lower():
+                person_normalized = re.sub(
+                    r'[\s_]+', ' ', person_file.stem
+                ).strip().casefold()
+                if attendee_normalized == person_normalized:
                     person_data = parse_person_page(person_file)
                     result['attendee_details'].append(person_data)
                     attendee_pages.setdefault(attendee, []).append(person_file)
