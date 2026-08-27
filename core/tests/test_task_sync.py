@@ -213,6 +213,28 @@ def test_first_service_run_creates_baseline_without_adapter_calls(sync_vault, mo
     assert not sync_vault["inbound"].exists()
 
 
+def test_unscoped_sync_ignores_global_flags_without_task_service_settings(
+    sync_vault, monkeypatch
+):
+    _enable(sync_vault, "todoist")
+    sync_vault["config"].write_text(
+        "enabled:\n  google: true\n"
+        + sync_vault["config"].read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("first run must not call an adapter")
+
+    monkeypatch.setattr(task_sync, "_run_adapter", fail_if_called)
+
+    result = task_sync.sync_external_tasks()
+
+    assert set(result) == {"todoist"}
+    assert result["todoist"]["first_run"] is True
+    assert result["todoist"]["errors"] == []
+
+
 def test_push_create_records_opaque_mapping(sync_vault, monkeypatch):
     _enable(sync_vault, "todoist")
     _write_tasks(

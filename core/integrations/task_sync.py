@@ -137,9 +137,9 @@ def _enabled_services(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
     legacy = config.get("enabled")
     if isinstance(legacy, dict):
         for name, value in legacy.items():
-            if value is True:
-                settings = config.get(name)
-                enabled[str(name)] = settings if isinstance(settings, dict) else {}
+            settings = config.get(name)
+            if value is True and isinstance(settings, dict):
+                enabled[str(name)] = settings
 
     for name, settings in config.items():
         if name == "enabled" or not isinstance(settings, dict):
