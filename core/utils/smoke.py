@@ -2337,9 +2337,38 @@ def _journey_mcp_startup(vault: Path, _release_root: Path) -> dict[str, str]:
             statuses.append("BROKEN")
             details.append(f"{label}: BROKEN — {_one_line(result.error or result.stderr)}")
 
+    _overlay_never_spawned_work_mcp(statuses, details)
+
     if not statuses:
         return {"verdict": "OK", "detail": "MCP config has no server entries"}
     return {"verdict": _roll_up(statuses), "detail": "; ".join(details)}
+
+
+def _overlay_never_spawned_work_mcp(statuses: list[str], details: list[str]) -> None:
+    """If Task Manager handshake succeeded but no live process exists, fail loudly."""
+    try:
+        index = details.index("work-mcp: OK")
+    except ValueError:
+        return
+    expected_preflight = RUNNER_ROOT / "core" / "utils" / "preflight.py"
+    if (
+        RUNNER_ROOT.is_symlink()
+        or expected_preflight.is_symlink()
+        or not expected_preflight.is_file()
+    ):
+        return
+    from core.utils import preflight as preflight_mod
+
+    if Path(preflight_mod.__file__).resolve() != expected_preflight.resolve():
+        return
+    overlaid = preflight_mod.apply_never_spawned_overlay(
+        {"servers": {preflight_mod.WORK_MCP_NAME: {"status": "ok"}}},
+    )
+    work = (overlaid.get("servers") or {}).get(preflight_mod.WORK_MCP_NAME) or {}
+    if work.get("status") != "error":
+        return
+    statuses[index] = "BROKEN"
+    details[index] = f"work-mcp: BROKEN — {preflight_mod.NEVER_SPAWNED_HUMAN_ERROR}"
 
 
 def _journey_skills(vault: Path, _release_root: Path) -> dict[str, str]:
