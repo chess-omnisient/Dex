@@ -1,7 +1,6 @@
 """Contract tests for the /dex-doctor collector."""
 
 import hashlib
-import inspect
 import json
 import os
 import plistlib
@@ -1576,131 +1575,54 @@ def test_main_heal_flag_invokes_t1_and_still_returns_json(monkeypatch, context, 
     assert calls == [context]
 
 
-def test_heal_speaks_on_stderr_before_and_during_checks(monkeypatch, context, capsys):
-    """Visible life starts before the first check; progress is the two shipped sentences."""
-    monkeypatch.setattr(doctor, "_apply_t1_heals", lambda _context: ({}, []))
-    seen_before_first = []
+def test_main_heal_reports_progress_before_repairs_and_checks(
+    monkeypatch, context, capsys
+):
+    """A stuck step must not leave the person staring at an empty terminal."""
+    observed_stderr = []
+
+    def heal(_context):
+        observed_stderr.append(capsys.readouterr().err)
+        return {}, []
 
     def first_probe(_context):
-        seen_before_first.append(capsys.readouterr().err)
+        observed_stderr.append(capsys.readouterr().err)
+        return doctor.ProbeResult("OK", "Stub probe completed.")
+
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr(doctor, "_apply_t1_heals", heal)
+    monkeypatch.setattr(doctor, "_probe_vault_structure", first_probe)
+
+    assert doctor.main(["--heal"], context=context) == 0
+    captured = capsys.readouterr()
+
+    assert observed_stderr == [
+        f"{doctor.HEAL_PROGRESS}\n",
+        f"{doctor.CHECK_PROGRESS}\n",
+    ]
+    assert captured.err == ""
+    assert json.loads(captured.out)["mode"] == "quick"
+
+
+def test_collect_runs_probes_in_process_without_shared_timeout_threads(
+    monkeypatch, context, capsys
+):
+    """Checks must not be abandoned in daemon threads after a shared deadline."""
+    caller = threading.get_ident()
+    seen: list[int] = []
+
+    def first_probe(_context):
+        seen.append(threading.get_ident())
         return doctor.ProbeResult("OK", "Stub probe completed.")
 
     _stub_probes(monkeypatch)
     monkeypatch.setattr(doctor, "_probe_vault_structure", first_probe)
 
-    exit_code = doctor.main(["--heal"], context=context)
-    captured = capsys.readouterr()
-    report = json.loads(captured.out)
+    report = doctor.collect(context=context)
 
-    assert exit_code == 0
-    assert seen_before_first[0].splitlines() == [
-        doctor.HEAL_PROGRESS,
-        doctor.CHECK_PROGRESS,
-    ]
-    assert captured.err == ""
-    assert doctor.HEAL_PROGRESS not in captured.out
-    assert doctor.CHECK_PROGRESS not in captured.out
-    assert report["mode"] == "quick"
-
-
-def test_stuck_check_times_out_and_later_checks_still_run(monkeypatch, context):
-    """A stuck probe is time-boxed so later probes still run. Heals are not this path."""
-    monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
-    monkeypatch.setattr(doctor, "_apply_t1_heals", lambda _context: ({}, []))
-    spoken: list[str] = []
-    real_progress = doctor._progress
-    monkeypatch.setattr(
-        doctor,
-        "_progress",
-        lambda message: spoken.append(message) or real_progress(message),
-    )
-    order: list[str] = []
-
-    def hang(_context):
-        order.append("hang")
-        time.sleep(30)
-        order.append("hang-finished")
-        return doctor.ProbeResult("OK", "should not count")
-
-    def later(_context):
-        order.append("later")
-        return doctor.ProbeResult("OFF", "Later check ran.")
-
-    _stub_probes(monkeypatch)
-    monkeypatch.setattr(doctor, "_probe_vault_structure", hang)
-    monkeypatch.setattr(doctor, "_probe_vault_configs", later)
-
-    started = time.monotonic()
-    report = doctor.collect(heal=True, context=context)
-    elapsed = time.monotonic() - started
-
-    assert elapsed < 5
-    assert order == ["hang", "later"]
-    assert _check(report, "vault.structure")["verdict"] == "UNKNOWN"
-    assert "timed out" in _check(report, "vault.structure")["detail"]
-    assert _check(report, "vault.configs")["verdict"] == "OFF"
-    assert _check(report, "doctor.self")["verdict"] == "BROKEN"
-    assert {"id": "vault.structure", "error": "timed out"} in report["instruments"]["failed"]
-    assert spoken == [doctor.HEAL_PROGRESS, doctor.CHECK_PROGRESS]
-
-
-def test_t1_heal_path_does_not_wrap_mutations_in_run_bounded():
-    """Heals must not go through `_run_bounded`. That helper abandons a daemon worker."""
-    assert "_run_bounded" not in inspect.getsource(doctor._t1_stage)
-    assert "_run_bounded" not in inspect.getsource(doctor._apply_t1_heals)
-
-
-def test_heals_are_not_abandoned_in_a_daemon_thread(monkeypatch, context):
-    """A heal that outlasts the probe bound must finish on the collector thread.
-
-    Wrapping heals in `_run_bounded` would start a daemon worker, time out, and
-    leave the mutation running after later heals and probes begin.
-    """
-    monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
-    bounded_calls: list[float] = []
-    real_bounded = doctor._run_bounded
-
-    def spy_bounded(operation, timeout_seconds):
-        bounded_calls.append(timeout_seconds)
-        return real_bounded(operation, timeout_seconds)
-
-    monkeypatch.setattr(doctor, "_run_bounded", spy_bounded)
-    for name in doctor.PARA_PATH_NAMES:
-        context.core_path(name).mkdir(parents=True, exist_ok=True)
-    (context.vault_root / "core" / "paths.json").write_text("{}\n")
-    caller = threading.get_ident()
-    seen: list[tuple[str, int]] = []
-
-    def slow_executables(_context):
-        seen.append(("exec", threading.get_ident()))
-        time.sleep(0.45)
-        return []
-
-    def env_finding(_context):
-        seen.append(("env", threading.get_ident()))
-        return None
-
-    monkeypatch.setattr(doctor, "_paths_export_for", lambda _context: {})
-    monkeypatch.setattr(doctor, "_repo_shipped_executables", slow_executables)
-    monkeypatch.setattr(doctor, "_env_permission_finding", env_finding)
-    monkeypatch.setattr(doctor, "_acknowledge_resolved_preflight_errors", lambda _context: 0)
-    monkeypatch.setattr(doctor, "_heal_claude_composition", lambda _context: None)
-    monkeypatch.setattr(
-        doctor,
-        "_probe_capability_rooms",
-        lambda _context: doctor.ProbeResult("OK", "rooms"),
-    )
-
-    started = time.monotonic()
-    actions, errors = doctor._apply_t1_heals(context)
-    elapsed = time.monotonic() - started
-
-    assert bounded_calls == []
-    assert elapsed >= 0.4
-    assert [name for name, _ident in seen] == ["exec", "env"]
-    assert all(ident == caller for _name, ident in seen)
-    assert errors == []
-    assert actions == {}
+    assert seen == [caller]
+    assert _check(report, "vault.structure")["verdict"] == "OK"
+    assert capsys.readouterr().err == ""
 
 
 def test_heal_failure_stays_in_thread_and_later_heals_still_run(monkeypatch, context):
@@ -1735,42 +1657,6 @@ def test_heal_failure_stays_in_thread_and_later_heals_still_run(monkeypatch, con
     assert all(ident == caller for _name, ident in seen)
     assert errors == ["Executable-mode heal failed: exec boom"]
     assert actions == {}
-
-
-def test_stuck_deep_assessment_does_not_mute_later_deep_checks(monkeypatch, context):
-    monkeypatch.setattr(doctor, "CHECK_TIMEOUT_SECONDS", 0.2)
-    spoken: list[str] = []
-    real_progress = doctor._progress
-    monkeypatch.setattr(
-        doctor,
-        "_progress",
-        lambda message: spoken.append(message) or real_progress(message),
-    )
-    _stub_probes(monkeypatch)
-
-    def hang(_context):
-        time.sleep(30)
-        return doctor.ProbeResult("OK", "should not count")
-
-    def later(_context):
-        return doctor.ProbeResult(
-            "OK",
-            "migration status ran",
-            structured_detail={"capsules": [], "truncated": False, "pending": False},
-        )
-
-    monkeypatch.setattr(doctor, "_probe_customization_assessment", hang)
-    monkeypatch.setattr(doctor, "_probe_customization_migration_status", later)
-
-    report = doctor.collect(deep=True, context=context)
-
-    assert _check(report, "customizations.assessment")["verdict"] == "UNKNOWN"
-    assert "timed out" in _check(report, "customizations.assessment")["detail"]
-    assert _check(report, "customizations.migration-status")["verdict"] == "OK"
-    assert "customization_assessment" not in report
-    assert report["customization_migration_status"]["pending"] is False
-    assert _check(report, "doctor.self")["verdict"] == "BROKEN"
-    assert spoken == [doctor.CHECK_PROGRESS]
 
 
 def test_doctor_skill_keeps_collector_stderr_visible():
