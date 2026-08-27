@@ -56,6 +56,8 @@ def test_google_calendar_path_does_not_call_eventkit_event_tools() -> None:
         assert "work_calendar" in google_section
         assert "max_results=2500" in google_section
         assert "display name" in google_section
+        assert "single_events" not in google_section
+        assert "singleEvents" not in google_section
         assert "calendar_get_today" not in google_section
         assert "calendar_get_events_with_attendees" not in google_section
         assert "calendar-mcp event tools" in google_section
@@ -66,6 +68,8 @@ def test_google_workspace_setup_records_google_calendar_provider() -> None:
     assert "provider: google" in body
     assert "calendar.provider" in body
     assert "If `calendar.provider` is already `apple`, leave it" in body
+    assert "If `calendar.provider` is missing and `work_calendar` is set, leave it" in body
+    assert "Gmail-only connection must not change the calendar source" in body
 
 
 def test_doctor_skill_does_not_treat_calendar_as_eventkit_only() -> None:
