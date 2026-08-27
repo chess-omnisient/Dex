@@ -103,6 +103,28 @@ def test_stays_quiet_when_work_mcp_process_is_live(tmp_path: Path, monkeypatch) 
     )
 
 
+def test_never_spawned_accepts_isolated_entries_without_mcp_json(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    calendar = tmp_path / "core" / "mcp" / "calendar_server.py"
+    work = tmp_path / "core" / "mcp" / "work_server.py"
+    entries = {
+        "work-mcp": {"args": [str(work)]},
+        "calendar-mcp": {"args": [str(calendar)]},
+    }
+
+    notice = preflight.never_spawned_work_mcp_result(
+        _ok_servers(("work-mcp", "calendar-mcp")),
+        cmdlines=[f"python {calendar}"],
+        entries=entries,
+    )
+
+    assert notice is not None
+    assert notice["humanError"] == "Task Manager cannot start"
+    assert not (tmp_path / ".mcp.json").exists()
+
+
 def test_does_not_replace_a_missing_script_error(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("VAULT_PATH", str(tmp_path))
     scripts = _write_core_servers(tmp_path, ("work-mcp", "calendar-mcp"))

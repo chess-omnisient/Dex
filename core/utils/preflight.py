@@ -175,6 +175,9 @@ def script_is_live(script_path: Path, cmdlines: list[str]) -> bool:
         candidates.add(os.path.normpath(str(script_path.resolve())))
     except OSError:
         pass
+    module = script_path.name
+    if module in SERVER_MODULES.values():
+        candidates.add(os.path.normpath(f"core/mcp/{module}"))
     for cmdline in cmdlines:
         normalized = os.path.normpath(cmdline)
         if any(candidate and candidate in normalized for candidate in candidates):
@@ -186,14 +189,17 @@ def never_spawned_work_mcp_result(
     servers: dict,
     *,
     cmdlines: list[str] | None = None,
+    entries: dict | None = None,
 ) -> dict | None:
     """Error payload when work-mcp is listed, present, and has no live process.
 
     Stays silent when no sibling core Python MCP is live, so an idle machine
     or a checkup with no session does not look like a Task Manager failure.
+    Pass ``entries`` to use an already-read config (smoke's isolated plan);
+    otherwise read ``.mcp.json``.
     """
-    entries = get_configured_server_entries()
-    if WORK_MCP_NAME not in entries:
+    configured = get_configured_server_entries() if entries is None else entries
+    if not isinstance(configured, dict) or WORK_MCP_NAME not in configured:
         return None
     work = servers.get(WORK_MCP_NAME)
     if not isinstance(work, dict) or work.get("status") == "error":
@@ -206,17 +212,20 @@ def never_spawned_work_mcp_result(
         return None
 
     sibling_live = False
-    for name, entry in entries.items():
+    for name, entry in configured.items():
         if name == WORK_MCP_NAME or name not in SERVER_MODULES:
             continue
-        sibling_path = script_path_for(name, entry)
+        sibling_path = script_path_for(name, entry if isinstance(entry, dict) else None)
         if sibling_path is not None and script_is_live(sibling_path, observed):
             sibling_live = True
             break
     if not sibling_live:
         return None
 
-    work_path = script_path_for(WORK_MCP_NAME, entries[WORK_MCP_NAME])
+    work_path = script_path_for(
+        WORK_MCP_NAME,
+        configured[WORK_MCP_NAME] if isinstance(configured[WORK_MCP_NAME], dict) else None,
+    )
     if work_path is None or script_is_live(work_path, observed):
         return None
 
@@ -231,12 +240,15 @@ def apply_never_spawned_overlay(
     health: dict,
     *,
     cmdlines: list[str] | None = None,
+    entries: dict | None = None,
 ) -> dict:
     """Return health with a fresh work-mcp live-process overlay; never writes cache."""
     servers = health.get("servers")
     if not isinstance(servers, dict):
         return health
-    notice = never_spawned_work_mcp_result(servers, cmdlines=cmdlines)
+    notice = never_spawned_work_mcp_result(
+        servers, cmdlines=cmdlines, entries=entries
+    )
     if notice is None:
         return health
     overlaid = dict(health)
