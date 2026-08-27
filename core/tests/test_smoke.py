@@ -650,6 +650,27 @@ def test_json_without_ledger_writes_nothing(tmp_path: Path, capsys) -> None:
     assert not (vault / "System" / ".dex" / "smoke-history.jsonl").exists()
 
 
+def test_configs_journey_validates_enabled_capability_in_isolated_runner(tmp_path: Path) -> None:
+    vault = _write_valid_vault(tmp_path)
+    profile = vault / "System" / "user-profile.yaml"
+    profile.write_text(
+        profile.read_text(encoding="utf-8")
+        + "capabilities:\n  career:\n    enabled: true\n",
+        encoding="utf-8",
+    )
+
+    run = smoke.run_smoke(
+        vault_root=vault,
+        repo_root=REPO_ROOT,
+        journey_definitions=(_definition("configs"),),
+    )
+
+    assert run.harness_failed is False
+    assert run.exit_code == 0
+    assert run.report["journeys"][0]["verdict"] == "OK"
+    assert run.report["journeys"][0]["detail"] == "parsed and validated 3 configuration files"
+
+
 def test_head_runner_generation_stays_coherent_when_release_is_older(tmp_path: Path) -> None:
     vault = _write_valid_vault(tmp_path)
     repo = _release_repo(
