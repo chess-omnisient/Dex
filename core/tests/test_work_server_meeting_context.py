@@ -95,3 +95,38 @@ def test_meeting_context_matches_underscored_person_links_in_the_task_list(
             "related_to": "Ada Lovelace",
         }
     ]
+
+
+def test_meeting_context_ignores_non_open_task_lines_that_mention_an_attendee(
+    meeting_context_vault: dict[str, Path],
+) -> None:
+    person = meeting_context_vault["people"] / "External" / "Ada_Lovelace.md"
+    person.parent.mkdir(parents=True)
+    person.write_text("# Ada Lovelace\n", encoding="utf-8")
+    meeting_context_vault["tasks"].write_text(
+        "# Tasks\n\n"
+        "- [x] Closed item for [[Ada_Lovelace]] that mentions - [ ] a template\n"
+        "Meeting notes for [[Ada_Lovelace]] mention - [ ] a possible follow-up\n",
+        encoding="utf-8",
+    )
+
+    result = _call_meeting_context("Ada Lovelace")
+
+    assert result["outstanding_tasks"] == []
+
+
+def test_meeting_context_does_not_match_a_longer_underscored_person_name(
+    meeting_context_vault: dict[str, Path],
+) -> None:
+    person = meeting_context_vault["people"] / "Internal" / "Chris_Kim.md"
+    person.parent.mkdir(parents=True)
+    person.write_text("# Chris Kim\n", encoding="utf-8")
+    meeting_context_vault["tasks"].write_text(
+        "# Tasks\n\n"
+        "- [ ] Send the review to [[Chris_Kimball]] ^task-20260827-003\n",
+        encoding="utf-8",
+    )
+
+    result = _call_meeting_context("Chris Kim")
+
+    assert result["outstanding_tasks"] == []

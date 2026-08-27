@@ -3289,7 +3289,11 @@ def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = N
             attendee_key = re.sub(r'[\s_]+', ' ', attendee).strip().casefold()
             for line in content.split('\n'):
                 line_key = re.sub(r'[\s_]+', ' ', line).casefold()
-                if '- [ ]' in line and attendee_key in line_key:
+                attendee_pattern = rf'(?<!\w){re.escape(attendee_key)}(?!\w)'
+                if (
+                    re.match(r'^\s*-\s*\[ \]\s+', line)
+                    and re.search(attendee_pattern, line_key)
+                ):
                     add_outstanding_task(_task_title_from_line(line), attendee)
 
     # Person pages also hold legitimate open items that may not yet be in the
