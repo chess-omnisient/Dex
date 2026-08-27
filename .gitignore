@@ -90,7 +90,7 @@ System/my-customizations.md
 # Local copies and experiments stay untracked. Git will not re-include a file
 # whose parent directory is excluded, so this is the three-step form: ignore
 # the tree, re-include directories so Git can traverse, then negate the files
-# the product already ships.
+# this repository already tracks.
 .claude/hooks/**
 !.claude/hooks/**/
 !.claude/hooks/README.md
