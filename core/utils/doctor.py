@@ -17,7 +17,6 @@ import stat
 import subprocess
 import sys
 import tempfile
-import threading
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -50,10 +49,6 @@ from core.utils import (
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
 QMD_STATUS_TIMEOUT_SECONDS = 10
-# In-process hang bound for probes only. Individual subprocess probes already
-# use 10–35s timeouts; those do not bound a probe that never returns. Heals
-# stay in-process and must finish or fail in-thread.
-CHECK_TIMEOUT_SECONDS = 30
 
 # The nightly ledger is written once a night, so two days tolerates a single
 # missed run before the ledger is treated as stopped rather than merely quiet.
@@ -686,30 +681,6 @@ def _progress(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 
 
-def _run_bounded(operation, timeout_seconds: float):
-    """Run a probe in a daemon thread; raise TimeoutError if it exceeds the bound.
-
-    Heals are not wrapped here. The worker is not killed: a stuck probe may
-    keep running in the background so one hang cannot mute later probes.
-    """
-    outcome: dict[str, Any] = {}
-
-    def runner() -> None:
-        try:
-            outcome["value"] = operation()
-        except Exception as error:
-            outcome["error"] = error
-
-    worker = threading.Thread(target=runner, daemon=True)
-    worker.start()
-    worker.join(timeout_seconds)
-    if worker.is_alive():
-        raise TimeoutError("timed out")
-    if "error" in outcome:
-        raise outcome["error"]
-    return outcome.get("value")
-
-
 def _one_line(value: object) -> str:
     return " ".join(str(value).split()) or value.__class__.__name__
 
@@ -1113,6 +1084,7 @@ def collect(
     *,
     deep: bool = False,
     heal: bool = False,
+    progress: bool = False,
     context: DoctorContext | None = None,
 ) -> dict[str, Any]:
     """Run the selected registry and return its JSON-serializable report."""
@@ -1123,7 +1095,8 @@ def collect(
 
     t1_actions: dict[str, list[str]] = {}
     if heal:
-        _progress(HEAL_PROGRESS)
+        if progress:
+            _progress(HEAL_PROGRESS)
         try:
             t1_actions, t1_errors = _apply_t1_heals(context)
             if t1_errors:
@@ -1131,7 +1104,8 @@ def collect(
         except Exception as error:
             failed.append({"id": "doctor.self", "error": _one_line(error)})
 
-    _progress(CHECK_PROGRESS)
+    if progress:
+        _progress(CHECK_PROGRESS)
     # One classification pass over ~/Library/LaunchAgents is shared by
     # jobs.loaded and jobs.fresh instead of re-parsing every plist twice.
     _begin_launch_agent_scan_scope(context)
@@ -1139,12 +1113,8 @@ def collect(
         for definition in definitions:
             if definition.id == "doctor.self":
                 continue
-            probe = globals()[definition.probe]
             try:
-                result = _run_bounded(
-                    lambda current=probe: current(context),
-                    CHECK_TIMEOUT_SECONDS,
-                )
+                result = globals()[definition.probe](context)
             except Exception as error:
                 error_text = _actionable_probe_error(error)
                 failed.append({"id": definition.id, "error": error_text})
@@ -5883,7 +5853,12 @@ def main(argv: list[str] | None = None, *, context: DoctorContext | None = None)
             credential_report = run_credential_workflow(root, action, journal_id=journal_id)
             print(json.dumps(credential_report, indent=2))
             return 2 if credential_report.get("migration_state") == "refused" and action != "status" else 0
-        report = collect(deep=args.deep, heal=args.heal, context=context)
+        report = collect(
+            deep=args.deep,
+            heal=args.heal,
+            progress=True,
+            context=context,
+        )
         output = json.dumps(report, indent=2)
     except Exception as error:
         print(f"dex-doctor could not produce JSON: {_one_line(error)}", file=sys.stderr)
