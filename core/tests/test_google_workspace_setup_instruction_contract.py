@@ -75,6 +75,10 @@ def test_step1_checks_session_connectors_without_waiting_on_dex_config() -> None
     assert "google calendar" in lowered
     assert "google drive" in lowered
     assert "without" in lowered and "enabled first" in lowered
+    assert "if any of those connectors" not in lowered
+    assert "calendar-only" in lowered
+    assert "drive-only" in lowered
+    assert "do not skip setup" in lowered
 
     # The intro may name config.yaml to say it is *not* the only signal.
     # Connectedness order is the numbered list: session connectors first.
@@ -91,9 +95,30 @@ def test_step1_checks_session_connectors_without_waiting_on_dex_config() -> None
     assert enabled_lines[0].lstrip().startswith("2."), enabled_lines[0]
 
 
-def test_step3_does_not_add_a_second_server_when_session_connectors_are_healthy() -> None:
+def test_step3_does_not_add_a_second_server_when_gmail_session_connector_is_healthy() -> None:
     step3 = _step3(_body())
     lowered = step3.lower()
+    assert "gmail" in lowered
     assert "session connector" in lowered
     assert "skip this step" in lowered
     assert "second" in lowered
+    assert "alone is not a reason to skip" in lowered
+
+
+def test_calendar_or_drive_alone_does_not_skip_gmail_setup() -> None:
+    """Partial session connectors must not be treated as a full Workspace connection."""
+
+    body = _body()
+    step1 = _step1(body)
+    step3 = _step3(body)
+    troubleshooting = _section(
+        body,
+        '### "Google Workspace MCP not found"',
+        "### Permission Errors",
+    )
+    for section in (step1, step3, troubleshooting):
+        lowered = section.lower()
+        assert "gmail" in lowered
+        assert "calendar-only" in lowered or "calendar or drive" in lowered
+        assert "not" in lowered
+        assert "skip" in lowered or "not enough" in lowered

@@ -56,11 +56,13 @@ Dex reads your email **on demand** -- nothing is stored permanently. Emails are 
 
 ### Step 1: Check if Already Connected
 
-Do not treat `System/integrations/config.yaml` as the only connectedness signal. Google Workspace may already be usable through **session connectors** — Gmail, Google Calendar, or Google Drive tools already available in this session — even when that file does not say `google-workspace.enabled: true`.
+Do not treat `System/integrations/config.yaml` as the only connectedness signal. Google Workspace email may already be usable through a **Gmail session connector** already available in this session, even when that file does not say `google-workspace.enabled: true`.
 
-1. **Session connectors already available.** Inspect the tools already present in this session for Gmail, Google Calendar, and Google Drive. If any of those connectors are available, try a test query (search a recent email, or list today's calendar events) **without** requiring Dex config to be enabled first. If they respond, treat Google Workspace as already connected: do not add a second MCP server, and skip to **Step 5** (Configure Labels).
+1. **Session connectors already available.** Inspect the tools already present in this session for Gmail, Google Calendar, and Google Drive.
+   - A **Calendar-only** or **Drive-only** connector is not a full Google Workspace connection. Do not skip setup in those cases — this skill's job includes email, and those connectors do not provide Gmail.
+   - If a **Gmail** session connector is available, try a test query (search a recent email) **without** requiring Dex config to be enabled first. If Gmail responds, treat email as already connected: do not add a second MCP server, and skip to **Step 5** (Configure Labels). Note missing Calendar or Drive tools, but do not install a duplicate Gmail server when Gmail already works.
 2. **Dex config.** Check `System/integrations/config.yaml` for `google-workspace.enabled: true`. If enabled, try a test query via `google-workspace-mcp`. If healthy and responding, skip to **Step 5**.
-3. If neither path is healthy and responding, continue to Step 2.
+3. If Gmail is not healthy on either path, continue to Step 2.
 
 ### Step 2: Explain What We're Setting Up
 
@@ -88,7 +90,7 @@ Wait for confirmation.
 
 ### Step 3: Add the Google Workspace MCP Server
 
-If Step 1 already found a healthy session connector, skip this step — do not register a second Google Workspace server.
+If Step 1 already found a healthy **Gmail** session connector, skip this step — do not register a second Gmail/Workspace server. A healthy Calendar or Drive connector alone is not a reason to skip.
 
 Check the user's MCP configuration. If `google-workspace-mcp` is not listed:
 
@@ -280,7 +282,7 @@ Google OAuth tokens typically last 1 hour, but refresh tokens are longer-lived. 
 
 ### "Google Workspace MCP not found"
 
-First check whether session connectors for Gmail, Google Calendar, or Google Drive are already available in this session. If they are healthy, Dex can use those and does not need a second server. If they are not, re-run `/google-workspace-setup` and it will detect and add `google-workspace-mcp`.
+First check whether a **Gmail** session connector is already available in this session. If Gmail is healthy, Dex can use it and does not need a second server. A Calendar-only or Drive-only connector is not enough — continue and add `google-workspace-mcp` so email works. If Gmail is missing or unhealthy, re-run `/google-workspace-setup` and it will detect and add `google-workspace-mcp`.
 
 ### Permission Errors
 
@@ -312,7 +314,7 @@ Some organizations restrict OAuth access for third-party apps:
 
 If the user runs `/google-workspace-setup` when already configured:
 
-1. Check current status via a test query — including session connectors already available in this session, not only `System/integrations/config.yaml`
+1. Check current status via a test query — including a Gmail session connector already available in this session, not only `System/integrations/config.yaml`. Calendar-only or Drive-only is not enough to treat Gmail as connected.
 2. Show current config from `System/integrations/config.yaml` if present
 3. Offer options:
    - Update watched labels
