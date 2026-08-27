@@ -121,10 +121,11 @@ def test_automation_cadence_rejects_invalid_or_nondaily_calendar_fields(
         _automation_cadence({"StartCalendarInterval": calendar}, source="invalid.plist")
 
 
-def test_discovers_four_reviewed_system_engine_groups() -> None:
+def test_discovers_five_reviewed_system_engine_groups() -> None:
     engines = discover_system_engines(REPO_ROOT)
 
     assert [engine.capability_id for engine in engines] == [
+        "connection-manager-engine",
         "entity-temperature-engine",
         "proactive-promise-engine",
         "ritual-intelligence-engine",
@@ -150,8 +151,8 @@ def test_enriched_registry_exactly_annotates_every_non_skill_candidate() -> None
     }
 
     assert registry["registry_version"] == 1
-    assert len(entries) == 20
-    assert len({entry["id"] for entry in entries}) == 20
+    assert len(entries) == 21
+    assert len({entry["id"] for entry in entries}) == 21
     for capability_class, expected_ids in discovered.items():
         assert {entry["id"] for entry in entries if entry["capability_class"] == capability_class} == expected_ids
     assert all(entry["impact_tier"] in {"core", "high", "medium", "niche"} for entry in entries)

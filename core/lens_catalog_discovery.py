@@ -397,10 +397,21 @@ def _safe_files(root: Path, paths: list[Path], *, capability_id: str) -> tuple[s
 
 
 def discover_system_engines(release_root: Path) -> tuple[SystemEngineCandidate, ...]:
-    """Resolve the four publisher-reviewed system-engine groups."""
+    """Resolve the publisher-reviewed system-engine groups."""
 
     root = release_root.resolve(strict=True)
     groups = {
+        "connection-manager-engine": (
+            "parked",
+            [
+                path
+                for path in (root / "core/integrations/connection-manager").rglob("*")
+                if path.is_file()
+                and path.suffix in {".cjs", ".js"}
+                and ".test." not in path.name
+                and ".child." not in path.name
+            ],
+        ),
         "entity-temperature-engine": (
             "active",
             list((root / "core/entity_engine").glob("*.py")),

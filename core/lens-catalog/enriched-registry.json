@@ -162,6 +162,16 @@
       "trade_offs": ["A schedule is not proof of recovery; the person must still test that a backup can be restored."]
     },
     {
+      "id": "connection-manager-engine",
+      "capability_class": "system-engine",
+      "impact_tier": "high",
+      "availability": "parked",
+      "value": "Provides local connection custody and provider metadata, but its person-facing doorway remains unavailable.",
+      "jobs_served": ["evolve-the-system-itself"],
+      "prerequisites": ["A reviewed person-facing doorway must be released before this engine can be used."],
+      "trade_offs": ["The engine is shipped groundwork and must not be recommended as currently usable."]
+    },
+    {
       "id": "entity-temperature-engine",
       "capability_class": "system-engine",
       "impact_tier": "high",
