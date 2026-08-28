@@ -629,7 +629,7 @@ def test_calendar_setup_treats_editor_as_first_class_surface() -> None:
     )
     for relative in paths:
         text = _read(relative)
-        lower = text.lower()
+        lower = text.lower().replace("**", "")
         assert "System Settings" in text, relative
         assert "Privacy & Security" in text, relative
         assert "Calendars" in text, relative
