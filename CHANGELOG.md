@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+If you run Dex inside VS Code or Cursor, granting Calendar to Terminal
+does not help. Reinstalling Dex does not fix it. Setup sent you to the
+wrong place, or asked you to wait for a popup that never appears.
+
+**What this fixes for you:**
+
+* **Grant Calendar for the editor you actually use.** Open System
+  Settings → Privacy & Security → Calendars. Turn on VS Code or
+  Cursor — the app Dex is running in — and set access to Full. Quit
+  that app and open it again. A Terminal grant does not transfer.
+  Reinstall does not fix it.
+
 ## [1.97.4] — Daily plans land in the inbox, and calendar uses what you connected (2026-08-28)
 
 People who typed update Dex after sending /feedback were still on yesterday's
