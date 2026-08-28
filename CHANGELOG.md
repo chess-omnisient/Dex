@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.4] — (2026-08-28)
+## [1.97.4] — Daily plans land in the inbox, and calendar uses what you connected (2026-08-28)
 
 People who typed update Dex after sending /feedback were still on yesterday's
 copy. Daily planning wrote to the wrong folder. Google Calendar was ignored
