@@ -610,3 +610,12 @@ def test_apple_mail_setup_names_serving_process_full_disk_access() -> None:
     assert "~/Library/Mail" in setup
     assert "Do **not** grant it to Dex, Claude, or the ordinary MCP server process." not in setup
     assert "fresh-looking index can still be frozen" in setup or "write a fresh" in setup
+
+
+def test_apple_mail_setup_closes_live_sessions_before_index_refresh() -> None:
+    setup = _read(".claude/skills/apple-mail-setup/SKILL.md")
+
+    assert "Quit every Dex, Claude, or Cursor session that is using Mail search" in setup or (
+        "quit every Dex, Claude, or Cursor session that is using Mail search" in setup
+    )
+    assert "holds the search-index lock" in setup
