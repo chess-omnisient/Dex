@@ -7,6 +7,8 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.5] — (2026-08-28)
+
 If you run Dex inside VS Code or Cursor, granting Calendar to Terminal
 does not help. Reinstalling Dex does not fix it. Setup sent you to the
 wrong place, or asked you to wait for a popup that never appears.
