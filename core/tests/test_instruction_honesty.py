@@ -619,3 +619,31 @@ def test_apple_mail_setup_closes_live_sessions_before_index_refresh() -> None:
         "quit every Dex, Claude, or Cursor session that is using Mail search" in setup
     )
     assert "holds the search-index lock" in setup
+
+
+def test_calendar_setup_treats_editor_as_first_class_surface() -> None:
+    paths = (
+        ".claude/skills/calendar-setup/SKILL.md",
+        "docs/Dex_System/Calendar_Setup.md",
+        "06-Resources/Dex_System/Calendar_Setup.md",
+    )
+    for relative in paths:
+        text = _read(relative)
+        lower = text.lower()
+        assert "System Settings" in text, relative
+        assert "Privacy & Security" in text, relative
+        assert "Calendars" in text, relative
+        assert "VS Code" in text, relative
+        assert "Cursor" in text, relative
+        assert "does not transfer" in lower or "does not carry over" in lower, relative
+        assert "reinstall" in lower, relative
+        assert "Claude Code" not in text, relative
+        assert "The script will show a macOS permission dialog" not in text, relative
+        assert "Click 'OK' when the dialog appears" not in text, relative
+        assert "Run Dex from a standalone terminal window" not in text, relative
+        assert 'Find "Python" or "python3" in the list' not in text, relative
+
+    skill = _read(".claude/skills/calendar-setup/SKILL.md")
+    assert "first-class Calendar surfaces" in skill
+    assert "Do not promise that a Mac permission dialog will appear" in skill
+    assert "Do not send them to a standalone terminal as the only path" in skill
