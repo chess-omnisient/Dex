@@ -564,8 +564,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-review/SKILL.md",
-        "sha256": "7c8d1a8cab205c8f6d30ac4f3c0b4cc46a2b59c5ff5b832edd81c88ae715f78c",
-        "byte_size": 19136
+        "sha256": "79e9ee08d47e060e1ab10a37aa39764ce3249557b074b01a96ee1eac4410a820",
+        "byte_size": 19385
       },
       "value": "Reviews the week in concrete finished work and the patterns behind it, and deliberately refuses to invent a completion percentage that would make a bad week look measured.",
       "jobs_served": [
