@@ -7,6 +7,41 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.4] — Daily plans land in the inbox, and calendar uses what you connected (2026-08-28)
+
+People who typed update Dex after sending /feedback were still on yesterday's
+copy. Daily planning wrote to the wrong folder. Google Calendar was ignored
+when that is what you connected. Large notes in the vault were treated as
+secrets. Work tools could sit listed while they never started.
+
+**What this fixes for you:**
+
+* **Daily plans land in the inbox.** Plans write to `00-Inbox/Daily_Plans`. A
+  delegated plan still reads yesterday's notes.
+* **If Google Calendar is what you connected, planning and Doctor use it.**
+  They no longer treat a missing Apple calendar as the only calendar.
+* **Large notes in your vault are not treated as secrets.** A file over 1MB
+  can still be saved.
+* **Work tools say when they never started.** If Task Manager is listed but
+  has no live process, you see that it cannot start, instead of a silent dead
+  session.
+* **Learning review looks at older notes and more than "pending".**
+* **Meeting company is an exact name or a domain you wrote in frontmatter,**
+  not the first matching substring.
+* **Workspace setup names the same project it installs** and skips a Gmail
+  connection you already have.
+* **Week review names the step that clears completed tasks** and asks before
+  it removes whole task blocks.
+* **Weekly priorities keep their quarterly-goal link.**
+* **Mail search tells you to close Mail before a refresh.**
+* **Meeting sync does not attach a meeting from a connected meeting tool to
+  a person who opted out of People notes.**
+* **A changelog checker that used to hang now exits.**
+* **Hooks stay ignored the way they should.** The ignore file no longer
+  un-ignores the whole hooks folder.
+* **The /feedback skill no longer points at a leftover interpreter path,**
+  so that path works on more Mac Python installs.
+
 ## [1.97.3] — ↩️ After an update you can undo it, and Doctor talks while it heals (2026-08-27)
 
 An update could look finished while undo had nothing to go back to. New skills
