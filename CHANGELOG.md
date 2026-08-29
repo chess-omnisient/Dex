@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.6] — (2026-08-29)
+## [1.97.6] — Dex stops saying things are running when they are not (2026-08-29)
 
 Dex told you a few things were switched on when they were not. Usage tracking
 said it was collecting. The daily learning review said it was running. The
