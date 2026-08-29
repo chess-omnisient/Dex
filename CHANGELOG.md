@@ -7,6 +7,31 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.6] — Dex stops saying things are running when they are not (2026-08-29)
+
+Dex told you a few things were switched on when they were not. Usage tracking
+said it was collecting. The daily learning review said it was running. The
+Google Workspace guide walked you through steps that could not finish. And the
+background check for new Claude features was asking two web addresses that no
+longer exist.
+
+**What this fixes for you:**
+
+* **Usage tracking only says it is on when it can actually send.** New installs
+  were told tracking was active while every recorded count stayed on your own
+  machine and never went anywhere. Dex now says that plainly instead.
+* **The daily learning review tells you when it cannot run.** If your Dex folder
+  lives inside Documents, macOS blocks that background job outright. Setup used
+  to list the review as active anyway. It now says it was not installed, and
+  that moving your folder outside Documents switches it on.
+* **Google Workspace setup matches what Dex installs.** The guide now walks the
+  real Google sign-up journey from start to finish, and tells you upfront which
+  nine permissions you are granting, so Gmail, Calendar, and Docs connect first
+  time.
+* **Dex notices new Claude features again.** The background check now reads
+  Anthropic's official Claude Code release notes, instead of two addresses that
+  stopped existing.
+
 ## [1.97.5] — Grant Calendar for the editor you actually use (2026-08-28)
 
 If you run Dex inside VS Code or Cursor, granting Calendar to Terminal
