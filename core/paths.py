@@ -115,6 +115,12 @@ ENTITY_PENDING_FILE = DEX_RUNTIME_DIR / 'entity-pending.json'
 ENTITY_VERIFICATION_FILE = DEX_RUNTIME_DIR / 'entity-verification.json'
 
 
+def resolve_for_vault(vault_root: str | Path, contract_path: Path) -> Path:
+    """Rebase one canonical path constant onto an explicitly selected vault."""
+    root = Path(vault_root).expanduser()
+    return root / contract_path.relative_to(VAULT_ROOT)
+
+
 def export_json(output_path: str | Path | None = None) -> dict:
     """Export all paths as a JSON-serializable dict (strings).
 

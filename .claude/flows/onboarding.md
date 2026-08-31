@@ -10,17 +10,38 @@ Guide new users through setup in a friendly conversation of about 10 minutes. Ke
 - The MCP tracks completion and validates each step
 - Session state enables resume if interrupted
 
+### Choose where Dex should work (before Calendar First)
+
+The start response includes `harness_setup` and `harness_capabilities`. This is a capability preview,
+not proof that the detection is right.
+
+1. If one or more harnesses were detected, say: "I found [names]. Do you want Dex available
+   in all of those, or should I change the selection?" Allow multiple choices.
+2. If none were detected, call `inspect_harnesses()` and present the returned `available`
+   choices. Allow multiple choices.
+3. If the user changes the selection, call `inspect_harnesses(harnesses=[...])` and show the
+   resulting rows before saving.
+4. Explain the four labels once: **automatic** runs at the right moment without asking;
+   **on demand** is available as a skill/tool; **guided** needs a visible fallback step;
+   **unavailable** is not provided by that host. Also say each selected host's named
+   limits in plain words. Mode counts are not enough if a host has no built-in tool
+   door, is Mac-only, is still unreleased, or still needs a person to open
+   ChatGPT Work on a real desktop and grant a local vault.
+5. After the user confirms, call
+   `save_harness_selection(harnesses=[...], confirmed=true)`. Never set `confirmed=true`
+   without showing the capability preview.
+
+Selecting more than one harness is supported. Do not make the user choose a single "main"
+assistant, and do not promise that a guided or unavailable behavior is automatic.
+
 **After each step (1-8):** Call `validate_and_save_step(step_number=X, step_data={...})` before proceeding. If validation fails, show the error and retry the step.
 
-### Platform Detection (do this once, before Step 1)
+### Question UI detection (do this once, before Step 1)
 
-Detect which question tool is available so all subsequent steps use the right one:
-
-- If the `AskQuestion` tool is available → you are in **Cursor**. Use `AskQuestion` for all choice prompts.
-- If the `AskUserQuestion` tool is available → you are in **Claude Code** (CLI or Desktop). Use `AskUserQuestion` for all choice prompts.
-- If neither tool is available → use **numbered text options** and accept typed responses.
-
-Remember this for the rest of onboarding. Every step that says "present options" should use whichever tool you detected here. The JSON schemas below work identically for both `AskQuestion` and `AskUserQuestion`.
+This choice affects only how questions are displayed. Harness capabilities come from the
+saved profile above, never from guessing based on a tool name. Use the host's structured
+question tool when one is available; otherwise use numbered text options and accept typed
+responses. Remember that choice for the rest of onboarding.
 
 ---
 
@@ -106,7 +127,7 @@ Do not block onboarding when they skip. Keep the returned
 Make one short, optional offer while the rest of onboarding is still ahead. Run:
 
 ```bash
-node .claude/hooks/integration-concierge.cjs
+node core/integrations/integration-concierge.cjs
 ```
 
 Use only meeting tools the concierge actually detected in `high_value`, `moderate_value`, or `connect_detected` (an installed app, configured connector, or real vault signal). Ask: "I spotted [detected meeting tools]. Want me to start pulling notes from any of those while we finish setting up? You can skip this."
@@ -580,7 +601,7 @@ If any integrations are already connected, briefly note them so you don't re-off
 Before asking which to connect, run the integration concierge — it scans for signals of tools the user already works with (apps installed on their Mac, connectors already configured, and mentions/links in their notes), so you can lead with what fits them instead of a flat list:
 
 ```bash
-node .claude/hooks/integration-concierge.cjs
+node core/integrations/integration-concierge.cjs
 ```
 
 Parse the JSON for `high_value`, `moderate_value`, and `connect_detected`. Each entry has a `reason` and a `route`: `skill` uses its tested setup skill; `connect` uses `/connect` and deliberately has no `setup` field. Surface curated `high_value` items as before, then add at most the top three `connect_detected` items:
@@ -663,7 +684,7 @@ When you first connect Granola (or later via `/getting-started`), you'll choose:
 
 Want to connect Granola now with `/granola-setup`, then set up manual or automatic processing?"
 
-**If manual:** 
+**If manual:**
 1. Update `System/user-profile.yaml` with:
    ```yaml
    meeting_processing:
@@ -722,7 +743,7 @@ example, `pendo_mcp_enabled: true`) so Dex knows it's available.
 ### Background Learning Setup (if selected, macOS only):
 
 Say: "This installs two background jobs that run automatically:
-- **Changelog monitor** - Checks for new Claude Code features every 6 hours
+- **Harness changelog monitor** - Checks the configured reference harness for relevant changes every 6 hours
 - **Learning review** - Prompts you to review accumulated learnings daily at 5pm
 
 Without this, checks still run during session start and `/daily-plan` - this just makes them faster."
@@ -843,12 +864,12 @@ Present two choices: **Yes, add them** and **No thanks**.
 
 **Purpose:** Transform "I have a system, now what?" into confidence with a workspace tour, historical meeting processing, and useful next actions. The first-week reveal has already happened automatically in Step 9 and must not be presented again as a new discovery.
 
-**If yes (user wants to continue):** Run `/getting-started` skill (see `.claude/skills/getting-started/SKILL.md`)
+**If yes (user wants to continue):** Run the named `/getting-started` skill
 - Start with the deeper tour or historical-data choices
 - Reuse the first-week context already shown; do not repeat it
 - Verify any artifact before saying it was created
 
-**If no:** 
+**If no:**
 "No problem! You can always run `/getting-started` later when you're ready.
 
 **Quick reference:**
