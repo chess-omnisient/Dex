@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## Unreleased — next public version is 1.97.7
+
+The last goal in your quarterly plan could pick up checkboxes that belonged to
+the next section — carried work, a divider, a later heading. Dex then treated
+that unrelated list as milestones for the goal, so progress looked further
+along than it was.
+
+**What this fixes for you:**
+
+* **A new heading or a divider ends the goal.** Checkboxes below that line stay
+  out of the goal's milestones. Real milestones above the line are unchanged.
+
+Public Latest remains 1.97.6 until the next numbered release.
+
 ## [1.97.6] — Dex stops saying things are running when they are not (2026-08-29)
 
 Dex told you a few things were switched on when they were not. Usage tracking
