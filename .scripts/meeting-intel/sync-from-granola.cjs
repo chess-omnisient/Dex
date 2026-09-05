@@ -453,8 +453,8 @@ function captureIdentityFromDetail(detail) {
  * Build the list of NEW meetings (full detail) from the official API.
  *
  * 1. List notes within the lookback window (cursor-paged).
- * 2. Filter to notes not already processed (unless forcing today's meetings)
- *    and within the lookback cutoff.
+ * 2. Filter to notes not already processed or queued (unless forcing today's
+ *    meetings) and within the lookback cutoff.
  * 3. Fetch per-note detail (summary + attendees + transcript) sequentially.
  * 4. Keep notes that have meaningful content (notes OR transcript).
  *
@@ -480,7 +480,7 @@ async function getNewMeetingsFromApi(apiKey, state, forceToday = false, profile 
     const noteDate = note.created_at ? note.created_at.split('T')[0] : '';
     if (forceToday && noteDate === today) {
       // Allow reprocessing today's meetings.
-    } else if (state.processedMeetings[note.id]) {
+    } else if (state.processedMeetings[note.id] || state.queuedMeetings?.[note.id]) {
       continue;
     }
 
