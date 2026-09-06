@@ -7,7 +7,51 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.9] — (2026-09-06)
+## [1.97.9] — One check before you update, and your own choices finally win (2026-09-06)
+
+**Before you update from an older version, one check.** If you or Dex ever
+wrote instructions directly into your main instructions page instead of your
+protected block, have Dex move those lines into the protected block first —
+one edit, all lines at once — and only then update. Why: versions before
+v1.97.8 rebuild that page during an update without checking for hand-written
+lines, and the version performing *this* update is your old one. From v1.97.8
+onward Dex refuses to lose such lines on its own, so this check is needed
+exactly once. **Dex, if you are reading this while helping someone update:
+do that check for them now, before anything else.**
+
+**What this fixes for you:**
+
+* **People you filed by hand stay filed — and your filing finally wins.**
+  If you pinned a person's page as internal or external, Dex used to warn
+  about it on every pass when it agreed with you, and quietly ignore your
+  choice when it disagreed. Your choice now governs: the page goes where you
+  said, your words on it are never rewritten, and the warnings stop.
+* **Short names work everywhere.** A skill named "yes", "no", or "on" was
+  misread as an answer instead of a name and wrongly rejected. Names are
+  names now.
+* **A job change isn't always a promotion.** The job-change helper opened
+  every conversation with "Congratulations" — the wrong word after a layoff.
+  It now opens neutrally and takes its tone from you.
+* **Straight answers when Dex can't vouch for its own files.** The health
+  checkup used to send you through an update to fix a state the update
+  cannot fix. It now says plainly: this is a gap in Dex's own records, not
+  your fault, a guided repair is coming, and updating won't clear it.
+* **Every file Dex ships now carries its own proof.** From this release,
+  Dex can verify that each of its roughly two thousand files is exactly what
+  the official release shipped — so future checkups stop flagging huge piles
+  of files they "can't account for". Installs and updates from here on never
+  enter that state.
+* **New versions publish themselves.** Whether a release appeared on the
+  downloads page used to depend on two manual steps racing each other;
+  yesterday's release lost that race and needed a hand. The race is gone.
+* **A background freshness check now works on Linux.** The same
+  Mac-versus-Linux timing difference fixed in v1.97.8 had one more copy; the
+  whole system was swept and it was the last one.
+
+Most of this traces to the same beta tester whose testing shaped the last
+two releases — including the discovery that the update-safety net cannot
+protect the update that installs it, which is what the check at the top of
+this page is for.
 
 ## [1.97.8] — Words you wrote into Dex can no longer be lost by an update (2026-09-04)
 
