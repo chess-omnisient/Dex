@@ -8,9 +8,11 @@ from types import MappingProxyType
 from typing import Mapping, Protocol
 
 from core.lifecycle.catalog import (
+    MAX_HASH_TABLE_BYTES,
     CatalogError,
     load_catalog_payload_sources,
     loads_catalog,
+    parse_release_hash_table,
     release_bytes_match,
 )
 from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read, normalize_relative_path
@@ -44,6 +46,11 @@ class ReleaseBaseline:
     manifest_paths: frozenset[str]
     expected_hashes: Mapping[str, str]
     errors: tuple[str, ...]
+    # Whole-tree hash-table evidence: "absent" (no catalog binding),
+    # "verified" (sibling bytes proved the binding and its rows merged), or
+    # "rejected" (binding present but the sibling was missing, unreadable, or
+    # did not match — its rows contributed nothing, exactly as if absent).
+    hash_table_state: str = "absent"
 
     def expected_sha256(self, canonical_path: str) -> str | None:
         return self.expected_hashes.get(canonical_path)
@@ -54,6 +61,7 @@ class ReleaseBaseline:
             "release_version": self.release_version,
             "manifest_path_count": len(self.manifest_paths),
             "catalog_hash_count": len(self.expected_hashes),
+            "hash_table_state": self.hash_table_state,
             "errors": list(self.errors),
         }
 
@@ -155,6 +163,7 @@ def load_release_baseline(
     expected_hashes: Mapping[str, str] = MappingProxyType({})
     release_version: str | None = None
     identity_state = "UNKNOWN"
+    hash_table_state = "absent"
     if selected_catalog is not None and manifest_bytes is not None:
         if not release_bytes_match(
             selected_catalog.release.manifest.sha256, manifest_bytes
@@ -204,7 +213,42 @@ def load_release_baseline(
                     "without a verified dormant payload source"
                 )
             else:
-                expected_hashes = MappingProxyType(dict(sorted(catalog_hashes.items())))
+                merged_hashes = dict(catalog_hashes)
+                binding = selected_catalog.release.hash_table
+                if binding is not None:
+                    # Whole-tree sibling hash table. Fail closed to LESS
+                    # trust: a missing, unreadable, or binding-mismatched
+                    # sibling contributes nothing and behaves exactly like a
+                    # catalog without the binding — it never blocks the
+                    # baseline and never widens it.
+                    hash_table_state = "rejected"
+                    table_rows: Mapping[str, str] | None = None
+                    try:
+                        table_bytes = bounded_read(
+                            root,
+                            normalize_relative_path(binding.path),
+                            max_bytes=MAX_HASH_TABLE_BYTES,
+                        )
+                        table_rows = parse_release_hash_table(
+                            table_bytes,
+                            binding=binding,
+                            release_version=selected_catalog.release.version,
+                        )
+                    except (CatalogError, FilesystemInspectionError):
+                        table_rows = None
+                    if (
+                        table_rows is not None
+                        and binding.path in manifest_paths
+                        and set(table_rows) <= manifest_paths
+                    ):
+                        for table_path, table_sha256 in table_rows.items():
+                            merged_hashes.setdefault(table_path, table_sha256)
+                        # The binding hash is itself the proven expectation
+                        # for the table's own bytes (the one row the table
+                        # cannot carry for itself).
+                        merged_hashes.setdefault(binding.path, binding.sha256)
+                        hash_table_state = "verified"
+                expected_hashes = MappingProxyType(dict(sorted(merged_hashes.items())))
                 release_version = selected_catalog.release.version
                 identity_state = "VERIFIED"
     elif manifest_bytes is not None:
@@ -216,6 +260,7 @@ def load_release_baseline(
         manifest_paths,
         expected_hashes,
         tuple(sorted(set(errors))),
+        hash_table_state,
     )
 
 

@@ -6,7 +6,12 @@ import hashlib
 import json
 from pathlib import Path
 
-from core.lifecycle.catalog import with_catalog_identity
+from core.lifecycle.catalog import (
+    HASH_TABLE_PATH,
+    build_release_hash_table_document,
+    canonical_hash_table_bytes,
+    with_catalog_identity,
+)
 from core.lifecycle.model import ReleaseCatalog
 from core.transaction.journal import PREVIOUS_SCHEMA_VERSION, SCHEMA_VERSION
 
@@ -76,7 +81,29 @@ def write_manifest(vault: Path, paths: list[str]) -> bytes:
     return raw
 
 
-def catalog_for(manifest_bytes: bytes, expected: dict[str, bytes]) -> ReleaseCatalog:
+def write_release_hash_table(
+    vault: Path,
+    rows: dict[str, bytes],
+    *,
+    release_version: str = "1.64.0",
+) -> tuple[str, str]:
+    """Write the sibling whole-tree hash table; return its (path, sha256) binding."""
+    document = build_release_hash_table_document(
+        release_version=release_version,
+        source_commit=SOURCE_COMMIT,
+        files={path: hashlib.sha256(content).hexdigest() for path, content in rows.items()},
+    )
+    table_bytes = canonical_hash_table_bytes(document)
+    write_file(vault, HASH_TABLE_PATH, table_bytes)
+    return HASH_TABLE_PATH, hashlib.sha256(table_bytes).hexdigest()
+
+
+def catalog_for(
+    manifest_bytes: bytes,
+    expected: dict[str, bytes],
+    *,
+    hash_table: tuple[str, str] | None = None,
+) -> ReleaseCatalog:
     files = [
         {
             "path": path,
@@ -85,19 +112,22 @@ def catalog_for(manifest_bytes: bytes, expected: dict[str, bytes]) -> ReleaseCat
         }
         for path, content in sorted(expected.items())
     ]
+    release: dict[str, object] = {
+        "version": "1.64.0",
+        "channel": "release",
+        "immutable_distribution_tag_pattern": "dist/release/v1.64.0-<release-commit-prefix>",
+        "source_commit": SOURCE_COMMIT,
+        "manifest": {
+            "path": "System/.installed-files.manifest",
+            "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        },
+    }
+    if hash_table is not None:
+        release["hash_table"] = {"path": hash_table[0], "sha256": hash_table[1]}
     return ReleaseCatalog.from_dict(
         {
             "catalog_version": 2,
-            "release": {
-                "version": "1.64.0",
-                "channel": "release",
-                "immutable_distribution_tag_pattern": "dist/release/v1.64.0-<release-commit-prefix>",
-                "source_commit": SOURCE_COMMIT,
-                "manifest": {
-                    "path": "System/.installed-files.manifest",
-                    "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
-                },
-            },
+            "release": release,
             "items": [
                 {
                     "id": "fixture-item",

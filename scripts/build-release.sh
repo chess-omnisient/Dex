@@ -247,16 +247,25 @@ python3 core/utils/update_verifier.py \
     --release-version "$PKG_VERSION"
 git add -- "$PROFILE"
 
+# Compose the release's vault-safe .gitignore before any hashed evidence is
+# generated. .gitignore is release-owned, so the whole-tree hash table below
+# must see its final shipped bytes; composing later would leave a stale row.
+python3 "$GITIGNORE_COMPOSER" .gitignore
+git add -- .gitignore
+
 # Generate the installed-files manifest from the exact release index. Stage the
-# generated manifest and catalog paths first so the manifest truthfully includes
-# both; replacing their contents does not change the set of shipped paths.
+# generated manifest, catalog, and whole-tree hash-table paths first so the
+# manifest truthfully includes all three; replacing their contents does not
+# change the set of shipped paths.
 MANIFEST="System/.installed-files.manifest"
 CATALOG="System/.release-catalog.json"
+HASH_TABLE="core/lifecycle/catalog/release-hashes.json"
 BRIDGE_RELEASE="core/lifecycle/catalog/bridge-release.json"
 mkdir -p "$(dirname "$MANIFEST")"
 : > "$MANIFEST"
 : > "$CATALOG"
-git add -- "$MANIFEST" "$CATALOG"
+: > "$HASH_TABLE"
+git add -- "$MANIFEST" "$CATALOG" "$HASH_TABLE"
 MANIFEST_TREE=$(git write-tree)
 python3 core/utils/manifest.py "$MANIFEST_TREE" --repo-root "$REPO_ROOT" --output "$MANIFEST" \
     --require-lifecycle-contracts
@@ -272,17 +281,9 @@ python3 "$CATALOG_GENERATOR" \
     --channel "$CATALOG_CHANNEL" \
     --source-commit "$SOURCE_SHA"
 python3 "$CATALOG_COVERAGE_CHECKER" --release-root "$REPO_ROOT"
-git add -- "$MANIFEST" "$CATALOG" "$BRIDGE_RELEASE" \
+git add -- "$MANIFEST" "$CATALOG" "$HASH_TABLE" "$BRIDGE_RELEASE" \
     packages/dex-contracts/dist/release-catalog-v1.schema.json \
     packages/dex-contracts/dist/release-catalog-v2.schema.json
-
-# A release must carry vault-safe ignore bytes before an already-running old
-# updater plans it. A composer introduced by this same release arrives one
-# write too late, so make the immutable release artifact safe at build time.
-# Run after every other staging operation because these vault-side rules
-# deliberately ignore release-owned paths such as core/ and packages/.
-python3 "$GITIGNORE_COMPOSER" .gitignore
-git add -- .gitignore
 
 if git diff --cached --quiet; then
     echo "Nothing to remove — release branch matches main."
