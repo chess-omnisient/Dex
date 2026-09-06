@@ -935,6 +935,7 @@
 .scripts/meeting-intel/__tests__/sync-cooling.test.cjs
 .scripts/meeting-intel/__tests__/sync-dead-letter-heal.test.cjs
 .scripts/meeting-intel/__tests__/sync-lookback.test.cjs
+.scripts/meeting-intel/__tests__/sync-queued-meetings.test.cjs
 .scripts/meeting-intel/__tests__/verify-entities.test.cjs
 .scripts/meeting-intel/com.dex.meeting-intel.plist.template
 .scripts/meeting-intel/garden-entities.cjs
