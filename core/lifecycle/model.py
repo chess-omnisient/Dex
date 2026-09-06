@@ -276,6 +276,32 @@ class ManifestBinding:
 
 
 @dataclass(frozen=True)
+class HashTableBinding:
+    """Optional binding of the sibling whole-tree hash table by exact hash.
+
+    The catalog document stays human-reviewable; the ~2,100 per-file hash
+    rows live in a sibling JSON file whose exact bytes this binding pins.
+    An older catalog without the binding keeps exactly the sparse-coverage
+    behavior it always had.
+    """
+
+    path: str
+    sha256: str
+
+    @classmethod
+    def from_dict(cls, raw: object) -> "HashTableBinding":
+        value = _mapping(raw, "release hash-table binding")
+        _closed_fields(value, required={"path", "sha256"}, context="release hash-table binding")
+        path = _relative_path(value["path"], "release hash-table path")
+        if path == "System/.installed-files.manifest":
+            raise _unknown("release hash-table binding must not name the installed manifest")
+        return cls(path, _sha256(value["sha256"], "release hash-table sha256"))
+
+    def to_dict(self) -> dict[str, object]:
+        return {"path": self.path, "sha256": self.sha256}
+
+
+@dataclass(frozen=True)
 class ReleaseIdentity:
     version: str
     channel: str
@@ -283,6 +309,7 @@ class ReleaseIdentity:
     manifest: ManifestBinding
     immutable_distribution_tag: str | None = None
     immutable_distribution_tag_pattern: str | None = None
+    hash_table: HashTableBinding | None = None
 
     @classmethod
     def from_dict(cls, raw: object, *, catalog_version: int) -> "ReleaseIdentity":
@@ -292,6 +319,9 @@ class ReleaseIdentity:
             if catalog_version == 1
             else "immutable_distribution_tag_pattern"
         )
+        # The whole-tree hash-table binding is optional and v2-only; the
+        # public v1 shape stays byte-frozen.
+        optional_fields = {"hash_table"} if catalog_version >= 2 else frozenset()
         _closed_fields(
             value,
             required={
@@ -301,7 +331,13 @@ class ReleaseIdentity:
                 "source_commit",
                 "manifest",
             },
+            optional=optional_fields,
             context="release identity",
+        )
+        hash_table = (
+            HashTableBinding.from_dict(value["hash_table"])
+            if "hash_table" in value
+            else None
         )
         version = _version(value["version"], "release version")
         channel = _string(value["channel"], "release channel")
@@ -333,6 +369,7 @@ class ReleaseIdentity:
             commit,
             manifest,
             immutable_distribution_tag_pattern=tag_pattern,
+            hash_table=hash_table,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -348,6 +385,8 @@ class ReleaseIdentity:
             result["immutable_distribution_tag_pattern"] = self.immutable_distribution_tag_pattern
         else:
             raise _unknown("release identity has no immutable distribution tag contract")
+        if self.hash_table is not None:
+            result["hash_table"] = self.hash_table.to_dict()
         return result
 
 

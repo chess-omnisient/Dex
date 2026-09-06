@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Mapping
 
 from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read
-from core.lifecycle.model import CatalogError, CatalogModelError, ReleaseCatalog
+from core.lifecycle.model import CatalogError, CatalogModelError, HashTableBinding, ReleaseCatalog
 
 SCHEMA_DIRECTORY = Path(__file__).with_name("schemas")
 SCHEMA_PATHS = {
@@ -28,7 +28,15 @@ SCHEMA_IDS = {
 SCHEMA_ID = SCHEMA_IDS[1]
 CATALOG_SOURCE_DIR = Path("core/lifecycle/catalog")
 BRIDGE_SOURCE_NAME = "bridge-release.json"
+# The whole-tree per-file hash table is a sibling artifact the catalog binds
+# by exact hash (release.hash_table). It lives beside the publisher fragments
+# but is generated, not publisher-declared, so the fragment loaders skip it.
+HASH_TABLE_SOURCE_NAME = "release-hashes.json"
+HASH_TABLE_PATH = (CATALOG_SOURCE_DIR / HASH_TABLE_SOURCE_NAME).as_posix()
+HASH_TABLE_VERSION = 1
 MAX_CATALOG_SOURCE_BYTES = 4 * 1024 * 1024
+MAX_HASH_TABLE_BYTES = 16 * 1024 * 1024
+HEX_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _SUPPORTED_SCHEMA_KEYWORDS = {
     "$id",
     "$schema",
@@ -241,7 +249,7 @@ def load_catalog_payload_sources(release_root: Path) -> dict[str, CatalogPayload
         _fail(CatalogParseError, "publisher catalog source directory is missing or unsafe")
     sources: dict[str, CatalogPayloadSource] = {}
     for source_file in sorted(source_dir.glob("*.json")):
-        if source_file.name == BRIDGE_SOURCE_NAME:
+        if source_file.name in (BRIDGE_SOURCE_NAME, HASH_TABLE_SOURCE_NAME):
             continue
         if source_file.is_symlink() or not source_file.is_file():
             _fail(CatalogParseError, f"catalog source {source_file.name} is unsafe")
@@ -367,6 +375,97 @@ def crlf_normalized_sha256(raw: bytes) -> str | None:
     return hashlib.sha256(normalized).hexdigest()
 
 
+def build_release_hash_table_document(
+    *, release_version: str, source_commit: str, files: Mapping[str, str]
+) -> dict[str, object]:
+    """Build the canonical sibling whole-tree hash-table document.
+
+    ``files`` maps each release-relative path to the sha256 of its exact
+    release bytes. The table never contains a row for itself — the catalog's
+    ``release.hash_table`` binding is the proof for the table's own bytes.
+    """
+    if HEX_COMMIT.fullmatch(source_commit) is None:
+        _fail(CatalogParseError, "hash table source_commit must be a full lowercase commit")
+    if not isinstance(release_version, str) or not release_version:
+        _fail(CatalogParseError, "hash table release version must be a non-empty string")
+    rows: dict[str, str] = {}
+    for raw_path, raw_hash in files.items():
+        path = _catalog_source_relative_path(raw_path, "hash table row path")
+        if not isinstance(raw_hash, str) or re.fullmatch(r"[0-9a-f]{64}", raw_hash) is None:
+            _fail(CatalogParseError, f"hash table row for {path} has an invalid sha256")
+        rows[path] = raw_hash
+    return {
+        "hash_table_version": HASH_TABLE_VERSION,
+        "release": {"version": release_version, "source_commit": source_commit},
+        "files": dict(sorted(rows.items())),
+    }
+
+
+def canonical_hash_table_bytes(document: Mapping[str, object]) -> bytes:
+    """Exact bytes of one hash-table document; these are what the catalog binds."""
+    return _canonical_bytes(document)
+
+
+def parse_release_hash_table(
+    raw: bytes,
+    *,
+    binding: HashTableBinding,
+    release_version: str | None = None,
+) -> dict[str, str]:
+    """Parse a sibling hash table only after its bytes prove the binding.
+
+    Fail closed: any mismatch, malformed row, or shape surprise raises a
+    :class:`CatalogError`; callers must then behave exactly as if the catalog
+    carried no hash-table binding at all. A verified table contributes one
+    ``path -> sha256`` row per release-shipped file.
+    """
+    if not isinstance(raw, bytes):
+        _fail(CatalogIdentityError, "release hash table bytes were not supplied as bytes")
+    if not release_bytes_match(binding.sha256, raw):
+        _fail(CatalogIdentityError, "release hash table bytes do not match the catalog binding")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        _fail(CatalogParseError, f"release hash table is not UTF-8: {error}")
+    document = _strict_json_loads(
+        text, error_type=CatalogParseError, context="release hash table"
+    )
+    if not isinstance(document, Mapping) or set(document) != {
+        "hash_table_version",
+        "release",
+        "files",
+    }:
+        _fail(CatalogParseError, "release hash table has an unsupported shape")
+    if document["hash_table_version"] != HASH_TABLE_VERSION:
+        _fail(CatalogParseError, "release hash table version is unsupported")
+    release = document["release"]
+    if not isinstance(release, Mapping) or set(release) != {"version", "source_commit"}:
+        _fail(CatalogParseError, "release hash table identity is malformed")
+    version = release["version"]
+    commit = release["source_commit"]
+    if not isinstance(version, str) or not version:
+        _fail(CatalogParseError, "release hash table version is malformed")
+    if not isinstance(commit, str) or HEX_COMMIT.fullmatch(commit) is None:
+        _fail(CatalogParseError, "release hash table source commit is malformed")
+    if release_version is not None and version != release_version:
+        _fail(
+            CatalogIdentityError,
+            "release hash table declares a different release version than the catalog",
+        )
+    files = document["files"]
+    if not isinstance(files, Mapping):
+        _fail(CatalogParseError, "release hash table files must be an object")
+    rows: dict[str, str] = {}
+    for raw_path, raw_hash in files.items():
+        path = _catalog_source_relative_path(raw_path, "release hash table row")
+        if path == binding.path:
+            _fail(CatalogParseError, "release hash table must not contain a row for itself")
+        if not isinstance(raw_hash, str) or re.fullmatch(r"[0-9a-f]{64}", raw_hash) is None:
+            _fail(CatalogParseError, f"release hash table row for {path} has an invalid sha256")
+        rows[path] = raw_hash
+    return rows
+
+
 def release_bytes_match(expected_sha256: str, raw: bytes) -> bool:
     """True when *raw* proves a release hash; the exact bytes stay primary.
 
@@ -441,7 +540,13 @@ __all__ = [
     "CatalogPayloadSource",
     "CatalogParseError",
     "CatalogSchemaError",
+    "HASH_TABLE_PATH",
+    "HASH_TABLE_SOURCE_NAME",
+    "HASH_TABLE_VERSION",
+    "MAX_HASH_TABLE_BYTES",
+    "build_release_hash_table_document",
     "canonical_catalog_bytes",
+    "canonical_hash_table_bytes",
     "canonical_identity_bytes",
     "compute_catalog_sha256",
     "crlf_normalized_sha256",
@@ -449,6 +554,7 @@ __all__ = [
     "load_catalog_payload_sources",
     "load_catalog_schema",
     "loads_catalog",
+    "parse_release_hash_table",
     "release_bytes_match",
     "validate_catalog_document",
     "with_catalog_identity",

@@ -35,7 +35,7 @@ def _sha256(path: Path) -> str:
 def _payload_sources(release_root: Path) -> dict[str, tuple[str, str, int]]:
     sources: dict[str, tuple[str, str, int]] = {}
     for source_path in sorted((release_root / CATALOG_SOURCE_DIR).glob("*.json")):
-        if source_path.name == "bridge-release.json":
+        if source_path.name in ("bridge-release.json", "release-hashes.json"):
             continue
         raw = json.loads(source_path.read_text(encoding="utf-8"))
         if raw.get("catalog_source_version") != 1 or not isinstance(raw.get("items"), list):
@@ -91,7 +91,11 @@ def check_coverage(
     sys.path.insert(0, str(contract_root))
     try:
         from core import portable_contract
-        from core.lifecycle.catalog import canonical_catalog_bytes, load_catalog
+        from core.lifecycle.catalog import (
+            canonical_catalog_bytes,
+            load_catalog,
+            parse_release_hash_table,
+        )
 
         absolute_catalog = release_root / catalog_path
         catalog = load_catalog(absolute_catalog, release_root=release_root)
@@ -176,6 +180,86 @@ def check_coverage(
                         f"{catalog_file.sha256} != {actual_hash}"
                     )
                 checked += 1
+
+        # Tree -> catalog: every release-owned ("brain") manifest file must
+        # carry a proven hash row — from a capability item or from the
+        # catalog-bound sibling whole-tree hash table. A release build with
+        # coverage gaps fails here.
+        proven: dict[str, str] = {
+            catalog_file.path: catalog_file.sha256
+            for item in catalog.items
+            for catalog_file in item.files
+        }
+        binding = catalog.release.hash_table
+        if binding is None:
+            if catalog.catalog_version >= 2:
+                raise CatalogCoverageError(
+                    "release catalog carries no whole-tree hash table binding"
+                )
+        else:
+            table_candidate = release_root / binding.path
+            table_resolved = table_candidate.resolve(strict=False)
+            if not table_resolved.is_relative_to(release_root):
+                raise CatalogCoverageError(
+                    f"release hash table escapes the release root: {binding.path}"
+                )
+            if table_candidate.is_symlink() or not table_candidate.is_file():
+                raise CatalogCoverageError(
+                    f"missing release hash table: {binding.path}"
+                )
+            if binding.path not in manifest_members:
+                raise CatalogCoverageError(
+                    f"release hash table is absent from the installed manifest: {binding.path}"
+                )
+            table_bytes = table_candidate.read_bytes()
+            if hashlib.sha256(table_bytes).hexdigest() != binding.sha256:
+                raise CatalogCoverageError(
+                    f"release hash table does not match its catalog binding: {binding.path}"
+                )
+            table_rows = parse_release_hash_table(
+                table_bytes,
+                binding=binding,
+                release_version=catalog.release.version,
+            )
+            for row_path in sorted(table_rows):
+                if row_path not in manifest_members:
+                    raise CatalogCoverageError(
+                        f"hash table row is absent from the installed manifest: {row_path}"
+                    )
+                row_candidate = release_root / row_path
+                row_resolved = row_candidate.resolve(strict=False)
+                if not row_resolved.is_relative_to(release_root):
+                    raise CatalogCoverageError(
+                        f"hash table row escapes the release root: {row_path}"
+                    )
+                if row_candidate.is_symlink() or not row_candidate.is_file():
+                    raise CatalogCoverageError(
+                        f"missing hash table file payload: {row_path}"
+                    )
+                if _sha256(row_candidate) != table_rows[row_path]:
+                    raise CatalogCoverageError(
+                        f"hash table row is stale for {row_path}"
+                    )
+                checked += 1
+            proven.update(table_rows)
+            proven[binding.path] = binding.sha256
+        for manifest_path in sorted(manifest_members):
+            try:
+                manifest_ownership = portable_contract.resolve(manifest_path)
+            except portable_contract.ContractViolation as error:
+                raise CatalogCoverageError(
+                    f"manifest file has no ownership class: {manifest_path}"
+                ) from error
+            if manifest_ownership.denied:
+                raise CatalogCoverageError(
+                    f"manifest file is denied by the ownership contract: {manifest_path}"
+                )
+            if manifest_ownership.ownership != "brain":
+                continue
+            if manifest_path not in proven:
+                raise CatalogCoverageError(
+                    f"release-owned file has no catalog hash row: {manifest_path}"
+                )
         return checked
     except (OSError, UnicodeError, ValueError) as error:
         if isinstance(error, CatalogCoverageError):

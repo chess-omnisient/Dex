@@ -22,6 +22,11 @@ sys.dont_write_bytecode = True
 CATALOG_PATH = Path("System/.release-catalog.json")
 CATALOG_SOURCE_DIR = Path("core/lifecycle/catalog")
 BRIDGE_RELEASE_PATH = CATALOG_SOURCE_DIR / "bridge-release.json"
+# Sibling whole-tree hash table: one sha256 row for every release-owned
+# ("brain") file in the installed manifest, bound from the catalog by the
+# exact hash of this file's bytes (release.hash_table). The catalog document
+# itself stays small and human-reviewable.
+HASH_TABLE_PATH = CATALOG_SOURCE_DIR / "release-hashes.json"
 MANIFEST_PATH = Path("System/.installed-files.manifest")
 PACKAGE_PATH = Path("package.json")
 SCHEMA_PAIRS = (
@@ -130,7 +135,7 @@ def _source_items(release_root: Path, portable_contract: object) -> list[dict[st
     sources = (
         path
         for path in source_dir.glob("*.json")
-        if path.name != "bridge-release.json"
+        if path.name not in ("bridge-release.json", HASH_TABLE_PATH.name)
     )
     for source_path in sorted(sources):
         raw = _mapping(_closed_json(source_path), context=str(source_path))
@@ -239,6 +244,43 @@ def _source_items(release_root: Path, portable_contract: object) -> list[dict[st
     return items
 
 
+def _hash_table_rows(
+    release_root: Path,
+    manifest_paths: list[str],
+    portable_contract: object,
+    *,
+    excluded: frozenset[str],
+) -> dict[str, str]:
+    """Hash every release-owned ("brain") manifest file for the sibling table.
+
+    Only brain-owned files can classify ``release-identity-unproved`` on a
+    vault, so only they get whole-tree rows. Seed, generated, and runtime
+    files are legitimately rewritten after install; a hash row would turn
+    those normal edits into false "stock-modified" divergences.
+    """
+    rows: dict[str, str] = {}
+    for manifest_path in manifest_paths:
+        if manifest_path in excluded:
+            continue
+        try:
+            resolution = portable_contract.resolve(manifest_path)
+        except portable_contract.ContractViolation as error:
+            raise CatalogGenerationError(
+                f"manifest file is unclassified by the ownership contract: {manifest_path}"
+            ) from error
+        if resolution.denied:
+            raise CatalogGenerationError(
+                f"manifest file is denied by the ownership contract: {manifest_path}"
+            )
+        if resolution.ownership != "brain":
+            continue
+        _relative, absolute = _release_path(
+            release_root, manifest_path, context=f"hash table row {manifest_path}"
+        )
+        rows[manifest_path] = _sha256(absolute)
+    return rows
+
+
 def _source_commit(release_root: Path) -> str:
     result = subprocess.run(
         ["git", "-C", str(release_root), "rev-parse", "HEAD"],
@@ -336,7 +378,13 @@ def generate_catalog(
     try:
         from core import portable_contract
         from core.lifecycle.bridge import load_bridge_release
-        from core.lifecycle.catalog import canonical_catalog_bytes, loads_catalog, with_catalog_identity
+        from core.lifecycle.catalog import (
+            build_release_hash_table_document,
+            canonical_catalog_bytes,
+            canonical_hash_table_bytes,
+            loads_catalog,
+            with_catalog_identity,
+        )
 
         release_version = _package_version(release_root)
         _stamp_bridge_release(release_root, release_version)
@@ -350,10 +398,31 @@ def generate_catalog(
         manifest_bytes = manifest_path.read_bytes()
         manifest_paths = manifest_bytes.decode("utf-8").splitlines()
         output_text = output.as_posix()
+        hash_table_text = HASH_TABLE_PATH.as_posix()
         if manifest_paths != sorted(set(manifest_paths)) or output_text not in manifest_paths:
             raise CatalogGenerationError(
                 f"installed-files manifest is not canonical or omits {output_text}"
             )
+        if hash_table_text not in manifest_paths:
+            raise CatalogGenerationError(
+                f"installed-files manifest omits the release hash table {hash_table_text}"
+            )
+        # The table cannot carry a row for itself (its bytes are pinned by
+        # the catalog binding below) nor for the catalog, whose final bytes
+        # do not exist yet at this point.
+        table_rows = _hash_table_rows(
+            release_root,
+            manifest_paths,
+            portable_contract,
+            excluded=frozenset({hash_table_text, output_text}),
+        )
+        table_document = build_release_hash_table_document(
+            release_version=release_version,
+            source_commit=commit,
+            files=table_rows,
+        )
+        table_bytes = canonical_hash_table_bytes(table_document)
+        _atomic_write(release_root / HASH_TABLE_PATH, table_bytes)
         document: dict[str, object] = {
             "catalog_version": 2,
             "release": {
@@ -366,6 +435,10 @@ def generate_catalog(
                 "manifest": {
                     "path": MANIFEST_PATH.as_posix(),
                     "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+                },
+                "hash_table": {
+                    "path": hash_table_text,
+                    "sha256": hashlib.sha256(table_bytes).hexdigest(),
                 },
             },
             "items": _source_items(release_root, portable_contract),

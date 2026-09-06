@@ -136,6 +136,11 @@ python3 "$REPO_ROOT/core/utils/update_verifier.py" \
 # content, so it is excluded from the manifest just as on the release branch.
 mkdir -p "$STAGING_DIR/System"
 : > "$STAGING_DIR/System/.release-catalog.json"
+# The whole-tree hash table is generated below alongside the catalog; seed it
+# empty for the same reason as the catalog — the manifest is built from find,
+# and the generator requires the manifest to list the table it will write.
+mkdir -p "$STAGING_DIR/core/lifecycle/catalog"
+: > "$STAGING_DIR/core/lifecycle/catalog/release-hashes.json"
 (
   cd "$STAGING_DIR"
   # Ignore macOS metadata junk (AppleDouble ._* forks, .DS_Store) so the manifest

@@ -121,6 +121,55 @@ def test_versioned_catalog_schemas_reject_ambiguous_identity_shapes(shape: str) 
         validate_catalog_document(document)
 
 
+def test_optional_hash_table_binding_round_trips_and_stays_v2_only() -> None:
+    document = valid_document()
+    document["release"]["hash_table"] = {
+        "path": "core/lifecycle/catalog/release-hashes.json",
+        "sha256": "c" * 64,
+    }
+    document = with_catalog_identity(document)
+
+    validate_catalog_document(document)
+    parsed = loads_catalog(json.dumps(document), manifest_bytes=MANIFEST_BYTES)
+    assert parsed.release.hash_table is not None
+    assert parsed.release.hash_table.path == "core/lifecycle/catalog/release-hashes.json"
+    assert parsed.release.hash_table.sha256 == "c" * 64
+    assert json.loads(canonical_catalog_bytes(parsed)) == document
+
+    # The public v1 shape stays byte-frozen: no binding field allowed.
+    v1_document = valid_document()
+    v1_document["catalog_version"] = 1
+    v1_document["release"]["immutable_distribution_tag"] = "dist/release/v1.64.0-0123456"
+    del v1_document["release"]["immutable_distribution_tag_pattern"]
+    v1_document["release"]["hash_table"] = {
+        "path": "core/lifecycle/catalog/release-hashes.json",
+        "sha256": "c" * 64,
+    }
+    with pytest.raises(CatalogSchemaError, match="UNKNOWN"):
+        validate_catalog_document(v1_document)
+    with pytest.raises(CatalogModelError, match="UNKNOWN.*unknown fields"):
+        ReleaseCatalog.from_dict(with_catalog_identity(v1_document))
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        {"path": "core/lifecycle/catalog/release-hashes.json"},
+        {"path": "", "sha256": "c" * 64},
+        {"path": "../outside.json", "sha256": "c" * 64},
+        {"path": "System/.installed-files.manifest", "sha256": "c" * 64},
+        {"path": "core/lifecycle/catalog/release-hashes.json", "sha256": "nope"},
+        {"path": "core/lifecycle/catalog/release-hashes.json", "sha256": "c" * 64, "extra": 1},
+    ],
+)
+def test_malformed_hash_table_bindings_fail_closed(binding: dict[str, object]) -> None:
+    document = valid_document()
+    document["release"]["hash_table"] = binding
+
+    with pytest.raises(CatalogModelError, match="UNKNOWN"):
+        ReleaseCatalog.from_dict(with_catalog_identity(document))
+
+
 def test_catalog_hash_binds_the_exact_canonical_payload() -> None:
     document = valid_document()
 

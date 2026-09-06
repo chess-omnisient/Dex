@@ -92,6 +92,7 @@ def _catalog_fixture(tmp_path: Path) -> tuple[Path, Path, bytes]:
         b"System/.installed-files.manifest\n"
         b"System/.release-catalog.json\n"
         b"core/lifecycle/catalog/bridge-release.json\n"
+        b"core/lifecycle/catalog/release-hashes.json\n"
         b"core/lifecycle/catalog/test-items.json\n"
         b"package.json\n"
     )
@@ -294,6 +295,137 @@ def test_catalog_generation_and_coverage_use_dormant_payload_for_active_target(
     )
     assert rejected.returncode == 1
     assert "size declaration is stale" in rejected.stderr
+
+
+def _coverage(release_root: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(COVERAGE_GATE),
+            "--release-root",
+            str(release_root),
+            "--contract-root",
+            str(REPO_ROOT),
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _rewrite_hash_table_and_rebind(
+    release_root: Path, table: dict[str, object], catalog: dict[str, object]
+) -> None:
+    from core.lifecycle.catalog import (
+        canonical_catalog_bytes,
+        canonical_hash_table_bytes,
+        with_catalog_identity,
+    )
+
+    table_bytes = canonical_hash_table_bytes(table)
+    (release_root / "core/lifecycle/catalog/release-hashes.json").write_bytes(table_bytes)
+    catalog["release"]["hash_table"]["sha256"] = hashlib.sha256(table_bytes).hexdigest()
+    (release_root / "System/.release-catalog.json").write_bytes(
+        canonical_catalog_bytes(with_catalog_identity(catalog))
+    )
+
+
+def test_generation_round_trip_emits_bound_whole_tree_hash_table(tmp_path: Path) -> None:
+    release_root, item_path, _manifest_bytes = _catalog_fixture(tmp_path)
+    generated = _generate(release_root)
+    assert generated.returncode == 0, generated.stdout + generated.stderr
+
+    table_path = release_root / "core/lifecycle/catalog/release-hashes.json"
+    table = json.loads(table_path.read_text(encoding="utf-8"))
+    catalog = json.loads(
+        (release_root / "System/.release-catalog.json").read_text(encoding="utf-8")
+    )
+
+    # One row for every brain-owned manifest file; never for the table itself
+    # (proved by the binding) or the catalog (proved by catalog_sha256).
+    assert table["hash_table_version"] == 1
+    assert table["release"] == {"version": "9.8.7", "source_commit": SOURCE_COMMIT}
+    assert set(table["files"]) == {
+        ".claude/skills/decision-log/SKILL.md",
+        "core/lifecycle/catalog/bridge-release.json",
+        "core/lifecycle/catalog/test-items.json",
+        "package.json",
+    }
+    # The stamped bridge declaration is hashed after stamping, so the row
+    # matches the exact shipped bytes.
+    assert table["files"]["core/lifecycle/catalog/bridge-release.json"] == (
+        hashlib.sha256(
+            (release_root / "core/lifecycle/catalog/bridge-release.json").read_bytes()
+        ).hexdigest()
+    )
+    assert table["files"][".claude/skills/decision-log/SKILL.md"] == (
+        hashlib.sha256(item_path.read_bytes()).hexdigest()
+    )
+    assert catalog["release"]["hash_table"] == {
+        "path": "core/lifecycle/catalog/release-hashes.json",
+        "sha256": hashlib.sha256(table_path.read_bytes()).hexdigest(),
+    }
+
+    covered = _coverage(release_root)
+    assert covered.returncode == 0, covered.stdout + covered.stderr
+
+
+def test_coverage_requires_a_hash_row_for_every_release_owned_manifest_file(
+    tmp_path: Path,
+) -> None:
+    release_root, _item_path, _manifest_bytes = _catalog_fixture(tmp_path)
+    generated = _generate(release_root)
+    assert generated.returncode == 0, generated.stdout + generated.stderr
+
+    table = json.loads(
+        (release_root / "core/lifecycle/catalog/release-hashes.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    catalog = json.loads(
+        (release_root / "System/.release-catalog.json").read_text(encoding="utf-8")
+    )
+    del table["files"]["package.json"]
+    _rewrite_hash_table_and_rebind(release_root, table, catalog)
+
+    red = _coverage(release_root)
+
+    assert red.returncode == 1
+    assert "release-owned file has no catalog hash row: package.json" in red.stderr
+
+
+def test_coverage_fails_closed_on_missing_stale_or_unbound_hash_table(
+    tmp_path: Path,
+) -> None:
+    release_root, _item_path, _manifest_bytes = _catalog_fixture(tmp_path)
+    generated = _generate(release_root)
+    assert generated.returncode == 0, generated.stdout + generated.stderr
+    table_path = release_root / "core/lifecycle/catalog/release-hashes.json"
+    pristine_table = table_path.read_bytes()
+
+    table_path.write_bytes(pristine_table.replace(b"9.8.7", b"9.8.8"))
+    stale = _coverage(release_root)
+    assert stale.returncode == 1
+    assert "does not match its catalog binding" in stale.stderr
+
+    table_path.unlink()
+    missing = _coverage(release_root)
+    assert missing.returncode == 1
+    assert "missing release hash table" in missing.stderr
+
+    table_path.write_bytes(pristine_table)
+    from core.lifecycle.catalog import canonical_catalog_bytes, with_catalog_identity
+
+    catalog = json.loads(
+        (release_root / "System/.release-catalog.json").read_text(encoding="utf-8")
+    )
+    del catalog["release"]["hash_table"]
+    (release_root / "System/.release-catalog.json").write_bytes(
+        canonical_catalog_bytes(with_catalog_identity(catalog))
+    )
+    unbound = _coverage(release_root)
+    assert unbound.returncode == 1
+    assert "no whole-tree hash table binding" in unbound.stderr
 
 
 @pytest.mark.parametrize("version", (1, 2))
