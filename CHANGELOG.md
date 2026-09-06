@@ -7,6 +7,8 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.9] — (2026-09-06)
+
 ## [1.97.8] — Words you wrote into Dex can no longer be lost by an update (2026-09-04)
 
 A sharp-eyed beta tester stopped an update one step before it quietly erased a
