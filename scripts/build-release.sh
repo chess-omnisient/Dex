@@ -265,7 +265,10 @@ mkdir -p "$(dirname "$MANIFEST")"
 : > "$MANIFEST"
 : > "$CATALOG"
 : > "$HASH_TABLE"
-git add -- "$MANIFEST" "$CATALOG" "$HASH_TABLE"
+# -f: the vault-safe .gitignore composed above ignores /core/* for vault
+# repos, and the hash table is a NEW untracked file under it — a plain add
+# refuses. These exact generated files are deliberately release-shipped.
+git add -f -- "$MANIFEST" "$CATALOG" "$HASH_TABLE"
 MANIFEST_TREE=$(git write-tree)
 python3 core/utils/manifest.py "$MANIFEST_TREE" --repo-root "$REPO_ROOT" --output "$MANIFEST" \
     --require-lifecycle-contracts
@@ -281,7 +284,7 @@ python3 "$CATALOG_GENERATOR" \
     --channel "$CATALOG_CHANNEL" \
     --source-commit "$SOURCE_SHA"
 python3 "$CATALOG_COVERAGE_CHECKER" --release-root "$REPO_ROOT"
-git add -- "$MANIFEST" "$CATALOG" "$HASH_TABLE" "$BRIDGE_RELEASE" \
+git add -f -- "$MANIFEST" "$CATALOG" "$HASH_TABLE" "$BRIDGE_RELEASE" \
     packages/dex-contracts/dist/release-catalog-v1.schema.json \
     packages/dex-contracts/dist/release-catalog-v2.schema.json
 
