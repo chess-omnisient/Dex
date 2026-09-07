@@ -7,6 +7,8 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.11] — (2026-09-07)
+
 ## [1.97.10] — One check before you update, and your own choices finally win (2026-09-06)
 
 **Before you update from an older version, one check.** If you or Dex ever
