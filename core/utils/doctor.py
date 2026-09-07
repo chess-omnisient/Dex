@@ -5109,8 +5109,10 @@ def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
             Heal(
                 tier=3,
                 action=(
-                    f"Ask Dex to move the directly edited lines into {CUSTOM} "
-                    "(your protected block). Nothing is moved automatically."
+                    f"Ask Dex to carry the directly edited lines into {CUSTOM} "
+                    "(your protected block), each the way it needs — replacing "
+                    "older versions rather than duplicating, restating edits made "
+                    "inside Dex's own wording. Nothing is changed automatically."
                 ),
                 applied=False,
             ),
@@ -5193,13 +5195,17 @@ def _probe_claude_direct_edits(context: DoctorContext) -> ProbeResult:
         "BROKEN",
         f"{count} {noun} only in {CLAUDE}{staleness}; the next update will "
         f"leave {CLAUDE} untouched rather than lose them, so it stays on the "
-        f"old release wording until they move into {CUSTOM} — Dex can move "
-        "them for you",
+        f"old release wording until they are carried into {CUSTOM} — Dex can "
+        "do this for you, handling each line the way it needs (replacing an "
+        "older version of the same instruction rather than duplicating it, "
+        "and restating edits made inside Dex's own wording in your words)",
         Heal(
             tier=3,
             action=(
-                f"Ask Dex to move the directly edited lines into {CUSTOM} "
-                "(your protected block). Nothing is moved automatically."
+                f"Ask Dex to carry the directly edited lines into {CUSTOM} "
+                "(your protected block), each the way it needs — replacing "
+                "older versions rather than duplicating, restating edits made "
+                "inside Dex's own wording. Nothing is changed automatically."
             ),
             applied=False,
         ),
