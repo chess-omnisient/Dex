@@ -7,6 +7,8 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.13] — (2026-09-07)
+
 ## [1.97.12] — (2026-09-07)
 
 This release also carries everything listed under v1.97.11 below: that
