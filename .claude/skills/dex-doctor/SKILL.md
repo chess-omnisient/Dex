@@ -256,14 +256,15 @@ suggest piping answers into it, and never present its refusal as an error.
 Instead, give the user the exact command to run themselves in their own
 terminal window, from their vault folder:
 
-> Dex can't prove some files came from your installed release. There's a
-> guided repair that checks them against the official release record — it
-> asks before it does anything. Open a terminal in your vault folder and run:
+> Dex can't prove some of its own files came with your installed version.
+> There's a guided repair that checks them against the official release
+> record — it asks for your yes before it does anything. Open the Terminal
+> app in your Dex vault folder and run:
 >
 > `python3 -m core.update.reanchor_cli`
 >
-> It previews everything before writing, and if it can't prove your release
-> from what's on this computer it stops without changing anything.
+> It shows you everything before saving anything, and if it can't prove your
+> version from what's on this computer it stops without changing a thing.
 
 After the user reports back (or on the next Doctor run), re-read the deep
 assessment rather than assuming the outcome. If the flow said it couldn't

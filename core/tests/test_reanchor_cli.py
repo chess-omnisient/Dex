@@ -112,7 +112,7 @@ def test_flow_refuses_without_a_tty_even_with_yes_piped_in(
     )
 
     assert result.returncode == 2, result.stdout + result.stderr
-    assert "interactive terminal" in result.stdout
+    assert "needs you at the keyboard" in result.stdout
     assert "Nothing was changed" in result.stdout
     _nothing_written(anchored_vault)
 
@@ -127,7 +127,7 @@ def test_tty_is_rechecked_at_the_moment_of_each_consent(
     return_code, output = _run_flow(anchored_vault, monkeypatch, capsys, stdin=stdin)
 
     assert return_code == 2
-    assert "interactive terminal" in output
+    assert "needs you at the keyboard" in output
     _nothing_written(anchored_vault)
 
 
@@ -204,8 +204,8 @@ def test_declining_the_write_gate_previews_but_writes_nothing(
 
     assert return_code == 2
     # The preview ran (real generation) ...
-    assert "nothing is written yet" in output
-    assert "sha256" in output
+    assert "nothing is saved yet" in output
+    assert "Proof fingerprint" in output
     # ... but declining gate 3 leaves the vault untouched.
     assert "nothing was changed" in output.casefold()
     _nothing_written(anchored_vault)
@@ -243,8 +243,8 @@ def test_happy_path_reanchors_and_unblocks_the_assessment(
 
     assert return_code == 0, output
     assert "can't currently be proved" in output
-    assert "nothing is written yet" in output
-    assert "Anchor written and verified." in output
+    assert "nothing is saved yet" in output
+    assert "Proof saved and double-checked." in output
     assert (anchored_vault / RELEASE_ANCHOR_PATH).is_file()
     assert (anchored_vault / RELEASE_ANCHOR_RECEIPT_PATH).is_file()
 
@@ -300,8 +300,8 @@ def test_local_sources_failing_stops_honestly_without_writing(
     )
 
     assert return_code == 2
-    assert "couldn't prove your installed release" in output
-    assert "nothing was written" in output.casefold()
+    assert "couldn't find a copy of your installed version" in output
+    assert "nothing was saved" in output.casefold()
     assert "can't do yet" in output
     _nothing_written(vault)
 
@@ -351,7 +351,7 @@ def test_already_anchored_vault_reports_nothing_to_repair(
     )
 
     assert return_code == 0
-    assert "nothing for re-anchoring to repair" in output.casefold()
+    assert "nothing here for this repair to fix" in output.casefold()
     assert (anchored_vault / RELEASE_ANCHOR_PATH).read_bytes() == first_bytes
 
 
@@ -381,7 +381,7 @@ def test_pty_journey_both_yeses_write_the_anchor(anchored_vault: Path) -> None:
         os.close(controller)
 
     assert child.returncode == 0, stdout + stderr
-    assert "Anchor written and verified." in stdout
+    assert "Proof saved and double-checked." in stdout
     assert (anchored_vault / RELEASE_ANCHOR_PATH).is_file()
     assert (anchored_vault / RELEASE_ANCHOR_RECEIPT_PATH).is_file()
 
@@ -425,9 +425,9 @@ def test_unproved_guidance_points_at_the_reanchor_flow() -> None:
 
     guidance = EXCLUSION_GUIDANCE["release-identity-unproved"]
 
-    assert "release re-anchoring" in guidance
+    assert "guided repair" in guidance
     assert "/dex-doctor" in guidance
-    assert "don't update until that's done" in guidance
+    assert "update until that's done" in guidance
     assert "coming" not in guidance
 
 

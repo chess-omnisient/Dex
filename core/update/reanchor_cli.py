@@ -45,7 +45,6 @@ from core.lifecycle.customizations import load_release_baseline
 from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read
 from core.lifecycle.release_anchor import (
     RELEASE_ANCHOR_PATH,
-    RELEASE_ANCHOR_RECEIPT_PATH,
     brain_owned_rows,
 )
 from core.update.anchor_generation import (
@@ -67,20 +66,20 @@ _PREVIEW_READ_BYTES = 16 * 1024 * 1024
 # as final, and do not quote it in shipped documentation until approved.
 # ---------------------------------------------------------------------------
 _NOT_A_TERMINAL = (
-    "Release re-anchoring needs you at an interactive terminal: it asks for "
-    "your explicit yes before anything runs and again before anything is "
-    "written, and those answers can only come from a person at a keyboard.\n"
-    "Open a terminal in your vault folder and run:\n"
+    "This repair needs you at the keyboard: Dex asks for your yes before it "
+    "checks anything, and again before it saves anything, and only a person "
+    "can answer.\n"
+    "Open the Terminal app in your Dex vault folder and run:\n"
     "    python3 -m core.update.reanchor_cli\n"
     "Nothing was changed."
 )
 _GATE_1_PROMPT = (
-    "Check these files against your installed release's official record now? "
-    "This step only reads — you'll see a preview and be asked again before "
-    "anything is written. [yes/no] "
+    "Compare these files with the official copy of your installed version "
+    "now? This step only looks — you'll see what it found, and be asked "
+    "again before anything is saved. [yes/no] "
 )
 _GATE_3_PROMPT = (
-    "Write this record so Dex can prove these files from now on? [yes/no] "
+    "Save this proof so Dex can vouch for these files from now on? [yes/no] "
 )
 _DECLINED = "Understood — nothing was changed."
 # --- SLICE-3 SEAM: the network-fetch fallback (consent gate 2) -------------
@@ -96,11 +95,11 @@ _DECLINED = "Understood — nothing was changed."
 # network operation may ever be added upstream of this point.
 # ---------------------------------------------------------------------------
 _LOCAL_SOURCES_FAILED = (
-    "Dex couldn't prove your installed release from what's on this computer, "
-    "so nothing was written and nothing changed.\n"
+    "Dex couldn't find a copy of your installed version on this computer "
+    "that it can trust, so nothing was saved and nothing changed.\n"
     "What Dex found: {error}\n"
-    "Checking against the official online release record is a separate step "
-    "this repair can't do yet — when it can, it will ask you separately "
+    "Checking against the official copy online is a separate step this "
+    "repair can't do yet — when it can, it will always ask you first "
     "before going online."
 )
 
@@ -216,36 +215,36 @@ def _report_current_state(root: Path) -> tuple[tuple[str, ...], object]:
     # FOUNDER COPY - DRAFT PENDING APPROVAL: state-report wording.
     if baseline.identity_state != "VERIFIED":
         print(
-            "Dex can't verify which release is installed in this vault, so "
-            "there is no release identity to re-anchor to. Re-anchoring "
+            "Dex can't tell which version is installed in this vault, so "
+            "there's nothing to check these files against. The repair "
             "can't run here; nothing was changed."
         )
         return unproved, baseline
     version = baseline.release_version
-    print(f"Installed release (claimed by this vault's records): v{version}")
+    print(f"Version this vault's records say is installed: v{version}")
     if unproved:
         print(
-            f"{len(unproved)} file(s) can't currently be proved to have come "
-            "from that release. Until they're checked, Dex treats their "
-            "origin as unknown and the protected update route stays blocked."
+            f"{len(unproved)} file(s) that came with Dex can't currently be "
+            "proved to be Dex's own. Until they're checked, Dex plays it "
+            "safe and keeps the protected update path closed."
         )
     else:
         print(
-            "Every release-owned file in this vault is already proved "
-            "against the installed release."
+            "Every file that came with Dex in this vault is already proved "
+            "to match your installed version."
         )
     if baseline.anchor_state == "verified":
-        print("A verified release anchor is already in place.")
+        print("A proof record is already in place and checks out.")
     elif baseline.anchor_state == "rejected":
         named = next(
             (error for error in baseline.errors if "release anchor" in error),
             "the anchor could not be verified",
         )
         print(
-            "A release anchor is present but could not be trusted, so it was "
-            f"ignored: {named}"
+            "A proof record exists but couldn't be trusted, so Dex is "
+            f"ignoring it: {named}"
         )
-    print(f"Assessment completeness right now: {assessment.completeness}")
+    print(f"Checkup status right now: {assessment.completeness}")
     return unproved, baseline
 
 
@@ -260,7 +259,7 @@ def run(arguments: list[str] | None = None) -> int:
             return 2
         if not unproved and baseline.anchor_state != "rejected":
             # FOUNDER COPY - DRAFT PENDING APPROVAL.
-            print("There's nothing for re-anchoring to repair.")
+            print("There's nothing here for this repair to fix.")
             return 0
 
         # (b) consent gate 1: run the re-anchor at all. A genuine TTY read;
@@ -289,24 +288,23 @@ def run(arguments: list[str] | None = None) -> int:
         )
         # FOUNDER COPY - DRAFT PENDING APPROVAL: preview wording.
         print()
-        print("Here's what writing this anchor would prove — nothing is written yet:")
-        print(f"  Release: v{generation.release_version}")
-        print(f"  Proved by tag: {generation.tag} (commit {generation.commit})")
-        print(f"  Files the anchor can prove: {generation.row_count}")
+        print("Here's what saving this proof would settle — nothing is saved yet:")
+        print(f"  Version being proved: v{generation.release_version}")
+        print(f"  Checked against: the official release record {generation.tag}")
+        print(f"  Files this proof can vouch for: {generation.row_count}")
         print(
-            f"  Match your installed release exactly (release-pristine): "
-            f"{counts['release-pristine']}"
+            f"  Exactly as shipped: {counts['release-pristine']}"
         )
         print(
-            f"  Differ from the release, becoming protectable customizations "
-            f"(release-modified): {counts['release-modified']}"
+            f"  Changed on this computer — these become protected "
+            f"customizations: {counts['release-modified']}"
         )
-        print(f"  In the release but missing from disk: {counts['missing-from-disk']}")
+        print(f"  Shipped with Dex but missing from this vault: {counts['missing-from-disk']}")
         if counts["unreadable"]:
-            print(f"  Couldn't be read for the preview: {counts['unreadable']}")
+            print(f"  Couldn't be read for this preview: {counts['unreadable']}")
         print(f"  Still unprovable after this repair: {counts['still-unproved']}")
-        print(f"  Anchor document digest (sha256): {generation.document_sha256}")
-        print(f"  Written to: {RELEASE_ANCHOR_PATH} (+ {RELEASE_ANCHOR_RECEIPT_PATH})")
+        print(f"  Proof fingerprint: {generation.document_sha256}")
+        print(f"  Will be saved to: {RELEASE_ANCHOR_PATH} (plus its receipt)")
         print()
 
         # (e) consent gate 3: the write. A second genuine TTY read at the
@@ -326,29 +324,28 @@ def run(arguments: list[str] | None = None) -> int:
         remaining = _unproved_paths(after)
         # FOUNDER COPY - DRAFT PENDING APPROVAL: result wording.
         if after_baseline.anchor_state == "verified":
-            print("Anchor written and verified.")
+            print("Proof saved and double-checked.")
         else:
             print(
-                "The anchor was written, but re-reading it did not verify — "
-                "it changes nothing until it does."
+                "The proof was saved, but re-reading it didn't check out — "
+                "Dex will ignore it until it does."
             )
-        print(f"  Transaction: {result.get('tx_id', '')}")
-        print(f"  Anchor state on re-read: {after_baseline.anchor_state}")
+        print(f"  Reference: {result.get('tx_id', '')}")
+        print(f"  Proof status on re-read: {after_baseline.anchor_state}")
         listed = ", ".join(remaining[:5]) + ("..." if len(remaining) > 5 else "")
         print(
             f"  Files still unprovable: {len(remaining)}"
             + (f" ({listed})" if remaining else "")
         )
-        print(f"  Assessment completeness: {after.completeness}")
+        print(f"  Checkup status: {after.completeness}")
         if after.completeness == "OK":
             print(
-                "  The protected update route (the Capsule) is no longer "
-                "blocked by release identity."
+                "  The protected update path is open again."
             )
         elif not remaining:
             print(
-                "  Release identity no longer blocks the assessment; what "
-                "still keeps it from completing: "
+                "  These files no longer block the checkup; still keeping it "
+                "from completing: "
                 + ", ".join(after.incomplete_reasons)
             )
         return 0

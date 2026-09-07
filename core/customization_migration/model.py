@@ -51,9 +51,10 @@ EXCLUSION_GUIDANCE = {
     # the previously approved interim wording it replaces is preserved in the
     # design doc.
     "release-identity-unproved": (
-        "Dex can't prove these files came from your installed release. Run "
-        "the release re-anchoring in /dex-doctor to check them against the "
-        "official release record — don't update until that's done."
+        "Dex can't prove these files came with your installed version of Dex. "
+        "Run the guided repair offered in /dex-doctor — it checks them "
+        "against the official release record. Don't update until that's "
+        "done."
     ),
     "dependency-tree-excluded": "Move the dependency into a regular supported vault path, then reassess.",
     "embedded-repository": "Keep the nested repository separate and record its dependency manually.",

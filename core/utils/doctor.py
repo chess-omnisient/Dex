@@ -1971,8 +1971,8 @@ def _release_anchor_note(baseline_detail: dict[str, object]) -> str:
     if anchor_state == "verified":
         # FOUNDER COPY - DRAFT PENDING APPROVAL (re-anchoring ruling 5).
         return (
-            " A verified release anchor proves this vault's release-owned "
-            "files against the installed release."
+            " A saved proof record vouches for the files that came with Dex "
+            "in this vault."
         )
     if anchor_state == "rejected":
         errors = baseline_detail.get("errors")
@@ -1986,9 +1986,9 @@ def _release_anchor_note(baseline_detail: dict[str, object]) -> str:
         )
         # FOUNDER COPY - DRAFT PENDING APPROVAL (re-anchoring ruling 5).
         return (
-            " Warning: a release anchor is present but could not be trusted, "
-            f"so it was ignored: {named}. Re-run the release re-anchoring in "
-            "/dex-doctor to regenerate it."
+            " Warning: a proof record is present but couldn't be trusted, so "
+            f"Dex ignored it: {named}. Run the guided repair in /dex-doctor "
+            "again to replace it."
         )
     return ""
 

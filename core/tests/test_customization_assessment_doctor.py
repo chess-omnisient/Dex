@@ -255,7 +255,7 @@ def test_probe_reports_a_verified_release_anchor(tmp_path: Path) -> None:
     result = doctor._probe_customization_assessment(context)
 
     assert result.verdict == "OK"
-    assert "A verified release anchor proves" in result.detail
+    assert "A saved proof record vouches for" in result.detail
     assert result.structured_detail is not None
     baseline = result.structured_detail["release_baseline"]
     assert baseline["anchor_state"] == "verified"
@@ -275,9 +275,9 @@ def test_probe_warns_about_a_rejected_release_anchor_naming_the_error(
     # Fail closed to today's behavior: the vault stays UNKNOWN, and the
     # warning names the fail-closed consumer's exact error.
     assert result.verdict == "UNKNOWN"
-    assert "Warning: a release anchor is present but could not be trusted" in result.detail
+    assert "Warning: a proof record is present but couldn't be trusted" in result.detail
     assert "release anchor has an unsupported shape" in result.detail
-    assert "release re-anchoring" in result.detail
+    assert "guided repair" in result.detail
     baseline = result.structured_detail["release_baseline"]
     assert baseline["anchor_state"] == "rejected"
     assert any("release anchor" in error for error in baseline["errors"])
