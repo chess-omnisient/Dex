@@ -122,8 +122,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-plan/SKILL.md",
-        "sha256": "02235fc9462e52666feb0c940d585124acdcbbd36229ec7072e6bd6613f16fb9",
-        "byte_size": 15133
+        "sha256": "4869440e3bc53319412f365de76359f4f169e786353b83d2f27dada882e32cdb",
+        "byte_size": 16297
       },
       "value": "Turns goals, capacity and open work into a weekly focus plan, so repeated work starts from priorities rather than a blank chat.",
       "jobs_served": [
@@ -267,8 +267,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-doctor/SKILL.md",
-        "sha256": "e2ce405ecd68dc4a216dd9a41658297fa5603d87b2458377d99e74749b236b58",
-        "byte_size": 18392
+        "sha256": "389ba90331048d0b80634ffb8f9b2c5f4d93e097354ab69e624f636c9ce73e7a",
+        "byte_size": 20437
       },
       "value": "Gives the person an honest system check: what works, what is off, what is broken and what should not be guessed.",
       "jobs_served": [
@@ -564,8 +564,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-review/SKILL.md",
-        "sha256": "79e9ee08d47e060e1ab10a37aa39764ce3249557b074b01a96ee1eac4410a820",
-        "byte_size": 19385
+        "sha256": "04e09c80dcbb092e6d99f12088b8e5633a2b1c0b02c0c190aa6de46dc54e32ac",
+        "byte_size": 19905
       },
       "value": "Reviews the week in concrete finished work and the patterns behind it, and deliberately refuses to invent a completion percentage that would make a bad week look measured.",
       "jobs_served": [
@@ -4940,8 +4940,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-update/SKILL.md",
-        "sha256": "6519acc6a7c4b21f2dc062c817adba68f562b7fa686acdf571f302248f253217",
-        "byte_size": 21376
+        "sha256": "e7c79809a1fac3326894726f8f36ab369978b6c601e7134b1956f7eb919ee6eb",
+        "byte_size": 22694
       },
       "value": "Preview and safely adopt a Dex update through the receipt-backed lifecycle (look → back up → apply → verify → rewindable).",
       "jobs_served": [
