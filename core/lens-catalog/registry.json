@@ -267,8 +267,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-doctor/SKILL.md",
-        "sha256": "e2ce405ecd68dc4a216dd9a41658297fa5603d87b2458377d99e74749b236b58",
-        "byte_size": 18392
+        "sha256": "389ba90331048d0b80634ffb8f9b2c5f4d93e097354ab69e624f636c9ce73e7a",
+        "byte_size": 20437
       },
       "value": "Gives the person an honest system check: what works, what is off, what is broken and what should not be guessed.",
       "jobs_served": [
