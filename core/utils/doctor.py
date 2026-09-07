@@ -1959,15 +1959,56 @@ def _customization_persistence_detail(
     return detail
 
 
+def _release_anchor_note(baseline_detail: dict[str, object]) -> str:
+    """One plain sentence about the release anchor, empty when none exists.
+
+    The anchor is the re-anchoring design's repair evidence
+    (System/.dex/release-anchor.json). A verified anchor is reported as such;
+    a rejected anchor — present but unprovable, so ignored — is a warning
+    naming the exact error the fail-closed consumer recorded.
+    """
+    anchor_state = baseline_detail.get("anchor_state")
+    if anchor_state == "verified":
+        # FOUNDER COPY - DRAFT PENDING APPROVAL (re-anchoring ruling 5).
+        return (
+            " A verified release anchor proves this vault's release-owned "
+            "files against the installed release."
+        )
+    if anchor_state == "rejected":
+        errors = baseline_detail.get("errors")
+        named = next(
+            (
+                error
+                for error in (errors if isinstance(errors, list) else [])
+                if isinstance(error, str) and "release anchor" in error
+            ),
+            "the anchor could not be verified",
+        )
+        # FOUNDER COPY - DRAFT PENDING APPROVAL (re-anchoring ruling 5).
+        return (
+            " Warning: a release anchor is present but could not be trusted, "
+            f"so it was ignored: {named}. Re-run the release re-anchoring in "
+            "/dex-doctor to regenerate it."
+        )
+    return ""
+
+
 def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
     """Build the read-only customization assessment entirely in memory."""
     from core.customization_migration.report import assessment_report
     from core.customization_migration.service import assess
+    from core.lifecycle.customizations import load_release_baseline
 
     assessment = assess(context.vault_root)
     authority = _customization_persistence_detail(
         assessment_report(assessment)
     )
+    # Release-anchor awareness (re-anchoring design): the baseline's own
+    # anchor_state travels in the structured detail so the surface can render
+    # it, and the human-readable detail carries a verified/rejected note.
+    baseline_detail = load_release_baseline(context.vault_root).to_dict()
+    authority["release_baseline"] = baseline_detail
+    anchor_note = _release_anchor_note(baseline_detail)
     catalog_path = _release_catalog_path(context)
     if os.path.lexists(catalog_path):
         try:
@@ -1982,7 +2023,7 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
         return ProbeResult(
             "UNKNOWN",
             "I couldn't verify which Dex version is installed, so I can't tell you "
-            "what you've changed.",
+            "what you've changed." + anchor_note,
             structured_detail=authority,
         )
     if assessment.completeness == "UNKNOWN":
@@ -1992,7 +2033,7 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
             "UNKNOWN",
             f"I found {observed} {noun}, but couldn't prove the inventory is complete "
             f"({', '.join(assessment.incomplete_reasons)}). Review the listed exclusions "
-            "before creating a Capsule.",
+            "before creating a Capsule." + anchor_note,
             structured_detail=authority,
         )
     count = assessment.identity.customization_count
@@ -2001,7 +2042,8 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
     blocked_suffix = f", {blocked_count} blocked" if blocked_count else ""
     return ProbeResult(
         "OK",
-        f"Customization assessment completed: {count} {noun}{blocked_suffix}",
+        f"Customization assessment completed: {count} {noun}{blocked_suffix}"
+        + anchor_note,
         structured_detail=authority,
     )
 
