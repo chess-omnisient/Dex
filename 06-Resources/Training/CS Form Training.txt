@@ -1,0 +1,63 @@
+CS Intake Form – Training Walkthrough
+
+Hi all, I just wanted to give you a brief rundown of how the customer success intake form works. I've shared this link in the channel – so let's walk through the form.
+
+The goal of this form is to give the customer success team as much detail as possible so they can move as quickly as possible.
+
+**Request name**
+Give the request a name. Example: "ABSA Overlap Report Test."
+
+**Department**
+Say which department the request is from: sales or data product.
+
+**Sales owner**
+This would be either [[Chris_Brown|Chris]] or [[Anton_Grutzmacher|Anton]].
+
+**Requester**
+The person making the request – put yourself for now.
+
+**Client**
+Who the request is for. In this example, it's ABSA.
+
+**Region**
+Select the region: South Africa, US, MENA, UK, Brazil, or APAC. We'll select South Africa.
+
+**Data seller**
+Choose from the dropdown of available data sellers. In this case, ShopRite.
+
+**Datasets (optional)**
+Not required, but adding relevant datasets helps the team going forward – e.g., "ABSA Dataset 012, ShopRite Dataset 86."
+
+**Request type**
+An info block shows the available types: managed services, platform support, sales and growth support, or data product growth. We'll select sales and growth support.
+
+**Type of work**
+Overlap, POC, contracted, or ad hoc request. In this case, it's an overlap.
+
+**Task outcome**
+Describe the desired result and any potential risks. Example: "ABSA requested an overlap. No risks."
+
+**Task description**
+A short summary of what needs to be delivered. Example: "Need an overlap report, Power BI, on the ABSA profile."
+
+**Revenue (optional)**
+Attach revenue linked to the opportunity if applicable – e.g., 1 million rand – plus an optional field for when that revenue is expected to land. This helps the team assess priority. Example: revenue expected next Friday, client wants delivery by 25 September.
+
+**Urgency**
+This week, next week, next sprint, or not urgent. Since the due date is 25 September, we'll select next sprint.
+
+**Priority**
+Urgent, high, normal, or low. We'll select normal for this one.
+
+**Frequency**
+Once-off or recurring task. In this case, once-off.
+
+**Internal stakeholders**
+Anyone on the CS team you depend on to complete the work. Example: VR needs to supply information to help with this process.
+
+**Attachments**
+Upload any relevant files, then click submit.
+
+Once submitted, the request pings the CS team and they action it onto the appropriate sprint board.
+
+Thank you.

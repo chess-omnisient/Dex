@@ -67,7 +67,8 @@ Read these files when users ask about system details, features, or setup.
 Add any personal instructions between these markers. The `/dex-update` process preserves this block verbatim.
 
 ## USER_EXTENSIONS_START
-<!-- Add your personal customizations here. -->
+### Default Task Pillar
+When creating tasks without a clear pillar match from the keyword inference rules, default to **Customer Experience** rather than asking or leaving it untagged.
 ## USER_EXTENSIONS_END
 
 ---

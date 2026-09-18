@@ -1,0 +1,242 @@
+{
+  "output": "Omnisient_Server_Connect_User_Manual.pdf",
+  "images_dir": "images",
+  "cover_pdf": "/Users/chess/dex/.claude/skills/intercom-pdf-guide/assets/covers/Cover Page SC.pdf",
+  "title": "Omnisient Server Connect User Manual",
+  "header_title": "Omnisient Server Connect User Manual",
+  "breadcrumb": "Server Connect",
+  "copyright": "© 2014-2026. Omnisient (Pty) Ltd. All rights reserved.",
+  "website": "www.omnisient.com",
+  "legal_url": "https://omnisient.com/privacy-center",
+  "author": "Omnisient",
+  "chapters": [
+    {
+      "key": "what-is-server-connect",
+      "title": "What is Server Connect?",
+      "blocks": [
+        {"type": "p", "text": "Omnisient's Server Connect is the automated version of our data anonymisation process which runs behind the Client's firewall. It is a console application written in .NET Core 8.0, which means it is cross-platform compatible."},
+        {"type": "p", "text": "Server Connect currently supports three data sources: file-based CSV, Parquet, Microsoft SQL Server/Azure SQL, MySQL/MariaDB, and PostgreSQL."},
+        {"type": "p", "text": "For the file-based data source, a file path directory needs to be specified where the source files must be dropped. Every time the Server Connect application is executed, it will scan the directory for any new files, and it will process the files against the provided configuration."},
+        {"type": "p", "text": "If the data source is a database, Server Connect will scan a database table, or, using a SQL query, it will check for any new records based on a sequential number or date field within the database."},
+        {"type": "p", "text": "Multiple configurations can be set up, which allows for the loading of multiple datasets with different schemas. They can even run in parallel, but only one instance per configuration is allowed at a time."},
+        {"type": "p", "text": "In the Server Connect configuration module, a dataset name, data source details, and the data schema are set up. It also provides for a choice of whether to save the iURNs locally for custom data selections later on or to not save iURNs."},
+        {"type": "p", "text": "The Server Connect upload process can be run as a once-off command or a scheduler tool can be used to run the application at a scheduled interval period."}
+      ]
+    },
+    {
+      "key": "system-requirements",
+      "title": "System Requirements",
+      "blocks": [
+        {"type": "p", "text": "Recommended system requirements for Server Connect:"},
+        {"type": "bullets", "ordered": false, "items": [
+          "Operating system: Windows, Linux, or macOS (supports most modern Windows and Windows Server versions)",
+          "RAM: 8 GB or more (depending on the number of parallel uploads)",
+          "Disk space: 100 MB for the software; an SSD hard drive is recommended",
+          "Other: requires the .NET Core 8.0 SDK (https://dotnet.microsoft.com/en-us/download/dotnet/8.0)"
+        ]},
+        {"type": "p", "text": "These requirements help ensure a smooth experience. Adjust your specifications based on your usage and file sizes."}
+      ]
+    },
+    {
+      "key": "installation",
+      "title": "Installation",
+      "blocks": [
+        {"type": "h2", "text": "Installation steps summary"},
+        {"type": "p", "text": "The steps below are required to enable the Server Connect application, and will be described in more detail below:"},
+        {"type": "bullets", "ordered": true, "items": [
+          "Provision server that you wish to run the application on",
+          "Install the .NET Core 8.0 SDK: https://dotnet.microsoft.com/en-us/download/dotnet/8.0",
+          "Download application file from https://api.omnisient.com/downloads/enterprisev2",
+          "Unzip downloaded file to a directory on the server",
+          "Setup the API Keys in the web application: https://app.omnisient.com",
+          "Run Configurator application",
+          "The Configurator is a self-hosted web server, which helps you setup configurations for your server",
+          "You can either run it directly on a server, but in the case of Linux without any user interface you will need to open port 5000, to access the Configurator screen",
+          "Or you can run it on your own machine and copy the configurations to the server",
+          "Setup configuration",
+          "Make sure data is available as per configuration",
+          "Run application with new configuration name",
+          "Schedule application to automatically run at specified intervals (optional)"
+        ]},
+        {"type": "h2", "text": "Prerequisites"},
+        {"type": "p", "text": "The server application is compatible with Windows, Linux and Mac OS."},
+        {"type": "h3", "text": "Windows Server specification and requirements"},
+        {"type": "bullets", "ordered": false, "items": [
+          "Supports most modern Windows + Windows Server versions",
+          "RAM: 8GB+ (depending on number of parallel uploads)"
+        ]},
+        {"type": "h3", "text": "Disk space"},
+        {"type": "bullets", "ordered": false, "items": [
+          "100MB for software",
+          "SSD hard drive is recommended"
+        ]},
+        {"type": "note", "text": "Make sure you have the .NET Core 8.0 SDK installed. You can download it from: https://dotnet.microsoft.com/en-us/download/dotnet/8.0"}
+      ]
+    },
+    {
+      "key": "application-setup",
+      "title": "Application Setup - Linux/Windows",
+      "blocks": [
+        {"type": "p", "text": "The next step is to set up the server application, either for a Linux or a Windows environment."},
+        {"type": "h2", "text": "Linux version setup"},
+        {"type": "p", "text": "The example below is a bash script that will set up a Server Connect application on Ubuntu 22.04:"},
+        {"type": "code", "text": "# Download the latest packages and install .NET Core 8.0 SDK\nsudo apt-get update\nsudo apt-get install -y apt-transport-https sudo wget\nwget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb\nsudo dpkg -i packages-microsoft-prod.deb\nsudo apt-get install dotnet-sdk-8.0\n\n# We are going to work in our /opt directory. You can use any directory of your choice\ncd /opt\n\n# Downloads latest version\nsudo wget https://api.omnisient.com/downloads/enterprisev2\nsudo mv enterprisev2 enterprisev2.zip\n\n# Installs Unzip command\nsudo apt-get install unzip\n\n# Unzip Server Connect application\nsudo unzip enterprisev2.zip -d enterprisev2\n\n# Create savedata directory that will be used to save iURN's\nsudo mkdir savedata\n\n# Create uploaded files directory which will be used for your source files.\n# This is only applicable if you're using the CSV or PARQUET upload option.\n# You can change the directory name to whatever you want.\nsudo mkdir uploadedfiles\n\n# Give the user access to write to the directory\nsudo chown -R ubuntu:ubuntu /opt/enterprisev2\ncd enterprisev2\n\n# Run the Server application with the configuration name as a parameter\nsudo dotnet Intersect.Enterprise.Server.v2.dll [Configuration Name]"},
+        {"type": "h3", "text": "Run the Configurator on Linux"},
+        {"type": "p", "text": "The example below is a bash script that will run the Configurator on Linux. It is based on the setup above:"},
+        {"type": "code", "text": "# Change to the directory where the Configurator is located\ncd /opt/enterprisev2/Config\n\n# Run Configurator\nsudo dotnet Intersect.Enterprise.Config.dll"},
+        {"type": "p", "text": "It will start the Configurator and you can access it on http://localhost:5000 or https://localhost:5001."},
+        {"type": "note", "text": "Make sure the port is open so you can access it. Alternatively, if you can not use that port, you can set up an instance on Nginx or Apache to proxy the website over port 80 or 443."},
+        {"type": "h2", "text": "Windows version setup"},
+        {"type": "p", "text": "You can download the application zip file from https://api.omnisient.com/downloads/enterprisev2 (+- 40MB download size)."},
+        {"type": "p", "text": "Once downloaded, you need to unzip the zip file in its desired application directory."},
+        {"type": "p", "text": "The first step in setting up the server application is to set up a configuration. You can run the configuration utility by navigating to the Config folder and clicking on the Config/Intersect.Enterprise.Config.exe application. That will start a local web server and you can access the configuration utility by navigating to the local address it provides."}
+      ]
+    },
+    {
+      "key": "authentication",
+      "title": "Authentication Options",
+      "blocks": [
+        {"type": "p", "text": "When you launch Server Connect, you choose how to authenticate. There are two options: your username and password, or an API Key and Secret. Pick whichever suits your security requirements and how you use Server Connect."},
+        {"type": "h2", "text": "Username and password"},
+        {"type": "p", "text": "Log in with your Omnisient account credentials."},
+        {"type": "bullets", "ordered": true, "items": [
+          "Open Server Connect.",
+          "Select Use Username and Password.",
+          "Enter your username and password, then click Authenticate. If you have forgotten your password, use the Forgot Password link.",
+          "Select your company from the dropdown and click Set Company to continue."
+        ]},
+        {"type": "p", "text": "interactive, hands-on use.", "bold_lead": "Best for: "},
+        {"type": "image", "file": "auth-username-password.png", "caption": "Authenticating with username and password"},
+        {"type": "h2", "text": "API Key and Secret"},
+        {"type": "p", "text": "Authenticate using an API Key (ID) and Secret instead of a username and password. This does not require an interactive login, which makes it the right choice for automated or scheduled uploads."},
+        {"type": "p", "text": "You need an API Key generated in the platform before you can use this option."},
+        {"type": "bullets", "ordered": true, "items": [
+          "Open Server Connect.",
+          "Select Use API Key.",
+          "Enter your API Key ID and Secret.",
+          "Click Authenticate."
+        ]},
+        {"type": "p", "text": "automated, or scheduled uploads.", "bold_lead": "Best for: "},
+        {"type": "image", "file": "auth-api-key.png", "caption": "Authenticating with an API Key and Secret"},
+        {"type": "h2", "text": "Tips and best practices"},
+        {"type": "bullets", "ordered": false, "items": [
+          "Choose the login option that aligns with your security requirements and workflow.",
+          "Treat your API Key and Secret as confidential, like a password. Do not share them or store them in plain text.",
+          "Use the API Key option for automated workflows and username and password for interactive use."
+        ]},
+        {"type": "h2", "text": "Troubleshooting"},
+        {"type": "p", "text": "If you have trouble logging in or generating an API Key, contact our support team."}
+      ]
+    },
+    {
+      "key": "data-source-configuration",
+      "title": "Data Source Configuration",
+      "blocks": [
+        {"type": "p", "text": "You can set up the configuration details for your server. Currently we support the following data source types:"},
+        {"type": "h2", "text": "CSV file type"},
+        {"type": "p", "text": "Most popular delimiters are supported."},
+        {"type": "image", "file": "datasource-csv.jpg", "caption": "CSV data source configuration"},
+        {"type": "h2", "text": "Parquet file type"},
+        {"type": "image", "file": "datasource-parquet.jpg", "caption": "Parquet data source configuration"},
+        {"type": "h2", "text": "Microsoft/Azure SQL Server, MySQL/MariaDB, PostgreSQL"},
+        {"type": "image", "file": "datasource-sql-servers.jpg", "caption": "Database data source configuration"},
+        {"type": "h2", "text": "CSV/Parquet data sources"},
+        {"type": "p", "text": "For a CSV/Parquet data source, you need to configure the directory that will contain your CSV/Parquet files and the delimiter."},
+        {"type": "image", "file": "datasource-csv-parquet-config.jpg", "caption": "Configuring the CSV/Parquet source directory"},
+        {"type": "h2", "text": "SQL data sources"},
+        {"type": "p", "text": "For the SQL data sources, you need to provide the credentials by filling out the requested fields or you can enter the connection string in a .NET Core format."},
+        {"type": "image", "file": "datasource-sql-config.jpg", "caption": "SQL data source connection configuration"},
+        {"type": "p", "text": "For the SQL data sources, you can provide a database table as a data source or a SQL query. Do not use TOP or LIMIT in your SQL query."},
+        {"type": "p", "text": "You also need to choose your sequential column, which should be a number or date, so we can load the data in batches. The latest processed value will be saved to the database for when you load new data at a later stage."},
+        {"type": "p", "text": "The Upload Dataset Name will be your dataset name as seen in the Omnisient Platform."},
+        {"type": "p", "text": "You need to decide if you want to save the iURNs for later identification. If you choose to save the iURN you need to specify the location where you would like to save the data. Be sure that the location has enough storage space similar in size to your source data."}
+      ]
+    },
+    {
+      "key": "data-mapping-schemas",
+      "title": "Data Mapping Schemas",
+      "blocks": [
+        {"type": "p", "text": "You need to choose the Data Mapping Schema. You can choose an existing data mapping schema, or you can create a new one by clicking the Add button."},
+        {"type": "image", "file": "mapping-schema-select.jpg", "caption": "Selecting or creating a data mapping schema"},
+        {"type": "p", "text": "Depending on if you are uploading from a database or file, you can dynamically add the fields based on your source."},
+        {"type": "p", "text": "Enter the name for the schema and the notification user who will be emailed if any bad data exists or if your upload has completed."},
+        {"type": "p", "text": "Click Import to import your fields from your source. If you are using a file to upload, choose the file you wish to upload. For best user experience make sure the file has as few rows as possible, since this process only needs the column headers."},
+        {"type": "p", "text": "You should also indicate which fields are PII (Personal Identifiable Information) fields and then choose which kind of personal information the field contains."},
+        {"type": "p", "text": "You also need to specify a location where we can temporarily store the uploaded data, which we download from your data source, then anonymize, then upload to our platform."},
+        {"type": "p", "text": "The last option is if you would like to receive an email once a batch has been uploaded. This is only recommended if you do once-off uploads or don't upload data too often."},
+        {"type": "p", "text": "Once you have saved your configuration, you can always return to the configurator to make any changes."},
+        {"type": "note", "text": "Currently the server is built to run on a scheduled basis. You can use any scheduling tool, or for once-off runs you can just run the command displayed in the information area."},
+        {"type": "image", "file": "mapping-schema-command.jpg", "caption": "The run command shown in the information area"},
+        {"type": "code", "text": "[Server Application Path]\\Intersect.Enterprise.Server.v2.exe [Your configuration name]"},
+        {"type": "p", "text": "For any further support, please email support@omnisient.com."}
+      ]
+    },
+    {
+      "key": "anonymization-upload-process",
+      "title": "Anonymization & Upload Process",
+      "blocks": [
+        {"type": "p", "text": "The upload process is initiated by the command described in the previous chapter, either typed directly in a command line, or initiated by a script which can be scheduled at regular intervals."},
+        {"type": "p", "text": "Once initiated, the exact process as with the Omnisient Desktop Connect data onboarding application is executed. All the fields marked as PII (information that can uniquely identify an individual) are tokenised, anonymized and salted before any data leaves the client's server environment. Only anonymized tokens are held on the Omnisient platform and used for analysis and campaigns."},
+        {"type": "p", "text": "All access to uploaded data is managed by the client. The system is built with privacy-by-design principles and will even detect potential personal information contained in fields not marked as PII by the client."},
+        {"type": "h2", "text": "Anonymisation, tokenisation and upload process"},
+        {"type": "p", "text": "Omnisient is the inventor of the Secure Compounded Matching (SCM) Token process, a hybrid cloud approach using artificial intelligence to solve for issues relating to anonymisation and matching in privacy-by-design platforms. Using SCM, tokens can be matched across any PII field with security features iteratively embedded into the tokens to make them incredibly difficult to break. The technology is future-proofed to accommodate for any new advancements in cryptography."},
+        {"type": "p", "text": "The process below is followed once Server Connect is started, either manually, or via a scheduling tool at specified intervals:"},
+        {"type": "image", "file": "scm-token-diagram.jpg", "caption": "The SCM anonymisation and upload process"},
+        {"type": "note", "text": "The data is hashed not only on the client's premises but also once uploaded into the Omnisient cloud, to ensure bad actors cannot re-identify any uploaded, tokenized, and hashed personal data."}
+      ]
+    },
+    {
+      "key": "campaign-activation",
+      "title": "Preparing a Dataset for Campaign Activation",
+      "blocks": [
+        {"type": "p", "text": "If a dataset may be used for campaign activation, it must be marked as Activation Ready during processing in Desktop Connect or Server Connect."},
+        {"type": "note", "text": "Activation refers to sharing a dataset with an advertising platform (e.g., Meta or TikTok) to create matched audiences for targeted campaigns."},
+        {"type": "h2", "text": "Where to Enable Activation"},
+        {"type": "p", "text": "During dataset configuration in Desktop Connect or Server Connect, locate the Use Dataset for Campaign Activation toggle and enable it before completing processing."},
+        {"type": "image", "file": "activation-toggle.png", "caption": "The Use Dataset for Campaign Activation toggle"},
+        {"type": "p", "text": "Enabling the Activation-ready toggle ensures the dataset is technically prepared for this downstream use."},
+        {"type": "p", "text": "You should enable Activation if the dataset will be:"},
+        {"type": "bullets", "ordered": false, "items": [
+          "Used by your organization for targeted advertising campaigns",
+          "Shared with a partner who will use the dataset for campaign activation"
+        ]},
+        {"type": "note", "text": "Important: If Activation is not enabled during processing, the dataset will not be compatible for campaign activation later and will need to be re-uploaded and reprocessed."},
+        {"type": "h2", "text": "Activation Prerequisites"},
+        {"type": "h3", "text": "Required Dataset Fields"},
+        {"type": "p", "text": "To prepare a dataset for activation, it must include at least one of the following fields:"},
+        {"type": "bullets", "ordered": false, "items": [
+          "Email",
+          "Phone number"
+        ]},
+        {"type": "p", "text": "You may include one or both."},
+        {"type": "p", "text": "Including both Email and Phone is recommended to maximize match rates on activation platforms, but only one is required."},
+        {"type": "h3", "text": "Legal Permission to Use This Data for Advertising"},
+        {"type": "p", "text": "You confirm that:"},
+        {"type": "bullets", "ordered": false, "items": [
+          "You have a valid lawful basis (including any required consents or permissions) to use the dataset for targeted advertising",
+          "Individuals have been appropriately informed",
+          "You honor opt-outs and other data subject rights",
+          "You are permitted to share the data for audience matching under applicable laws and advertising platform terms"
+        ]},
+        {"type": "note", "text": "In short: you are legally allowed to use and share this data for campaign activation."},
+        {"type": "h3", "text": "Your Organization Has the Proper Agreement with Omnisient"},
+        {"type": "p", "text": "You confirm that:"},
+        {"type": "bullets", "ordered": false, "items": [
+          "Your organization has the required agreement(s) in place with Omnisient (e.g., MSA, OPLA, Order Form, and/or DPA)",
+          "These agreements authorize the use of the dataset for activation and targeted advertising",
+          "This use complies with any contractual restrictions"
+        ]},
+        {"type": "note", "text": "In short: your organization is contractually authorized to activate this data."}
+      ]
+    },
+    {
+      "key": "demo-videos",
+      "title": "Demo Videos",
+      "blocks": [
+        {"type": "p", "text": "Two short videos are available covering an introduction to Server Connect and how to use it."},
+        {"type": "link_card", "title": "An Introduction to Server Connect", "url": "https://www.youtube.com/watch?v=AI6i2Ltb44w"},
+        {"type": "link_card", "title": "How to use Server Connect", "url": "https://www.youtube.com/watch?v=VgjUfsE8gxk"}
+      ]
+    }
+  ]
+}

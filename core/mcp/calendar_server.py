@@ -616,12 +616,22 @@ async def _handle_call_tool_inner(
     arguments = arguments or {}
 
     if name == "calendar_list_calendars":
-        # Use fast EventKit
+        # Try EventKit first (faster), fall back to osascript if needed
         success, output = run_shell_script("calendar_eventkit.py", "list")
+        
+        # If EventKit fails (permission not granted), try osascript fallback
+        if not success:
+            success, output = run_shell_script("calendar_osascript.py", "list")
         
         if success:
             try:
-                calendars = json.loads(output)
+                data = json.loads(output)
+                # Handle both EventKit and osascript output formats
+                if "calendars" in data:
+                    calendars = data["calendars"]
+                else:
+                    calendars = data
+                
                 # Extract just the titles for backward compatibility
                 calendar_names = [cal["title"] for cal in calendars]
                 result = {

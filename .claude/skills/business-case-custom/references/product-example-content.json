@@ -1,0 +1,117 @@
+{
+  "meta": { "tagline": "Mintlify business case · EVO-0.1" },
+  "slides": [
+    {
+      "eyebrow": "Self-service onboarding · EVO-0.1",
+      "title": "The case for Mintlify",
+      "lead": "Today, every prospect meets a person before they meet the product. This paper makes the case for changing that.",
+      "blocks": [
+        { "type": "cardGrid", "cols": 3, "cardH": 1.5, "cards": [
+          { "title": "The problem", "desc": "Manual, Back Office and Sales-led enablement for every proof of value." },
+          { "title": "The proposal", "desc": "Adopt Mintlify as a self-service distribution site, in the model of PLAID." },
+          { "title": "The ask", "desc": "Approve an investigation spike before formal contracting." }
+        ]}
+      ]
+    },
+    {
+      "eyebrow": "Scene setting",
+      "title": "Where enablement happens today",
+      "lead": "Every prospect and customer question currently routes through a person, with no self-service path.",
+      "blocks": [
+        { "type": "twoPanel", "h": 3.15,
+          "left": { "label": "What we have", "icon": "check", "accent": "main", "items": [
+            "Intercom Help Center for in-product articles",
+            "LearnWorlds Academy for structured courses",
+            "Sales walks every prospect through a live demo",
+            "Support and Customer Success run manual POV setup"
+          ]},
+          "right": { "label": "Why it doesn't scale", "icon": "no", "accent": "secondary", "items": [
+            "No sandbox — every evaluation needs a booked call",
+            "Contracting conversations start before value is proven",
+            "Back Office time is spent on repeat manual walkthroughs",
+            "Sales cycle length is tied to internal calendar availability"
+          ]}
+        }
+      ]
+    },
+    {
+      "eyebrow": "Target state",
+      "title": "Prospects arrive warm, not cold",
+      "lead": "The goal: a visitor tries Omnisient on sample data, sees the value, and only then starts a commercial conversation.",
+      "blocks": [
+        { "type": "cardGrid", "cols": 3, "cardH": 1.7, "cards": [
+          { "num": 1, "title": "Try before they buy", "desc": "Self-service access to a working sample of the platform, no meeting required." },
+          { "num": 2, "title": "Warm, not cold", "desc": "Sales engages once a prospect has already seen value on their own time." },
+          { "num": 3, "title": "Contracting comes last", "desc": "Commercial conversations start after proof, not instead of it." }
+        ]},
+        { "type": "banner", "text": "US strategy already names the target: a self-service distribution site, in the model of PLAID." }
+      ]
+    },
+    {
+      "eyebrow": "Requirements",
+      "title": "What we need from a tool",
+      "lead": "The right platform needs to do six things well, from public docs to CRM hand-off.",
+      "blocks": [
+        { "type": "cardGrid", "cols": 3, "cardH": 1.0, "cards": [
+          { "title": "Public + protected docs", "desc": "Free-to-browse pages, gated content behind login." },
+          { "title": "Self-service sandbox path", "desc": "A working example a prospect can try alone." },
+          { "title": "Agent-readable access", "desc": "The same content works for a human and for Claude Code." },
+          { "title": "Docs-as-code workflow", "desc": "Git-backed authoring, previews, and review." },
+          { "title": "Region-aware delivery", "desc": "Right content for the right market, one source." },
+          { "title": "Sales & CRM hand-off", "desc": "Curated milestones flow to Salesforce, not raw data." }
+        ]}
+      ]
+    },
+    {
+      "eyebrow": "Competitor comparison",
+      "title": "Mintlify vs. Intercom, and the rest of the field",
+      "lead": "Intercom is the incumbent for support. It was never built as a self-service front door.",
+      "blocks": [
+        { "type": "twoPanel", "h": 1.85,
+          "left": { "label": "Mintlify — proposed", "icon": "check", "accent": "main", "items": [
+            "Public + protected docs, sandbox-ready",
+            "Authenticated MCP for AI agent access",
+            "Flat platform fee, unlimited seats"
+          ]},
+          "right": { "label": "Intercom — retained, narrowed", "icon": "no", "accent": "secondary", "items": [
+            "Built for support, not self-service onboarding",
+            "Priced per seat, plus $0.99 per Fin AI resolution",
+            "No sandbox or developer-portal capability"
+          ]}
+        },
+        { "type": "paragraph", "h": 0.55, "text": "Also in the field: GitBook (best all-round alternative), ReadMe (API telemetry), Redocly/Scalar (API-design-first), Docusaurus (free, self-hosted). None matched Mintlify's combined score in the earlier platform review." }
+      ]
+    },
+    {
+      "eyebrow": "Deep dive",
+      "title": "Mintlify: cost, contracting, and trust",
+      "blocks": [
+        { "type": "cardGrid", "cols": 3, "cardH": 1.15, "gapAfter": 0.25, "cards": [
+          { "title": "License cost", "desc": "Pro: $450/mo (~R7,320), unlimited seats. Enterprise (adds SSO/SCIM/RBAC): custom quote required." },
+          { "title": "Contracting approach", "desc": "Pro is self-serve, card-based. Enterprise is sales-led with a custom agreement." },
+          { "title": "Trial availability", "desc": "Starter tier is free indefinitely — usable now for an internal spike. No dedicated Enterprise trial." },
+          { "title": "Application across the business", "desc": "One platform for public docs, protected developer content, and the self-service sandbox front door." },
+          { "title": "ZAR / USD", "desc": "Pro ≈ R7,320/mo at the Aug 2026 average rate (R16.26/USD). Enterprise pricing not yet known." },
+          { "title": "Vanta listing", "desc": "Not listed on Vanta. Mintlify's trust center runs on SafeBase/Drata (security.mintlify.com) — InfoSec review routes there instead." }
+        ]},
+        { "type": "banner", "icon": "!", "text": "Mintlify disclosed and remediated a security incident earlier in 2026 — InfoSec should review the postmortem before sign-off." }
+      ]
+    },
+    {
+      "eyebrow": "Conclusion",
+      "title": "Recommendation and next steps",
+      "lead": "Mintlify is the strongest fit for a self-service front door, at a fraction of what a custom build would cost.",
+      "blocks": [
+        { "type": "cardGrid", "cols": 2, "cardH": 1.0, "cards": [
+          { "title": "Build vs. buy", "desc": "A custom sandbox and docs portal would cost engineering months Mintlify replaces for $450/mo." },
+          { "title": "Proven at scale", "desc": "Anthropic's Claude docs and Lovable both run on Mintlify today — real, verifiable customers, not a reference call." }
+        ]},
+        { "type": "pillRow", "pills": [
+          { "label": "The ask", "sub": "Investigation spike", "bg": "F1F3FA", "text": "30297E" },
+          { "label": "Sign-off", "sub": "CTO · CPO · InfoSec", "bg": "F1F3FA", "text": "30297E" }
+        ]},
+        { "type": "banner", "text": "Recommended: approve a scoped investigation spike into Mintlify before any formal contracting." }
+      ]
+    }
+  ]
+}

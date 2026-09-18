@@ -1,5 +1,21 @@
 {
-  "last_check": null,
-  "last_version_seen": null,
-  "features_seen": []
+  "last_check": "2026-04-29",
+  "last_version_seen": "2.1.123",
+  "features_seen": [
+    "hooks",
+    "sub-agents",
+    "skills",
+    "commands",
+    "mcp",
+    "always-load-mcp",
+    "session-recap",
+    "precompact-hook",
+    "push-notifications",
+    "ultrareview",
+    "prompt-cache-1hr",
+    "worktrees",
+    "vim-visual-modes",
+    "custom-themes",
+    "skills-searchability"
+  ]
 }

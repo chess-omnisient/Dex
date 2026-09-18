@@ -26,7 +26,7 @@ company_size: ""  # options: startup (1-100), scaling (100-1000), enterprise (10
 # Your company email domain (used to identify internal vs external people)
 # Example: "pendo.io" (without @)
 # Multiple domains: "pendo.io, pendo.com"
-email_domain: ""
+email_domain: "omnisient.com"
 
 # Communication Preferences
 # How the AI adapts its tone and language when working with you
@@ -45,6 +45,44 @@ communication:
   
   # Coaching style preference (for career coaching)
   coaching_style: "collaborative"  # options: encouraging, collaborative, challenging
+
+# Work Schedule Configuration
+# Define your working hours and rhythm
+work_schedule:
+  # Daily start time (24-hour format)
+  start_time: "07:00"  # 7am
+  
+  # Daily end time (24-hour format)
+  end_time: "16:00"   # 4pm
+  
+  # Lunch break duration in minutes
+  lunch_duration_minutes: 20
+  
+  # Your timezone (for calendar and meeting times)
+  timezone: "Africa/Johannesburg"  # Update if different
+
+  # Work calendar name in Apple Calendar.app
+  work_calendar: "Calendar"  # Your Outlook calendar syncs here
+  
+  # Peak focus hours (when you do best deep work)
+  peak_focus_hours:
+    start: "07:00"
+    end: "11:00"  # 7am-11am is peak focus window (pre-meeting standup prep)
+  
+  # Work blocks (can be used by planning algorithms)
+  working_blocks:
+    - name: "Deep Work"
+      start: "07:00"
+      end: "11:00"
+    - name: "Lunch"
+      start: "12:30"
+      end: "12:50"
+    - name: "Afternoon Focus"
+      start: "13:00"
+      end: "16:00"
+  
+  # Working days (0=Monday, 6=Sunday)
+  working_days: [0, 1, 2, 3, 4]  # Mon-Fri
 
 # Meeting Processing Configuration
 # How Dex processes meetings from Granola
@@ -110,3 +148,7 @@ quarterly_planning:
   # Current quarter dates (auto-calculated)
   quarter_start_date: "2026-01-01"
   quarter_end_date: "2026-03-31"
+
+# Analytics Configuration
+analytics:
+  enabled: false

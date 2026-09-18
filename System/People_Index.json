@@ -1,0 +1,298 @@
+{
+  "version": 1,
+  "built_at": "2026-09-01T00:00:00.000000",
+  "total": 26,
+  "by_type": {
+    "internal": 24,
+    "external": 2,
+    "cpo_network": 0
+  },
+  "people": [
+    {
+      "name": "Kirk",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Kirk.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "stub"
+    },
+    {
+      "name": "Aimee Malan",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Aimee_Malan.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Neels Oosthuizen",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Neels_Oosthuizen.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Craig",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Craig.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Pardon",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Pardon.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "stub"
+    },
+    {
+      "name": "Donovan",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Donovan.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "stub"
+    },
+    {
+      "name": "Ben",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Ben.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "stub"
+    },
+    {
+      "name": "Tristian",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Tristian.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "stub"
+    },
+    {
+      "name": "Marinus",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Marinus.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "stub"
+    },
+    {
+      "name": "Hendrie Kritzinger",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Hendrie_Kritzinger.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Stefan Jansen Van Vuuren",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Stefan_Jansen_Van_Vuuren.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Motlalepule",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Motlalepule.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Olivia Landsberg",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Olivia_Landsberg.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "stub"
+    },
+    {
+      "name": "Chris Brown",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Chris_Brown.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Jacques-Phillip Hechter",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Jacques-Phillip_Hechter.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Sharon",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Sharon.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "stub"
+    },
+    {
+      "name": "Ronny",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Ronny.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "stub"
+    },
+    {
+      "name": "Verushen Coopoo",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Verushen_Coopoo.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Tegan Carton-Barber",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Tegan_Carton-Barber.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "stub"
+    },
+    {
+      "name": "Wiehan",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Wiehan.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "stub"
+    },
+    {
+      "name": "Anton Grutzmacher",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Anton_Grutzmacher.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Rudy",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Rudy.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "stub"
+    },
+    {
+      "name": "Bruna",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Bruna.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Riaan",
+      "company": "Omnisient",
+      "role": "Head of Product",
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Riaan.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Karabo Choma",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Karabo_Choma.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Sumit Desai",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "internal",
+      "path": "05-Areas/People/Internal/Sumit_Desai.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    }
+  ]
+}

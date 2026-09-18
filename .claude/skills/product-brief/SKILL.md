@@ -1,15 +1,15 @@
 ---
 name: product-brief
-description: Extract product ideas through guided questions and generate PRD
+description: Extract product ideas through guided Socratic questioning and generate a Shaped Solution PRD
 ---
 
 ## Purpose
 
-Extract product ideas from your head through guided questioning, then generate a detailed Product Requirements Document (PRD). Designed for product people who have a vision but need help articulating it clearly.
+Extract product ideas from your head through guided questioning, then generate a Shaped Solution PRD. Acts as your product thought partner — asking the right questions, challenging assumptions, and pushing for evidence before structuring everything into a PRD ready for stakeholder review.
 
 ## The Problem This Solves
 
-You have an idea for a product or feature in your mind, but struggle to explain it comprehensively. This command acts as your product thought partner — asking the right questions to extract what you're envisioning, then structuring it into a PRD ready for a team to execute.
+You have an idea for a product or feature but need help articulating it clearly and rigorously. This command walks you through each PRD section conversationally, using Socratic questioning to sharpen your thinking — then generates a Shaped Solution PRD in the format your team uses.
 
 ## Usage
 
@@ -20,8 +20,20 @@ You have an idea for a product or feature in your mind, but struggle to explain 
 **Examples:**
 - `/product-brief Add a notification system to our app`
 - `/product-brief Build a customer feedback portal`
-- `/product-brief Create an onboarding flow for new users`
 - `/product-brief` (prompts you for the idea)
+
+---
+
+## Context Loading (Silent)
+
+On invocation, silently read:
+1. `System/user-profile.yaml` — company context, role, communication preferences
+2. `System/pillars.yaml` — strategic pillars for alignment checks
+3. `.claude/skills/ada/references/company-tech-stack.md` — platform and tools
+4. `.claude/skills/ada/references/operational-constraints.md` — cost, compliance, capacity constraints
+5. `.claude/skills/product-brief/references/socratic-techniques.md` — questioning techniques
+
+Do not recite this context. Use it naturally to inform questions and challenge answers. Reference marketplace dynamics (buyer/seller), tech stack constraints, and strategic pillars where relevant.
 
 ---
 
@@ -31,14 +43,9 @@ You have an idea for a product or feature in your mind, but struggle to explain 
 
 **If no idea is provided:**
 Ask: "What product or feature are you thinking about?"
-- Wait for their description (1 sentence to several paragraphs)
-- Capture it as the starting point
 
 **If idea is provided:**
-Start with whatever the user provides:
-- Could be 1 sentence or 5 paragraphs
-- Capture it as the starting point
-- Don't judge, just absorb
+Start with whatever the user provides — 1 sentence to several paragraphs. Don't judge, just absorb.
 
 Display:
 
@@ -49,586 +56,194 @@ Display:
 
 ---
 
-**Next:** I'll ask a few questions to understand this better.
+**Next:** I'll walk you through the key sections of the PRD — Problem, Appetite, Solution, Boundaries, and Success Metrics. We'll have a conversation about each one.
 ```
 
 ---
 
-### Phase 2: Clarifying Questions (Conversational)
+### Phase 2: Problem Framing
 
-**Important:** Ask questions conversationally, not as a survey. 2-3 questions at a time, then wait for answers before asking more.
+**Goal:** Ensure the problem is real, specific, and worth solving now.
 
-**Question Strategy:**
+Ask 2-3 questions at a time from this set, adapting based on answers:
 
-**Round 1 (Critical Context):**
-- What problem does this solve?
-- Who is this for?
-- What success looks like?
+- **What specific pain point are we solving?** (For data buyers, sellers, or both?)
+- **What evidence do we have that this is a real problem?** (Customer feedback, usage data, lost deals, seller churn?)
+- **Who experiences this problem most acutely?** (Segment, vertical, use case?)
+- **What happens if we don't solve this?** (Revenue impact, competitive disadvantage, user friction?)
+- **How does this problem impact our key metrics?** (Adoption, engagement, monetization, marketplace liquidity?)
 
-**Round 2 (Constraints & Scope):**
-Based on Round 1 answers, ask about:
-- Timeline expectations
-- Technical constraints
-- Existing systems to integrate with
-- What's explicitly out of scope
+**Socratic techniques to apply:**
+- **Evidence pressure** — if answers are vague ("users want better..."), push: "How do we know? What data or conversations support that?"
+- **Inversion** — "What happens if we DON'T build this? What's the real cost of inaction?"
+- **Red flag detection** — watch for solution-first thinking (describes feature but can't articulate problem), vague language, no evidence
 
-**Round 3 (User Experience):**
-- How do users discover this?
-- What's the core user journey?
-- What actions should be easy vs hard?
-
-**Round 4 (Success & Validation):**
-- How will we know this succeeded?
-- What are we assuming that needs validation?
-- What dependencies exist?
-
-**Adaptive questioning:** If user mentions stakeholders, budget, or other context early, adjust questions accordingly. Don't ask what you already know.
-
-After each round, acknowledge answers briefly and transition naturally:
-> "Got it. That helps me understand [X]. A few more questions about [Y]..."
+After answers, briefly synthesize:
+> "So the core problem is [X], primarily affecting [Y], with evidence from [Z]. Moving on to appetite..."
 
 ---
 
-### Phase 3: Understanding Summary
+### Phase 3: Appetite & Constraints
 
-Before moving forward, confirm you captured the vision correctly:
+**Goal:** Set a time box and understand strategic fit. The appetite constrains the scope — the solution must fit within this box.
+
+Ask 2-3 questions:
+
+- **How much time are we willing to invest?** (Small batch = 2 weeks, Big batch = 6 weeks)
+- **What's the opportunity cost?** What are we NOT doing if we pursue this?
+- **Why is this the right thing to build RIGHT NOW?** What changes if we wait 6 months?
+- **What resources are available?** (Team composition, availability, dependencies)
+- **Does this align with our quarterly priorities and strategic pillars?**
+
+**Socratic techniques to apply:**
+- **Strategic timing test** — "Why now versus next quarter? What's truly urgent here?"
+- **Resource forcing** — "If you had half the time, what would you cut from this?"
+- **Pillar alignment** — silently check against `pillars.yaml` and surface fit or misalignment
+
+---
+
+### Phase 4: Solution Shaping
+
+**Goal:** Define the solution at "fat marker sketch" altitude — high enough to leave room for the build team, specific enough to be implementable.
+
+Ask 2-3 questions:
+
+- **What's the core concept in 2-3 sentences?**
+- **How will data buyers interact with this? How will data sellers?**
+- **What's the simplest version that solves the core problem?**
+- **Are there existing patterns in our platform we can leverage?**
+- **What does the basic user flow look like?** (Walk me through the steps)
+
+**Socratic techniques to apply:**
+- **Alternative challenge** — "What other approaches did you consider? Why this one over [obvious alternative]?"
+- **Evidence pressure** — "Why is this the right solution for that problem? What's the logical connection?"
+- **Resource forcing** — "Is there a simpler version that gets us 80% of the value?"
+- **Tech stack awareness** — silently consider the company's tech stack and architecture (loaded from company-tech-stack.md). If the solution implies significant technical lift, flag it: "This touches [system] — have you validated feasibility with engineering?"
+
+#### Visual Shaping (Optional)
+
+After the user describes their solution and user flow, offer:
+
+> "You've described a clear flow. Want me to generate a breadboard diagram to visualize the places and connections? It helps spot missing paths and makes the PRD more concrete for stakeholders."
+
+If yes:
+1. Extract Places, Affordances, and Connections from the conversation so far
+2. Silently load `.claude/skills/shape/references/breadboard-patterns.md` and `.claude/skills/shape/references/fat-marker-patterns.md`
+3. Generate a Mermaid breadboard diagram inline and confirm with the user
+4. If the user also described screen layouts, offer a fat marker sketch
+5. Include generated diagrams in the PRD's Solution section when Phase 8 generates the document
+
+If no, proceed to Phase 5 as normal.
+
+This invokes `/shape` logic inline — it does not require the user to exit the product-brief flow. The diagrams become part of the PRD output.
+
+---
+
+### Phase 5: Boundaries
+
+**Goal:** Identify rabbit holes that could derail the project and explicitly define what's out of scope.
+
+**Rabbit Holes** — ask:
+- **What technical unknowns could balloon scope?** (Complex integrations, data quality issues, scalability?)
+- **Where might we get stuck on data seller requirements or customizations?**
+- **What dependencies on external parties exist?**
+- **What perfectionist tendencies might derail us?** (Over-engineering, endless design iterations?)
+
+**No-Gos** — ask:
+- **What features are "nice to have" but NOT essential for this version?**
+- **Which user segments or verticals are we explicitly not targeting in v1?**
+- **What integrations or third-party tools are out of scope?**
+
+**Socratic techniques to apply:**
+- **Inversion** — "What would make this project fail? What's the most likely way we blow past the appetite?"
+- **Scope discipline** — if scope sounds large, flag early: "That sounds like it might exceed a [X]-week appetite. What could we cut?"
+
+---
+
+### Phase 6: Success Criteria
+
+**Goal:** Define measurable outcomes so we know if this worked.
+
+Ask 2-3 questions:
+
+- **What's the primary metric we're trying to move? By how much?**
+- **What would make you consider this feature a failure?**
+- **What's the adoption target?** (Not all features need 100% adoption)
+- **What would you check 30 days after launch?**
+- **Are there leading indicators we can track before the primary metric moves?**
+
+**Socratic techniques to apply:**
+- **Specificity pressure** — "Improve engagement" isn't a metric. Push: "Increase what, for whom, by how much, in what timeframe?"
+- **Inversion** — "What outcome would tell us we got this completely wrong?"
+
+---
+
+### Phase 7: Confirm Understanding
+
+Before generating the PRD, play back what was captured and confirm:
 
 ```markdown
 ## What I Heard
 
-**The Problem:**
-[Synthesized problem statement]
+**Problem:** [Synthesized problem statement with evidence]
 
-**Target Users:**
-[Who this is for]
+**Target:** [Who this is for — segment, persona]
 
-**Core Value:**
-[The main benefit/outcome]
+**Appetite:** [Time box and resources]
 
-**Key Constraints:**
-[Timeline, technical, scope boundaries]
+**Solution:** [Core concept at fat marker level]
 
-**Assumptions to Validate:**
-[Things we're assuming but should test]
+**Rabbit Holes:** [Top 3 risks and mitigations]
+
+**No-Gos:** [Key exclusions]
+
+**Success:** [Primary metric and target]
+
+**Pillar Alignment:** [Which strategic pillar this supports]
 
 ---
 
-**Does this capture your vision? Type "yes" to continue or correct anything above.**
+### Definition of Done Check
+- [ ] Problem is specific with supporting evidence
+- [ ] Appetite is clear with time box and resources
+- [ ] Solution is at the right altitude (not too detailed, not too vague)
+- [ ] Rabbit holes are identified with mitigations
+- [ ] No-gos are explicit
+- [ ] Success metrics are measurable
+- [ ] Both buyer and seller impact is considered
+- [ ] This can realistically be built within the stated appetite
+
+---
+
+**Does this capture your thinking? Type "yes" to generate the PRD, or correct anything above.**
 ```
 
 If user corrects, update and re-confirm.
 
 ---
 
-### Phase 4: Spec Doc
+### Phase 8: Generate PRD
 
-User triggers with: `spec doc` or `create spec`
+User triggers with: `yes`, `generate`, `create prd`
 
-Generate structured product spec:
+Generate the Shaped Solution PRD using the template in `references/shaped-prd-template.md`. Fill in all sections with the information gathered during Phases 2-6.
 
-```markdown
-# Product Spec: [Feature/Product Name]
+**Output quality checks before finalizing:**
+- Every section has substance (no empty placeholders)
+- Problem statement includes evidence, not just assertions
+- Appetite has specific time box and resource allocation
+- Solution describes buyer AND seller elements
+- At least 3 rabbit holes with mitigations
+- No-gos are explicit enough to prevent scope creep during execution
+- Success metrics are specific and measurable
+- Completion checklist is honestly assessed
 
-**Date:** YYYY-MM-DD
-**Owner:** [User's name]
-**Status:** Draft
-
----
-
-## Executive Summary
-
-[2-3 sentence pitch: what this is and why it matters]
-
----
-
-## Problem Statement
-
-### Current Situation
-[What exists today]
-
-### Pain Points
-- [Specific pain 1]
-- [Specific pain 2]
-- [Specific pain 3]
-
-### Impact of Inaction
-[What happens if we don't build this]
+If any section is thin, flag it:
+> "The [section] feels light — we didn't discuss [specific gap] during our conversation. Want to flesh it out now, or leave it as an open question in the PRD?"
 
 ---
 
-## Target Audience
-
-### Primary Users
-[Who will use this most]
-
-### Secondary Users
-[Who else benefits]
-
-### User Characteristics
-- [Key trait 1]
-- [Key trait 2]
-- [Key trait 3]
-
----
-
-## Solution Overview
-
-[High-level description of what we're building]
-
----
-
-## Key Features & Functionality
-
-### Must Have (MVP)
-1. **[Feature 1]**
-   - Description
-   - Why it's critical
-   
-2. **[Feature 2]**
-   - Description
-   - Why it's critical
-
-### Should Have (Phase 2)
-1. **[Feature 3]**
-   - Description
-   - Why it's valuable
-
-### Nice to Have (Future)
-1. **[Feature 4]**
-   - Description
-   - Why it's desirable
-
----
-
-## Success Metrics
-
-### Primary Metric
-[The one number that matters most]
-
-### Secondary Metrics
-- [Metric 2]
-- [Metric 3]
-
-### Leading Indicators
-[Early signals of success/failure]
-
----
-
-## Assumptions & Risks
-
-### Key Assumptions
-1. [Assumption 1]
-   - How to validate: [Test method]
-   
-2. [Assumption 2]
-   - How to validate: [Test method]
-
-### Risks
-1. **[Risk 1]** — [Mitigation strategy]
-2. **[Risk 2]** — [Mitigation strategy]
-
----
-
-## Dependencies
-
-### Technical
-- [System/API/service dependency]
-
-### Team
-- [Who needs to be involved]
-
-### External
-- [Third-party dependencies]
-
----
-
-## Out of Scope
-
-Explicitly not included:
-- [Thing 1]
-- [Thing 2]
-- [Thing 3]
-
----
-
-## Open Questions
-
-- [ ] [Question 1]
-- [ ] [Question 2]
-- [ ] [Question 3]
-
----
-
-**Next Steps:**
-
-- Type `prioritize` to rank features by effort/impact
-- Type `design flows` to create detailed user flows
-- Type `create prd` to generate final PRD
-- Type `back` to revise anything above
-```
-
----
-
-### Phase 5: Prioritization (Optional)
-
-User triggers with: `prioritize`
-
-Create effort/impact matrix:
-
-```markdown
-## Feature Prioritization
-
-| Feature | Impact | Effort | Priority | Rationale |
-|---------|--------|--------|----------|-----------|
-| [Feature 1] | High | Low | P0 | [Why] |
-| [Feature 2] | High | Medium | P0 | [Why] |
-| [Feature 3] | Medium | Low | P1 | [Why] |
-| [Feature 4] | Low | High | P2 | [Why] |
-
-### Recommended MVP Scope
-
-Based on high impact + reasonable effort:
-1. [Feature 1]
-2. [Feature 2]
-3. [Feature 3]
-
-**Estimated Effort:** [X weeks/sprints]
-
----
-
-**Next:**
-- Type `design flows` to create user flows
-- Type `create prd` to generate final PRD
-- Type `back` to revise spec
-```
-
----
-
-### Phase 6: Design Flows (Optional)
-
-User triggers with: `design flows`
-
-Create detailed user flows and screen specs:
-
-```markdown
-## User Flows & Screen Specifications
-
-### Flow 1: [Primary User Journey]
-
-**Entry Point:** [How user arrives]
-
-**Steps:**
-
-#### Step 1: [Screen Name]
-
-**Layout:**
-- [Header elements]
-- [Main content area]
-- [Actions/buttons]
-
-**User Actions:**
-- Click [X] → [Outcome]
-- Enter [Y] → [Validation rules]
-- Cancel → [State change]
-
-**Navigation:**
-- Success → [Next screen]
-- Error → [Error state]
-- Back → [Previous screen]
-
-**Validation Rules:**
-- [Field 1]: [Rules]
-- [Field 2]: [Rules]
-
-**States:**
-- Default: [Description]
-- Loading: [What user sees]
-- Error: [Error message]
-- Success: [Confirmation]
-
----
-
-#### Step 2: [Next Screen]
-
-[Same structure as Step 1]
-
----
-
-### Flow 2: [Secondary Journey]
-
-[Same structure as Flow 1]
-
----
-
-**Next:**
-- Type `create prd` to generate final PRD
-- Type `back` to revise flows
-```
-
----
-
-### Phase 7: Final PRD
-
-User triggers with: `create prd` or `generate prd`
-
-Generate comprehensive PRD combining all previous phases:
-
-```markdown
-# Product Requirements Document
-## [Product/Feature Name]
-
-**Author:** [User name]
-**Date:** YYYY-MM-DD
-**Status:** Draft
-**Last Updated:** YYYY-MM-DD
-
----
-
-## Document Control
-
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 0.1 | YYYY-MM-DD | [Name] | Initial draft |
-
----
-
-## Executive Summary
-
-[2-3 paragraphs covering: what, why, who, success]
-
----
-
-## Background & Context
-
-### Current State
-[What exists today]
-
-### Problem Statement
-[The problem we're solving]
-
-### Opportunity
-[Why now, why us]
-
----
-
-## Goals & Success Metrics
-
-### Primary Objective
-[The main goal]
-
-### Success Metrics
-
-**Primary:**
-- [Metric 1]: [Target]
-
-**Secondary:**
-- [Metric 2]: [Target]
-- [Metric 3]: [Target]
-
-**Leading Indicators:**
-- [Early signal 1]
-- [Early signal 2]
-
----
-
-## Target Users
-
-### Primary Audience
-[Detailed description]
-
-### Use Cases
-1. **[Use Case 1]**
-   - As a [user type]
-   - I want to [action]
-   - So that [benefit]
-
-2. **[Use Case 2]**
-   - As a [user type]
-   - I want to [action]
-   - So that [benefit]
-
----
-
-## Solution Overview
-
-[Comprehensive description of what we're building]
-
----
-
-## Functional Requirements
-
-### Must Have (P0)
-
-#### Requirement 1: [Name]
-- **Description:** [What it does]
-- **Acceptance Criteria:**
-  - [ ] [Criterion 1]
-  - [ ] [Criterion 2]
-  - [ ] [Criterion 3]
-- **User Story:** As a [X], I want [Y], so that [Z]
-
-#### Requirement 2: [Name]
-[Same structure]
-
-### Should Have (P1)
-
-[Same structure as Must Have]
-
-### Nice to Have (P2)
-
-[Same structure as Must Have]
-
----
-
-## User Experience
-
-### User Flows
-[Reference to flows from Phase 6, or create if skipped]
-
-### Key Screens
-[High-level screen descriptions]
-
-### Interaction Patterns
-[How users interact with the feature]
-
----
-
-## Technical Requirements
-
-### Performance
-- [Requirement 1]
-- [Requirement 2]
-
-### Security
-- [Requirement 1]
-- [Requirement 2]
-
-### Integration Points
-- [System 1]: [What needs to connect]
-- [System 2]: [What needs to connect]
-
-### Data Requirements
-- [What data is collected]
-- [Where it's stored]
-- [How it's used]
-
----
-
-## Design Requirements
-
-### Visual Design
-- [Style guide compliance]
-- [Responsive requirements]
-- [Accessibility standards]
-
-### Content Requirements
-- [Copy needs]
-- [Translation needs]
-- [Asset requirements]
-
----
-
-## Dependencies & Constraints
-
-### Dependencies
-- **Technical:** [List]
-- **Team:** [Who needs to be involved]
-- **External:** [Third parties]
-
-### Constraints
-- **Timeline:** [Dates/milestones]
-- **Budget:** [If applicable]
-- **Technical:** [Platform limitations]
-
----
-
-## Assumptions & Risks
-
-### Assumptions
-1. [Assumption 1]
-   - **Validation method:** [How to test]
-   - **Impact if wrong:** [Consequence]
-
-2. [Assumption 2]
-   - **Validation method:** [How to test]
-   - **Impact if wrong:** [Consequence]
-
-### Risks
-
-| Risk | Likelihood | Impact | Mitigation |
-|------|------------|--------|------------|
-| [Risk 1] | High/Med/Low | High/Med/Low | [Strategy] |
-| [Risk 2] | High/Med/Low | High/Med/Low | [Strategy] |
-
----
-
-## Out of Scope
-
-Explicitly not included in this version:
-- [Item 1] — [Why/when it might be included]
-- [Item 2] — [Why/when it might be included]
-- [Item 3] — [Why/when it might be included]
-
----
-
-## Open Questions
-
-- [ ] [Question 1] — Owner: [Name], Due: [Date]
-- [ ] [Question 2] — Owner: [Name], Due: [Date]
-- [ ] [Question 3] — Owner: [Name], Due: [Date]
-
----
-
-## Timeline & Milestones
-
-| Milestone | Target Date | Status |
-|-----------|-------------|--------|
-| PRD Complete | [Date] | In Progress |
-| Design Complete | [Date] | Not Started |
-| Dev Complete | [Date] | Not Started |
-| QA Complete | [Date] | Not Started |
-| Launch | [Date] | Not Started |
-
----
-
-## Stakeholders
-
-| Name | Role | Involvement |
-|------|------|-------------|
-| [Name] | [Role] | [What they do] |
-| [Name] | [Role] | [What they do] |
-
----
-
-## Appendix
-
-### Research
-[Link to user research, competitive analysis, etc.]
-
-### Design Mockups
-[Links to designs when available]
-
-### Technical Specs
-[Links to technical documentation]
-
----
-
-**Document Status:** Ready for Review
-
-**Next Actions:**
-- [ ] Review with stakeholders
-- [ ] Refine based on feedback
-- [ ] Get approval to proceed
-- [ ] Hand off to design/engineering
-
----
-
-*This PRD was generated using the /product-brief command. Update as needed.*
-```
-
----
-
-### Phase 8: Save & Integration
+### Phase 9: Save & Integrate
 
 After generating the PRD:
 
@@ -637,31 +252,28 @@ After generating the PRD:
    - Save as: `04-Projects/[Product Name]/PRD.md`
 
 2. **Create person pages** (if stakeholders mentioned):
-   - For each stakeholder mentioned, check if person page exists
-   - Create/update pages in `People/Internal/` or `People/External/`
-   - Add note in their page referencing this project
+   - For each stakeholder, check if person page exists
+   - Create/update pages in `05-Areas/People/Internal/` or `05-Areas/People/External/`
+   - Add note referencing this project
 
-3. **Link to 03-Tasks/Tasks.md:**
-   - If user mentioned any immediate actions, suggest creating tasks
-   - Link tasks to the project
+3. **Link to tasks:**
+   - If immediate actions were mentioned, suggest creating tasks in `03-Tasks/Tasks.md`
 
-4. **Confirm completion:**
+4. **Pillar linkage:**
+   - If a strategic pillar was identified, note it in the project folder
+
+5. **Confirm completion:**
 
 ```markdown
-## ✅ PRD Created
+## PRD Created
 
 **Saved to:** `04-Projects/[Product Name]/PRD.md`
 
-**Next Steps:**
-1. Review and refine the PRD
-2. Share with stakeholders for feedback
-3. Use `/project-health` to track progress
-4. Create tasks in 03-Tasks/Tasks.md when ready to execute
-
 **Want to:**
-- Revise any section → Just tell me what to change
-- Create tasks from this PRD → Say "create tasks"
-- Share with stakeholders → I can draft an email
+- **Stress-test it** → Run `/ada review` to get engineering + product pushback before sharing
+- **Revise a section** → Just tell me what to change
+- **Create tasks** → Say "create tasks" to extract action items
+- **Share with stakeholders** → I can draft a summary email
 ```
 
 ---
@@ -671,81 +283,45 @@ After generating the PRD:
 At any phase, users can:
 
 - `back` or `previous` — Return to previous phase
-- `skip to prd` — Jump directly to final PRD
+- `skip to prd` — Jump directly to PRD generation (uses whatever info gathered so far)
+- `jump to [section]` — Jump to specific section (problem, appetite, solution, boundaries, success)
 - `revise [section]` — Edit specific section
 - `start over` — Begin from scratch
-- `save` — Save current progress
+- `save progress` — Save current state as draft
+- `definition of done` — Show the DoD checklist for current section
+- `challenge me` — Ask for harder Socratic pushback on current section
 
 ---
 
 ## Conversational Style
 
-- **Be a thought partner, not an interrogator**
-- Ask follow-up questions when answers reveal gaps
-- Challenge assumptions constructively
-- Suggest alternatives when you spot potential issues
-- Keep momentum — don't let the process feel like homework
+- **Be a thought partner, not an interrogator** — 2-3 questions max before acknowledging
+- **Challenge constructively** — "That's interesting, but help me understand..." not "That's wrong"
+- **Adapt to depth** — if user gives detailed, evidence-backed answers, move faster. If vague, probe deeper
+- **Keep momentum** — don't let it feel like homework. Acknowledge strong answers, build on them
+- **Coach when stuck** — if user struggles with a question, offer options or examples from their context
+- **Reference their world** — use company context naturally (marketplace dynamics, buyer/seller, data products — loaded from user profile and tech stack reference)
 
 **Good:**
-> "Interesting. If this is for enterprise customers, how do we handle single sign-on? Or is that something we're punting to Phase 2?"
+> "Interesting — if this is primarily for data buyers, how does the seller side benefit? Or are we creating value asymmetry that could hurt marketplace balance?"
 
 **Bad:**
-> "Question 7: Please describe your authentication strategy."
+> "Question 4: Please describe the impact on data sellers."
 
 ---
 
-## Tips for Effectiveness
+## When to Use This Command
 
-### For the User
-- Start with whatever you have — even 1 sentence is enough
-- Don't worry about being comprehensive upfront
-- The questions will extract what's in your head
-- You can always revise and refine
+**Use `/product-brief` when:**
+- You have a product idea but need help articulating it rigorously
+- You need to write a PRD and want conversational guidance through each section
+- You want your assumptions challenged before writing them down
+- You're preparing a pitch for stakeholders
 
-### For Dex
-- Listen for what's NOT being said
-- If scope sounds too big, flag it early
-- Connect this feature to their strategic pillars if relevant
-- Update person pages for stakeholders mentioned
-- Link to existing projects if this builds on something
-
----
-
-## Example Session
-
-**User:** `/product-brief Add notifications to our app`
-
-**Dex:**
-
-```markdown
-## Initial Idea
-
-Add notifications to our app
-
----
-
-Great, let's flesh this out. A few questions to start:
-
-1. What type of notifications are we talking about — push notifications, in-app alerts, email, or all three?
-2. What specific events should trigger notifications?
-3. Who are these notifications for — all users, or specific roles?
-```
-
-**User:** "Push notifications for now. We want to notify sales reps when a lead takes an action in the product."
-
-**Dex:**
-
-```markdown
-Got it — push notifications for sales reps when leads are active. That helps narrow it.
-
-A few more questions:
-
-1. What actions count as notification-worthy? (e.g., login, feature usage, upgrade intent)
-2. Should there be any filtering or preferences? Like "only notify me about my accounts"?
-3. What's the business outcome we're driving here — faster response time, more engagement, closing deals faster?
-```
-
-[Conversation continues through phases until PRD is complete]
+**Don't use it for:**
+- Simple feature requests (just describe them normally)
+- Already-written PRDs that need review (use `/ada review` instead)
+- Technical implementation details (that's engineering's job, or use `/ada` in architecture mode)
 
 ---
 
@@ -756,21 +332,7 @@ A few more questions:
 - **Week Priorities:** Suggest adding "finalize PRD" to this week if urgent
 - **People pages:** Auto-update stakeholders mentioned in the PRD
 - **Tasks:** Offer to create tasks from the PRD's next steps
-
----
-
-## When to Use This Command
-
-**Use `/product-brief` when:**
-- You have a product idea but struggle to articulate it
-- You need to write a PRD and want help structuring it
-- You're pitching an idea and need to flesh it out
-- You want to validate your thinking with good questions
-
-**Don't use it for:**
-- Simple feature requests (just describe them normally)
-- Already-written PRDs that need editing
-- Technical implementation details (that's engineering's job)
+- **Ada:** Suggest `/ada review` as natural next step after generation
 
 ---
 
@@ -778,9 +340,10 @@ A few more questions:
 
 The PRD isn't set in stone. After creation:
 
-- Say "refine the success metrics section" to iterate
-- Say "add a section on localization" to expand
+- Say "refine the problem section" to iterate on any section
 - Say "this scope is too big, help me cut it down" to trim
+- Say "add a section on [topic]" to expand
+- Run `/ada review` for engineering/product stress-testing
 
 Dex will update the PRD file directly and maintain version history.
 
