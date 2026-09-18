@@ -9,6 +9,7 @@ enabled:
   notion: false
   slack: true
   google: false
+  teams: true
 
 # Integration-specific settings are stored in separate files:
 # - notion.yaml (Notion-specific config)
@@ -20,23 +21,28 @@ hooks:
   meeting_prep:
     use_notion: true      # Pull relevant Notion docs
     use_slack: true       # Pull recent Slack context with attendees
+    use_teams: true       # Pull recent Teams context with attendees
     use_google: true      # Pull email threads with attendees
   
   person_pages:
     use_notion: true      # Link Notion pages
     use_slack: true       # Show Slack mentions
+    use_teams: true       # Show Teams mentions
     use_google: true      # Show email history
   
   daily_plan:
     use_notion: false     # Not used by default
-    use_slack: true      # Not used by default  
+    use_slack: true       # Not used by default
+    use_teams: true       # Surface unread Teams chats
     use_google: true      # Surface emails needing response
 
   commitment_detection:
     use_slack: true       # Detect promises in Slack
+    use_teams: true       # Detect promises in Teams
 
 # Detection cache (auto-populated by detect.py)
 detected:
   notion: null
   slack: null
+  teams: null
   google: null

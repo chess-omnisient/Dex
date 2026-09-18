@@ -1,0 +1,37 @@
+# Teams Integration Configuration
+# Syncs with Microsoft Teams for calendar, chat context, and meeting prep
+
+enabled: true
+configured_at: '2026-02-27'
+
+# OAuth Configuration (auto-populated during setup)
+oauth:
+  tenant_id: null
+  client_id: null
+  token_expires: null
+  refresh_token_valid: false
+
+# Feature toggles
+features:
+  teams_digest: true              # Show unread Teams chats in daily plan
+  meeting_prep: true              # Pull Teams context for meeting prep
+  person_enrichment: true         # Show Teams mentions on person pages
+  calendar_sync: true             # Sync Teams meetings to calendar (via Outlook)
+
+# Channels to prioritize in daily digest
+priority_channels: []
+# Example:
+# - "General"
+# - "AI Integration"  
+# - "Product Maturity"
+
+# Last synced
+last_sync: null
+last_sync_error: null
+
+# Coexistence with Slack
+# Both Slack and Teams can be enabled simultaneously
+# They appear separately in daily plans with clear labels
+slack_also_enabled: true
+deduplication: true              # Merge context if same person in both platforms
+

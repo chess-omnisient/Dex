@@ -96,6 +96,14 @@
       "env": {
         "VAULT_PATH": "${VAULT_PATH}"
       }
+    },
+    "clickup": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "core.mcp.clickup_server"],
+      "env": {
+        "VAULT_PATH": "${VAULT_PATH}"
+      }
     }
   }
 }

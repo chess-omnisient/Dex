@@ -111,6 +111,27 @@ The ideas below demonstrate the level of detail you'll see when you capture your
 
 *Example ideas provided above to show the level of detail and clarity expected.*
 
+
+
+
+- **[idea-005]** work-mcp create_weekly_priority writes to wrong path
+  - **Score:** 0 (not yet ranked - run `/dex-backlog` to calculate)
+  - **Category:** system
+  - **Captured:** 2026-08-03
+  - **Description:** mcp__work-mcp__create_weekly_priority does not write to 02-Week_Priorities/Week_Priorities.md. Instead it creates/appends to a new top-level "Inbox/Week Priorities.md" file (note: no numeric prefix, distinct from the real 00-Inbox/ folder) — likely a hardcoded or misresolved relative path in the tool's vault-path handling. Each call also appended a full new block rather than merging into a "Top 3 This Week" list, and blocks landed in reverse call order. Discovered 2026-08-03 when three priorities created in one session all landed in the stray file instead of the real Week Priorities doc; had to manually move content over and delete the stray Inbox/ folder. Fix: correct the target path to 02-Week_Priorities/Week_Priorities.md and make repeated calls in the same week merge into the existing Top 3 list instead of duplicating blocks.
+
+- **[idea-004]** work-mcp create_task throws is_qmd_available NameError
+  - **Score:** 0 (not yet ranked - run `/dex-backlog` to calculate)
+  - **Category:** system
+  - **Captured:** 2026-08-03
+  - **Description:** mcp__work-mcp__create_task fails every call with "name 'is_qmd_available' is not defined" — an unguarded reference to a QMD-availability check that isn't defined/imported in that code path. No task gets written when this happens; the error has been recurring since at least 2026-05-18 (also seen 2026-06-17, 2026-06-25, and again 2026-08-03) without a fix landing. Fix: define/import is_qmd_available (or guard the QMD-enhancement branch) in the create_task handler in work-mcp so task creation succeeds regardless of QMD status.
+
+- **[idea-003]** Dataset Status Contract — Composite Status Aggregation
+  - **Score:** 0 (not yet ranked - run `/dex-backlog` to calculate)
+  - **Category:** ux
+  - **Captured:** 2026-05-22
+  - **Description:** Parent dataset status should derive from worst-child state across all upload sub-records. `ready` only shown when all children are ready. `processing` when any child is in flight. Degraded/action-required when any child fails — surfaced as inline badge ("3 of 4 uploads ready · 1 failed") with direct path to failed record and retry. Paired with documented status write contract per flow (DataCollections vs DataCollectionDetails) to prevent new lifecycle flows from silently breaking status. Two confirmed triggers: upload to existing dataset (aggregation gap) and cust_id/dedupe change (write-path bug, Sprint 6). PRD drafted at .claude/skills/prd-generator/output/platform/prd-dataset-status-contract-2026-05-21.md
+
 **When you capture your own ideas, explain:**
 - What problem you're trying to solve (be specific!)
 - What you imagine the solution looking like

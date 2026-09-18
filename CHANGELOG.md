@@ -7,6 +7,25 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.19.0] — Auto-Link People Script Actually Exists Now (2026-08-11)
+
+CLAUDE.md has described an auto-linking post-processing step since early on: after writing meeting notes, tasks, or plans, run `.scripts/auto-link-people.cjs` to convert plain-text names into `[[Person|Name]]` WikiLinks. The script was never actually built — every mention of it was a no-op, and person pages never got the automatic meeting-history cross-links the workflow promised.
+
+**What this means for you:**
+
+* Names in meeting notes, tasks, and weekly priorities now actually turn into clickable links to the person's page, as originally documented
+* Full names always link (e.g. "Aimee Malan"); first names link on their own only when unambiguous (skipped if two people share a first name); frontmatter `aliases` can whitelist nicknames per person
+* Frontmatter, code blocks, and existing WikiLinks are left untouched; running it twice is a no-op the second time
+* A person's own page never links to itself
+
+**What changed under the hood:**
+
+* Added `.scripts/auto-link-people.cjs` — builds a name registry by scanning `05-Areas/People/{Internal,External}/*.md` frontmatter, then does a two-pass regex replace (full phrases, then unambiguous first names) over content with frontmatter/code/existing-link regions protected via placeholders
+* `node .scripts/auto-link-people.cjs <file>` links one file in place; `--today` batch-processes `03-Tasks/Tasks.md`, `02-Week_Priorities/Week_Priorities.md`, `01-Quarter_Goals/Quarter_Goals.md`, and today's dated meeting notes
+* Exports `autoLinkContent(content, registry, opts)` and `buildRegistry()` for use as a module
+
+---
+
 ## [1.18.1] — Meeting Sync Now Works Reliably Again (2026-03-05)
 
 In v1.17.0, we switched background meeting sync to use Granola's official MCP server — thinking the "official" route would be more reliable. Turns out, the MCP server sends meeting data back in a format designed for AI to read in conversation, not for code to process in the background. The sync script expected structured data, got free-form text, couldn't make sense of it, and quietly fell back to old cached data. Meetings were going missing with no error message.

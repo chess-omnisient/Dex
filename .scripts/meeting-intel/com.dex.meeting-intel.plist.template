@@ -9,7 +9,7 @@
     <array>
         <string>/bin/bash</string>
         <string>__VAULT_PATH__/.scripts/dex-launcher.sh</string>
-        <string>.scripts/meeting-intel/sync-from-granola-v2.cjs</string>
+        <string>.scripts/meeting-intel/sync-from-granola.cjs</string>
     </array>
 
     <key>WorkingDirectory</key>

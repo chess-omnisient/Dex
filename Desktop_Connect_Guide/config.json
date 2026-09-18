@@ -1,0 +1,750 @@
+{
+  "output": "Omnisient_Desktop_Connect_User_Manual.pdf",
+  "images_dir": "images",
+  "cover_pdf": "cover.pdf",
+  "title": "Omnisient Desktop Connect User Manual",
+  "header_title": "Omnisient Desktop Connect User Manual",
+  "breadcrumb": "Desktop Connect",
+  "copyright": "© 2014-2026. Omnisient (Pty) Ltd. All rights reserved.",
+  "website": "www.omnisient.com",
+  "legal_url": "https://omnisient.com/privacy-center",
+  "author": "Omnisient",
+  "chapters": [
+    {
+      "key": "overview",
+      "title": "What is Desktop Connect?",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Desktop Connect is Omnisient's Windows application for manually uploading and anonymising datasets from your own machine. It gives users a guided, click-through workflow for onboarding data to the Omnisient Platform without needing a server environment or scheduled automation."
+        },
+        {
+          "type": "note",
+          "text": "Any user with Desktop Connect permissions can install and use the application. See the User Management article for details."
+        },
+        {
+          "type": "h2",
+          "text": "Where to find Desktop Connect"
+        },
+        {
+          "type": "p",
+          "text": "Desktop Connect is installed separately from the Omnisient Platform. Download the installer for your region, run the setup wizard, and sign in with the credentials that you use to sign into the Omnisient Platform."
+        },
+        {
+          "type": "image",
+          "file": "overview-01-landing.png"
+        },
+        {
+          "type": "h2",
+          "text": "What's included"
+        },
+        {
+          "type": "bullets",
+          "ordered": false,
+          "items": [
+            "File upload – Upload datasets from CSV or other delimited files stored on your machine.",
+            "Database upload – Connect directly to a database and upload data without exporting to a file first.",
+            "Anonymisation preferences – Choose to anonymise and re-identify records with a unique ID or Omnisient ID, or anonymise only.",
+            "Log access – Review upload logs from within the application for troubleshooting.",
+            "File Extract – Re-identify and securely access your dataset's information locally with our data extraction feature."
+          ]
+        },
+        {
+          "type": "h2",
+          "text": "How Desktop Connect works"
+        },
+        {
+          "type": "h3",
+          "text": "Upload Data"
+        },
+        {
+          "type": "p",
+          "text": "After signing in, go to Upload Data and select Upload a New Dataset. From there:"
+        },
+        {
+          "type": "bullets",
+          "ordered": true,
+          "items": [
+            "Name the dataset and specify the data type.",
+            "Indicate whether the dataset contains Personally Identifiable Information (PII).",
+            "Choose an anonymisation preference.",
+            "Select a data source – a file from your computer, or a database connection.",
+            "Set the delimiter (file uploads) and preview the data.",
+            "Choose the customer identifier and confirm which columns to upload, including PII fields and dedupe identifiers.",
+            "Click Finish to start the upload."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Once submitted, the dataset goes through hashing and cryptography to remove PII before it reaches the Omnisient Platform."
+        },
+        {
+          "type": "p",
+          "text": "You can Upload Data to an existing dataset by selecting Add to Existing Dataset. From there:"
+        },
+        {
+          "type": "bullets",
+          "ordered": true,
+          "items": [
+            "Select the dataset you want to upload to.",
+            "Select a data source – a file from your computer, or a database connection.",
+            "Set the delimiter (file uploads) and preview the data.",
+            "Choose the customer identifier and confirm which columns to upload, including PII fields and dedupe identifiers.",
+            "Click Finish to start the upload."
+          ]
+        },
+        {
+          "type": "image",
+          "file": "overview-02-upload.png"
+        },
+        {
+          "type": "h3",
+          "text": "Extracting Data"
+        },
+        {
+          "type": "p",
+          "text": "Re-identify and access your dataset's information locally with our secure data extraction functionality."
+        },
+        {
+          "type": "p",
+          "text": "You can extract a saved dataset by selecting an existing dataset you created for re-identification."
+        },
+        {
+          "type": "p",
+          "text": "You can extract a saved dataset by using a re-identification file."
+        },
+        {
+          "type": "image",
+          "file": "overview-03-extract.png"
+        }
+      ]
+    },
+    {
+      "key": "system-requirements",
+      "title": "Minimum System Requirements",
+      "blocks": [
+        {
+          "type": "h2",
+          "text": "Web application"
+        },
+        {
+          "type": "p",
+          "text": "The web application works in any standard web browser, including Chrome, Safari, Firefox, and Edge. Just visit the web app URL to get started."
+        },
+        {
+          "type": "h2",
+          "text": "Recommended system requirements for Desktop Connect"
+        },
+        {
+          "type": "bullets",
+          "ordered": true,
+          "items": [
+            "Operating system: Windows 10 64-bit. If you do not have a Windows machine, please use a Windows Virtual Machine.",
+            "RAM: 8 to 16 GB, depending on the size of the files you upload.",
+            "Processor: Basic Intel® Core™ i5 or better.",
+            "Hard drive space: at least three times the size of the largest raw file you plan to upload."
+          ]
+        },
+        {
+          "type": "h2",
+          "text": "Recommended system requirements for Server Connect"
+        },
+        {
+          "type": "bullets",
+          "ordered": true,
+          "items": [
+            "Operating system: Windows, Linux, or macOS (supports most modern Windows and Windows Server versions)",
+            "RAM: 8 GB or more (depending on the number of parallel uploads)",
+            "Disk space: 100 MB for the software; an SSD hard drive is recommended",
+            "Other: requires the .NET Core 8.0 SDK (see download link)"
+          ]
+        },
+        {
+          "type": "link_card",
+          "title": ".NET Core 8.0 SDK download",
+          "url": "https://dotnet.microsoft.com/en-us/download/dotnet/8.0"
+        },
+        {
+          "type": "p",
+          "text": "These requirements help ensure a smooth experience. Adjust your specifications based on your usage and file sizes."
+        }
+      ]
+    },
+    {
+      "key": "installation",
+      "title": "Desktop Connect: Installation",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Please download the Onboarding Application: Omnisient Desktop Connect onboarding desktop installer at the following URL:"
+        },
+        {
+          "type": "link_card",
+          "title": "Installer download (RSA)",
+          "url": "http://omnisient.com/installer?region=za"
+        },
+        {
+          "type": "link_card",
+          "title": "Installer download (UAE)",
+          "url": "http://omnisient.com/installer?region=uae"
+        },
+        {
+          "type": "image",
+          "file": "install-01-download-installer.png"
+        },
+        {
+          "type": "p",
+          "text": "Please follow the installation wizard through to the end."
+        },
+        {
+          "type": "bullets",
+          "ordered": true,
+          "items": [
+            "Once the Setup.Exe file is downloaded, click on it. (You will find it on your screen, or in your Download Folder).",
+            "Select Install: Setup.EXE at the bottom."
+          ]
+        },
+        {
+          "type": "image",
+          "file": "install-02-setup-exe.png"
+        },
+        {
+          "type": "p",
+          "text": "Once the installation is completed the app will auto-launch and you will be presented with the login screen:"
+        },
+        {
+          "type": "image",
+          "file": "install-03-login-screen.png"
+        },
+        {
+          "type": "p",
+          "text": "Use the credentials sent to you via our welcome email. Search for “Omnisient Welcome” in your email inbox. The Desktop Connect upload screen will follow, and you can proceed through the prompts."
+        }
+      ]
+    },
+    {
+      "key": "troubleshooting-faq",
+      "title": "Desktop Application Installation Troubleshooting FAQ",
+      "blocks": [
+        {
+          "type": "h2",
+          "text": "Installation Issues"
+        },
+        {
+          "type": "p",
+          "text": "These are some of the possible issues encountered during the onboarding application installation."
+        },
+        {
+          "type": "bullets",
+          "ordered": true,
+          "items": [
+            "Use the download button to download the Omnisient Desktop Connect or Server Connect application from the Application Installer Page (you will have received the link to this in your welcome email).",
+            "Failure to download or run the install file: this may be caused by your antivirus or firewall blocking the download. Click “keep”, “save anyway” or “run anyway” as needed."
+          ]
+        },
+        {
+          "type": "image",
+          "file": "faq-01-download-button.png"
+        },
+        {
+          "type": "image",
+          "file": "faq-02-desktop-connect-download.png"
+        },
+        {
+          "type": "image",
+          "file": "faq-03-server-connect-download.png"
+        },
+        {
+          "type": "h2",
+          "text": "Firewall blocking application install or use"
+        },
+        {
+          "type": "p",
+          "text": "If your firewall is blocking the app installation or use, your IT administrator will need to allowlist the relevant Omnisient URLs and IP ranges. See the Firewall Access Required article for the full list, organized by region."
+        },
+        {
+          "type": "link_card",
+          "title": "Firewall Access Required",
+          "url": "https://help.omnisient.com/en/articles/7019108-firewall-access-required"
+        },
+        {
+          "type": "p",
+          "text": "If all of these have been added to your allowlist and you are still experiencing issues, contact Omnisient support (support@omnisient.com)."
+        },
+        {
+          "type": "h2",
+          "text": "CSV File Troubleshooting"
+        },
+        {
+          "type": "p",
+          "text": "Use the File Troubleshooter tool to check for any errors in your CSV file."
+        },
+        {
+          "type": "link_card",
+          "title": "Download the File Troubleshooter",
+          "url": "https://static.omnisient.com/dta/Omnisient.FileTroubleshooter.zip"
+        },
+        {
+          "type": "p",
+          "text": "You can choose to run a Quick scan (first 1000 records) or a Full scan of the file."
+        },
+        {
+          "type": "p",
+          "text": "Once it has finished processing, you can see how many rows were processed and which rows have issues with the corresponding row number."
+        },
+        {
+          "type": "image",
+          "file": "faq-04-file-troubleshooter.png"
+        }
+      ]
+    },
+    {
+      "key": "upload",
+      "title": "Desktop Connect Upload",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Here's a step-by-step guide on how to upload your datasets to the Omnisient Platform:"
+        },
+        {
+          "type": "bullets",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            "Login via Desktop Connect: Access the Omnisient platform through Desktop Connect using your credentials.",
+            "Click on \"Upload Data\": Once logged in, navigate to the \"Upload Data\" section.",
+            "Choose \"Upload a New Dataset\": Select the option to upload a new dataset to begin the process."
+          ]
+        },
+        {
+          "type": "image",
+          "file": "upload-01-new-dataset.png"
+        },
+        {
+          "type": "bullets",
+          "ordered": true,
+          "start": 4,
+          "items": [
+            "Name Your Dataset: Provide a name for your dataset to easily identify it within the platform.",
+            "Specify Data Type and PII: Indicate the type of data you're uploading and whether it contains Personally Identifiable Information (PII).",
+            "Select Anonymization Preferences: Choose the anonymization method you prefer, such as anonymizing and re-identifying with a unique ID or Omnisient ID, or anonymizing only.",
+            "Continue and Choose Data Source: Proceed to the next step and select your data source file from your computer, or opt for database connection to upload via a database.",
+            "Set Delimiter and Preview Data: Specify the delimiter used in your file and preview the data to ensure it appears as expected."
+          ]
+        },
+        {
+          "type": "image",
+          "file": "upload-02-delimiter-preview.png"
+        },
+        {
+          "type": "bullets",
+          "ordered": true,
+          "start": 9,
+          "items": [
+            "Choose Customer Identifier: Select the customer identifier from your dataset to uniquely identify customers.",
+            "Preview and Choose Columns: Review the data preview and select which columns to upload, identifying those containing PII, dedupe identifiers, and the category of PII fields."
+          ]
+        },
+        {
+          "type": "image",
+          "file": "upload-03-choose-columns.png"
+        },
+        {
+          "type": "bullets",
+          "ordered": true,
+          "start": 11,
+          "items": [
+            "Click on Finish: Once satisfied with your selections, click on \"Finish\" to initiate the upload process."
+          ]
+        },
+        {
+          "type": "image",
+          "file": "upload-04-finish.png"
+        },
+        {
+          "type": "bullets",
+          "ordered": true,
+          "start": 12,
+          "items": [
+            "Data Processing: Your dataset will undergo hashing and cryptography processes to ensure PII is removed before being uploaded to the Omnisient platform."
+          ]
+        },
+        {
+          "type": "image",
+          "file": "upload-05-data-processing.png"
+        },
+        {
+          "type": "p",
+          "text": "By following these steps, your datasets will be successfully uploaded to the Omnisient platform, ready for analysis without any Personally Identifiable Information."
+        }
+      ]
+    },
+    {
+      "key": "data-source",
+      "title": "Configuring a Data Source",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "The Data Source in Desktop and Server Connect is where you choose which database or data warehouse to connect to and fetch data from. There are a few ways to configure this depending on your use case. The fields you'll need, how to authenticate, and how the query is set up once you're connected all vary by provider."
+        },
+        {
+          "type": "h2",
+          "text": "Supported Data Sources"
+        },
+        {
+          "type": "h3",
+          "text": "Microsoft / Azure SQL Server, MySQL / MariaDB, PostgreSQL, Snowflake"
+        },
+        {
+          "type": "p",
+          "text": "Choose one of the following ways to authenticate:"
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Method",
+            "Fields",
+            "Format"
+          ],
+          "rows": [
+            [
+              "Username & Password",
+              "Host, Database, Username, Password",
+              "Host = server address (e.g. myserver.database.windows.net); Database = database name"
+            ],
+            [
+              "Windows Authentication (SQL Server / Azure SQL only)",
+              "Host, Database",
+              "Toggle \"Windows Authentication?\" on — username/password are not needed"
+            ],
+            [
+              "Connection string",
+              "Connection string",
+              "Toggle \"Connect using connection string?\" on, then paste your provider's standard connection string (e.g. Server=...;Database=...;User Id=...;Password=...;)"
+            ]
+          ]
+        },
+        {
+          "type": "image",
+          "file": "datasource-01-microsoft.png"
+        },
+        {
+          "type": "h3",
+          "text": "Hive ODBC"
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Field",
+            "Required",
+            "Format"
+          ],
+          "rows": [
+            [
+              "Connection string",
+              "Yes",
+              "Paste your ODBC connection string. This is the only way to connect — there's no separate host/username/password entry for Hive."
+            ]
+          ]
+        },
+        {
+          "type": "image",
+          "file": "datasource-02-hive.png"
+        },
+        {
+          "type": "h3",
+          "text": "Databricks"
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Field",
+            "Required",
+            "Format"
+          ],
+          "rows": [
+            [
+              "Workspace URL",
+              "Yes (unless using connection string)",
+              "e.g. https://adb-xxxxx.azuredatabricks.net"
+            ],
+            [
+              "SQL Warehouse ID",
+              "Yes (unless using connection string)",
+              "The warehouse ID from your Databricks workspace"
+            ],
+            [
+              "Authentication Type",
+              "Yes",
+              "Choose one: Personal Access Token (PAT), OAuth 2.0 Machine-to-Machine, or Azure AD Service Principal"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Depending on the authentication type chosen:"
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Authentication Type",
+            "Additional fields"
+          ],
+          "rows": [
+            [
+              "Personal Access Token (PAT)",
+              "Token (your Databricks PAT, e.g. dapi...)"
+            ],
+            [
+              "OAuth 2.0 Machine-to-Machine",
+              "Client ID, Client Secret, Account ID"
+            ],
+            [
+              "Azure AD Service Principal",
+              "Tenant ID, Client ID, Client Secret, and optionally a Databricks Resource ID"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Alternatively, toggle \"Connect using connection string?\" and paste a JSON configuration, e.g.:"
+        },
+        {
+          "type": "code",
+          "text": "{\n  \"Host\": \"https://adb-xxx.azuredatabricks.net\",\n  \"WarehouseId\": \"xxx\",\n  \"AuthenticationType\": \"PAT\",\n  \"Pat\": { \"Token\": \"dapi...\" }\n}"
+        },
+        {
+          "type": "image",
+          "file": "datasource-03-databricks.png"
+        },
+        {
+          "type": "h3",
+          "text": "Google BigQuery"
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Field",
+            "Required",
+            "Format"
+          ],
+          "rows": [
+            [
+              "Project ID",
+              "Yes (unless using connection string)",
+              "Your GCP project ID"
+            ],
+            [
+              "Dataset ID",
+              "Yes (unless using connection string)",
+              "Your BigQuery dataset ID"
+            ],
+            [
+              "Authentication Type",
+              "Yes",
+              "Choose one: Service Account or Workload Identity"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Depending on the authentication type chosen:"
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Authentication Type",
+            "Additional fields"
+          ],
+          "rows": [
+            [
+              "Service Account",
+              "Paste the full contents of your service account JSON key file"
+            ],
+            [
+              "Workload Identity",
+              "None — this uses the ambient identity of the machine (GCE/GKE); no credentials to enter"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Alternatively, toggle \"Connect using connection string?\" and paste a JSON configuration, e.g.:"
+        },
+        {
+          "type": "code",
+          "text": "{\n  \"ProjectId\": \"my-project\",\n  \"DatasetId\": \"my_dataset\",\n  \"AuthenticationType\": \"ServiceAccount\",\n  \"ServiceAccount\": { \"JsonKeyContent\": \"...\" }\n}"
+        },
+        {
+          "type": "image",
+          "file": "datasource-04-bigquery.png"
+        },
+        {
+          "type": "h2",
+          "text": "Query Settings"
+        },
+        {
+          "type": "p",
+          "text": "Once connected, specify what data to pull:"
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Field",
+            "Required",
+            "Format"
+          ],
+          "rows": [
+            [
+              "Query Type",
+              "Yes",
+              "Choose DataTable (pull a whole table) or SQL Query (write your own query)"
+            ],
+            [
+              "Database Table",
+              "Required if Query Type = DataTable",
+              "The exact table name"
+            ],
+            [
+              "SQL Query",
+              "Required if Query Type = SQL Query",
+              "A standard SELECT statement. Do not use TOP, ORDER BY, or LIMIT — these are not supported."
+            ],
+            [
+              "Identity Column",
+              "Yes",
+              "The column name used to keep track of new records since the previous record. So it should be an incremental column"
+            ],
+            [
+              "Column Type",
+              "Yes",
+              "Choose Number or Date/Time, matching the Identity Column's data type"
+            ],
+            [
+              "Remove Data After Processing",
+              "Optional",
+              "Toggle on if you want the source data removed once processing completes"
+            ]
+          ]
+        },
+        {
+          "type": "note",
+          "text": "Use Test Connection to confirm your credentials work before using Load Preview to pull sample data."
+        },
+        {
+          "type": "h2",
+          "text": "Column Naming Rules"
+        },
+        {
+          "type": "p",
+          "text": "Certain column names are reserved for internal use and will be rejected if present in your data; you'll need to rename them before uploading:"
+        },
+        {
+          "type": "bullets",
+          "ordered": false,
+          "items": [
+            "Any name that exactly matches a known PII field name (e.g. iEMAIL), including numbered versions (e.g. iEMAIL_1)",
+            "Any name matching the internal hashed-field naming pattern (e.g. EMAIL, shEMAIL, shEMAIL_1)",
+            "Any name starting with PHONE_COUNTRY_CODE_",
+            "The names iTIMESTAMP or Error"
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Name matching is not case-sensitive."
+        }
+      ]
+    },
+    {
+      "key": "upload-via-database",
+      "title": "Desktop Connect Upload via Database",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "This video walks through uploading a dataset via a database connection in Desktop Connect."
+        },
+        {
+          "type": "link_card",
+          "title": "Watch: Desktop Connect Upload via Database",
+          "url": "https://www.youtube.com/watch?v=3tAECUn98Lg"
+        }
+      ]
+    },
+    {
+      "key": "data-upload-training-video",
+      "title": "Data Upload Training Video",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "This video walks through uploading a dataset using a file with Desktop Connect."
+        },
+        {
+          "type": "link_card",
+          "title": "Watch: Data Upload Training Video",
+          "url": "https://www.youtube.com/watch?v=JIRxN8M8myY"
+        }
+      ]
+    },
+    {
+      "key": "extraction",
+      "title": "How Desktop Connect Extraction Works",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "This video shows how to re-identify and access your dataset's information locally with Desktop Connect's secure data extraction functionality."
+        },
+        {
+          "type": "link_card",
+          "title": "Watch: How Desktop Connect Extraction Works",
+          "url": "https://www.youtube.com/watch?v=u6S6i9oqdc0"
+        }
+      ]
+    },
+    {
+      "key": "log-files",
+      "title": "How to Access the Desktop Connect Log Files",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Steps to follow to access the log file:"
+        },
+        {
+          "type": "bullets",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            "Right-click on the desktop icon and select \"Open file location\""
+          ]
+        },
+        {
+          "type": "image",
+          "file": "logs-01-open-file-location.png"
+        },
+        {
+          "type": "bullets",
+          "ordered": true,
+          "start": 2,
+          "items": [
+            "Navigate to the logs folder"
+          ]
+        },
+        {
+          "type": "image",
+          "file": "logs-02-logs-folder.png"
+        },
+        {
+          "type": "bullets",
+          "ordered": true,
+          "start": 3,
+          "items": [
+            "You can now see the files"
+          ]
+        },
+        {
+          "type": "image",
+          "file": "logs-03-log-files.png"
+        }
+      ]
+    }
+  ]
+}

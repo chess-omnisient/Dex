@@ -1,0 +1,39 @@
+{
+  "meta": { "topic": "Test Deck", "date": "2026-08-19" },
+  "slides": [
+    { "type": "cover", "title": "Test Deck Title", "subtitle": "A subtitle line" },
+    {
+      "type": "content",
+      "kicker": "Today",
+      "headline": "Some current-state headline",
+      "blocks": [
+        {
+          "type": "row",
+          "blocks": [
+            { "type": "cardGrid", "weight": 2, "cards": [
+              { "title": "Card A", "body": "Body text for card A goes here." },
+              { "title": "Card B", "body": "Body text for card B goes here." }
+            ]},
+            { "type": "navyPanel", "weight": 1, "title": "Panel", "bullets": ["Bullet one", "Bullet two"] }
+          ]
+        },
+        { "type": "callout", "tone": "blue", "text": "This is the so-what takeaway." }
+      ]
+    },
+    {
+      "type": "content",
+      "kicker": "The numbers",
+      "headline": "Cost comparison",
+      "blocks": [
+        { "type": "table", "headers": ["", "Current", "Proposed"], "rows": [
+          ["Plan", "$29/mo", "$99/mo"],
+          ["Annual", "$348", "$1,188"]
+        ]},
+        { "type": "row", "blocks": [
+          { "type": "callout", "tone": "blue", "text": "Included in current plan." },
+          { "type": "callout", "tone": "red", "text": "Overage risk if usage spikes." }
+        ]}
+      ]
+    }
+  ]
+}

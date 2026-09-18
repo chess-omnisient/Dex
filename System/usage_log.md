@@ -8,9 +8,9 @@
 
 ## Core Workflows (8 features)
 
-- [ ] Daily planning (`/daily-plan`)
+- [x] Daily planning (`/daily-plan`)  <!-- last run: 2026-05-13 SAST -->
 - [ ] Daily review (`/review` or `/daily-review`)
-- [ ] Weekly planning (`/week-plan`)
+- [x] Weekly planning (`/week-plan`)  <!-- last run: 2026-05-04 -->
 - [ ] Weekly review (`/week-review`)
 - [ ] Quarterly planning (`/quarter-plan`)
 - [ ] Quarterly review (`/quarter-review`)
@@ -20,7 +20,7 @@
 ## Meeting Workflows (7 features)
 
 - [ ] Meeting prep (`/meeting-prep`)
-- [ ] Meeting processing (`/process-meetings`)
+- [x] Meeting processing (`/process-meetings`)
 - [ ] Commitment scan (`/commitment-scan`)
 - [ ] Person page created
 - [ ] Person page updated
@@ -116,10 +116,10 @@
 
 Tracks whether user has been asked about anonymous feature usage tracking.
 
-- **Consent asked:** false
-- **Consent decision:** pending
-- **Consent date:** (not yet decided)
-- **Last prompted:** (not yet prompted)
+- **Consent asked:** true
+- **Consent decision:** opted-out
+- **Consent date:** 2026-04-14
+- **Last prompted:** 2026-04-14
 
 **Values:**
 - `Consent decision: pending` → Not yet decided (will be asked each session until they choose)

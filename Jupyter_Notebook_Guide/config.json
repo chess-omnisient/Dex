@@ -1,0 +1,210 @@
+{
+  "output": "Omnisient_Jupyter_Notebook_User_Manual.pdf",
+  "images_dir": "images",
+  "cover_pdf": "cover.pdf",
+  "include_toc": false,
+  "title": "Omnisient Jupyter Notebook User Manual",
+  "header_title": "Omnisient User Manual",
+  "breadcrumb": "Jupyter Notebook",
+  "copyright": "© 2014-2026. Omnisient (Pty) Ltd. All rights reserved.",
+  "website": "www.omnisient.com",
+  "author": "Omnisient",
+  "chapters": [
+    {
+      "key": "jupyter-notebook",
+      "title": "Jupyter Notebook",
+      "blocks": [
+        { "type": "p", "text": "Python, a widely used programming language for data scientists, offers a wide selection of libraries that you can install with the pip command, simplifying complex calculations and data analysis tasks. With Python integrated into Omnisient, data scientists can seamlessly work on anonymized data without the hassle of moving data around. It also facilitates the automation of tasks and processes, streamlining workflow for enhanced productivity and efficiency." },
+        { "type": "p", "text": "Jupyter Notebook is an open-source web application that's become one of the go-to tools for data scientists, analysts, and even educators in recent years. It provides an environment where you can write live code, equations, visualizations, and narrative text - all in a single document, making it a versatile choice for a variety of data projects." },
+        { "type": "p", "text": "What sets Jupyter Notebook apart is its ability to combine code execution with data visualization and rich text, facilitating a more interactive and insightful data exploration process. You can jot down your thought process while simultaneously running code snippets, making it an excellent tool for both the development and sharing of data analyses." },
+        { "type": "image", "file": "01-intro-banner.png" },
+
+        { "type": "h2", "text": "Getting Started" },
+        { "type": "p", "text": "Two things must be in place before you can access Jupyter Notebook in Omnisient:" },
+        { "type": "bullets", "ordered": false, "items": [
+          "An active Jupyter Notebook subscription - your organization must have Jupyter Notebook enabled as part of your plan.",
+          "A compatible project type - the project you are working in must have analytical tools enabled."
+        ] },
+        { "type": "note", "text": "If Jupyter Notebook is not showing in your project, it is likely one of these two reasons." },
+        { "type": "p", "text": "You can access Jupyter Notebook from two places:" },
+        { "type": "table", "headers": ["Access point", "How"], "rows": [
+          ["From a project", "Open your project and select Open With > Jupyter Notebook."],
+          ["Own Data Preparation", "Available via the Datasets and the project sections in the side navigation."]
+        ] },
+        { "type": "p", "text": "Each user has their own isolated Jupyter environment, you won't see other users' notebooks or files, and your workspace can be configured to suit your needs." },
+        { "type": "note", "text": "Having trouble loading Jupyter? Refresh the page and try again. Check your project status - Jupyter will not load if the project is in a Processing or Failed state. Log out and log back in to refresh your session. Check with your IT team that all required URLs and IP ranges are whitelisted - see the Firewall Access Required article for details." },
+
+        { "type": "h2", "text": "Workspace size options" },
+        { "type": "p", "text": "Three workspace sizes are available, allowing you to match compute resources to the demands of your work:" },
+        { "type": "table", "headers": ["Workspace Type", "CPU", "Memory (RAM)"], "rows": [
+          ["Standard", "2", "8GB"],
+          ["Medium", "3", "25GB"],
+          ["Large", "4", "50GB"],
+          ["Extra Large", "12", "108GB"]
+        ] },
+        { "type": "p", "text": "Resources in Omnisient's AKS environment are allocated dynamically and managed by Kubernetes, which ensures efficient utilization of available resources while maintaining performance and scalability." },
+        { "type": "bullets", "ordered": true, "items": [
+          "Resource limits and requests - each project is allocated resources based on predefined minimum and maximum limits. The minimum (resource request) ensures each Jupyter instance has enough resources to start and run. The maximum (resource limit) prevents any single instance from consuming excessive resources, ensuring fair distribution across all users.",
+          "Pod initialization - when a user opens a Jupyter instance, Kubernetes uses the defined resource requests and limits to create a new instance, known as a pod. A pod is a virtual environment that encapsulates the Jupyter application and its dependencies.",
+          "Scaling mechanism - the AKS setup includes a single server and two scale set instances to handle varying workloads. When resource usage reaches a threshold, Kubernetes automatically provisions additional instances. When demand decreases, it scales down and frees up resources.",
+          "Virtual server fit - each pod fits within the size constraints of the virtual server in use. Kubernetes continuously monitors resource usage and adjusts allocation to optimize performance.",
+          "Resource monitoring and management - Kubernetes provides built-in mechanisms for monitoring usage and managing pod lifecycle, ensuring each Jupyter instance operates within defined resource limits without impacting overall system performance."
+        ] },
+
+        { "type": "h2", "text": "File browser" },
+        { "type": "p", "text": "When you launch Jupyter in a project, the left panel opens by default to the File Browser. This displays your persisted storage - files, notebooks, and code saved here are maintained between Jupyter sessions, so your work is preserved each time you return to the project." },
+        { "type": "p", "text": "From the file browser you can:" },
+        { "type": "bullets", "ordered": false, "items": [
+          "Create a new launcher - add a new .ipynb notebook, text file, .py file, and more",
+          "Upload a file from your local computer to your project",
+          "Create a folder within your file browser space"
+        ] },
+        { "type": "p", "text": "You can also write files out from your notebook directly to the file browser. Files are written to the project rather than to your local disk. For example, a dataframe can be written out as a .csv using standard Pandas functionality. In a later session, you can read the file back into memory:" },
+        { "type": "image", "file": "02-file-browser-write-read.png" },
+        { "type": "p", "text": "Any file that can be created using Python scripting can be written and stored in persisted storage." },
+        { "type": "h3", "text": "Right-click context menu" },
+        { "type": "p", "text": "Right-clicking a file in the file browser reveals additional options. Most of these are standard Jupyter actions - Open, Rename, Delete, Cut, Copy, and so on. One option is specific to Omnisient:" },
+        { "type": "p", "text": "submits a notebook for review and inclusion in your organization's Company Notebook Library. See Company Notebook Library below.", "bold_lead": "Promote to Library: " },
+
+        { "type": "h2", "text": "Working with Your Data in Jupyter" },
+        { "type": "p", "text": "OmniHub reads data from the data warehouse into a Jupyter notebook, either from your own Data Preparation area or a project's shared tables. Queries are written as SQL strings and submitted through the omni_hub magic command; the result is a ResultSet object you convert to a pandas DataFrame with .DataFrame()." },
+
+        { "type": "h3", "text": "Viewing Available Tables" },
+        { "type": "p", "text": "Before querying, load the extension and list the tables available to you:" },
+        { "type": "bullets", "ordered": true, "items": [
+          "Load the extension: %load_ext omni_hub",
+          "Return every table in a project: %omni_hub {\"select * from information_schema.tables where table_schema = '<PROJECT_NAME>'\"}",
+          "Replace <PROJECT_NAME> with the working project name, for example OMNISIENT_PRJ_00114. This returns the names, schemas, and types of tables available."
+        ] },
+        { "type": "image", "file": "03-viewing-tables-output.png" },
+
+        { "type": "h3", "text": "Querying Data" },
+        { "type": "p", "text": "Define the query as a SQL string, submit it through omni_hub, then convert the result to a DataFrame:" },
+        { "type": "code", "text": "%load_ext omni_hub\ndata = %omni_hub {'select top 100 * from [project_code].[table_name]'}\ndf = data.DataFrame()" },
+        { "type": "bullets", "ordered": false, "items": [
+          "Replace [project_code] with the project code, for example ClientName_Prj_00001. For Own Data Preparation, use ClientName_a.",
+          "Replace [table_name] with the table to query.",
+          "top 100 limits the extract to the first 100 rows. Remove it to pull the full table."
+        ] },
+        { "type": "p", "text": "Queries use Microsoft SQL Server syntax, and can join a table against a partner's table within the same query - join on DW_ID_KEY or BestMatchID." },
+        { "type": "image", "file": "04-querying-data-sql-join.png", "caption": "Example SQL query joining a project table with a partner table on DW_ID_KEY, run through the omni_hub magic command." },
+        { "type": "p", "text": "To identify a username for support queries or table-creation permission requests:" },
+        { "type": "code", "text": "%omni_hub {'select current_user'}" },
+        { "type": "image", "file": "05-current-user-query.png", "caption": "Jupyter notebook output showing the current_user query result as a long alphanumeric string ending in the project name." },
+        { "type": "p", "text": "The username is the long alphanumeric string ending in the project name." },
+        { "type": "note", "text": "Tips for managing memory: For large datasets, do as much data preparation, cleaning, joining, and sampling in SQL as possible before loading into the notebook - Python compute may run out of memory on very large datasets. Load only the data needed - a filtered query over a full table pull. Clear unused variables with Python's del, or restart the kernel to free memory between tasks." },
+
+        { "type": "h3", "text": "Choosing a Workspace Size for a Query" },
+        { "type": "p", "text": "Query performance and processing time depend on the shape of the table being pulled, and the notebook's workspace size needs to match it." },
+        { "type": "bullets", "ordered": false, "items": [
+          "A wide table (many columns, e.g. 500 columns across 3 million rows) is compute- and memory-intensive to process column-by-column, and typically needs the Extra Large workspace size.",
+          "A long table (few columns, e.g. 10 columns across 50 million rows) processes differently - the Large workspace size is typically sufficient."
+        ] },
+        { "type": "p", "text": "See Workspace size options above for the full CPU/memory breakdown of each workspace size." },
+        { "type": "note", "text": "Pulling more data than a query actually needs increases the risk of the query timing out, independent of workspace size. Scope a query to the columns and rows actually needed rather than sizing up to compensate." },
+
+        { "type": "h3", "text": "Optimizing Memory for Large Tables" },
+        { "type": "p", "text": "omni_hub returns a ResultSet object. Converting it directly to a DataFrame holds the data twice in memory - once as the ResultSet, once as the DataFrame - which can cause out-of-memory errors on large tables." },
+        { "type": "p", "text": "Export the ResultSet to CSV, delete it, then load the CSV into pandas instead. This holds only one copy at a time:" },
+        { "type": "bullets", "ordered": true, "items": [
+          "Run the query with omni_hub.",
+          "Save the result to CSV with .csv(\"path\").",
+          "Delete the original object with del.",
+          "Load the CSV into pandas with pd.read_csv."
+        ] },
+        { "type": "code", "text": "# 1) Run query via omni_hub\nsql_query = \"select top 10 * from [project_code].[table_name]\"\nrs = %omni_hub {sql_query}\n\n# 2) Save to CSV\nrs.csv(\"my_table.csv\")\n\n# 3) Delete the ResultSet to free memory\ndel rs\n\n# 4) Read the CSV into pandas\nimport pandas as pd\ndf = pd.read_csv(\"my_table.csv\", low_memory=False)" },
+
+        { "type": "h3", "text": "Writing a DataFrame Back to a Project" },
+        { "type": "p", "text": "To write the results of an analysis back to the project tables, use omni_lab." },
+        { "type": "bullets", "ordered": true, "items": [
+          "Import the package: import omni_lab",
+          "Copy the DataFrame back to the project: omni_lab.copy_to_project_tables(df, \"PROJECT_CODE\", \"table_name\")",
+          "Replace PROJECT_CODE with your project code, for example QACOMPANYA_PRJ_00023, and table_name with a name of your choosing. Table names can't contain spaces."
+        ] },
+        { "type": "p", "text": "The write runs asynchronously." },
+        { "type": "image", "file": "06-omni-lab-write-confirmation.png", "caption": "Jupyter notebook output confirming a DataFrame write request was submitted via omni_lab." },
+
+        { "type": "h2", "text": "Libraries" },
+        { "type": "p", "text": "Import a library using standard Python syntax:" },
+        { "type": "code", "text": "import pandas as pd\nimport numpy as np" },
+        { "type": "p", "text": "To view all libraries installed on the platform, run:" },
+        { "type": "code", "text": "!pip list" },
+        { "type": "p", "text": "This returns an alphabetized list of all available libraries." },
+        { "type": "image", "file": "07-pip-list-output.png" },
+        { "type": "p", "text": "For the full list of packages and libraries available in Omnisient's Jupyter environment, see the Available Packages & Libraries for Jupyter Notebook article." },
+
+        { "type": "h3", "text": "Virtual Environments" },
+        { "type": "p", "text": "A virtual environment (venv) is a persistent, isolated Python environment within a Jupyter project, separate from the project's shared Python installation. Packages installed inside a venv persist across sessions in the project's storage, avoiding the session-only installs and version drift that come with installing packages directly in the shared environment." },
+        { "type": "p", "text": "A venv is useful whenever a specific analysis or model needs a particular library version - for example, testing a newer release of a package without changing the version every other notebook in the project relies on. It also makes an analysis reproducible: recreating the same venv gives the same package versions, rather than whatever happens to be installed in the shared environment at the time." },
+        { "type": "p", "text": "Jupyter Notebook creates and activates project-specific venvs through the omni_helper extension." },
+
+        { "type": "h3", "text": "Creating and Activating a Venv" },
+        { "type": "p", "text": "Run these two cells at the top of the notebook, every session:" },
+        { "type": "bullets", "ordered": true, "items": [
+          "Load the omni_helper extension: %load_ext omni_helper",
+          "Create and activate the venv: %omni_helper venv-activate <env_name>. Replace <env_name> with any name you choose. The first time, this creates the venv and activates it; every time after, it just activates it."
+        ] },
+        { "type": "image", "file": "08-venv-activate-output.png" },
+        { "type": "note", "text": "Initial creation takes 15 to 30 minutes. The venv itself persists in the project's storage, but a new session still needs to run both cells (%load_ext omni_helper and %omni_helper venv-activate venv) to reactivate it - reactivating an existing venv takes seconds." },
+        { "type": "note", "text": "Use the same venv name across every notebook in the project, so each one activates the same persisted venv and the packages already installed in it." },
+
+        { "type": "h3", "text": "Installing Packages Inside a Venv" },
+        { "type": "p", "text": "Once a venv is active, install a package the same way as outside one:" },
+        { "type": "code", "text": "!pip install <package_name>" },
+        { "type": "p", "text": "Packages install from Omnisient's vetted package library. A package installed inside an active venv persists across sessions in the project's storage - install it once, and it's available every time that venv is reactivated, without installing it again." },
+        { "type": "p", "text": "See Using Jupyter Notebook for Packages/Libraries Management for how package installs behave outside a venv." },
+        { "type": "note", "text": "If a package isn't part of the vetted library, it isn't available to install this way. Contact support@omnisient.com to request it be added or updated." },
+
+        { "type": "h2", "text": "Company Notebook Library" },
+        { "type": "p", "text": "The Company Notebook Library allows analysts to share approved notebooks across your organization. Once a notebook has been reviewed and approved by the Omnisient team, it becomes available to all users within the company and can be copied into any project." },
+
+        { "type": "h3", "text": "Accessing the library" },
+        { "type": "image", "file": "09-notebook-library-panel.png" },
+        { "type": "p", "text": "The Notebook Library panel is available in the left sidebar within Jupyter. It displays all notebooks your organization has had approved." },
+        { "type": "p", "text": "To use a notebook, right-click it and select Copy into Project - a copy is added to your current project's file browser." },
+        { "type": "image", "file": "10-copy-into-project.png" },
+
+        { "type": "h3", "text": "Promoting a notebook to the library" },
+        { "type": "p", "text": "Any analyst can submit a notebook for inclusion in the Company Notebook Library." },
+        { "type": "image", "file": "11-promote-to-library.png" },
+        { "type": "note", "text": "Clear your notebook outputs before submitting. Notebooks submitted with outputs will be declined. Before promoting, clear all outputs - go to Edit > Clear All Outputs, or Kernel > Restart Kernel and Clear All Outputs." },
+        { "type": "p", "text": "To submit a notebook:" },
+        { "type": "bullets", "ordered": true, "items": [
+          "In the file browser, right-click the notebook you want to promote.",
+          "Select Promote to Library.",
+          "A confirmation modal appears - review and confirm your submission.",
+          "Your submission has been logged, and the Omnisient team has been notified to begin the review process."
+        ] },
+
+        { "type": "h3", "text": "What happens next" },
+        { "type": "p", "text": "Once submitted, your notebook enters a review queue. The Omnisient team will review it and communicate the outcome by email." },
+        { "type": "bullets", "ordered": false, "items": [
+          "Approved - the notebook is added to your organization's library and becomes visible to all users in the Notebook Library panel.",
+          "Declined - you will receive an email with the reason for the decline. Review the feedback, make the necessary changes, and resubmit."
+        ] },
+
+        { "type": "h2", "text": "Sharing a notebook with a project member" },
+        { "type": "p", "text": "To share directly with a specific project member, use omni_helper." },
+        { "type": "p", "text": "Permissions required: Active participant in the project. Prerequisites: Jupyter Notebook open within your project." },
+        { "type": "h3", "text": "Step 1: Load the extension" },
+        { "type": "code", "text": "%load_ext omni_helper" },
+        { "type": "h3", "text": "Step 2: Get the recipient's user address" },
+        { "type": "p", "text": "Run omni_helper project-members to return a list of project members and their user addresses. Copy the User Address of the intended recipient." },
+        { "type": "note", "text": "User addresses are project-specific - the same user has a different address in each project they belong to." },
+        { "type": "image", "file": "12-project-members-list.png", "caption": "omni_helper project-members" },
+        { "type": "h3", "text": "Step 3: Send the file" },
+        { "type": "code", "text": "omni_helper send-files --paths [filename.ipynb] --receiver [user_address]" },
+        { "type": "note", "text": "Filenames cannot contain spaces. Rename the file before transferring if needed." },
+        { "type": "image", "file": "13-send-files-output.png" },
+        { "type": "h3", "text": "Step 4: Check transfer status" },
+        { "type": "p", "text": "Run omni_helper transfer-history and match the output against the REQUEST_ID returned when you submitted." },
+        { "type": "p", "text": "Recipient: The file appears in a shared folder within their Jupyter workspace inside a dated subfolder. There is no automatic notification - they will need to check manually." },
+        { "type": "table", "headers": ["Issue", "Likely cause", "Fix"], "rows": [
+          ["Recipient not listed in project-members", "Not an active participant in this project", "Confirm they have been added to the project"],
+          ["Transfer not completing", "Filename contains spaces", "Rename and retry"],
+          ["Wrong user address", "Address copied from a different project", "Re-run omni_helper project-members in this project"]
+        ] }
+      ]
+    }
+  ]
+}
