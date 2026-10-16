@@ -1,6 +1,6 @@
 ---
 name: getting-started
-description: Interactive post-onboarding tour with adaptive pathways based on available data
+description: "Interactive post-onboarding tour that adapts to whatever data exists (calendar, Granola, or none). Use right after onboarding, or when the user says 'show me around', 'how do I start'. Also use proactively when the vault is < 7 days old. Not for the initial setup itself; use `setup`."
 ---
 
 ## Purpose
@@ -11,91 +11,20 @@ Transform the post-onboarding experience from "blank chat window" to guided valu
 
 - Automatically suggested at session start if vault < 7 days old
 - User types `/getting-started`
-- After onboarding completion (Step 10)
+- After onboarding completion (Step 11)
 - User says they're not sure what to do next
 
 ## Entry Point
 
-### Step 1: Check for Deferred Pre-Analysis
-
-**FIRST:** Read `.onboarding-complete` marker file to check if this is Phase 2 right after onboarding:
-
-```python
-marker_file = BASE_DIR / 'System' / '.onboarding-complete'
-if marker_file.exists():
-    marker_data = json.loads(marker_file.read_text())
-    pre_analysis_deferred = marker_data.get('pre_analysis_deferred', False)
-    completed_at = datetime.fromisoformat(marker_data['completed_at'])
-    age_hours = (datetime.now() - completed_at).total_seconds() / 3600
-    
-    # If onboarding just completed (< 1 hour) and pre-analysis was deferred
-    if age_hours < 1 and pre_analysis_deferred:
-        # This is the first /getting-started run after onboarding
-        # MCPs are NOW loaded and we can do the full analysis with dramatic reveal
-        run_dramatic_reveal = True
-    else:
-        run_dramatic_reveal = False
-else:
-    run_dramatic_reveal = False
-```
-
-### Step 2: Dramatic Reveal (if flagged)
-
-**If `run_dramatic_reveal` is True:**
-
-Say: "Hold on... analyzing your calendar and meetings. 🔍"
-
-**Execute analysis:**
-1. Call calendar MCP: `get_events_for_week()` 
-2. Call granola MCP: `get_recent_meetings(days=7)`
-3. Analyze the data
-
-**Then reveal what you found:**
-
-```
-**Here's what I found:**
-
-📅 **Your calendar this week:**
-• [X] meetings scheduled
-• [Y] are 1:1s  
-• [Busiest day] is packed ([Z] meetings back-to-back)
-• You're meeting most with: [Person1], [Person2], [Person3]
-
-[If Granola data:]
-📝 **Granola meetings (last 7 days):**
-• [N] meetings captured
-• [M] unique people
-• [K] external companies
-
-**I went ahead and created:**
-✅ Your weekly plan with time blocks around these meetings
-✅ Person pages for [Person1], [Person2], [Person3]
-✅ Identified [K] external organizations to track
-
-Want to see? [Show excerpt from 02-Week_Priorities/Week_Priorities.md]
-
-**This is what Dex does** - turns your calendar chaos into structure automatically.
-
-Now, want me to:
-1. Process those [N] Granola meetings (extract action items)?
-2. Create more person pages?
-3. Show you around the system?
-4. You're good - let me explore on my own
-
-What sounds useful?
-```
-
-**Important:** After showing this, update the marker file to prevent showing it again:
-```python
-marker_data['phase2_completed'] = True
-marker_data['phase2_completed_at'] = datetime.now().isoformat()
-```
-
-### Step 3: Standard Environment Check (if not flagged)
+### Step 1: Verify Onboarding
 
 Call `check_onboarding_complete()` from onboarding-mcp to verify vault status.
 
-Then check what data sources are available:
+The first-week reveal already ran during onboarding. Do not repeat the first-week statistics or present them as a new discovery, even if an older completion marker suggests analysis was deferred. `/getting-started` is now the deeper tour.
+
+### Step 2: Environment Check
+
+Check what data sources are available:
 - Calendar: Try calling calendar MCP (if fails, not available)
 - Granola: Call `granola_check_available()` from granola-mcp
 
@@ -105,137 +34,28 @@ Based on results, route to appropriate flow.
 
 ## Flow A: Has Calendar + Granola
 
-**The "I Already Looked" Flow**
+**The Deeper History Flow**
 
-### Pre-Check: Read Marker File
-
-**FIRST:** Check if `.onboarding-complete` marker file has `pre_analysis` data or deferred flag.
-
-```python
-marker_file = BASE_DIR / 'System' / '.onboarding-complete'
-if marker_file.exists():
-    marker_data = json.loads(marker_file.read_text())
-    pre_analysis = marker_data.get('pre_analysis', {})
-    pre_analysis_deferred = marker_data.get('pre_analysis_deferred', False)
-else:
-    pre_analysis = {}
-    pre_analysis_deferred = False
-```
-
-### If pre_analysis_deferred is True (first time running /getting-started):
-
-**Run the full analysis NOW and do the dramatic reveal:**
-
-```
-👋 **Welcome, [Name]!**
-
-Hold on - let me analyze what you have available...
-
-[Show spinner or progress indication]
-
-[Execute analysis:]
-1. Fetch calendar events for this week
-2. Analyze Granola meetings from last 7 days
-3. Identify top 3 frequent contacts
-4. Count unique people and external companies
-5. Create weekly plan with real data
-6. Create person pages for top contacts
-```
-
-**Then present the dramatic reveal:**
-
-```
-✓ **Analysis complete!**
-
-I just analyzed your data:
-
-**Calendar (this week):**
-• **[X] meetings total** [Add reaction: "that's a lot!" if >10, "good balance" if 5-10, "light week" if <5]
-• **[Y] are 1:1s** [Add reaction based on role]
-• **[busiest_day] is your busiest day** ([Z] meetings)
-
-**Granola (last 7 days):**
-• **[N] meetings** with transcripts
-• **[M] unique people** 
-• **[K] external companies**
-
-**I went ahead and:**
-✅ Created your weekly plan with time blocks based on these meetings
-✅ Made person pages for [Person1], [Person2], [Person3]
-✅ Identified [K] external organizations
-
-Want to see what I built? [Show excerpt from weekly plan]
-
-**This is what Dex does - it works while you're not looking.**
-
-Now, want me to process those [N] Granola meetings to extract action items and context?
-```
-
-**After dramatic reveal:**
-1. Update marker file: remove `pre_analysis_deferred`, add `pre_analysis` with the data
-2. Continue to backfill options
-
-### If pre_analysis exists (already ran /getting-started before):
+### Historical Data Discovery
 
 ```
 👋 **Welcome back, [Name]!**
 
-I already analyzed your data during setup. Let me refresh and see what's changed...
-
-[Check completed_at timestamp from marker]
-[Fetch new calendar events since that time]
-[Fetch new Granola meetings since that time]
-
-Since we set up [X hours/days ago]:
-• [N] new calendar events
-• [M] new Granola meetings
-• [P] new people detected
-
-[If pre_analysis.created_weekly_plan:]
-✅ Your weekly plan is already created (based on [X] meetings)
-
-[If pre_analysis.created_person_pages:]
-✅ Person pages already created for [list names]
-
-Want me to:
-1. Process the [M] new Granola meetings?
-2. Create person pages for the [P] new people?
-3. Update your weekly plan with new meetings?
-
-Or everything looks current and you're ready to go?
-```
-
-### If no pre_analysis (legacy or failed):
-
-**Use standard "I Already Looked" flow:**
-
-### Discovery Phase
-
-```
-👋 **Welcome back, [Name]!**
-
-I just checked what you have available...
+You have already seen this week's calendar snapshot, so I won't repeat it. Let's look at the deeper meeting history you can turn into useful context.
 
 **Calendar:** ✅ Connected
-**Granola:** ✅ Installed
+**Granola:** ✅ Connected
 
-Hold on - let me analyze what's there...
+I'll check how much Granola history is available before suggesting what to process.
 ```
 
 Then execute:
-1. Fetch calendar events for this week
-2. Analyze Granola data extent using helper function (6 months by default)
-3. If more data exists, ask if they want to see full extent
-4. Present comprehensive summary
+1. Analyze Granola data extent using helper function (6 months by default)
+2. If more data exists, ask if they want to see full extent
+3. Present the historical summary
 
 ```
-📊 **Here's what I found:**
-
-**Calendar (this week):**
-• [X] meetings scheduled
-• [Y] are 1:1s
-• [Busiest day] is your busiest day ([Z] meetings)
-• Top contacts: [Person1], [Person2], [Person3]
+📊 **Your Granola history:**
 
 **Granola data (last 6 months):**
 • [N] meetings captured
@@ -534,17 +354,12 @@ def map_strategy_to_ranges(strategy: str, extent: dict) -> dict:
 ```
 👋 **Welcome back, [Name]!**
 
-I can see your calendar for this week:
-• [X] meetings scheduled
-• [Y] are 1:1s
-• [Busiest day] looks intense
+You already saw this week's calendar snapshot during onboarding, so I won't repeat those numbers. I can now show you how to use that context for daily planning, meeting prep, and relationship notes.
 
-I can create person pages for your frequent contacts if you'd like.
-
-**But I notice you don't have Granola** - that's how I process meeting transcripts into action items and insights.
+**But I notice Granola isn't connected** - that's how I process meeting transcripts into action items and insights.
 
 Want help with:
-1. Installing Granola (automatic meeting intelligence)
+1. Connecting Granola — run `/granola-setup` to add your Granola API key (needs a Granola Business plan) for automatic meeting intelligence
 2. Connecting another meeting tool
 3. Or tell me what other tools you use - I'll build integrations
 
@@ -558,7 +373,7 @@ What sounds useful?
 ```
 👋 **Welcome back, [Name]!**
 
-I can see you have Granola installed. Let me check what's available...
+I can see Granola is connected. Let me check what's available...
 
 [Analyze Granola data extent - 6 months by default]
 
@@ -853,12 +668,13 @@ After completing the main pathway flow (A, B, or C) but before showing the compl
 
 ### How to Run
 
-Execute the integration concierge:
+Execute the integration concierge — it scans the vault for signals (mentions, links, email domains) of tools the user already works with and ranks them:
+
 ```bash
 node .claude/hooks/integration-concierge.cjs
 ```
 
-Parse the JSON output for `high_value` and `moderate_value` recommendations.
+Parse the JSON output for the high_value and moderate_value tiers. Each entry includes `shortName`, `reason` (a ready-to-use plain-English signal — "installed on your Mac", "3 mentions in your notes", "already set up as a connector but not switched on yet"), `value`, `setupTime`, and `setup` (the setup skill to run). Prefer `reason` verbatim — it already names the strongest evidence (an installed app or configured connector outranks a passing mention).
 
 ### Presenting Recommendations
 
@@ -867,8 +683,7 @@ Parse the JSON output for `high_value` and `moderate_value` recommendations.
 For each high_value integration found:
 
 ```
-By the way, I noticed you mention **[shortName]** in a few places
-([mentions] references across files like [first example file]).
+By the way — **[shortName]** ([reason]).
 
 Connecting it would give you: [value proposition]
 
@@ -885,13 +700,9 @@ Want to connect any of these? Or run `/integrate-mcp` anytime later.
 **Rules:**
 - Maximum 2 integration suggestions (don't overwhelm)
 - Only mention high_value items (score >= 5) — skip moderate and available
-- If user says yes, run the setup skill inline then return to the getting-started completion
-- If user says no/skip/later, move on without pressure
-- Don't show this section if the user already went through integration setup during onboarding Step 8
-
-### Detecting Prior Setup
-
-Check `.onboarding-complete` marker file for an `integrations_offered` flag. If present, skip this section — they already saw integration recommendations during onboarding.
+- If the user says yes, run the setup skill (its `setup` field, e.g. `/trello-setup`) inline, then return to the getting-started completion
+- If the user says no/skip/later, move on without pressure
+- Don't show this section if the user already went through integration setup during onboarding Step 10 — check the `.onboarding-complete` marker for an `integrations_offered` flag and skip if present
 
 ---
 
@@ -910,6 +721,8 @@ After any pathway completes:
 **Discovery:**
 • `/dex-level-up` - Find features you haven't tried
 • `/integrate-mcp` - Add more tools anytime
+• `/dex-doctor` - Anytime checkup: finds what's wrong, fixes what it can on its own, guides you through the rest: https://heydex.ai/help/updating-troubleshooting.html#health-dex-doctor
+• `/feedback` - Something misbehaving? Just say so in your own words — Dex writes the bug report for you and tells you when it's fixed. What a report can and can't contain: https://heydex.ai/help/feedback.html
 • Smithery.ai - Browse MCP marketplace
 
 **Come back anytime:**

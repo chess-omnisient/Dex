@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Strategically route orphaned files and extract scattered tasks
+description: "Route orphaned inbox files and pull scattered `- [ ]` tasks into the right project/person/goal using current priorities. Use when the user says 'clean up my inbox', 'triage', 'sort out these notes'. Also use proactively when `00-Inbox/` is piling up. Not for updating notes from meetings; use `process-meetings`."
 model_hint: fast
 ---
 
@@ -28,20 +28,6 @@ $MODE: Optional. "files" | "tasks" | "all". Default: "all"
 
 ---
 
----
-
-## Demo Mode Check
-
-Before executing, check if demo mode is active:
-
-1. Read `System/user-profile.yaml` and check `demo_mode`
-2. **If `demo_mode: true`:**
-   - Display: "Demo Mode Active — Using sample data"
-   - Use `System/Demo/` paths instead of root paths
-   - Write any output to `System/Demo/` subdirectories
-3. **If `demo_mode: false`:** Use normal vault paths
-
-
 ## Step 0: Load Strategic Context & Structure Discovery
 
 Before processing inbox items, load strategic context and build an index of existing entities. This makes triage strategically aware and enables intelligent routing.
@@ -50,12 +36,12 @@ Before processing inbox items, load strategic context and build an index of exis
 
 Read these files to understand current priorities:
 
-1. **Week Priorities**: `00-Inbox/Week_Priorities.md`
+1. **Week Priorities**: `02-Week_Priorities/Week_Priorities.md`
    - Extract this week's Top 3 focus items
    - Note any specific projects/people mentioned
    - Capture keywords and themes
 
-2. **Quarterly Goals**: `03-Tasks/Quarterly_Goals.md`
+2. **Quarterly Goals**: `01-Quarter_Goals/Quarter_Goals.md`
    - Extract current quarter's goals
    - Note associated projects and outcomes
    - Capture keywords and themes
@@ -95,25 +81,25 @@ Parse `System/pillars.yaml`:
 
 **This step activates automatically when QMD is installed.** It dramatically improves routing accuracy by matching inbox items to goals, projects, and people by **meaning**, not just keywords.
 
-Check if QMD MCP tools are available by calling `qmd_status`. **If available:**
+Check if QMD MCP tools are available by calling the `status` tool (QMD MCP). **If available:**
 
 After loading strategic context (Step 0), enhance matching with semantic search:
 
 1. **For each inbox item**, run:
    ```
-   qmd_search(query="[item title + first 100 words of content]", limit=5)
+   query(query="[item title + first 100 words of content]", limit=5)
    ```
    This finds vault content related by meaning. "Email about onboarding flow" matches "Q1 goal: improve activation rate" even though they share no keywords.
 
 2. **For task deduplication**, use semantic similarity instead of keyword overlap:
    ```
-   qmd_search(query="[task description]", limit=3)
+   query(query="[task description]", limit=3)
    ```
    Catches semantic duplicates: "Review Q1 metrics" detected as duplicate of "Check quarterly pipeline numbers".
 
 3. **For goal alignment scoring**, run:
    ```
-   qmd_search(query="[item content]", limit=3)
+   query(query="[item content]", limit=3)
    ```
    against quarterly goals and weekly priorities. Items semantically related to active goals get a +25 confidence boost.
 
@@ -224,11 +210,10 @@ Extract uncompleted tasks from notes and route them appropriately.
 
 4. **Deduplication Check**
 
-   For each task, check against:
-   - `00-Inbox/Weekly_Plans.md`
-   - `03-Tasks/Tasks.md`
-
-   Flag items with >60% similarity to existing tasks.
+   For each task, check against `03-Tasks/Tasks.md`. Flag items with >60% similarity
+   to existing tasks. (The Work MCP `create_task` tool runs its own similarity gate at
+   creation time — this pre-check is so you can show duplicates to the user before
+   proposing a route, not a replacement for the tool's gate.)
 
 5. **Ambiguity Detection**
 
@@ -255,11 +240,28 @@ Extract uncompleted tasks from notes and route them appropriately.
    - Wait for user input
 
 7. **Route with Confirmation**
-   - To Week Priorities: Add to `00-Inbox/Weekly_Plans.md`
-   - To Project: Add to relevant project file
-   - To Person: Add to person page's action items
+   - **Actionable task → Work MCP `create_task`.** Never append task checkboxes to
+     files by hand — hand-written tasks get no task ID, so completion sync, dedup,
+     and goal rollups can't see them. Pass what triage learned: `pillar` (confirmed
+     with the user), `priority`, `due` if a date was mentioned, `weekly_priority_id`
+     if it supports a weekly priority, `people`/`account` page paths for anyone
+     involved, and `project`/`goal` when the item clearly belongs to one. If the
+     tool flags a duplicate the user already reviewed in step 6 and chose "Keep
+     Both", retry with `on_duplicate: "force"`.
+   - To Project: Add non-task context to the relevant project file
+   - To Person: Add non-task context to the person page
    - Skip: Don't process
    - Defer: Leave for later
+
+8. **Queue-Jump Check (one line, only when it applies)**
+
+   After routing, for each created task that landed under a goal: call
+   `get_goal_backlog(goal_id)` once. If that goal's tasks carry a groomed
+   `next_up` order, ask in a single line whether the new item jumps the queue —
+   "This lands under Goal X, which has a groomed order — should it go first?"
+   If yes, call `set_task_next_up(task_id, next_up=1)` (or the position they
+   name). If the goal has no next-up order, say nothing — grooming belongs to
+   `/goal-backlog`, not triage.
 
 ---
 

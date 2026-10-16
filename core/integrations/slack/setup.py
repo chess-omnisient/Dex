@@ -138,7 +138,6 @@ auth_type: {auth_type}
 hooks:
   meeting_prep: true      # Pull Slack context for meeting attendees
   person_pages: true      # Show recent Slack mentions on person pages
-  commitment_tracking: true  # Surface promises made in Slack
 
 # Channels to index (empty = all accessible)
 channels: []
@@ -187,4 +186,4 @@ def test_connection() -> Tuple[bool, str]:
     """Test if Slack connection is working."""
     if is_installed():
         return True, "Slack MCP is configured. Restart Claude Desktop if you haven't already."
-    return False, "Slack MCP is not configured. Run /integrate-slack to set up."
+    return False, "Slack MCP is not configured. Run /integrate-mcp to set up."

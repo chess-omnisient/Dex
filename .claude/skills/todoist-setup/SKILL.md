@@ -1,55 +1,43 @@
 ---
 name: todoist-setup
-description: Connect Todoist to Dex for two-way task sync
+description: "Connect Todoist so Dex reads and updates your Todoist tasks two ways. Use when the user says 'I use Todoist', 'sync Todoist', or pastes a todoist.com link. Not for Things 3 (`things-setup`) or Trello (`trello-setup`); not for Jira tickets (`atlassian-setup`)."
 integration:
   id: todoist
   name: Todoist
-  mcp_server: todoist-mcp
+  mcp_server: null
   auth: api_key
   enhances:
     - skill: daily-plan
-      capability: "Merges Todoist tasks due today alongside Dex tasks"
+      capability: "Can pull in your Todoist tasks due today when you ask"
     - skill: triage
-      capability: "Routes items to Dex, Todoist, or both"
-    - skill: process-inbox
-      capability: "Creates tasks in both systems when processing captured items"
-    - skill: week-review
-      capability: "Shows cross-system completion stats (Dex + Todoist)"
+      capability: "Can route an item to Todoist instead of Dex when you ask"
   new_capabilities:
-    - name: Bidirectional task sync
-      trigger: "Automatic at daily plan and task creation touchpoints"
-  sync:
-    direction: bidirectional
-    entities: tasks
+    - name: On-request Todoist access
+      trigger: "Ask Dex to check, create, or complete Todoist tasks in any conversation"
 ---
 
 # Todoist Setup
 
-Connect your Todoist account to Dex so tasks stay in sync across both systems. Create a task in Dex and it appears in Todoist. Complete one in Todoist and Dex knows about it.
+Connect your Todoist account so Dex can work with your Todoist tasks whenever you ask — check what's due, create a task there instead of in Dex, or mark something done.
+
+**What this enables (on request):** Once connected, say "sync with Todoist" — Dex pushes
+new tasks to the right Todoist project, marks completions, and pulls back tasks you completed
+or created in Todoist directly. Sync runs on demand; Dex does not poll Todoist in the
+background without you asking.
 
 ## What This Enables
 
-Once connected, Dex can:
-- **Daily Plan** (`/daily-plan`): Merge Todoist tasks due today alongside your Dex tasks
-- **Triage** (`/triage`): Route new items to Dex, Todoist, or both
-- **Process Inbox** (`/process-inbox`): Same routing options when processing captured items
-- **Week Review** (`/week-review`): See completion stats across both Dex and Todoist
-
-## How Sync Works (Plain English)
-
-- When you create a task in Dex, it gets pushed to Todoist automatically
-- When you complete a task in Todoist, Dex picks it up during your next daily plan
-- Task titles, priorities, and completion status travel between both systems
-- Each system keeps its own copy — if one goes offline, the other still works
-- Sync happens at natural touchpoints (daily plan, triage) — not constantly in the background
-- Tasks created by Dex carry a `[dex:task-ID]` marker in the description so the systems never duplicate
+Once connected, you can ask Dex to:
+- **See what's due**: "What's due in Todoist today?" — including alongside your daily plan
+- **Create there instead**: "Add that to Todoist, not Dex" during triage or any conversation
+- **Complete from chat**: "Mark the invoice task done in Todoist"
+- **Cross-check**: "Anything in Todoist that isn't tracked in Dex?"
 
 ## Privacy
 
-- Task titles and status sync between Dex and Todoist. No task content or notes are stored beyond what you already have in both systems.
-- Your API key stays local on your machine in `System/integrations/config.yaml` (gitignored)
+- Dex reads and writes your Todoist tasks only when you ask it to
+- Your API key stays local in the ignored vault-root `.env` file. Tracked YAML stores only its variable name.
 - Dex never shares your Todoist data with third parties
-- Tasks created in Todoist are only pulled into Dex if they were NOT originally pushed from Dex (loop prevention via `[dex:...]` marker)
 
 ## When to Run
 
@@ -65,7 +53,9 @@ Once connected, Dex can:
 ### Step 1: Check if Already Connected
 
 1. Check `System/integrations/config.yaml` for a `todoist:` section with `enabled: true`
-2. If enabled, test the connection by listing projects with the stored API key
+   through `core.utils.strict_yaml.load_yaml_path`; refuse duplicate keys, aliases, anchors,
+   or merge mappings before reading or writing any setup field.
+2. If enabled, test authentication with the read-only health check
 3. If healthy, skip to **Reconfiguration** section below
 4. If not configured or unhealthy, continue to Step 2
 
@@ -76,7 +66,8 @@ Say:
 ```
 **Let's connect Todoist to Dex.**
 
-Two-way task sync. Create in Dex — appears in Todoist. Complete in Todoist — done in Dex.
+Once connected, you can ask me to check, create, or complete Todoist tasks
+right from our conversations.
 
 **What you'll need:**
 - Your Todoist API token (I'll show you where to find it)
@@ -87,7 +78,7 @@ Two-way task sync. Create in Dex — appears in Todoist. Complete in Todoist —
 
 Wait for confirmation.
 
-### Step 3: Get the API Key
+### Step 3: Enter the API Key Locally
 
 Guide the user:
 
@@ -98,57 +89,44 @@ To get your Todoist API token:
 2. Go to **Settings** → **Integrations** → **Developer**
 3. Copy the **API token** shown there
 
-Paste it here when you have it.
+Do not paste the token into this conversation. Open the ignored vault-root `.env` in your
+local editor and replace the placeholder in this line directly:
+
+`TODOIST_API_KEY=<paste token locally here>`
+
+Save the file with mode `0600`, then reply only `saved`. Dex must never echo, read aloud,
+log, or include the value in a command, argv, or process environment.
 ```
 
-Wait for the user to provide their API key. Validate it's a non-empty string (Todoist API tokens are typically 40-character hex strings).
+Wait only for the non-secret `saved` confirmation. Never ask the user to provide or validate
+the token in chat.
 
-### Step 4: Add MCP Server to Config
+### Step 4: Store the Local Credential
 
-Check the user's MCP configuration. If `todoist-mcp` is not listed:
+Confirm locally that `.env` defines `TODOIST_API_KEY` without printing or returning its value.
+Use `python3 -m core.utils.credential_workflow scan` for the redacted authority finding; repair
+permissions/ownership before continuing if it reports an invalid `.env` authority.
+Preserve unrelated lines and never place the value in `.mcp.json`, tracked YAML, a command,
+argv, logs, transcript, or process environment. Existing `.mcp.json` is scan/report-only and
+must remain byte-identical.
 
-1. Explain:
-
-```
-I'll add the Todoist connector to your configuration.
-This lets Dex talk to Todoist using your API token.
-```
-
-2. Add to the user's `.mcp.json` (use the `/dex-add-mcp` skill or manual edit):
-
-```json
-{
-  "todoist-mcp": {
-    "command": "npx",
-    "args": ["-y", "todoist-mcp-server"],
-    "env": {
-      "TODOIST_API_KEY": "<user's API key>"
-    }
-  }
-}
-```
-
-3. Tell the user the MCP server needs to restart for changes to take effect.
+Before health, update only the non-secret tracked Todoist fields to `enabled: true` and
+`api_key_env_var: TODOIST_API_KEY`; do not add an `api_key` field.
 
 ### Step 5: Test the Connection
 
-Use the API key to list projects as a connectivity test. Run a curl or use the MCP server:
+Use only Dex's sanitized Python-to-adapter-stdin read-only health path. It resolves `.env`
+internally and performs Todoist `GET /projects`; it does not put the token in the command or
+environment:
 
 ```bash
-curl -s -H "Authorization: Bearer $API_KEY" https://api.todoist.com/api/v1/projects
+python3 -c 'from core.integrations.task_sync import check_service_health; print(check_service_health("todoist"))'
 ```
 
-**If projects load successfully:**
+**If the health result is `{"healthy": True}`:**
 
 ```
-Connected! I can see your Todoist projects:
-
-1. Inbox
-2. Work
-3. Personal
-...
-
-Looking good!
+Connected! Todoist authentication succeeded through the read-only health check.
 ```
 
 **If it fails:**
@@ -172,98 +150,58 @@ Ask the user which Todoist project should receive Dex tasks:
 ```
 **Which Todoist project should Dex tasks go into?**
 
-Your projects:
-1. Inbox
-2. Work
-3. Personal
-...
+The health check does not enumerate projects. Open Todoist locally and enter the exact project
+name you want Dex to use without pasting any credential.
 
 You can pick one default project, or map each Dex pillar to a different project.
 
 **Option A:** All Dex tasks go to one project (simplest)
 **Option B:** Map each pillar to a project:
-  - Deal Support → [project]
-  - Thought Leadership → [project]
-  - Product Feedback → [project]
+  (Read pillar names from `System/pillars.yaml` and list them here)
+  - [pillar 1 name] → [project]
+  - [pillar 2 name] → [project]
+  - [pillar 3 name] → [project]
 
 Which works for you?
 ```
 
 Save their choices for the config file.
 
-### Step 7: Trust Level
+### Step 7: Save Configuration
 
-Ask about sync autonomy — **never use the word "tier"** (per integration-patterns.md):
-
-```
-**How hands-on do you want to be with task sync?**
-
-1. **"Show me first"** — I'll preview changes before syncing (recommended to start)
-2. **"Keep them in sync"** — Tasks auto-sync both ways, silently
-3. **"Only pull in"** — Import tasks from Todoist but don't push back
-```
-
-Map their choice to config values:
-- **Show me first** → `trust_level: confirm_each`
-- **Keep them in sync** → `trust_level: autonomous`
-- **Only pull in** → `trust_level: read_only`
-
-### Step 8: Save Configuration
-
-Write to `System/integrations/config.yaml` — update the todoist section:
+Write to `System/integrations/config.yaml` — update the todoist section. Build
+`pillar_map` dynamically from the user's actual pillars in `System/pillars.yaml`
+(one entry per pillar id — never assume fixed pillar names); it's used when the
+user asks Dex to file a task in the matching Todoist project.
 
 ```yaml
 todoist:
   enabled: true
   configured_at: YYYY-MM-DD
-  mcp_server: todoist-mcp
   auth_type: api_key
-  api_key: <user's API key>
-  task_sync: true
-  trust_level: <confirm_each | autonomous | read_only>
+  api_key_env_var: TODOIST_API_KEY
   project: <default project name>
   pillar_map:
-    deal_support: <project name or omit>
-    thought_leadership: <project name or omit>
-    product_feedback: <project name or omit>
-  sync_labels: []
-  auto_sync: true
-  features:
-    task_sync: true
-    external_task_merge: true
+    [pillar_id]: <Todoist project name>   # one entry per pillar, from pillars.yaml
 ```
 
 If the file already exists, only update the `todoist:` section. Preserve other integration configs.
 
-### Step 9: Capability Cascade
+### Step 8: Capability Cascade
 
 Read the integration manifest from this skill's frontmatter. Present:
 
 ```
-**Todoist is connected!** Here's what just changed:
+**Todoist is connected!** Here's what you can do now:
 
-### Enhanced (existing skills that got smarter)
+- **Ask about Todoist anytime** — "What's due in Todoist today?", "Add that to
+  Todoist", "Mark the invoice task done in Todoist".
+- **Bring it into your planning** — during `/daily-plan` or `/triage`, ask Dex to
+  include or route to Todoist and it will.
+- **Sync on demand** — say "sync Dex with Todoist" and new tasks push, completions flow
+  both directions, and tasks you added in Todoist come in for review
 
-- **`/daily-plan`** → Merges Todoist tasks due today alongside your Dex tasks.
-  Externally-created tasks show a [Todoist] label so you know where they came from.
-
-- **`/triage`** → Now offers routing to Dex, Todoist, or both when processing items.
-
-- **`/process-inbox`** → Same routing — "This looks like a task. Add to Dex, Todoist, or both?"
-
-- **`/week-review`** → Shows completion stats across both systems so you see the full picture.
-
-### New Superpowers
-
-- Bidirectional task sync — automatic at daily plan and task creation touchpoints.
-
-### How It Works
-
-- **Reading:** Todoist tasks appear in your daily plan automatically
-- **Writing:** [trust level description based on user's choice above]
-- **Privacy:** Task titles and status sync. Your API key stays local. No data shared with third parties.
-
-These work automatically starting now. Run `/dex-level-up` anytime to see what else you can do.
+**Sync is on demand** — say "sync with Todoist" anytime. Dex doesn't poll in the background.
 ```
 
 ---
@@ -278,29 +216,15 @@ Todoist API keys don't expire unless you regenerate them. If you see auth errors
 2. Copy the current API token (or regenerate if needed)
 3. Update the key by running `/todoist-setup` again
 
-### Tasks Not Syncing
+### "Dex doesn't see my Todoist tasks"
 
-A few possibilities:
-- **Sync only happens at touchpoints** — during `/daily-plan`, task creation, or `/triage`. There's no background sync.
-- **Check the project mapping** — if your Dex pillar maps to a project that was renamed or deleted in Todoist, tasks may go to the Inbox instead.
-- **Rate limits** — Todoist allows 450 requests per minute. The adapter handles 429 responses with automatic retry, so this is almost never an issue.
+Dex only reads Todoist when you ask it to — there is no background sync. Ask
+directly ("what's in Todoist?") and if that errors, re-run `/todoist-setup` to
+check the connection.
 
-### Wrong Project
+### "Todoist credential not found"
 
-If tasks are landing in the wrong Todoist project:
-1. Run `/todoist-setup` again
-2. Update the pillar-to-project mapping
-3. Existing tasks won't move — only new tasks use the updated mapping
-
-### Duplicate Tasks
-
-If you see duplicates, check:
-- **Dex-originated tasks** should have `[dex:task-...]` in their Todoist description. The adapter skips these during pull-in to prevent loops.
-- **Todoist-originated tasks** that you manually add to Dex won't have a mapping in `.sync-state.json` and may get pulled again. Mark them in Dex to create the mapping.
-
-### "Todoist MCP not found"
-
-The Todoist adapter uses direct API calls (not MCP) for the sync bridge. The MCP server is optional but enhances other skills. Re-run `/todoist-setup` to detect and fix configuration.
+Re-run `/todoist-setup` to restore the vault-root `.env` value and tracked reference.
 
 ---
 
@@ -309,11 +233,10 @@ The Todoist adapter uses direct API calls (not MCP) for the sync bridge. The MCP
 If the user runs `/todoist-setup` when already configured:
 
 1. Check current config from `System/integrations/config.yaml`
-2. Test the existing API key with a project list call
-3. Show current mapping and trust level
+2. Test the existing API key with the read-only authentication health check
+3. Show the current pillar-to-project mapping
 4. Offer options:
    - Update project mapping
-   - Change sync behavior (trust level)
    - Update API key
    - Disconnect Todoist
 

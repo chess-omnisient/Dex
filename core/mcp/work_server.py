@@ -12,60 +12,83 @@ Provides deterministic operations through structured tools with:
 - Progress tracking and rollup across planning levels
 """
 
-import os
-import sys
 import json
 import logging
+import os
 import re
-from pathlib import Path
-from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta, date
+import sys
+import unicodedata
 from collections import Counter
+from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 try:
     import yaml
 except ImportError:
     yaml = None  # Will fall back to defaults if yaml not available
 
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
+from mcp.server import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
 
-# QMD semantic search (optional - gracefully degrade if not available)
-try:
-    from utils.qmd_query import is_qmd_available, vault_search
-    HAS_QMD = True
-except ImportError:
-    HAS_QMD = False
+# Make the canonical package import work both when this file is launched as a
+# script and when it is imported by another Dex server. This must happen before
+# the required analytics receipt route is resolved.
+_ANALYTICS_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+if _ANALYTICS_REPO_ROOT not in sys.path:
+    sys.path.insert(0, _ANALYTICS_REPO_ROOT)
 
-# Analytics helper (optional - gracefully degrade if not available)
+from core.mcp.analytics_receipts import (
+    surface_analytics_attempt,
+    unavailable_analytics_delivery,
+)
+
+
+def _analytics_helper_unavailable_result() -> dict[str, object]:
+    """Return only the fixed safe outcome when the shared helper cannot load."""
+    return unavailable_analytics_delivery()
+
+
+# This is a required receipt route, not a best-effort no-op: use the one
+# package helper in every launch mode, and make an unavailable helper visible
+# through the caller's existing safe result path.
 try:
-    from analytics_helper import fire_event as _fire_analytics_event
+    from core.mcp.analytics_helper import fire_event as _fire_analytics_event
     HAS_ANALYTICS = True
 except ImportError:
     HAS_ANALYTICS = False
+
     def _fire_analytics_event(event_name, properties=None):
-        return {'fired': False, 'reason': 'analytics_not_available'}
+        return _analytics_helper_unavailable_result()
 
 # Set up logging first (before any imports that might use it)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Add grandparent directory to path for 'core.utils' imports
-# The script is at core/mcp/work_server.py, so we need to add the vault root
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+_LEAKED_TOOL_CALL_DELIMITER_RE = re.compile(
+    r'</context\s*>|<parameter\s+name\s*=',
+    re.IGNORECASE,
+)
+# QMD semantic search (optional - gracefully degrade if not available)
+try:
+    from core.utils.qmd_query import is_qmd_available, vault_search
+    HAS_QMD = True
+except ImportError:
+    HAS_QMD = False
 
 # Import reference formatter for Obsidian wiki link support
 try:
     from core.utils.reference_formatter import (
-        format_person_reference,
-        format_project_reference,
         format_company_reference,
         format_meeting_reference,
+        format_person_reference,
+        format_project_reference,
         format_task_reference,
-        get_obsidian_mode
+        get_obsidian_mode,
     )
     HAS_REFERENCE_FORMATTER = True
 except ImportError:
@@ -75,26 +98,33 @@ except ImportError:
 # Import QMD search index refresh (optional - silently skips if QMD not installed)
 try:
     from core.utils.qmd_indexer import refresh_search_index
-    HAS_QMD = True
 except ImportError:
-    HAS_QMD = False
     def refresh_search_index(): pass
 
 # Health system — error queue and health reporting
 try:
-    from core.utils.dex_logger import log_error as _log_health_error, mark_healthy as _mark_healthy
+    from core.utils.dex_logger import log_error as _log_health_error
+    from core.utils.dex_logger import mark_healthy as _mark_healthy
     _HAS_HEALTH = True
 except ImportError:
     _HAS_HEALTH = False
 
 # Timezone-aware date/time (respects user-profile.yaml timezone)
 try:
-    from core.utils.timezone import now as _tz_now, today as _tz_today
+    from core.utils.timezone import now as _tz_now
+    from core.utils.timezone import today as _tz_today
 except ImportError:
     def _tz_now():
         return datetime.now()
     def _tz_today():
         return date.today()
+
+# User-configured working week (defaults to Monday-Friday)
+try:
+    from core.utils.working_week import is_working_day as _is_working_day
+except ImportError:
+    def _is_working_day(target_date):
+        return target_date.weekday() < 5
 
 # Custom JSON encoder for handling date/datetime objects
 class DateTimeEncoder(json.JSONEncoder):
@@ -103,72 +133,131 @@ class DateTimeEncoder(json.JSONEncoder):
             return obj.isoformat()
         return super().default(obj)
 
-# Configuration - Vault paths
-_vault_path = os.environ.get('VAULT_PATH')
-if not _vault_path:
-    logging.warning("VAULT_PATH not set — falling back to cwd(). Task ID generation may produce duplicates.")
-BASE_DIR = Path(_vault_path) if _vault_path else Path.cwd()
-TASKS_FILE = BASE_DIR / '03-Tasks/Tasks.md'
-WEEK_PRIORITIES_FILE = BASE_DIR / 'Inbox' / 'Week Priorities.md'
-QUARTER_GOALS_FILE = BASE_DIR / '01-Quarter_Goals/Quarter_Goals.md'
-GOALS_FILE = BASE_DIR / 'GOALS.md'  # Legacy, kept for compatibility
-INBOX_DIR = BASE_DIR / 'Inbox'
-PILLARS_FILE = BASE_DIR / 'System' / 'pillars.yaml'
-SKILL_RATINGS_FILE = BASE_DIR / 'System' / 'Skill_Ratings' / 'ratings.jsonl'
-COMPANIES_DIR = BASE_DIR / 'Active' / 'Relationships' / 'Companies'
-PEOPLE_DIR = BASE_DIR / 'People'
-MEETINGS_DIR = BASE_DIR / 'Inbox' / 'Meetings'
-PEOPLE_INDEX_FILE = BASE_DIR / 'System' / 'People_Index.json'
-MEETING_CACHE_FILE = BASE_DIR / 'System' / 'Memory' / 'meeting-cache.json'
+# Configuration - Vault paths (centralized in core.paths)
+_repo_root = str(Path(__file__).parent.parent.parent)
+if _repo_root not in sys.path:
+    sys.path.append(_repo_root)
+from core import capabilities as capability_rooms
+from core.context.person_context import get_person_context as get_person_context_payload
+from core.context.session_boot import build_session_boot
+from core.entity_engine import (
+    create_page_if_absent,
+    fingerprint_page,
+    mutate_relationships,
+    render_company_page,
+)
+from core.entity_engine import index as entity_index
+from core.entity_engine import reroute as entity_reroute
+from core.gates.safety import evaluate_safety_gate
+from core.meeting_capture_match import match_capture_to_calendar
+from core.paths import (
+    COMPANIES_DIR,
+    COMPANY_INDEX_FILE,
+    GOALS_FILE,
+    INBOX_DIR,
+    MEETING_CACHE_FILE,
+    MEETINGS_DIR,
+    PEOPLE_DIR,
+    PEOPLE_INDEX_FILE,
+    PILLARS_FILE,
+    PROJECTS_DIR,
+    QUARTER_GOALS_FILE,
+    SKILL_RATINGS_FILE,
+    TASKS_FILE,
+    USER_PROFILE_FILE,
+    WEEK_PRIORITIES_FILE,
+)
+from core.paths import (
+    VAULT_ROOT as BASE_DIR,
+)
+from core.soft_promise import detect_soft_promises
+from core.utils.company_domains import (
+    company_name_from_domain,
+    is_freemail,
+    registrable_domain,
+)
+from core.utils.entity_pages import parse_entity_page, render_person_page
+from core.utils.feature_status import feature_status
 
-# Demo Mode Configuration
-USER_PROFILE_FILE = BASE_DIR / 'System' / 'user-profile.yaml'
-DEMO_DIR = BASE_DIR / 'System' / 'Demo'
-
-def is_demo_mode() -> bool:
-    """Check if demo mode is enabled in user-profile.yaml"""
-    if not USER_PROFILE_FILE.exists() or yaml is None:
-        return False
-    
-    try:
-        content = USER_PROFILE_FILE.read_text()
-        data = yaml.safe_load(content)
-        return bool(data.get('demo_mode', False))
-    except Exception as e:
-        logger.error(f"Error checking demo mode: {e}")
-        return False
 
 def get_tasks_file() -> Path:
-    """Get the appropriate 03-Tasks/Tasks.md file based on demo mode"""
-    if is_demo_mode():
-        return DEMO_DIR / '03-Tasks/Tasks.md'
+    """Get the canonical task backlog file."""
     return TASKS_FILE
 
 def get_pillars_file() -> Path:
-    """Get the appropriate pillars.yaml file based on demo mode"""
-    if is_demo_mode():
-        demo_pillars = DEMO_DIR / 'pillars.yaml'
-        if demo_pillars.exists():
-            return demo_pillars
+    """Get the canonical pillars configuration file."""
     return PILLARS_FILE
 
 def get_week_priorities_file() -> Path:
-    """Get the appropriate Week Priorities file based on demo mode"""
-    if is_demo_mode():
-        return DEMO_DIR / 'Inbox' / 'Week Priorities.md'
+    """Get the canonical weekly priorities file."""
     return WEEK_PRIORITIES_FILE
 
 def get_people_dir() -> Path:
-    """Get the appropriate People directory based on demo mode"""
-    if is_demo_mode():
-        return DEMO_DIR / 'People'
+    """Get the canonical people directory."""
     return PEOPLE_DIR
 
 def get_meetings_dir() -> Path:
-    """Get the appropriate Meetings directory based on demo mode"""
-    if is_demo_mode():
-        return DEMO_DIR / 'Inbox' / 'Meetings'
+    """Get the canonical meetings directory."""
     return MEETINGS_DIR
+
+def get_companies_dir() -> Path:
+    """Get the canonical Companies directory."""
+    return COMPANIES_DIR
+
+
+def _relationship_page_path(page: str) -> Path:
+    """Resolve one Work-MCP page argument without allowing vault escape."""
+    if not isinstance(page, str) or not page.strip():
+        raise ValueError("page must be a vault-relative Markdown path")
+    root = Path(BASE_DIR).resolve()
+    candidate = Path(page.strip())
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    resolved = candidate.resolve(strict=True)
+    try:
+        resolved.relative_to(root)
+    except ValueError as error:
+        raise ValueError("page must stay inside the vault") from error
+    if resolved.suffix.lower() != ".md":
+        raise ValueError("page must be a Markdown file")
+    return resolved
+
+
+def _relationship_action(
+    page: str,
+    edge_key: str,
+    *,
+    dismiss: bool,
+) -> Dict[str, Any]:
+    """Drive a confirm or dismiss through the canonical entity engine."""
+    page_path = _relationship_page_path(page)
+    intent = {
+        "kind": (
+            "dismiss_relationship" if dismiss else "confirm_relationship"
+        ),
+        "edge_key": edge_key,
+    }
+    if dismiss:
+        intent["date"] = _tz_today().isoformat()
+    try:
+        result = mutate_relationships(
+            page_path,
+            fingerprint_page(page_path),
+            intent,
+        )
+    except (OSError, TypeError, ValueError) as error:
+        return {
+            "success": False,
+            "error": str(error),
+            "page": str(page),
+            "edge_key": edge_key,
+        }
+    return {
+        "success": result.status in {"updated", "noop"},
+        "status": result.status,
+        "page": str(page),
+        "edge_key": edge_key,
+    }
 
 
 # Default pillars (used if pillars.yaml doesn't exist or can't be loaded)
@@ -221,7 +310,12 @@ def load_pillars_from_yaml() -> Dict[str, Dict]:
             pillars[pillar_id] = {
                 'name': pillar.get('name', pillar_id),
                 'description': pillar.get('description', ''),
-                'keywords': pillar.get('keywords', [])
+                # Coerce to str: YAML parses unquoted tokens like 1:1 as ints
+                # (base-60), which would crash guess_pillar's `keyword in text`.
+                # `or []` guards a present-but-empty `keywords:` (parses as None),
+                # which would otherwise raise here and discard ALL pillars via the
+                # outer except.
+                'keywords': [str(k) for k in (pillar.get('keywords') or [])]
             }
         
         if not pillars:
@@ -268,6 +362,15 @@ STATUS_CODES = {
     's': 'started',
     'b': 'blocked',
     'd': 'done'
+}
+
+# Checkbox glyphs on disk. Started uses the common in-progress convention
+# `- [/]`; legacy `- [s]` lines are still read as started but never written.
+STATUS_CHECKBOXES = {
+    'n': '- [ ]',
+    's': '- [/]',
+    'b': '- [b]',
+    'd': '- [x]',
 }
 
 # Deduplication configuration
@@ -335,6 +438,82 @@ def guess_priority(item: str) -> str:
     # Default
     return 'P2'
 
+def priority_from_section(section: Optional[str]) -> Optional[str]:
+    """Read priority from a markdown section heading when present."""
+    if not section:
+        return None
+
+    section_upper = section.upper()
+    if section_upper.startswith('P0') or 'URGENT' in section_upper:
+        return 'P0'
+    if section_upper.startswith('P1') or 'IMPORTANT' in section_upper:
+        return 'P1'
+    if section_upper.startswith('P2') or 'NORMAL' in section_upper:
+        return 'P2'
+    if section_upper.startswith('P3') or 'BACKLOG' in section_upper:
+        return 'P3'
+
+    return None
+
+def default_section_for_priority(priority: str, tasks_content: str) -> Optional[str]:
+    """Find an existing Tasks.md section heading that carries this priority."""
+    for match in re.finditer(r'(?m)^##\s+(.+?)\s*$', tasks_content):
+        heading = match.group(1).strip()
+        if priority_from_section(heading) == priority:
+            return heading
+    return None
+
+def _normalized_project_path(value: str) -> str:
+    """Compare project paths leniently: case and a trailing .md never matter."""
+    return value.strip().rstrip('/').removesuffix('.md').casefold()
+
+# An open backlog task counts as stale once its ID date is this many days old
+# ("3+ weeks untouched" in grooming language).
+STALE_TASK_DAYS = 21
+
+PRIORITY_ORDER = {'P0': 0, 'P1': 1, 'P2': 2, 'P3': 3}
+
+def task_staleness_days(task: Dict[str, Any]) -> Optional[int]:
+    """Days since the task ID's creation date; None when the task has no ID."""
+    match = re.fullmatch(
+        r'task-(\d{4})(\d{2})(\d{2})-\d{3,}', task.get('task_id') or ''
+    )
+    if not match:
+        return None
+    try:
+        created = date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    except ValueError:
+        return None
+    return max((_tz_today() - created).days, 0)
+
+def backlog_sort_key(task: Dict[str, Any]) -> tuple:
+    """Order a backlog group: next-up order, then priority, then oldest first.
+
+    Tasks without a dated ID carry no age, so they sort after dated tasks of
+    the same priority. The sort is stable; next-up values need not be unique.
+    """
+    next_up = task.get('next_up')
+    priority_rank = PRIORITY_ORDER.get(task.get('priority'), len(PRIORITY_ORDER))
+    id_match = re.fullmatch(r'task-(\d{8})-(\d{3,})', task.get('task_id') or '')
+    age_key = (
+        (id_match.group(1), int(id_match.group(2)))
+        if id_match
+        else ('99999999', float('inf'))
+    )
+    return (
+        0 if next_up is not None else 1,
+        next_up if next_up is not None else 0,
+        priority_rank,
+        age_key,
+    )
+
+def active_tasks_for_priority_limits(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Return open canonical backlog tasks for priority limit checks."""
+    return [
+        task for task in tasks
+        if not task.get('completed') and task.get('source', 'tasks') == 'tasks'
+    ]
+
 def generate_task_id() -> str:
     """Generate a unique task ID in format: task-YYYYMMDD-XXX
 
@@ -360,7 +539,7 @@ def generate_task_id() -> str:
         for md_file in folder.rglob('*.md'):
             try:
                 content = md_file.read_text()
-                pattern = r'\^task-\d{8}-(\d{3})'
+                pattern = r'\^task-\d{8}-(\d{3,})'
                 matches = re.findall(pattern, content)
                 existing_ids.extend([int(m) for m in matches])
             except Exception:
@@ -372,30 +551,243 @@ def generate_task_id() -> str:
 
 def extract_task_id(line: str) -> Optional[str]:
     """Extract task ID from a line"""
-    match = re.search(r'\^(task-\d{8}-\d{3})', line)
+    match = re.search(r'\^(task-\d{8}-\d{3,})', line)
     return match.group(1) if match else None
+
+def _is_indented_bullet(line: str) -> bool:
+    """Return whether a line is an indented child bullet of a task."""
+    return bool(re.match(r'^[ \t]+-\s+', line))
+
+def _indent_width(line: str) -> int:
+    """Return indentation width with tabs normalized for hierarchy checks."""
+    match = re.match(r'^[ \t]*', line)
+    return len(match.group(0).expandtabs(4)) if match else 0
+
+def _task_child_lines(
+    lines: List[str], task_index: int, *, include_indices: bool = False
+) -> List[str] | List[tuple[int, str]]:
+    """Return direct child bullets without borrowing a sibling task's metadata."""
+    task_indent = _indent_width(lines[task_index])
+    descendants = []
+    index = task_index + 1
+    while index < len(lines) and _is_indented_bullet(lines[index]):
+        indent = _indent_width(lines[index])
+        if indent <= task_indent:
+            break
+        descendants.append((index, indent, lines[index]))
+        index += 1
+    if not descendants:
+        return []
+    direct_indent = min(indent for _index, indent, _line in descendants)
+    child_lines = [
+        (index, line)
+        for index, indent, line in descendants
+        if indent == direct_indent
+    ]
+    if include_indices:
+        return child_lines
+    return [line for _index, line in child_lines]
+
+def _parse_task_metadata(child_lines: List[str], title: str) -> Dict[str, Any]:
+    """Parse additive task metadata, silently ignoring malformed values."""
+    fields: Dict[str, str] = {}
+    for child_line in child_lines:
+        bullet = re.sub(r'^[ \t]+-\s*', '', child_line, count=1)
+        for part in bullet.split('|'):
+            match = re.match(
+                r'^\s*(Pillar|Priority|Weekly priority|Due|Source|Project|Goal|Next up)\s*:\s*(.*?)\s*$',
+                part,
+                re.IGNORECASE,
+            )
+            if match:
+                fields[match.group(1).lower()] = match.group(2)
+
+    pillar = guess_pillar(title)
+    stored_pillar = fields.get('pillar')
+    if stored_pillar:
+        stored_pillar_lower = stored_pillar.casefold()
+        pillar = next(
+            (
+                pillar_key
+                for pillar_key, pillar_info in PILLARS.items()
+                if str(pillar_info.get('name', '')).casefold() == stored_pillar_lower
+            ),
+            pillar,
+        )
+
+    priority = fields.get('priority')
+    if priority not in PRIORITIES:
+        priority = None
+
+    weekly_priority_id = None
+    weekly_match = re.fullmatch(
+        r'\[(week-\d{4}-W\d{2}-p\d+)\]', fields.get('weekly priority', '')
+    )
+    if weekly_match:
+        weekly_priority_id = weekly_match.group(1)
+
+    due = fields.get('due')
+    if due and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', due):
+        due = None
+
+    goal = None
+    goal_tentative = False
+    goal_match = re.fullmatch(
+        r'(Q\d+-\d{4}-goal-\d+)(\s+\(\?\))?',
+        fields.get('goal', ''),
+    )
+    if goal_match:
+        goal = goal_match.group(1)
+        goal_tentative = bool(goal_match.group(2))
+
+    next_up = None
+    next_up_match = re.fullmatch(r'[1-9]\d*', fields.get('next up', ''))
+    if next_up_match:
+        next_up = int(next_up_match.group(0))
+
+    return {
+        'pillar': pillar,
+        'priority': priority,
+        'weekly_priority_id': weekly_priority_id,
+        'due': due,
+        'source': fields.get('source') or None,
+        'project': fields.get('project') or None,
+        'goal': goal,
+        'goal_tentative': goal_tentative,
+        'next_up': next_up,
+    }
+
+def _task_title_from_line(line: str) -> str:
+    """Extract task text while accepting both completion timestamp layouts."""
+    title = re.sub(r'^\s*-\s*\[[ bBsSxX/]\]\s*', '', line, count=1)
+    title = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', title)
+    title = re.sub(r'\s*\^task-\d{8}-\d{3,}\b', '', title)
+    title = title.strip()
+    bold_match = re.match(r'^\*\*(.+?)\*\*(.*)$', title)
+    if bold_match:
+        title = (bold_match.group(1) + bold_match.group(2)).strip()
+    return title
+
+
+def _source_page_path(source: str) -> Optional[Path]:
+    """Resolve a vault-relative source page without allowing vault escape."""
+    supplied = Path(source)
+    if supplied.is_absolute():
+        return None
+
+    base_dir = BASE_DIR.resolve()
+    source_path = (BASE_DIR / supplied).resolve()
+    candidates = [source_path]
+    if not supplied.suffix:
+        candidates.append(source_path.with_suffix('.md'))
+
+    for candidate in candidates:
+        try:
+            candidate.relative_to(base_dir)
+        except ValueError:
+            continue
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _line_without_task_anchor(line: str) -> str:
+    """Remove a task anchor for idempotent source-line comparison."""
+    return re.sub(r'\s+\^task-\d{8}-\d{3,}\b', '', line).strip()
+
+
+def stamp_task_source_line(source: str, source_line: str,
+                           task_id: str) -> Dict[str, Any]:
+    """Append a task anchor to one exact source checkbox line, best effort."""
+    result = {'attempted': True, 'stamped': False}
+    source_path = _source_page_path(source)
+    if source_path is None:
+        return {
+            **result,
+            'reason': 'source_not_found',
+            'match_count': 0,
+        }
+
+    try:
+        content = source_path.read_text()
+        lines = content.splitlines(keepends=True)
+        target = source_line.strip()
+        exact_matches = []
+        anchored_matches = []
+
+        for index, raw_line in enumerate(lines):
+            line = raw_line.rstrip('\r\n')
+            stripped = line.strip()
+            if not re.match(r'^-\s*\[[ bBsSxX/]\]', stripped):
+                continue
+            if stripped == target:
+                exact_matches.append(index)
+            elif (
+                not re.search(r'\^task-\d{8}-\d{3,}\b', target)
+                and re.search(r'\^task-\d{8}-\d{3,}\b', stripped)
+                and _line_without_task_anchor(stripped) == target
+            ):
+                anchored_matches.append(index)
+
+        if len(exact_matches) > 1:
+            return {
+                **result,
+                'reason': 'multiple_matches',
+                'match_count': len(exact_matches),
+            }
+        if len(exact_matches) == 1:
+            match_index = exact_matches[0]
+            matched_line = lines[match_index].rstrip('\r\n')
+            if re.search(r'\^task-\d{8}-\d{3,}\b', matched_line):
+                return {**result, 'reason': 'already_anchored'}
+
+            line_ending = lines[match_index][len(matched_line):]
+            lines[match_index] = f'{matched_line} ^{task_id}{line_ending}'
+            source_path.write_text(''.join(lines))
+            return {'attempted': True, 'stamped': True}
+
+        if len(anchored_matches) == 1:
+            return {**result, 'reason': 'already_anchored'}
+        if len(anchored_matches) > 1:
+            return {
+                **result,
+                'reason': 'multiple_matches',
+                'match_count': len(anchored_matches),
+            }
+        return {
+            **result,
+            'reason': 'no_match',
+            'match_count': 0,
+        }
+    except Exception as error:
+        logger.warning("Could not stamp task source line in %s: %s", source_path, error)
+        return {**result, 'reason': 'write_failed'}
 
 def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
     """Find all instances of a task ID across all markdown files"""
     instances = []
-    
+    # Anchor on a digit boundary: a plain substring test lets task-...-100
+    # match inside task-...-1000 and update the wrong row.
+    anchored = re.compile(r'\^' + re.escape(task_id) + r'(?!\d)')
+
     for md_file in BASE_DIR.rglob('*.md'):
         try:
             content = md_file.read_text()
             lines = content.split('\n')
-            
+
             for i, line in enumerate(lines):
-                if f'^{task_id}' in line and ('- [ ]' in line or '- [x]' in line):
+                if anchored.search(line) and re.match(
+                    r'^\s*-\s*\[[ bBsSxX/]\]', line
+                ):
                     # Extract task title
-                    title_match = re.match(r'-\s*\[[x ]\]\s*\*?\*?(.+?)\*?\*?\s*\^', line.strip())
-                    title = title_match.group(1).strip() if title_match else line.strip()
+                    title = _task_title_from_line(line).split('|', 1)[0].strip()
                     
                     instances.append({
                         'file': str(md_file),
                         'line_number': i + 1,
                         'line_content': line,
                         'title': title,
-                        'completed': '- [x]' in line
+                        'completed': bool(re.match(r'^\s*-\s*\[[xX]\]', line))
                     })
         except Exception as e:
             logger.error(f"Error reading {md_file}: {e}")
@@ -403,8 +795,54 @@ def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
     
     return instances
 
-def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, Any]:
+
+def reusable_source_task_id(source: str, source_line: str) -> Optional[str]:
+    """Reuse a legacy source-only anchor when it has no canonical task yet."""
+    source_path = _source_page_path(source)
+    if source_path is None:
+        return None
+    if get_tasks_file().exists() and source_path == get_tasks_file().resolve():
+        return None
+
+    try:
+        target = source_line.strip()
+        matching_lines = [
+            line.strip()
+            for line in source_path.read_text().splitlines()
+            if line.strip() == target
+            and re.match(r'^-\s*\[[ bBsSxX/]\]', line.strip())
+        ]
+    except Exception:
+        return None
+    if len(matching_lines) != 1:
+        return None
+
+    task_id = extract_task_id(matching_lines[0])
+    if task_id is None:
+        return None
+
+    instances = find_task_by_id(task_id)
+    if len(instances) != 1:
+        return None
+    instance = instances[0]
+    try:
+        same_source = Path(instance['file']).resolve() == source_path
+    except OSError:
+        return None
+    if not same_source or instance['line_content'].strip() != target:
+        return None
+    return task_id
+
+def update_task_status_everywhere(
+    task_id: str, completed: str | bool
+) -> Dict[str, Any]:
     """Update task status for all instances of a task ID across all files"""
+    status_code = (
+        ('d' if completed else 'n')
+        if isinstance(completed, bool)
+        else completed
+    )
+    completed = status_code == 'd'
     instances = find_task_by_id(task_id)
     
     if not instances:
@@ -414,6 +852,7 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
         }
     
     updated_files = []
+    failed_files = []
     completion_timestamp = _tz_now().strftime('%Y-%m-%d %H:%M')
     
     for instance in instances:
@@ -425,23 +864,34 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
             line_idx = instance['line_number'] - 1
             old_line = lines[line_idx]
             
-            # Update checkbox and add/remove completion timestamp
+            # Update checkbox and normalize completion metadata around the anchor.
             if completed:
-                new_line = old_line.replace('- [ ]', '- [x]')
-                
-                # Add completion timestamp after task ID if not already present
-                # Remove any existing timestamp first
+                new_line = re.sub(
+                    r'^(\s*)-\s*\[[ bBsSxX/]\]', r'\1- [x]', old_line, count=1
+                )
                 new_line = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', new_line)
-                
-                # Find position after task ID to insert timestamp
-                task_id_match = re.search(r'\^' + re.escape(task_id), new_line)
+                task_id_match = re.search(r'\^' + re.escape(task_id) + r'(?!\d)', new_line)
                 if task_id_match:
-                    insert_pos = task_id_match.end()
-                    new_line = new_line[:insert_pos] + f' ✅ {completion_timestamp}' + new_line[insert_pos:]
+                    without_anchor = (
+                        new_line[:task_id_match.start()] + new_line[task_id_match.end():]
+                    ).rstrip()
+                    new_line = f'{without_anchor} ✅ {completion_timestamp} ^{task_id}'
             else:
-                # Uncompleting: change checkbox and remove timestamp
-                new_line = old_line.replace('- [x]', '- [ ]')
+                # Non-completed statuses carry no completion timestamp.
+                target_checkbox = STATUS_CHECKBOXES.get(status_code, '- [ ]')
+                new_line = re.sub(
+                    r'^(\s*)-\s*\[[ bBsSxX/]\]',
+                    lambda match: f'{match.group(1)}{target_checkbox}',
+                    old_line,
+                    count=1,
+                )
                 new_line = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', new_line)
+                task_id_match = re.search(r'\^' + re.escape(task_id) + r'(?!\d)', new_line)
+                if task_id_match:
+                    without_anchor = (
+                        new_line[:task_id_match.start()] + new_line[task_id_match.end():]
+                    ).rstrip()
+                    new_line = f'{without_anchor} ^{task_id}'
             
             if new_line != old_line:
                 lines[line_idx] = new_line
@@ -452,21 +902,55 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
                 })
         except Exception as e:
             logger.error(f"Error updating {instance['file']}: {e}")
+            failed_files.append({
+                'file': instance['file'],
+                'error': str(e)
+            })
             continue
-    
-    return {
-        'success': True,
+
+    result = {
+        'success': len(failed_files) == 0,
         'task_id': task_id,
         'title': instances[0]['title'] if instances else '',
-        'status': 'completed' if completed else 'not_completed',
+        'status': (
+            'completed'
+            if completed
+            else ('blocked' if status_code == 'b' else 'not_completed')
+        ),
         'completed_at': completion_timestamp if completed else None,
         'updated_files': updated_files,
         'instances_found': len(instances)
     }
 
+    if failed_files:
+        failures = '; '.join(
+            f"{failure['file']}: {failure['error']}"
+            for failure in failed_files
+        )
+        result['failed_files'] = failed_files
+        result['error'] = (
+            f"task updated in {len(updated_files)} of {len(instances)} locations; "
+            f"failures: {failures}"
+        )
+
+    return result
+
 def get_pillar_ids() -> List[str]:
     """Get list of valid pillar IDs"""
     return list(PILLARS.keys())
+
+
+def resolve_pillar_id(value: str) -> Optional[str]:
+    """Resolve an exact pillar ID or one unique display name to its ID."""
+    if value in PILLARS:
+        return value
+    value_folded = value.strip().casefold()
+    matches = [
+        pillar_id
+        for pillar_id, pillar in PILLARS.items()
+        if str(pillar.get('name', '')).strip().casefold() == value_folded
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 # ============================================================================
 # AMBIGUITY DETECTION
@@ -559,6 +1043,7 @@ def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
     
     matching_tasks = []
     current_section = None
+    current_section_priority = None
     
     i = 0
     while i < len(lines):
@@ -567,12 +1052,13 @@ def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
         # Track section headers
         if line.startswith('# ') or line.startswith('## '):
             current_section = line.lstrip('#').strip()
+            current_section_priority = priority_from_section(current_section)
             i += 1
             continue
         
         # Check if this is a task line
-        if line.strip().startswith('- [ ]') or line.strip().startswith('- [x]'):
-            completed = line.strip().startswith('- [x]')
+        if re.match(r'^-\s*\[[ bBsSxX/]\]', line.strip()):
+            completed = bool(re.match(r'^-\s*\[[xX]\]', line.strip()))
             
             # Check if this task references the page
             file_refs = extract_file_refs_from_task(line)
@@ -587,28 +1073,25 @@ def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
             
             if task_mentions_page:
                 # Extract title
-                title_match = re.match(r'-\s*\[[x ]\]\s*\*?\*?(.+?)\*?\*?(?:\s*\|.*)?$', line.strip())
-                title = title_match.group(1).strip() if title_match else line.strip()[6:]
+                title = _task_title_from_line(line)
                 
                 # Clean title of file references for display
                 clean_title = re.sub(r'\s*\|\s*(?:People|Active)/[^\s]+', '', title)
                 clean_title = re.sub(r'\s+\.md\b', '', clean_title)
                 clean_title = re.sub(r'\s*\|.*$', '', clean_title)  # Remove trailing | refs
                 
-                # Look for context/priority in following lines
-                priority = 'P2'
-                j = i + 1
-                while j < len(lines) and lines[j].strip().startswith('\t-'):
-                    if 'Priority:' in lines[j]:
-                        priority_match = re.search(r'Priority:\s*(P[0-3])', lines[j])
-                        if priority_match:
-                            priority = priority_match.group(1)
-                    j += 1
+                metadata = _parse_task_metadata(_task_child_lines(lines, i), clean_title)
+                priority = (
+                    metadata['priority']
+                    or current_section_priority
+                    or guess_priority(clean_title)
+                )
                 
                 matching_tasks.append({
                     'title': clean_title,
                     'completed': completed,
                     'priority': priority,
+                    'pillar': metadata['pillar'],
                     'section': current_section,
                     'line_number': i + 1
                 })
@@ -619,12 +1102,9 @@ def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
 
 def update_related_tasks_section(page_path: str, tasks: List[Dict[str, Any]]) -> bool:
     """Update the Related Tasks section in a page"""
-    filepath = BASE_DIR / page_path
-    if not page_path.endswith('.md'):
-        filepath = BASE_DIR / f"{page_path}.md"
-    
-    if not filepath.exists():
-        logger.warning(f"Page not found: {filepath}")
+    filepath = _source_page_path(page_path)
+    if filepath is None:
+        logger.warning("Page is missing or outside the vault: %s", page_path)
         return False
     
     content = filepath.read_text()
@@ -690,7 +1170,7 @@ def propagate_task_status_to_refs(task_title: str, completed: bool) -> List[str]
     
     # Find the task line
     for line in content.split('\n'):
-        if task_title.lower() in line.lower() and ('- [ ]' in line or '- [x]' in line):
+        if task_title.lower() in line.lower() and re.match(r'^\s*-\s*\[[ bBsSxX/]\]', line):
             file_refs = extract_file_refs_from_task(line)
             for ref in file_refs:
                 result = sync_task_refs_for_page(ref)
@@ -708,40 +1188,17 @@ def parse_person_page(filepath: Path) -> Dict[str, Any]:
     """Parse a person page and extract key fields"""
     if not filepath.exists():
         return {}
-    
-    content = filepath.read_text()
-    person = {
-        'name': filepath.stem.replace('_', ' '),
+
+    entity = parse_entity_page(filepath)
+    return {
+        'name': entity.get('name') or filepath.stem.replace('_', ' '),
         'filepath': str(filepath),
-        'company': None,
-        'company_page': None,
-        'role': None,
-        'email': None,
-        'last_interaction': None
+        'company': entity.get('company'),
+        'company_page': entity.get('company_page'),
+        'role': entity.get('role'),
+        'email': (entity.get('emails') or [None])[0],
+        'last_interaction': entity.get('last_interaction'),
     }
-    
-    # Parse table fields
-    for line in content.split('\n'):
-        if '**Company**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['company'] = parts[2].strip()
-        elif '**Company Page**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['company_page'] = parts[2].strip()
-        elif '**Role**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['role'] = parts[2].strip()
-        elif '**Email**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['email'] = parts[2].strip()
-        elif '**Last interaction:**' in line:
-            person['last_interaction'] = line.split('**Last interaction:**')[1].strip()
-    
-    return person
 
 def find_people_at_company(company_name: str) -> List[Dict[str, Any]]:
     """Find all people pages that reference a company"""
@@ -772,156 +1229,523 @@ def find_people_at_company(company_name: str) -> List[Dict[str, Any]]:
     
     return people
 
+def _structured_company_fields(company_filepath: Path) -> tuple[str, List[str]]:
+    """Return page name and domains from structured fields only."""
+    entity = parse_entity_page(company_filepath)
+    name = entity.get('name') or company_filepath.stem.replace('_', ' ')
+    return name, list(entity.get('domains') or [])
+
+
 def get_company_domains(company_filepath: Path) -> List[str]:
-    """Extract domains from a company page"""
+    """Extract domains from a company page's structured fields.
+
+    Canonical pages store domains in frontmatter. Legacy pages keep them in a
+    Domains table row or an inline bold field. parse_entity_page already applies
+    that precedence; notes and other free text are not a domain source.
+    """
     if not company_filepath.exists():
         return []
-    
-    content = company_filepath.read_text()
-    domains = []
-    
-    for line in content.split('\n'):
-        if '**Domains**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                domain_str = parts[2].strip()
-                # Parse comma-separated domains
-                domains = [d.strip() for d in domain_str.split(',') if d.strip()]
-                break
-    
-    return domains
+
+    return _structured_company_fields(company_filepath)[1]
 
 # ============================================================================
 # PEOPLE DIRECTORY INDEX
 # ============================================================================
 
 def _resolve_people_dir() -> Path:
-    """Resolve the actual People directory, checking both possible locations."""
-    standard = get_people_dir()
-    if standard.exists() and any(standard.iterdir()):
-        return standard
-    para = BASE_DIR / '05-Areas' / 'People'
-    if para.exists():
-        return para
-    return standard
+    """Resolve the actual People directory."""
+    return get_people_dir()
+
+
+# Vault-relative fallbacks derived from the canonical core.paths constants
+# (computed at import time, when BASE_DIR == VAULT_ROOT). Using these instead of
+# raw PARA string literals keeps the path-contract gate satisfied while preserving
+# the BASE_DIR-relative redirect that monkeypatched tests rely on.
+_PEOPLE_DIR_REL = PEOPLE_DIR.relative_to(BASE_DIR)
+_COMPANIES_DIR_REL = COMPANIES_DIR.relative_to(BASE_DIR)
+_PEOPLE_INDEX_FILE_REL = PEOPLE_INDEX_FILE.relative_to(BASE_DIR)
+_COMPANY_INDEX_FILE_REL = COMPANY_INDEX_FILE.relative_to(BASE_DIR)
+
+
+def _index_path(candidate: Path, fallback: Path) -> Path:
+    """Keep monkeypatched test/runtime paths inside the active vault root."""
+    try:
+        candidate.resolve().relative_to(BASE_DIR.resolve())
+    except ValueError:
+        return BASE_DIR / fallback
+    return candidate
+
+
+def _entity_index_kwargs() -> Dict[str, Path]:
+    return {
+        'people_dir': _index_path(
+            _resolve_people_dir(),
+            _PEOPLE_DIR_REL,
+        ),
+        'companies_dir': _index_path(
+            get_companies_dir(),
+            _COMPANIES_DIR_REL,
+        ),
+        'people_index_path': _index_path(
+            PEOPLE_INDEX_FILE,
+            _PEOPLE_INDEX_FILE_REL,
+        ),
+        'company_index_path': _index_path(
+            COMPANY_INDEX_FILE,
+            _COMPANY_INDEX_FILE_REL,
+        ),
+    }
 
 
 def build_people_index_data() -> Dict[str, Any]:
-    """Scan all person pages and build a lightweight JSON index."""
-    people_dir = _resolve_people_dir()
-    entries = []
+    """Reconcile SQLite and return its People_Index compatibility export."""
+    return entity_index.people_index_data(
+        BASE_DIR,
+        force=True,
+        **_entity_index_kwargs(),
+    )
 
-    for subdir_name in ['Internal', 'External', 'CPO_Network']:
-        subdir = people_dir / subdir_name
-        if not subdir.exists():
-            continue
 
-        for person_file in subdir.glob('*.md'):
-            if person_file.name == 'README.md':
-                continue
-            person = parse_person_page(person_file)
+def build_company_index_data() -> Dict[str, Any]:
+    """Reconcile SQLite and return its Company_Index compatibility export."""
+    return entity_index.company_index_data(
+        BASE_DIR,
+        force=True,
+        **_entity_index_kwargs(),
+    )
 
-            # Determine populated vs stub
-            content = person_file.read_text()
-            has_content = bool(person.get('role') or person.get('email') or
-                            '## Meeting' in content or '## Notes' in content)
 
-            # Extract tags from content
-            tags = []
-            for line in content.split('\n'):
-                if '**Tags**' in line and '|' in line:
-                    parts = line.split('|')
-                    if len(parts) >= 3:
-                        tags = [t.strip() for t in parts[2].strip().split(',') if t.strip()]
-                    break
-
-            entries.append({
-                'name': person.get('name', person_file.stem.replace('_', ' ')),
-                'company': person.get('company'),
-                'role': person.get('role'),
-                'email': person.get('email'),
-                'type': subdir_name.lower(),
-                'path': str(person_file.relative_to(BASE_DIR)),
-                'last_interaction': person.get('last_interaction'),
-                'tags': tags,
-                'status': 'populated' if has_content else 'stub',
-            })
-
-    index = {
-        'version': 1,
-        'built_at': datetime.now().isoformat(),
-        'total': len(entries),
-        'by_type': {
-            'internal': sum(1 for e in entries if e['type'] == 'internal'),
-            'external': sum(1 for e in entries if e['type'] == 'external'),
-            'cpo_network': sum(1 for e in entries if e['type'] == 'cpo_network'),
-        },
-        'people': entries,
-    }
-
-    # Write to file
-    PEOPLE_INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
-    PEOPLE_INDEX_FILE.write_text(json.dumps(index, indent=2, cls=DateTimeEncoder) + '\n')
-
-    return index
+def find_company_by_domain(domain: str) -> Dict[str, Any] | None:
+    """Find a company by registrable domain in the disposable SQLite index."""
+    return entity_index.find_company_by_domain(
+        BASE_DIR,
+        domain,
+        **_entity_index_kwargs(),
+    )
 
 
 def lookup_person_data(name: str, company: str = None) -> Dict[str, Any]:
-    """Fast person lookup using the index with fuzzy matching."""
+    """Fast person lookup using reconciled SQLite rows and legacy scoring."""
+    return entity_index.lookup_person(
+        BASE_DIR,
+        name,
+        company,
+        **_entity_index_kwargs(),
+    )
 
-    # Try reading the index file
-    index = None
-    if PEOPLE_INDEX_FILE.exists():
+
+def _looks_like_page_path(value: str) -> bool:
+    """Return whether a supplied entity reference is intended as a page path."""
+    supplied = Path(value)
+    return (
+        supplied.suffix.casefold() == '.md'
+        or supplied.is_absolute()
+        or '/' in value
+        or '\\' in value
+    )
+
+
+def _existing_entity_page_path(value: str, entity_dir: Path) -> Optional[str]:
+    """Return the supplied vault-relative path when it names an entity page."""
+    supplied = Path(value)
+    if supplied.is_absolute():
+        return None
+
+    base_dir = BASE_DIR.resolve()
+    allowed_dir = entity_dir.resolve()
+    candidate = (BASE_DIR / supplied).resolve()
+    candidates = [candidate]
+    if not supplied.suffix:
+        candidates.append(candidate.with_suffix('.md'))
+
+    for page_path in candidates:
         try:
-            index = json.loads(PEOPLE_INDEX_FILE.read_text())
-        except (json.JSONDecodeError, OSError):
-            pass
+            page_path.relative_to(base_dir)
+            page_path.relative_to(allowed_dir)
+        except ValueError:
+            continue
+        if page_path.is_file():
+            return value
+    return None
 
-    # Auto-rebuild if index is missing or stale (>24 hours old)
-    if not index:
-        index = build_people_index_data()
-    else:
-        built_at = index.get('built_at', '')
-        try:
-            built_dt = datetime.fromisoformat(built_at)
-            if (datetime.now() - built_dt) > timedelta(hours=24):
-                logger.info("People index is stale (>24h), rebuilding...")
-                index = build_people_index_data()
-        except (ValueError, TypeError):
-            index = build_people_index_data()
 
-    people = index.get('people', [])
-    name_lower = name.lower()
+def _relative_entity_page_path(page_path: Path) -> str:
+    """Render an entity page as a vault-relative path when possible."""
+    try:
+        return str(page_path.resolve().relative_to(BASE_DIR.resolve()))
+    except ValueError:
+        return str(page_path)
 
+
+def _close_entity_page_matches(value: str, entity_dir: Path) -> List[str]:
+    """Return deterministic filename matches for a missing entity page."""
+    if not entity_dir.exists():
+        return []
+
+    requested = Path(value).stem.replace('_', ' ').casefold()
     matches = []
-    for person in people:
-        person_name = person.get('name', '').lower()
-        # Exact substring match
-        if name_lower in person_name or person_name in name_lower:
-            score = 1.0 if name_lower == person_name else 0.8
-        else:
-            # Fuzzy match using SequenceMatcher
-            score = SequenceMatcher(None, name_lower, person_name).ratio()
+    for candidate in entity_dir.rglob('*.md'):
+        relative_path = _relative_entity_page_path(candidate)
+        if _existing_entity_page_path(relative_path, entity_dir) is None:
+            continue
+        candidate_name = candidate.stem.replace('_', ' ').casefold()
+        similarity = SequenceMatcher(None, requested, candidate_name).ratio()
+        if (
+            requested in candidate_name
+            or candidate_name in requested
+            or similarity >= 0.5
+        ):
+            matches.append(relative_path)
+    return sorted(set(matches))
 
-        if score >= 0.5:
-            # Apply company filter if provided
-            if company:
-                person_company = (person.get('company') or '').lower()
-                if company.lower() not in person_company:
-                    continue
 
-            matches.append({**person, '_score': round(score, 2)})
+def _person_resolution_how(query: str, person: Dict[str, Any]) -> str:
+    """Describe which step in lookup_person_data's ladder resolved a person."""
+    query_folded = query.strip().casefold()
+    if '@' in query and query_folded in {
+        value.casefold() for value in person.get('emails', [])
+    }:
+        return 'email'
+    if query_folded in {
+        value.casefold() for value in person.get('aliases', [])
+    }:
+        return 'alias'
+    if query_folded == (person.get('name') or '').casefold():
+        return 'name'
+    if query_folded == (person.get('first_name') or '').casefold():
+        return 'first_name'
+    return 'fuzzy'
 
-    # Sort by score descending
-    matches.sort(key=lambda m: m['_score'], reverse=True)
+
+def resolve_people_links(people: List[str]) -> Dict[str, Any]:
+    """Resolve person paths or names before a task is written."""
+    resolved_people = []
+    links = []
+    people_dir = get_people_dir()
+
+    for raw_value in people:
+        given = str(raw_value).strip()
+        if not given:
+            return {
+                'success': False,
+                'error': 'Person references cannot be empty.',
+                'candidates': [],
+            }
+
+        if _looks_like_page_path(given):
+            resolved_path = _existing_entity_page_path(given, people_dir)
+            if resolved_path is None:
+                return {
+                    'success': False,
+                    'error': f'Person page does not exist: {given}',
+                    'close_matches': _close_entity_page_matches(given, people_dir),
+                }
+            resolved_people.append(resolved_path)
+            links.append({
+                'given': given,
+                'resolved_path': resolved_path,
+                'how': 'path',
+            })
+            continue
+
+        lookup = lookup_person_data(given)
+        matches = [
+            match for match in lookup.get('matches', [])
+            if match.get('path')
+            and _existing_entity_page_path(match['path'], people_dir) is not None
+        ]
+        candidate_paths = sorted({
+            match['path'] for match in matches if match.get('path')
+        })
+        near_tied_matches = (
+            len(matches) > 1
+            and abs(matches[0].get('_score', 0) - matches[1].get('_score', 0)) <= 0.05
+        )
+        if (lookup.get('ambiguous') and len(matches) > 1) or near_tied_matches:
+            return {
+                'success': False,
+                'error': f'Ambiguous person reference: {given}',
+                'candidates': candidate_paths,
+            }
+        if not matches or not matches[0].get('path'):
+            return {
+                'success': False,
+                'error': f'No person page found for: {given}',
+                'candidates': candidate_paths,
+            }
+
+        person = matches[0]
+        resolved_path = person['path']
+        resolved_people.append(resolved_path)
+        links.append({
+            'given': given,
+            'resolved_path': resolved_path,
+            'how': _person_resolution_how(given, person),
+        })
 
     return {
-        'query': name,
-        'company_filter': company,
-        'matches': matches[:10],
-        'total_matches': len(matches),
-        'index_age': index.get('built_at'),
+        'success': True,
+        'resolved': resolved_people,
+        'links': links,
     }
+
+
+def _account_domain(value: str) -> Optional[str]:
+    """Extract a hostname from URL, email-domain, or domain account inputs."""
+    supplied = value.strip()
+    if '://' in supplied:
+        return urlsplit(supplied).hostname
+    if '@' in supplied and ' ' not in supplied:
+        return supplied.rsplit('@', 1)[-1].split('/', 1)[0]
+    if re.fullmatch(
+        r'(?:www\.)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?:/[^\s]*)?',
+        supplied,
+    ):
+        return supplied.split('/', 1)[0]
+    return None
+
+
+def resolve_account_link(account: str) -> Dict[str, Any]:
+    """Resolve an account path, company name, URL, or domain to a company page."""
+    given = account.strip()
+    companies_dir = get_companies_dir()
+    domain = _account_domain(given)
+
+    if domain is None and _looks_like_page_path(given):
+        resolved_path = _existing_entity_page_path(given, companies_dir)
+        if resolved_path is None:
+            return {
+                'success': False,
+                'error': f'Company page does not exist: {given}',
+                'close_matches': _close_entity_page_matches(given, companies_dir),
+            }
+        return {
+            'success': True,
+            'resolved': resolved_path,
+            'link': {
+                'given': given,
+                'resolved_path': resolved_path,
+                'how': 'path',
+            },
+        }
+
+    companies = build_company_index_data().get('companies', [])
+    if domain:
+        target_domain = registrable_domain(domain)
+        matches = [
+            company for company in companies
+            if target_domain in {
+                registrable_domain(value) for value in company.get('domains', [])
+            }
+        ]
+        how = 'domain'
+    else:
+        given_folded = given.casefold()
+        matches = [
+            company for company in companies
+            if given_folded == (company.get('name') or '').casefold()
+        ]
+        how = 'name'
+        if not matches:
+            given_filename = Path(given).stem.replace('_', ' ').casefold()
+            matches = [
+                company for company in companies
+                if given_filename
+                == Path(company.get('path') or '').stem.replace('_', ' ').casefold()
+            ]
+            how = 'filename'
+
+    candidate_paths = sorted({
+        company['path'] for company in matches
+        if company.get('path')
+        and _existing_entity_page_path(company['path'], companies_dir) is not None
+    })
+    if len(candidate_paths) > 1:
+        return {
+            'success': False,
+            'error': f'Ambiguous account reference: {given}',
+            'candidates': candidate_paths,
+        }
+    if not candidate_paths:
+        return {
+            'success': False,
+            'error': f'No company page found for: {given}',
+            'close_matches': _close_entity_page_matches(given, companies_dir),
+        }
+
+    resolved_path = candidate_paths[0]
+    return {
+        'success': True,
+        'resolved': resolved_path,
+        'link': {
+            'given': given,
+            'resolved_path': resolved_path,
+            'how': how,
+        },
+    }
+
+
+def _profile_email_domains() -> set[str]:
+    """Return configured internal email domains from the user profile."""
+    if yaml is None or not USER_PROFILE_FILE.exists():
+        return set()
+    try:
+        profile = yaml.safe_load(USER_PROFILE_FILE.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        return set()
+    configured = profile.get('email_domain') or ''
+    values = configured if isinstance(configured, list) else str(configured).split(',')
+    return {str(value).strip().lower().lstrip('@') for value in values if str(value).strip()}
+
+
+def create_person_data(
+    name: str,
+    role: str | None = None,
+    company: str | None = None,
+    emails: list[str] | None = None,
+    aliases: list[str] | None = None,
+    location: str | None = None,
+    notes: str | None = None,
+    allow_duplicate: bool = False,
+) -> Dict[str, Any]:
+    """Create a canonical person page without clobbering an existing file."""
+    name = unicodedata.normalize('NFC', (name or '').strip())
+    if not name:
+        return {'success': False, 'error': 'name is required'}
+    if name in {'.', '..'} or '..' in re.split(r'[/\\]+', name):
+        return {'success': False, 'error': f'Invalid person name: {name!r} contains path traversal'}
+
+    clean_emails = list(dict.fromkeys(
+        email.strip().lower() for email in (emails or []) if isinstance(email, str) and email.strip()
+    ))
+    clean_aliases = list(dict.fromkeys(
+        alias.strip() for alias in (aliases or []) if isinstance(alias, str) and alias.strip()
+    ))
+    if location is None:
+        if not clean_emails or not _profile_email_domains():
+            location = 'unknown'
+        else:
+            domain = clean_emails[0].rsplit('@', 1)[-1] if '@' in clean_emails[0] else ''
+            location = 'internal' if domain in _profile_email_domains() else 'external'
+    if location not in {'internal', 'external', 'unknown'}:
+        return {'success': False, 'error': 'location must be internal, external, or unknown'}
+
+    if not allow_duplicate and clean_emails:
+        for email in clean_emails:
+            existing = lookup_person_data(email).get('matches', [])
+            if existing:
+                return {
+                    'success': False,
+                    'error': f"A person with email {email} already exists: {existing[0]['path']}",
+                }
+
+    people_dir = _resolve_people_dir()
+    target_dir = people_dir / ('Internal' if location == 'internal' else 'External')
+    filename_stem = re.sub(r'\s+', '_', name.replace('/', '').replace('\\', ''))
+    if not filename_stem or filename_stem in {'.', '..'}:
+        return {'success': False, 'error': 'Person name does not produce a valid filename'}
+    base_filename = f'{filename_stem}.md'
+    collision_paths = []
+    for subdir in ('Internal', 'External', 'CPO_Network'):
+        directory = people_dir / subdir
+        if directory.exists():
+            collision_paths.extend(
+                child for child in directory.iterdir()
+                if child.is_file() and child.name.casefold() == base_filename.casefold()
+            )
+    collision = bool(collision_paths)
+    if collision and not allow_duplicate:
+        return {
+            'success': False,
+            'error': f'Person filename already exists: {collision_paths[0].relative_to(BASE_DIR)}',
+        }
+
+    if collision:
+        domain = clean_emails[0].rsplit('@', 1)[1] if clean_emails and '@' in clean_emails[0] else '2'
+        safe_suffix = re.sub(r'[^\w.-]+', '_', domain, flags=re.UNICODE).strip('._') or '2'
+        candidate = target_dir / f'{filename_stem}_({safe_suffix}).md'
+        counter = 2
+        while candidate.parent.exists() and any(
+            child.name.casefold() == candidate.name.casefold() for child in candidate.parent.iterdir()
+        ):
+            candidate = target_dir / f'{filename_stem}_({counter}).md'
+            counter += 1
+    else:
+        candidate = target_dir / base_filename
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        candidate.resolve().relative_to(people_dir.resolve())
+    except ValueError:
+        return {'success': False, 'error': 'Refusing to create a person page outside the People directory'}
+
+    page = render_person_page(name, role, company, clean_emails, clean_aliases, location, notes)
+    try:
+        created = create_page_if_absent(
+            candidate,
+            page,
+            allowed_root=people_dir,
+        )
+    except OSError as exc:
+        return {'success': False, 'error': f'Could not create person page: {exc}'}
+    if created.status == 'exists':
+        return {'success': False, 'error': f'Person page already exists: {candidate.relative_to(BASE_DIR)}'}
+    if created.status != 'created':
+        return {'success': False, 'error': f'Refusing unsafe person page path: {candidate}'}
+
+    build_people_index_data()
+    result = {
+        'success': True,
+        'path': str(candidate.relative_to(BASE_DIR)),
+        'location': location,
+        'created': True,
+    }
+    if collision:
+        result['collision'] = True
+    return result
+
+
+def reroute_people_data(
+    dry_run: bool = True,
+    domains: list[str] | None = None,
+) -> Dict[str, Any]:
+    """Recompute Internal/External routing from recorded emails.
+
+    Classification is recomputed from scratch against the supplied internal
+    domains (default: the profile's current email_domain set), so the tool
+    needs no memory of the previous domains. Dry-run returns the full proposed
+    plan; applying moves pages, rewrites their location frontmatter and its
+    mirror through the entity engine, and rebuilds the People index once.
+    """
+    if domains is not None:
+        internal_domains = entity_reroute.normalise_domains(domains)
+        if not internal_domains:
+            return {
+                'success': False,
+                'error': 'domains was supplied but contained no usable email domains',
+            }
+    else:
+        internal_domains = _profile_email_domains()
+        if not internal_domains:
+            return {
+                'success': False,
+                'error': (
+                    'No internal email domain is configured. Set email_domain in '
+                    'System/user-profile.yaml (or pass domains explicitly) before '
+                    're-routing people.'
+                ),
+            }
+
+    result = entity_reroute.reroute_people(
+        BASE_DIR,
+        _resolve_people_dir(),
+        internal_domains,
+        dry_run=bool(dry_run),
+    )
+    if result.get('success') and not result.get('dry_run'):
+        build_people_index_data()
+        result['index_rebuilt'] = True
+    return result
 
 
 # ============================================================================
@@ -1008,7 +1832,19 @@ def rebuild_meeting_cache_data() -> Dict[str, Any]:
     if not meetings_dir.exists():
         return {'success': False, 'error': 'No meetings directory found'}
 
-    files = [f for f in meetings_dir.glob('*.md') if f.name != 'README.md']
+    meetings_root = meetings_dir.resolve()
+    files = []
+    for filepath in meetings_dir.rglob('*.md'):
+        relative_path = filepath.relative_to(meetings_dir)
+        if filepath.name == 'README.md' or 'queue' in relative_path.parts[:-1]:
+            continue
+        try:
+            if filepath.is_symlink():
+                continue
+            filepath.resolve().relative_to(meetings_root)
+        except (OSError, ValueError):
+            continue
+        files.append(filepath)
     if not files:
         return {'success': False, 'error': 'No meeting files found'}
 
@@ -1131,7 +1967,8 @@ def _parse_meeting_file_python(content: str, filename: str, rel_path: str) -> Di
             if stripped.startswith('- '):
                 item = stripped[2:].strip()
                 item = re.sub(r'^\[[ x]\]\s*', '', item)
-                item = re.sub(r'\s*\^task-\d{8}-\d{3}\s*$', '', item)
+                item = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', item)
+                item = re.sub(r'\s*\^task-\d{8}-\d{3,}\b', '', item)
                 item = re.sub(r'\[\[[^\]|]*\|([^\]]*)\]\]', r'\1', item)
                 item = re.sub(r'\[\[([^\]]*)\]\]', r'\1', item)
                 item = re.sub(r'\*\*([^*]+)\*\*', r'\1', item)
@@ -1201,7 +2038,7 @@ def refresh_company_page(company_path: str) -> Dict[str, Any]:
     if not company_path.endswith('.md'):
         company_path += '.md'
     
-    if company_path.startswith('Active/'):
+    if company_path.startswith('05-Areas/'):
         filepath = BASE_DIR / company_path
     else:
         filepath = COMPANIES_DIR / Path(company_path).name
@@ -1254,7 +2091,7 @@ def refresh_company_page(company_path: str) -> Dict[str, Any]:
             meetings_section += f"| {meeting['date']} | {meeting['title']} | [{meeting['date']}]({meeting['filepath']}) |\n"
     else:
         meetings_section += "*No meetings found. Add domains to this company page for automatic matching.*\n"
-    meetings_section += f"\n*Meetings detected by email domain matching*"
+    meetings_section += "\n*Meetings detected by email domain matching*"
     
     # Build Related Tasks section
     tasks_section = "## Related Tasks\n\n"
@@ -1308,21 +2145,19 @@ def list_companies() -> List[Dict[str, Any]]:
     
     for company_file in COMPANIES_DIR.glob('*.md'):
         content = company_file.read_text()
+        entity = parse_entity_page(company_file)
         
-        # Extract basic info
+        # Canonical pages keep status in frontmatter; parse_entity_page also
+        # retains the old table/inline fallbacks for legacy pages.
         company = {
-            'name': company_file.stem.replace('_', ' '),
+            'name': entity.get('name') or company_file.stem.replace('_', ' '),
             'filepath': str(company_file),
-            'stage': None,
+            'stage': entity.get('status'),
             'industry': None
         }
         
         for line in content.split('\n'):
-            if '**Stage**' in line and '|' in line:
-                parts = line.split('|')
-                if len(parts) >= 3:
-                    company['stage'] = parts[2].strip()
-            elif '**Industry**' in line and '|' in line:
+            if '**Industry**' in line and '|' in line:
                 parts = line.split('|')
                 if len(parts) >= 3:
                     company['industry'] = parts[2].strip()
@@ -1337,7 +2172,14 @@ def list_companies() -> List[Dict[str, Any]]:
 def create_company_page(name: str, website: str = '', industry: str = '', 
                        size: str = '', stage: str = 'Prospect', 
                        domains: List[str] = None) -> Dict[str, Any]:
-    """Create a new company page from template"""
+    """Create a new company page from the canonical entity template."""
+
+    if not capability_rooms.enabled("companies", profile_path=USER_PROFILE_FILE):
+        return feature_status(
+            "Companies room",
+            "off",
+            "The Companies room is off. Turn it on with /manage-capabilities when you want it.",
+        )
     
     # Ensure directory exists
     COMPANIES_DIR.mkdir(parents=True, exist_ok=True)
@@ -1352,83 +2194,58 @@ def create_company_page(name: str, website: str = '', industry: str = '',
             'error': f'Company page already exists: {filepath}'
         }
     
-    # Build domains string
+    # Derive the domain exactly as this tool always has when callers only
+    # provide a website; canonical rendering normalizes the final list.
     if not domains:
-        # Extract domain from website
         if website:
             domain = website.replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0]
             domains = [domain]
         else:
             domains = []
-    
-    domains_str = ', '.join(domains) if domains else '{{company.com}}'
-    
-    timestamp = _tz_now().strftime('%Y-%m-%d')
-    
-    content = f"""# {name}
+    content = render_company_page(
+        name,
+        domains=domains,
+        website=website or None,
+        status=stage,
+    )
 
-## Overview
+    # The canonical renderer has no frontmatter field for industry or size, but
+    # this tool has always accepted both. Dropping them silently would lose the
+    # caller's input with no error, so record them under Notes where the user
+    # can see and edit them, leaving the machine-managed frontmatter canonical.
+    supplied_details = [
+        f"- **Industry:** {industry}" if industry else None,
+        f"- **Size:** {size}" if size else None,
+    ]
+    supplied_details = [line for line in supplied_details if line]
+    if supplied_details:
+        content = content.replace(
+            "## Notes\n\n",
+            "## Notes\n\n" + "\n".join(supplied_details) + "\n\n",
+            1,
+        )
 
-| Field | Value |
-|-------|-------|
-| **Website** | {website or '{{company.com}}'} |
-| **Industry** | {industry or '{{Industry}}'} |
-| **Size** | {size or '{{Startup / Scale-up / Enterprise}}'} |
-| **Stage** | {stage} |
-| **Domains** | {domains_str} |
-
----
-
-## Key Contacts
-
-<!-- Auto-populated from People pages with company: {name} -->
-
-| Name | Role | Last Interaction |
-|------|------|------------------|
-
-*Run refresh_company to update from People pages*
-
----
-
-## Projects
-
-<!-- Projects involving this company -->
-
----
-
-## Meeting History
-
-<!-- Auto-populated from meetings where attendee emails match domains -->
-
-| Date | Topic | Link |
-|------|-------|------|
-
-*Meetings detected by email domain matching*
-
----
-
-## Related Tasks
-
-<!-- Synced from 03-Tasks/Tasks.md via task MCP -->
-
-*Synced from 03-Tasks/Tasks.md — never*
-
-| Status | Task | Priority |
-|--------|------|----------|
-
----
-
-## Notes
-
-
-
----
-
-*Created: {timestamp}*
-*Updated: {timestamp}*
-"""
-    
-    filepath.write_text(content)
+    try:
+        created = create_page_if_absent(
+            filepath,
+            content,
+            allowed_root=COMPANIES_DIR,
+        )
+    except OSError as exc:
+        return {
+            'success': False,
+            'error': f'Could not create company page: {exc}',
+        }
+    if created.status == 'exists':
+        return {
+            'success': False,
+            'error': f'Company page already exists: {filepath}',
+        }
+    if created.status != 'created':
+        return {
+            'success': False,
+            'error': f'Refusing unsafe company page path: {filepath}',
+        }
     
     return {
         'success': True,
@@ -1503,9 +2320,12 @@ def generate_goal_id(quarter: str, existing_goals: List[Dict]) -> str:
     max_num = 0
     prefix = f"{q_num}-{year}-goal-"
     for goal in existing_goals:
-        if 'goal_id' in goal and goal['goal_id'].startswith(prefix):
+        # A hand-written goal heading has no ID at all, and it is exactly the
+        # vault migrate_quarterly_goals exists to repair.
+        existing_id = goal.get('goal_id')
+        if existing_id and existing_id.startswith(prefix):
             try:
-                num = int(goal['goal_id'].split('-')[-1])
+                num = int(existing_id.split('-')[-1])
                 max_num = max(max_num, num)
             except (ValueError, IndexError):
                 continue
@@ -1516,6 +2336,89 @@ def extract_goal_id(text: str) -> Optional[str]:
     """Extract goal ID from text like ^Q1-2026-goal-1"""
     match = re.search(r'\^(Q\d+-\d{4}-goal-\d+)', text)
     return match.group(1) if match else None
+
+def _fiscal_quarter_window(day: date, q1_start_month: int) -> tuple:
+    """First and last day of the fiscal quarter containing `day`.
+
+    Worked out from the fiscal start month by counting whole months, so it does
+    not depend on get_quarter_info's own start-year arithmetic.
+    """
+    import calendar
+    index = day.year * 12 + (day.month - 1)
+    start_index = index - ((index - (q1_start_month - 1)) % 3)
+    start = date(start_index // 12, start_index % 12 + 1, 1)
+    end_index = start_index + 2
+    end_year, end_month = end_index // 12, end_index % 12 + 1
+    end = date(end_year, end_month, calendar.monthrange(end_year, end_month)[1])
+    return start, end
+
+
+def _fiscal_quarter_label(day: date, q1_start_month: int) -> str:
+    """The quarter name get_quarter_info gives to the quarter containing `day`.
+
+    Kept identical to that function on purpose: goals are matched against these
+    strings, so a different naming rule here would simply fail to match.
+    """
+    return f"Q{((day.month - q1_start_month) % 12) // 3 + 1} {day.year}"
+
+
+def _declared_planning_quarter(today: date) -> Optional[str]:
+    """The quarter the user says they are planning, when it is safe to use.
+
+    Someone preparing the next quarter early records that choice in their
+    profile. It is returned only when it names the quarter running now or the
+    one starting immediately after, so vaults still carrying the Q1 2026 value
+    seeded into early installs — a value nothing ever rewrites — can never be
+    stranded in a quarter that is long gone.
+
+    Deliberately independent of get_quarter_info: that function answers "which
+    quarter is it now", which velocity and weekly pacing depend on. Pointing it
+    at a quarter that has not started yet produces negative elapsed weeks and a
+    "behind pace" verdict for a quarter nobody has begun.
+    """
+    if not (USER_PROFILE_FILE.exists() and yaml):
+        return None
+    try:
+        data = yaml.safe_load(USER_PROFILE_FILE.read_text())
+    except Exception as e:
+        logger.error(f"Error reading quarterly_planning: {e}")
+        return None
+
+    configured = data.get('quarterly_planning') if isinstance(data, dict) else None
+    if not isinstance(configured, dict):
+        return None
+
+    # An absent or blank key parses as None, whose str() is the word "None" —
+    # treat every empty shape as "not chosen" rather than as a bad value.
+    raw = str(configured.get('current_quarter') or '').strip()
+    if not re.fullmatch(r'Q[1-4]\s+\d{4}', raw):
+        if raw:
+            # Say so rather than falling back silently: a near miss like
+            # "q4 2026" or "Q4-2026" is otherwise indistinguishable from the
+            # bug where the chosen quarter was ignored altogether.
+            logger.warning(
+                "Ignoring quarterly_planning.current_quarter %r: expected the "
+                "form 'Q4 2026'. Using today's quarter instead.",
+                raw,
+            )
+        return None
+    declared = re.sub(r'\s+', ' ', raw)
+
+    q1_start_month = configured.get('q1_start_month', 1)
+    if not isinstance(q1_start_month, int) or not 1 <= q1_start_month <= 12:
+        q1_start_month = 1
+
+    # Name the quarter running now and the one starting the day after it ends,
+    # then accept the declaration only if it is one of those two. Comparing
+    # names rather than reconstructing dates from the name removes the guesswork
+    # about which calendar year a quarter that straddles new year belongs to.
+    _, live_end = _fiscal_quarter_window(today, q1_start_month)
+    allowed = {
+        _fiscal_quarter_label(today, q1_start_month),
+        _fiscal_quarter_label(live_end + timedelta(days=1), q1_start_month),
+    }
+    return declared if declared in allowed else None
+
 
 def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
     """Parse quarterly goals from 01-Quarter_Goals/Quarter_Goals.md"""
@@ -1560,7 +2463,9 @@ def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
             impact_level = None
             
             j = i + 1
-            while j < len(lines) and not lines[j].startswith('###'):
+            while j < len(lines) and not re.match(
+                r'^(?:##\s|###\s|---\s*$)', lines[j]
+            ):
                 if '**What success looks like:**' in lines[j]:
                     # Read next non-empty line
                     k = j + 1
@@ -1605,18 +2510,88 @@ def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
                 'line_number': i + 1,
                 'career_goal_id': career_goal_id,
                 'skills_developed': skills_developed,
-                'impact_level': impact_level
+                'impact_level': impact_level,
+                'provisional': False,
             })
-        
+
         i += 1
-    
+
+    if goals:
+        return goals
+
+    # Lenient fallback: a freeform numbered/bulleted goal list is recovered as
+    # provisional goals rather than silently parsing to nothing.
+    return _recover_freeform_goals(lines, quarter_info)
+
+def _recover_freeform_goals(
+    lines: List[str], quarter_info: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """Recover a freeform goal list as provisional goals with generated IDs.
+
+    Provisional goal IDs exist nowhere on disk, so consumers must never
+    auto-link or write against them - they exist only so the goals can be
+    surfaced for one-time structuring.
+    """
+    numbered_items: List[tuple[int, str]] = []
+    bulleted_items: List[tuple[int, str]] = []
+    in_code_fence = False
+
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_code_fence = not in_code_fence
+            continue
+        if in_code_fence:
+            continue
+
+        numbered_match = re.match(r'^\d+\.\s+(.+)$', stripped)
+        bullet_match = re.match(r'^-\s+(?!\[[^\]]?\])(.+)$', stripped)
+        text = None
+        target = None
+        if numbered_match:
+            text = numbered_match.group(1)
+            target = numbered_items
+        elif bullet_match:
+            text = bullet_match.group(1)
+            target = bulleted_items
+        if text is None:
+            continue
+
+        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text).strip()
+        if len(text) < 4 or not re.search(r'[A-Za-z]', text):
+            continue
+        target.append((index, text))
+
+    # Numbered lists are the stronger goal signal; bullets only count when no
+    # numbered list exists at all.
+    recovered_items = numbered_items or bulleted_items
+    if not recovered_items:
+        return []
+
+    quarter = str(quarter_info.get('quarter') or '').strip() or get_quarter_info()['quarter']
+    goals: List[Dict[str, Any]] = []
+    for goal_num, (line_index, title) in enumerate(recovered_items, start=1):
+        goals.append({
+            'goal_id': generate_goal_id(quarter, goals),
+            'goal_num': goal_num,
+            'title': title,
+            'pillar': '',
+            'success_criteria': '',
+            'milestones': [],
+            'progress': 0,
+            'last_updated': None,
+            'quarter': quarter_info.get('quarter', ''),
+            'line_number': line_index + 1,
+            'career_goal_id': None,
+            'skills_developed': [],
+            'impact_level': None,
+            'provisional': True,
+        })
     return goals
 
 def get_goal_by_id(goal_id: str) -> Optional[Dict[str, Any]]:
     """Get a specific goal by its ID"""
     goals_file = QUARTER_GOALS_FILE
-    if is_demo_mode():
-        goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
     
     goals = parse_quarterly_goals(goals_file)
     for goal in goals:
@@ -1626,6 +2601,12 @@ def get_goal_by_id(goal_id: str) -> Optional[Dict[str, Any]]:
 
 def find_linked_priorities(goal_id: str) -> List[Dict[str, Any]]:
     """Find all weekly priorities linked to a goal"""
+    # A goal with no ID cannot own a link. Without this guard the reference
+    # pattern below would collapse to a bare word boundary and match every
+    # priority line, inventing links that were never written.
+    if not goal_id:
+        return []
+
     priorities_file = get_week_priorities_file()
     if not priorities_file.exists():
         return []
@@ -1633,60 +2614,92 @@ def find_linked_priorities(goal_id: str) -> List[Dict[str, Any]]:
     content = priorities_file.read_text()
     lines = content.split('\n')
     
+    goal_reference = re.compile(
+        rf'(?<![A-Za-z0-9_-]){re.escape(goal_id)}(?![A-Za-z0-9_-])'
+    )
     linked_priorities = []
     for i, line in enumerate(lines):
-        # Look for lines that mention the goal_id
-        if goal_id in line:
-            # Check if this is a priority line
-            if '**' in line and ('- [ ]' in line or '- [x]' in line or line.strip().startswith('1.') or line.strip().startswith('2.') or line.strip().startswith('3.')):
-                completed = '- [x]' in line
-                
-                # Extract priority ID
-                priority_id = extract_priority_id(line)
-                
-                # Extract title
-                title_match = re.search(r'(?:\d+\.\s+)?(.+?)\s+—', line)
-                if not title_match:
-                    title_match = re.search(r'\*\*(.+?)\*\*', line)
-                title = title_match.group(1).strip() if title_match else line.strip()
-                
-                linked_priorities.append({
-                    'priority_id': priority_id,
-                    'title': title,
-                    'completed': completed,
-                    'line_number': i + 1
-                })
-    
+        stripped = line.strip()
+        is_priority_line = '**' in line and (
+            '- [ ]' in line
+            or '- [x]' in line
+            or bool(re.match(r'\d+\.\s+', stripped))
+        )
+        if not is_priority_line:
+            continue
+
+        linked = bool(goal_reference.search(line))
+        if not linked:
+            for metadata_line in lines[i + 1:]:
+                if not re.match(r'^\s+-\s+', metadata_line):
+                    break
+                if 'Quarterly goal:' in metadata_line and goal_reference.search(metadata_line):
+                    linked = True
+                    break
+        if not linked:
+            continue
+
+        completed = '- [x]' in line
+
+        # Extract priority ID
+        priority_id = extract_priority_id(line)
+
+        # Extract title
+        title_match = re.search(r'(?:\d+\.\s+)?(.+?)\s+—', line)
+        if not title_match:
+            title_match = re.search(r'\*\*(.+?)\*\*', line)
+        title = title_match.group(1).strip() if title_match else stripped
+
+        linked_priorities.append({
+            'priority_id': priority_id,
+            'title': title,
+            'completed': completed,
+            'line_number': i + 1
+        })
+
     return linked_priorities
 
 def calculate_goal_progress(goal_id: str) -> Dict[str, Any]:
-    """Calculate goal progress based on linked weekly priorities"""
+    """Calculate goal progress based on linked weekly priorities.
+
+    Linked-task counts are reported alongside so goal health reflects the
+    backlog pool, but they never move the percentage itself.
+    """
     priorities = find_linked_priorities(goal_id)
-    
+
+    linked_tasks = [
+        task for task in get_all_tasks()
+        if task.get('source', 'tasks') == 'tasks' and task.get('goal') == goal_id
+    ]
+    open_tasks = sum(1 for task in linked_tasks if not task.get('completed'))
+    done_tasks = sum(1 for task in linked_tasks if task.get('completed'))
+
     if not priorities:
         return {
             'progress': 0,
             'total_priorities': 0,
             'completed_priorities': 0,
-            'calculation_method': 'no_linked_priorities'
+            'calculation_method': 'no_linked_priorities',
+            'open_tasks': open_tasks,
+            'done_tasks': done_tasks,
         }
-    
+
     completed = sum(1 for p in priorities if p['completed'])
     total = len(priorities)
     progress = int((completed / total) * 100) if total > 0 else 0
-    
+
     return {
         'progress': progress,
         'total_priorities': total,
         'completed_priorities': completed,
-        'calculation_method': 'automatic'
+        'calculation_method': 'automatic',
+        'open_tasks': open_tasks,
+        'done_tasks': done_tasks,
     }
 
 def update_goal_in_file(goal_id: str, updates: Dict[str, Any]) -> bool:
     """Update a goal's fields in 01-Quarter_Goals/Quarter_Goals.md"""
     goals_file = QUARTER_GOALS_FILE
-    if is_demo_mode():
-        goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
     
     if not goals_file.exists():
         return False
@@ -1721,9 +2734,13 @@ def update_goal_in_file(goal_id: str, updates: Dict[str, Any]) -> bool:
 
 def create_quarterly_goal_in_file(goal_data: Dict[str, Any]) -> Dict[str, Any]:
     """Create a new quarterly goal in 01-Quarter_Goals/Quarter_Goals.md"""
+    if not capability_rooms.enabled("quarter_goals", profile_path=USER_PROFILE_FILE):
+        return feature_status(
+            "Quarter Goals room",
+            "off",
+            "The Quarter Goals room is off. Turn it on with /manage-capabilities when you want it.",
+        )
     goals_file = QUARTER_GOALS_FILE
-    if is_demo_mode():
-        goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
     
     # Ensure file exists
     if not goals_file.exists():
@@ -1835,7 +2852,7 @@ def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
     if not filepath.exists():
         return []
     
-    content = filepath.read_text()
+    content = filepath.read_text(encoding="utf-8")
     priorities = []
     
     lines = content.split('\n')
@@ -1845,19 +2862,25 @@ def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
         # Or task-style: - [ ] **Priority Title** ^week-2026-W05-p1
         
         priority_match = re.match(r'(\d+)\.\s+(.+?)\s+—\s+\*\*(.+?)\*\*(?:\s+\^(week-\d{4}-W\d{2}-p\d+))?', line)
+        if not priority_match:
+            priority_match = re.match(r'(\d+)\.\s+\*\*(.+?)\*\*,\s+\*\*(.+?)\*\*(?:\s+\^(week-\d{4}-W\d{2}-p\d+))?', line)
         if priority_match:
             priority_num = int(priority_match.group(1))
             title = priority_match.group(2).strip()
             pillar = priority_match.group(3).strip()
             priority_id = priority_match.group(4) if priority_match.group(4) else None
             
-            # Look for linked goal in following lines
+            # Look for a linked goal in this priority's metadata bullets.
             linked_goal_id = None
-            j = i + 1
-            if j < len(lines) and 'Quarterly goal:' in lines[j]:
-                goal_match = re.search(r'\[(Q\d+-\d{4}-goal-\d+)\]', lines[j])
+            for metadata_line in lines[i + 1:]:
+                if not re.match(r'^\s+-\s+', metadata_line):
+                    break
+                if 'Quarterly goal:' not in metadata_line:
+                    continue
+                goal_match = re.search(r'\[(Q\d+-\d{4}-goal-\d+)\]', metadata_line)
                 if goal_match:
                     linked_goal_id = goal_match.group(1)
+                break
             
             # Check completion (look for checkmark or completion note)
             completed = False  # For now, will enhance later
@@ -1874,32 +2897,79 @@ def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
     
     return priorities
 
+def _task_ids_named_in_priority_success_criteria(priority_id: str) -> set[str]:
+    """Return exact task IDs named in one priority's success criteria."""
+    priorities_file = get_week_priorities_file()
+    if not priorities_file.exists():
+        return set()
+
+    lines = priorities_file.read_text(encoding="utf-8").split('\n')
+    priority_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if extract_priority_id(line) == priority_id
+        ),
+        None,
+    )
+    if priority_index is None:
+        return set()
+
+    priority_indent = _indent_width(lines[priority_index])
+    referenced_task_ids = set()
+    task_id_pattern = r'(?<![A-Za-z0-9_-])(task-\d{8}-\d{3,})(?![A-Za-z0-9_-])'
+
+    for line in lines[priority_index + 1:]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _indent_width(line) <= priority_indent:
+            break
+
+        success_criteria = re.match(
+            r'^-\s*Success criteria\s*:\s*(.+)$',
+            stripped,
+            re.IGNORECASE,
+        )
+        if success_criteria:
+            referenced_task_ids.update(
+                re.findall(task_id_pattern, success_criteria.group(1))
+            )
+
+    return referenced_task_ids
+
 def find_linked_tasks(priority_id: str) -> List[Dict[str, Any]]:
     """Find all tasks linked to a weekly priority"""
     tasks_file = get_tasks_file()
     if not tasks_file.exists():
         return []
     
-    content = tasks_file.read_text()
+    content = tasks_file.read_text(encoding="utf-8")
     lines = content.split('\n')
     
+    referenced_task_ids = _task_ids_named_in_priority_success_criteria(priority_id)
     linked_tasks = []
     for i, line in enumerate(lines):
-        # Look for tasks that mention the priority_id
-        if priority_id in line and ('- [ ]' in line or '- [x]' in line):
-            completed = '- [x]' in line
-            task_id = extract_task_id(line)
-            
-            # Extract title
-            title_match = re.match(r'-\s*\[[x ]\]\s*\*?\*?(.+?)\*?\*?(?:\s*\^task-|\s*\|)', line.strip())
-            title = title_match.group(1).strip() if title_match else line.strip()
-            
-            linked_tasks.append({
-                'task_id': task_id,
-                'title': title,
-                'completed': completed,
-                'line_number': i + 1
-            })
+        if not (line.strip().startswith('- [ ]') or line.strip().startswith('- [x]')):
+            continue
+
+        task_id = extract_task_id(line)
+        linked_text = '\n'.join([line, *_task_child_lines(lines, i)])
+        priority_pattern = (
+            rf'(?<![A-Za-z0-9_-]){re.escape(priority_id)}(?![A-Za-z0-9_-])'
+        )
+        if (
+            not re.search(priority_pattern, linked_text)
+            and task_id not in referenced_task_ids
+        ):
+            continue
+
+        linked_tasks.append({
+            'task_id': task_id,
+            'title': _task_title_from_line(line).split('|', 1)[0].strip(),
+            'completed': '- [x]' in line,
+            'line_number': i + 1
+        })
     
     return linked_tasks
 
@@ -1958,6 +3028,35 @@ def infer_goal_link(priority_title: str, priority_pillar: str,
         goal_id = goal.get('goal_id', '')
         goal_title = goal.get('title', '')
         goal_pillar = goal.get('pillar', '')
+
+        # Provisional goals were recovered from freeform text and their IDs
+        # exist nowhere on disk; never auto-link against them. They surface as
+        # confidence-none candidates so callers can offer structuring instead.
+        if goal.get('provisional'):
+            candidates.append({
+                'goal_id': goal_id,
+                'goal_title': goal_title,
+                'goal_pillar': goal_pillar,
+                'score': 0,
+                'confidence': 'none',
+                'provisional': True,
+                'reasons': ['provisional_goal_needs_structuring'],
+            })
+            continue
+
+        # A goal with no ID cannot be linked to: create_task rejects any goal
+        # absent from the available IDs, and a None ID names nothing anywhere.
+        # Surfacing it as a match would only promise a link that cannot exist.
+        if not goal_id:
+            candidates.append({
+                'goal_id': None,
+                'goal_title': goal_title,
+                'goal_pillar': goal_pillar,
+                'score': 0,
+                'confidence': 'none',
+                'reasons': ['goal_has_no_id'],
+            })
+            continue
 
         # --- Pillar match ---
         # Normalize pillar names: the goal stores display name like "deal_support",
@@ -2031,38 +3130,52 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
     if not filepath.exists():
         return tasks
     
-    content = filepath.read_text()
+    content = filepath.read_text(encoding="utf-8")
     lines = content.split('\n')
     
     current_section = None
+    current_section_priority = None
     task_counter = 0
     
     for i, line in enumerate(lines):
         # Track section headers
         if line.startswith('# ') or line.startswith('## '):
             current_section = line.lstrip('#').strip()
+            current_section_priority = priority_from_section(current_section)
             continue
         
         # Parse task lines
-        if line.strip().startswith('- [ ]') or line.strip().startswith('- [x]'):
+        checkbox_match = re.match(r'^-\s*\[([ bBsSxX/])\]', line.strip())
+        if checkbox_match:
             task_counter += 1
-            completed = line.strip().startswith('- [x]')
+            checkbox_status = checkbox_match.group(1).lower()
+            completed = checkbox_status == 'x'
             
             # Extract task ID if present
             task_id = extract_task_id(line)
             
-            # Extract task title (remove the checkbox and task ID)
-            title_match = re.match(r'-\s*\[[x ]\]\s*\*?\*?(.+?)\*?\*?(?:\s*\^task-\d{8}-\d{3})?\s*$', line.strip())
-            title = title_match.group(1).strip() if title_match else line.strip()[6:]
+            # Extract task title (remove checkbox, completion mark, and task ID)
+            title = _task_title_from_line(line)
             
             # Clean title - remove file path references for display
             clean_title = re.sub(r'\s*\|\s*(?:People|Active)/[^\s]+', '', title)
             clean_title = re.sub(r'\s+\.md\b', '', clean_title)
-            clean_title = re.sub(r'\s*\^task-\d{8}-\d{3}\s*', '', clean_title)  # Remove task ID
+            clean_title = re.sub(r'\s*\^task-\d{8}-\d{3,}\s*', '', clean_title)  # Remove task ID
+            if not clean_title.strip():
+                continue
             
             # Determine status
-            status = 'd' if completed else 'n'
+            if completed:
+                status = 'd'
+            elif checkbox_status == 'b':
+                status = 'b'
+            elif checkbox_status in ('s', '/'):
+                status = 's'
+            else:
+                status = 'n'
             
+            metadata = _parse_task_metadata(_task_child_lines(lines, i), clean_title)
+
             tasks.append({
                 'id': task_id or f'temp-{task_counter}',
                 'task_id': task_id,  # The actual ^task-YYYYMMDD-XXX ID
@@ -2073,10 +3186,21 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
                 'status': status,
                 'line_number': i + 1,
                 'source_file': str(filepath),
-                'pillar': guess_pillar(clean_title),
-                'priority': guess_priority(clean_title),
+                'pillar': metadata['pillar'],
+                'priority': (
+                    metadata['priority']
+                    or current_section_priority
+                    or guess_priority(clean_title)
+                ),
+                'weekly_priority_id': metadata['weekly_priority_id'],
+                'due': metadata['due'],
+                'source': metadata['source'],
+                'project': metadata['project'],
+                'goal': metadata['goal'],
+                'goal_tentative': metadata['goal_tentative'],
+                'next_up': metadata['next_up'],
             })
-    
+
     return tasks
 
 def get_all_tasks() -> List[Dict[str, Any]]:
@@ -2087,6 +3211,9 @@ def get_all_tasks() -> List[Dict[str, Any]]:
     if get_tasks_file().exists():
         tasks = parse_tasks_file(get_tasks_file())
         for t in tasks:
+            metadata_source = t.pop('source', None)
+            if metadata_source:
+                t['metadata_source'] = metadata_source
             t['source'] = 'tasks'
         all_tasks.extend(tasks)
     
@@ -2094,6 +3221,9 @@ def get_all_tasks() -> List[Dict[str, Any]]:
     if get_week_priorities_file().exists():
         tasks = parse_tasks_file(get_week_priorities_file())
         for t in tasks:
+            metadata_source = t.pop('source', None)
+            if metadata_source:
+                t['metadata_source'] = metadata_source
             t['source'] = 'week_priorities'
         all_tasks.extend(tasks)
     
@@ -2174,8 +3304,6 @@ def find_similar_tasks(item: str, existing_tasks: List[Dict[str, Any]]) -> List[
 def migrate_quarterly_goals() -> Dict[str, Any]:
     """Add IDs to existing quarterly goals that don't have them"""
     goals_file = QUARTER_GOALS_FILE
-    if is_demo_mode():
-        goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
     
     if not goals_file.exists():
         return {
@@ -2189,34 +3317,84 @@ def migrate_quarterly_goals() -> Dict[str, Any]:
     # Parse existing goals
     existing_goals = parse_quarterly_goals(goals_file)
     goals_updated = 0
-    
-    # Find goals without IDs and add them
+    headings_needing_manual_fix = []
+
+    # Decide on the whole heading line, not just its last token. A heading may
+    # already carry a valid goal ID somewhere other than straight after the
+    # pillar, and a user's own anchor may sit anywhere on the line. Neither may
+    # be rewritten here: adding a second ID would orphan every existing link,
+    # and overwriting a user's anchor destroys something that may be
+    # load-bearing elsewhere in their vault.
+    heading_re = re.compile(r'(###\s+\d+\.\s+(.+?)\s+—\s+\*\*.*?\*\*)(.*)$')
+    canonical_re = re.compile(r'\^Q\d+-\d{4}-goal-\d+')
+    any_anchor_re = re.compile(r'\^\S+')
+
     for i, line in enumerate(lines):
-        # Match goal headers without IDs
-        goal_match = re.match(r'(###\s+\d+\.\s+.+?\s+—\s+\*\*.*?\*\*)(?!\s+\^)', line)
-        if goal_match:
-            # This goal doesn't have an ID, add one
-            goal_header = goal_match.group(1)
-            
-            # Generate ID
-            quarter_match = re.search(r'quarter:\s+(.+)', content[:content.find(line)])
-            quarter = quarter_match.group(1) if quarter_match else get_quarter_info()['quarter']
-            
-            goal_id = generate_goal_id(quarter, existing_goals)
-            lines[i] = f"{goal_header} ^{goal_id}"
-            
-            # Add this goal to existing_goals so next ID is incremented
-            existing_goals.append({'goal_id': goal_id})
-            goals_updated += 1
+        heading = heading_re.match(line)
+        if not heading:
+            continue
+
+        goal_header, title, trailing = heading.group(1), heading.group(2).strip(), heading.group(3)
+
+        if canonical_re.search(line):
+            # Already has a goal ID. If it is not straight after the pillar the
+            # parser cannot read it, so name it rather than adding a second.
+            if not re.match(r'\s+\^Q\d+-\d{4}-goal-\d+', trailing):
+                headings_needing_manual_fix.append({
+                    'line_number': i + 1,
+                    'title': title,
+                    'existing_anchor': canonical_re.search(line).group(0),
+                    'reason': (
+                        'This heading has a goal ID, but not straight after the '
+                        'bolded pillar, which is the only place Dex reads it. '
+                        'Move it there. Dex will not add a second ID, because '
+                        'that would orphan everything already linked to this one.'
+                    ),
+                })
+            continue
+
+        foreign = any_anchor_re.search(trailing)
+        if foreign:
+            headings_needing_manual_fix.append({
+                'line_number': i + 1,
+                'title': title,
+                'existing_anchor': foreign.group(0),
+                'reason': (
+                    'This heading carries an anchor that is not a quarterly goal '
+                    'ID, so Dex cannot read it as one and will not overwrite your '
+                    'anchor. Replace it with ^Qn-YYYY-goal-N, or move your anchor '
+                    'elsewhere on the page.'
+                ),
+            })
+            continue
+
+        # No ID at all: add one straight after the pillar, where the parser
+        # looks, and carry anything the user wrote after it through untouched.
+        quarter_match = re.search(r'quarter:\s+(.+)', content[:content.find(line)])
+        quarter = quarter_match.group(1) if quarter_match else get_quarter_info()['quarter']
+
+        goal_id = generate_goal_id(quarter, existing_goals)
+        lines[i] = f"{goal_header} ^{goal_id}{trailing}"
+
+        # Add this goal to existing_goals so next ID is incremented
+        existing_goals.append({'goal_id': goal_id})
+        goals_updated += 1
     
     if goals_updated > 0:
         goals_file.write_text('\n'.join(lines))
     
-    return {
+    result = {
         'success': True,
         'goals_updated': goals_updated,
         'message': f"Added IDs to {goals_updated} quarterly goals"
     }
+    if headings_needing_manual_fix:
+        result['headings_needing_manual_fix'] = headings_needing_manual_fix
+        result['message'] += (
+            f"; {len(headings_needing_manual_fix)} heading(s) end with an anchor "
+            "that is not a goal ID and were left untouched"
+        )
+    return result
 
 def migrate_weekly_priorities() -> Dict[str, Any]:
     """Add IDs to existing weekly priorities that don't have them"""
@@ -2462,42 +3640,109 @@ def find_project_for_meeting(attendees: List[str], meeting_title: str) -> Option
     
     return best_match if best_score > 0 else None
 
+def _folded_company_text(value: str) -> str:
+    """Return a stable comparison key for a company or attendee name."""
+    return unicodedata.normalize(
+        'NFC',
+        re.sub(r'[\s_]+', ' ', value).strip(),
+    ).casefold()
+
+
+def _attendee_email_domain(attendee: str) -> Optional[str]:
+    """Return the host from an attendee email, if one is present."""
+    if '@' not in attendee:
+        return None
+    host = attendee.rsplit('@', 1)[1].strip().strip('>')
+    if not host:
+        return None
+    token = host.split(None, 1)[0].rstrip('.,;')
+    return token or None
+
+
+def _company_match_record(
+    company_file: Path,
+    name: str,
+    domains: List[str],
+) -> Dict[str, Any]:
+    return {
+        'path': str(company_file.relative_to(BASE_DIR)),
+        'name': name,
+        'domains': domains,
+    }
+
+
 def find_company_for_attendees(attendees: List[str], domains: List[str] = None) -> Optional[Dict[str, Any]]:
-    """Find a company page based on attendees or email domains"""
+    """Find a company page from attendee email domains or structured names.
+
+    Pins only from structured company fields: frontmatter or legacy table/inline
+    domains, plus the page name. A mention in notes is not a match.
+    """
     if not COMPANIES_DIR.exists():
         return None
-    
-    search_terms = []
-    for attendee in attendees:
-        search_terms.append(attendee.lower())
-        # Extract potential company name from email
-        if '@' in attendee:
-            domain = attendee.split('@')[1].split('.')[0]
-            search_terms.append(domain)
-    
+
+    lookup_domains: List[str] = []
+    lookup_names: List[str] = []
+    for attendee in attendees or []:
+        email_domain = _attendee_email_domain(attendee)
+        if email_domain:
+            if is_freemail(email_domain):
+                continue
+            lookup_domains.append(email_domain)
+            derived = company_name_from_domain(email_domain)
+            if derived:
+                lookup_names.append(derived)
+        else:
+            stripped = attendee.strip()
+            if stripped:
+                lookup_names.append(stripped)
+
     if domains:
-        search_terms.extend([d.lower() for d in domains])
-    
+        lookup_domains.extend(
+            domain for domain in domains
+            if domain and not is_freemail(domain)
+        )
+
+    target_domains = {
+        registrable_domain(domain)
+        for domain in lookup_domains
+        if registrable_domain(domain)
+    }
+    target_names = {
+        _folded_company_text(name)
+        for name in lookup_names
+        if _folded_company_text(name)
+    }
+    if not target_domains and not target_names:
+        return None
+
+    name_match = None
     for company_file in COMPANIES_DIR.glob('*.md'):
         try:
-            content = company_file.read_text()
-            content_lower = content.lower()
-            company_name = company_file.stem.lower().replace('_', ' ')
-            
-            for term in search_terms:
-                if term in company_name or term in content_lower:
-                    # Extract company domains
-                    company_domains = get_company_domains(company_file)
-                    
-                    return {
-                        'path': str(company_file.relative_to(BASE_DIR)),
-                        'name': company_file.stem.replace('_', ' '),
-                        'domains': company_domains
-                    }
+            company_name, company_domains = _structured_company_fields(company_file)
+            structured_domains = {
+                registrable_domain(domain)
+                for domain in company_domains
+                if registrable_domain(domain)
+            }
+            if target_domains & structured_domains:
+                return _company_match_record(
+                    company_file,
+                    company_name,
+                    company_domains,
+                )
+            if (
+                name_match is None
+                and _folded_company_text(company_name) in target_names
+            ):
+                name_match = _company_match_record(
+                    company_file,
+                    company_name,
+                    company_domains,
+                )
         except Exception:
             continue
-    
-    return None
+
+    return name_match
 
 def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = None) -> Dict[str, Any]:
     """Get comprehensive context for a meeting based on attendees and title"""
@@ -2550,36 +3795,77 @@ def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = N
     result['related_company'] = find_company_for_attendees(attendees)
     
     # Get attendee details from People directory
+    attendee_pages: Dict[str, List[Path]] = {}
     for attendee in attendees:
-        attendee_normalized = attendee.lower().replace(' ', '_')
+        attendee_normalized = re.sub(r'[\s_]+', ' ', attendee).strip().casefold()
         
         # Check both Internal and External directories
         for subdir in ['External', 'Internal']:
             people_subdir = get_people_dir() / subdir
             if not people_subdir.exists():
                 continue
-            
+
             for person_file in people_subdir.glob('*.md'):
-                if attendee_normalized in person_file.stem.lower():
+                person_normalized = re.sub(
+                    r'[\s_]+', ' ', person_file.stem
+                ).strip().casefold()
+                if attendee_normalized == person_normalized:
                     person_data = parse_person_page(person_file)
                     result['attendee_details'].append(person_data)
+                    attendee_pages.setdefault(attendee, []).append(person_file)
                     break
-    
+
     # Find outstanding tasks related to attendees
+    seen_outstanding_tasks = set()
+
+    def add_outstanding_task(title: str, attendee: str) -> None:
+        clean_title = title.strip()
+        placeholder = clean_title.casefold()
+        if (
+            not clean_title
+            or placeholder in {
+                '{{action item}}',
+                '[action item]',
+                '(none yet)',
+                'none yet',
+            }
+            or ('{{' in clean_title and '}}' in clean_title)
+        ):
+            return
+        task_key = (attendee.casefold(), clean_title.casefold())
+        if task_key in seen_outstanding_tasks:
+            return
+        seen_outstanding_tasks.add(task_key)
+        result['outstanding_tasks'].append({
+            'title': clean_title,
+            'related_to': attendee,
+        })
+
     tasks_file = get_tasks_file()
     if tasks_file.exists():
         content = tasks_file.read_text()
         for attendee in attendees:
-            attendee_lower = attendee.lower()
+            attendee_key = re.sub(r'[\s_]+', ' ', attendee).strip().casefold()
             for line in content.split('\n'):
-                if '- [ ]' in line and attendee_lower in line.lower():
-                    # Extract task title
-                    title_match = re.match(r'-\s*\[ \]\s*\*?\*?(.+?)\*?\*?(?:\s*\^|\s*$)', line.strip())
-                    if title_match:
-                        result['outstanding_tasks'].append({
-                            'title': title_match.group(1).strip(),
-                            'related_to': attendee
-                        })
+                line_key = re.sub(r'[\s_]+', ' ', line).casefold()
+                attendee_pattern = rf'(?<!\w){re.escape(attendee_key)}(?!\w)'
+                if (
+                    re.match(r'^\s*-\s*\[ \]\s+', line)
+                    and re.search(attendee_pattern, line_key)
+                ):
+                    add_outstanding_task(_task_title_from_line(line), attendee)
+
+    # Person pages also hold legitimate open items that may not yet be in the
+    # canonical backlog. Meeting prep must not drop that attendee context.
+    for attendee, person_files in attendee_pages.items():
+        for person_file in person_files:
+            try:
+                person_content = person_file.read_text()
+            except OSError:
+                continue
+            for line in person_content.splitlines():
+                if re.match(r'^\s*-\s*\[ \]\s+', line):
+                    add_outstanding_task(_task_title_from_line(line), attendee)
     
     # --- QMD: Surface thematically related past discussions ---
     result['semantic_context'] = []
@@ -2744,15 +4030,38 @@ def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
 # CALENDAR CAPACITY ANALYSIS
 # ============================================================================
 
+def _is_all_day_calendar_event(event: Dict) -> bool:
+    """Recognize explicit and date-only all-day calendar shapes."""
+    if event.get('all_day') is True:
+        return True
+
+    for field in ('start', 'end'):
+        value = event.get(field)
+        if isinstance(value, date) and not isinstance(value, datetime):
+            return True
+        if isinstance(value, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', value.strip()):
+            return True
+    return False
+
+
 def analyze_day_capacity(events: List[Dict], target_date: date) -> Dict[str, Any]:
     """Analyze a single day's calendar capacity"""
+    from core.utils.nudge_calendar import is_dex_nudge_event
+
     day_name = target_date.strftime('%A')
+    timed_events = [
+        event for event in events
+        if (
+            not _is_all_day_calendar_event(event)
+            and not is_dex_nudge_event(event)
+        )
+    ]
     
     # Calculate total meeting time
     total_meeting_minutes = 0
-    meeting_count = len(events)
+    meeting_count = len(timed_events)
     
-    for event in events:
+    for event in timed_events:
         # Estimate duration from event data
         duration = event.get('duration_minutes', 60)  # Default 1 hour
         total_meeting_minutes += duration
@@ -2824,7 +4133,7 @@ def get_calendar_capacity_data(days_ahead: int = 5) -> Dict[str, Any]:
     # Generate structure for each day
     for i in range(days_ahead):
         target_date = today + timedelta(days=i)
-        if target_date.weekday() >= 5:  # Skip weekends
+        if not _is_working_day(target_date):
             continue
         
         day_data = {
@@ -2964,12 +4273,56 @@ app = Server("dex-work-mcp")
 async def handle_list_tools() -> list[types.Tool]:
     """List all available tools"""
     pillar_ids = get_pillar_ids()
+    pillar_inputs = list(dict.fromkeys([
+        *pillar_ids,
+        *[
+            str(pillar.get('name', '')).strip()
+            for pillar in PILLARS.values()
+            if str(pillar.get('name', '')).strip()
+        ],
+    ]))
     pillar_description = ", ".join(pillar_ids)
     
     return [
         types.Tool(
+            name="confirm_relationship",
+            description="Confirm one suggested relationship on an entity page.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "page": {
+                        "type": "string",
+                        "description": "Vault-relative entity page path",
+                    },
+                    "edge_key": {
+                        "type": "string",
+                        "description": "Stable relationship key: <type>::<folded target>",
+                    },
+                },
+                "required": ["page", "edge_key"],
+            },
+        ),
+        types.Tool(
+            name="dismiss_relationship",
+            description="Dismiss one relationship and prevent evidence from re-adding it.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "page": {
+                        "type": "string",
+                        "description": "Vault-relative entity page path",
+                    },
+                    "edge_key": {
+                        "type": "string",
+                        "description": "Stable relationship key: <type>::<folded target>",
+                    },
+                },
+                "required": ["page", "edge_key"],
+            },
+        ),
+        types.Tool(
             name="list_tasks",
-            description="List tasks with optional filters (pillar, priority, status, source)",
+            description="List tasks with optional filters (pillar, priority, status, source, goal, project, weekly_priority)",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -2977,24 +4330,36 @@ async def handle_list_tools() -> list[types.Tool]:
                     "priority": {"type": "string", "description": "Filter by priority (P0, P1, P2, P3)"},
                     "status": {"type": "string", "description": "Filter by status (n, s, b, d)"},
                     "source": {"type": "string", "description": "Filter by source (tasks, week_priorities)"},
+                    "goal": {"type": "string", "description": "Filter by quarterly goal ID (e.g., Q3-2026-goal-2). Special values: 'none' = tasks with no goal link, 'tentative' = tasks whose goal link is still tentative (?)"},
+                    "project": {"type": "string", "description": f"Filter by vault-relative project path (e.g., {PROJECTS_DIR.name}/Foo.md; trailing .md optional)"},
+                    "weekly_priority": {"type": "string", "description": "Filter by linked weekly priority ID (e.g., week-2026-W05-p1)"},
                     "include_done": {"type": "boolean", "description": "Include completed tasks", "default": False}
                 }
             }
         ),
         types.Tool(
             name="create_task",
-            description="Create a new task with schema validation. Requires title and pillar alignment. Optionally link to weekly priority, account, or people pages.",
+            description="Create a new task with schema validation. Requires title and pillar alignment. Optionally link to weekly priority, account, people, or source pages.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "title": {"type": "string", "description": "Task title (be specific, not vague)"},
-                    "pillar": {"type": "string", "enum": pillar_ids, "description": f"Which strategic pillar this supports ({pillar_description})"},
+                    "pillar": {"type": "string", "enum": pillar_inputs, "description": f"Strategic pillar ID or unique display name ({pillar_description})"},
                     "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3"], "default": "P2"},
                     "context": {"type": "string", "description": "Additional context or sub-tasks"},
-                    "section": {"type": "string", "description": "Which section in 03-Tasks/Tasks.md to add to", "default": "Next Week"},
+                    "section": {"type": "string", "description": f"Which section in {TASKS_FILE.parent.name}/{TASKS_FILE.name} to add to. When omitted, the task lands under the existing section matching its priority (e.g. P1 - Important), falling back to 'Next Week'."},
                     "weekly_priority_id": {"type": "string", "description": "Link to weekly priority (e.g., 'week-2026-W05-p1') - task contributes to this priority"},
-                    "account": {"type": "string", "description": "Path to account page to link"},
-                    "people": {"type": "array", "items": {"type": "string"}, "description": "List of paths to people pages to link"}
+                    "due": {"type": "string", "description": "Optional due date in YYYY-MM-DD format"},
+                    "project": {"type": "string", "description": f"Optional existing vault-relative project path under {PROJECTS_DIR.name}/"},
+                    "goal": {"type": "string", "description": "Optional quarterly goal ID (e.g., Q3-2026-goal-2)"},
+                    "next_up": {"type": "integer", "minimum": 1, "description": "Optional 'take this first' order within the task's goal (or pillar for goal-less work); 1 = first"},
+                    "on_duplicate": {"type": "string", "enum": ["fail", "force"], "default": "fail", "description": "Fail on similar tasks, or force creation past only the similarity check"},
+                    "account": {"type": "string", "description": "Account page path, company name, URL, or domain to resolve and link"},
+                    "people": {"type": "array", "items": {"type": "string"}, "description": "Person page paths or names to resolve and link"},
+                    "source": {"type": "string", "description": "Vault-relative source file path to link"},
+                    "stamp_source_line": {"type": "string", "description": "Exact source checkbox line text to stamp with the created task ID"},
+                    "external_service": {"type": "string", "description": "Connected task service when accepting an inbound external task; provide with external_id so creation and mapping happen together"},
+                    "external_id": {"type": "string", "description": "Originating external task ID when accepting an inbound task; provide with external_service"}
                 },
                 "required": ["title", "pillar"]
             }
@@ -3011,6 +4376,77 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["status"]
             }
+        ),
+        types.Tool(
+            name="confirm_goal_link",
+            description="Confirm or clear a tentative quarterly-goal link on a canonical task.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "pattern": r"^task-\d{8}-\d{3,}$",
+                        "description": "Task ID without the leading caret (e.g., task-20260128-001)",
+                    },
+                    "action": {
+                        "type": "string",
+                        "enum": ["confirm", "clear"],
+                        "description": "Confirm the tentative goal link or clear it",
+                    },
+                },
+                "required": ["task_id", "action"],
+            },
+        ),
+        types.Tool(
+            name="set_task_next_up",
+            description=f"Add, update, or clear the 'Next up' order on a canonical task in {TASKS_FILE.parent.name}/{TASKS_FILE.name}. Pass next_up=null (or omit it) to clear. The order is read per goal (or per pillar for goal-less work) by get_goal_backlog; values need not be unique.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "pattern": r"^task-\d{8}-\d{3,}$",
+                        "description": "Task ID without the leading caret (e.g., task-20260128-001)",
+                    },
+                    "next_up": {
+                        "type": ["integer", "null"],
+                        "minimum": 1,
+                        "description": "Position within the task's goal/pillar queue (1 = first); null clears the order",
+                    },
+                },
+                "required": ["task_id"],
+            },
+        ),
+        types.Tool(
+            name="sync_external_tasks",
+            description="Sync enabled external task services, or preview the changes without writing.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "services": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": False,
+                    },
+                },
+                "required": [],
+            },
+        ),
+        types.Tool(
+            name="record_external_task_mapping",
+            description="Record the external ID for a canonical Dex task and remove its inbound queue item.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "service": {"type": "string"},
+                    "external_id": {"type": "string"},
+                },
+                "required": ["task_id", "service", "external_id"],
+            },
         ),
         types.Tool(
             name="get_system_status",
@@ -3032,11 +4468,6 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "List of items to process"
-                    },
-                    "auto_create": {
-                        "type": "boolean",
-                        "description": "Automatically create non-duplicate, non-ambiguous tasks",
-                        "default": False
                     }
                 },
                 "required": ["items"]
@@ -3044,7 +4475,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="get_blocked_tasks",
-            description="List all tasks that are currently blocked",
+            description="List all tasks that are currently blocked (marked - [b], plus title-keyword matches)",
             inputSchema={"type": "object", "properties": {}}
         ),
         types.Tool(
@@ -3079,7 +4510,7 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "company_path": {"type": "string", "description": "Path to company page (e.g., 'Acme_Corp' or 'Active/Relationships/Companies/Acme_Corp.md')"}
+                    "company_path": {"type": "string", "description": "Path to company page (e.g., 'Acme_Corp' or '05-Areas/Companies/Acme_Corp.md')"}
                 },
                 "required": ["company_path"]
             }
@@ -3131,6 +4562,16 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "quarter": {"type": "string", "description": "Quarter (e.g., 'Q1 2026') - defaults to current quarter"},
                     "include_completed": {"type": "boolean", "description": "Include completed goals", "default": True}
+                }
+            }
+        ),
+        types.Tool(
+            name="get_goal_backlog",
+            description="Grouped open-task backlog for grooming: one group per quarterly goal, then per pillar for goal-less work, then fully orphaned work. Groups are sorted next-up order, then priority (P0 first), then oldest first, and carry counts plus staleness.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "goal_id": {"type": "string", "description": "A quarterly goal ID (e.g., 'Q3-2026-goal-2') for one group, or 'all' for every group", "default": "all"}
                 }
             }
         ),
@@ -3264,6 +4705,30 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
+            name="match_capture_to_calendar",
+            description=(
+                "Match one captured meeting to Calendar events inside a hard five-minute window. "
+                "Timezone-aware ISO timestamps are required. The result returns meeting identity only "
+                "(title, UTC start, attendee names/emails), never invite links, dial-ins, access codes, "
+                "notes, or raw payloads."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "capture": {
+                        "type": "object",
+                        "description": "Capture identity: title, start_time, and optional attendees.",
+                    },
+                    "calendar_events": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "Calendar MCP events for the capture date.",
+                    },
+                },
+                "required": ["capture", "calendar_events"],
+            },
+        ),
+        types.Tool(
             name="get_commitments_due",
             description="Scan meeting notes and person pages for commitments and follow-ups that are due today or this week.",
             inputSchema={
@@ -3272,6 +4737,20 @@ async def handle_list_tools() -> list[types.Tool]:
                     "date_range": {"type": "string", "enum": ["today", "this_week", "all"], "default": "today", "description": "Which commitments to return"}
                 }
             }
+        ),
+        types.Tool(
+            name="detect_soft_commitments",
+            description="Detect soft/implicit commitments in a block of text (a chat message or meeting notes) — 'I'll follow up', 'let me get back to you', 'we should revisit' — and return candidates with any stated person and due date. Detection only; never creates tasks. The single shared detector behind the live capture hook and process-meetings.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Text to scan for soft commitments",
+                    }
+                },
+                "required": ["text"],
+            },
         ),
         types.Tool(
             name="classify_task_effort",
@@ -3330,6 +4809,11 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={"type": "object", "properties": {}}
         ),
         types.Tool(
+            name="build_company_index",
+            description="Scan company pages and build System/Company_Index.json.",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        types.Tool(
             name="lookup_person",
             description="Fast person lookup using the People Directory index. Fuzzy name matching with optional company filter. Falls back to file scan if index doesn't exist.",
             inputSchema={
@@ -3340,6 +4824,118 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["name"]
             }
+        ),
+        types.Tool(
+            name="boot_today",
+            description=(
+                "Session boot context: today's date, strategic pillars, quarter "
+                "goals, week priorities, and urgent tasks. Cursor, ChatGPT, and "
+                "Codex should call this at session start. Claude Code auto-fires "
+                "the same read-only payload via the SessionStart hook."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
+            name="get_person_context",
+            description=(
+                "Person context payload: role, company, last interaction, and "
+                "open items. Call when a person is mentioned. Claude Code "
+                "auto-fires the same payload when a file with that person is read."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Person name (full name preferred)",
+                    },
+                },
+                "required": ["name"],
+            },
+        ),
+        types.Tool(
+            name="check_safety_gate",
+            description=(
+                "Advisory safety check for destructive shell commands and unsafe "
+                "paths. Call before a risky action. Claude Code's verified "
+                "PreToolUse wrapper enforces the same decision; an MCP result is "
+                "not an interceptor by itself and must be honoured by the harness."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tool_name": {
+                        "type": "string",
+                        "description": "Tool being proposed (for example Bash)",
+                    },
+                    "command": {
+                        "type": "string",
+                        "description": "Shell command to evaluate",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Filesystem path to evaluate",
+                    },
+                },
+            },
+        ),
+        types.Tool(
+            name="create_person",
+            description="Create a canonical person page with duplicate protection and refresh the People index.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Person's full name"},
+                    "role": {"type": "string"},
+                    "company": {"type": "string"},
+                    "emails": {"type": "array", "items": {"type": "string"}},
+                    "aliases": {"type": "array", "items": {"type": "string"}},
+                    "location": {
+                        "type": "string",
+                        "enum": ["internal", "external", "unknown"],
+                        "description": "Computed from the first email and profile email_domain when omitted",
+                    },
+                    "notes": {"type": "string"},
+                    "allow_duplicate": {"type": "boolean", "default": False},
+                },
+                "required": ["name"],
+            },
+        ),
+        types.Tool(
+            name="reroute_people",
+            description=(
+                "Recompute each person's internal/external location from the "
+                "emails recorded on their page and move pages between "
+                "People/Internal and People/External to match. Defaults to a "
+                "dry-run that returns the full proposed plan (moves with the "
+                "deciding email, already-correct count, ambiguous pages, "
+                "collision warnings). Pass dry_run=false to apply: pages are "
+                "moved (collisions skipped, never overwritten), location "
+                "frontmatter and its mirror are rewritten, and the People "
+                "index is rebuilt. Pages with no recorded emails are listed "
+                "as ambiguous and never guessed; a location the user pinned "
+                "or hand-edited is honoured as written (the page is routed "
+                "to the user's own value and its frontmatter is never "
+                "rewritten); People/CPO_Network is never touched."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Return the proposed plan without changing anything (default true)",
+                    },
+                    "domains": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Internal email domains to classify against. Defaults to the "
+                            "email_domain currently configured in System/user-profile.yaml."
+                        ),
+                    },
+                },
+            },
         ),
         types.Tool(
             name="query_meeting_cache",
@@ -3387,12 +4983,44 @@ async def handle_list_tools() -> list[types.Tool]:
 
 # Tools that write to vault files and should trigger search index refresh
 WRITE_TOOLS = {
-    "create_task", "update_task_status", "create_company", "refresh_company",
+    "confirm_relationship", "dismiss_relationship",
+    "create_task", "update_task_status", "confirm_goal_link", "set_task_next_up",
+    "create_company", "refresh_company",
+    "sync_external_tasks",
     "sync_task_refs", "create_quarterly_goal", "update_goal_progress",
     "create_weekly_priority", "complete_weekly_priority",
     "process_inbox_with_dedup", "migrate_quarterly_goals", "migrate_weekly_priorities",
-    "build_people_index", "rebuild_meeting_cache", "capture_skill_rating",
+    "build_people_index", "build_company_index", "create_person", "reroute_people",
+    "rebuild_meeting_cache", "capture_skill_rating",
 }
+
+CAPABILITY_TOOL_ROOMS = {
+    "companies": {
+        "refresh_company", "list_companies", "create_company", "build_company_index",
+    },
+    "quarter_goals": {
+        "confirm_goal_link", "create_quarterly_goal", "get_quarterly_goals",
+        "get_goal_status", "get_goal_backlog", "update_goal_progress",
+        "check_goal_alignment",
+        "get_quarter_velocity", "migrate_quarterly_goals",
+        "get_weekly_planning_context",
+    },
+}
+
+
+def _capability_tool_off(name: str) -> Dict[str, Any] | None:
+    """Return the standard off payload before a room tool can read or write."""
+    for room, tools in CAPABILITY_TOOL_ROOMS.items():
+        if name in tools and not capability_rooms.enabled(
+            room, profile_path=USER_PROFILE_FILE
+        ):
+            label = room.replace("_", " ").title()
+            return feature_status(
+                f"{label} room",
+                "off",
+                f"The {label} room is off. Turn it on with /manage-capabilities when you want it.",
+            )
+    return None
 
 @app.call_tool()
 async def handle_call_tool(
@@ -3400,10 +5028,23 @@ async def handle_call_tool(
 ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     """Handle tool calls"""
     try:
-        result = await _handle_call_tool_inner(name, arguments)
+        if not isinstance(name, str):
+            name = ""
+        safe_arguments = arguments if isinstance(arguments, dict) else {}
+        room_off = _capability_tool_off(name)
+        if room_off is not None:
+            return [types.TextContent(type="text", text=json.dumps(room_off, indent=2))]
+        result = await _handle_call_tool_inner(name, safe_arguments)
 
         # Refresh QMD search index after any write operation (non-blocking)
-        if name in WRITE_TOOLS:
+        is_dry_run_write = (
+            name == "sync_external_tasks"
+            and bool(safe_arguments.get("dry_run", False))
+        ) or (
+            name == "reroute_people"
+            and bool(safe_arguments.get("dry_run", True))
+        )
+        if name in WRITE_TOOLS and not is_dry_run_write:
             refresh_search_index()
 
         return result
@@ -3413,6 +5054,8 @@ async def handle_call_tool(
                 "list_tasks": "Task listing failed",
                 "create_task": "Task creation failed",
                 "update_task_status": "Task status update failed",
+                "sync_external_tasks": "External task sync failed",
+                "record_external_task_mapping": "External task mapping failed",
                 "get_system_status": "System status check failed",
                 "check_priority_limits": "Priority limits check failed",
                 "process_inbox_with_dedup": "Inbox processing failed",
@@ -3426,6 +5069,8 @@ async def handle_call_tool(
                 "create_quarterly_goal": "Quarterly goal creation failed",
                 "get_quarterly_goals": "Quarterly goals lookup failed",
                 "get_goal_status": "Goal status lookup failed",
+                "get_goal_backlog": "Goal backlog lookup failed",
+                "set_task_next_up": "Next-up ordering update failed",
                 "update_goal_progress": "Goal progress update failed",
                 "create_weekly_priority": "Weekly priority creation failed",
                 "get_week_priorities": "Weekly priorities lookup failed",
@@ -3442,6 +5087,10 @@ async def handle_call_tool(
                 "classify_task_effort": "Task effort classification failed",
                 "analyze_calendar_capacity": "Calendar capacity analysis failed",
                 "suggest_task_scheduling": "Task scheduling suggestion failed",
+                "reroute_people": "People re-routing failed",
+                "boot_today": "Session boot context failed",
+                "get_person_context": "Person context lookup failed",
+                "check_safety_gate": "Safety gate check failed",
             }
             _log_health_error(
                 source="work-mcp",
@@ -3456,7 +5105,23 @@ async def _handle_call_tool_inner(
 ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     """Inner tool handler — wrapped by handle_call_tool for post-write hooks."""
     
-    if name == "list_tasks":
+    if name == "confirm_relationship":
+        result = _relationship_action(
+            arguments["page"],
+            arguments["edge_key"],
+            dismiss=False,
+        )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "dismiss_relationship":
+        result = _relationship_action(
+            arguments["page"],
+            arguments["edge_key"],
+            dismiss=True,
+        )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "list_tasks":
         tasks = get_all_tasks()
         
         if arguments:
@@ -3471,9 +5136,32 @@ async def _handle_call_tool_inner(
             
             if arguments.get('status'):
                 tasks = [t for t in tasks if t.get('status') == arguments['status']]
-            
+
             if arguments.get('source'):
                 tasks = [t for t in tasks if t.get('source') == arguments['source']]
+
+            goal_filter = arguments.get('goal')
+            if goal_filter:
+                if goal_filter == 'none':
+                    tasks = [t for t in tasks if not t.get('goal')]
+                elif goal_filter == 'tentative':
+                    tasks = [t for t in tasks if t.get('goal') and t.get('goal_tentative')]
+                else:
+                    tasks = [t for t in tasks if t.get('goal') == goal_filter]
+
+            if arguments.get('project'):
+                wanted = _normalized_project_path(arguments['project'])
+                tasks = [
+                    t for t in tasks
+                    if t.get('project')
+                    and _normalized_project_path(t['project']) == wanted
+                ]
+
+            if arguments.get('weekly_priority'):
+                tasks = [
+                    t for t in tasks
+                    if t.get('weekly_priority_id') == arguments['weekly_priority']
+                ]
         else:
             tasks = [t for t in tasks if not t.get('completed')]
         
@@ -3486,19 +5174,63 @@ async def _handle_call_tool_inner(
     
     elif name == "create_task":
         title = arguments['title']
-        pillar = arguments['pillar']
+        pillar_input = arguments['pillar']
+        pillar = resolve_pillar_id(pillar_input)
         priority = arguments.get('priority', 'P2')
         context = arguments.get('context', '')
-        section = arguments.get('section', 'Next Week')
+        section = arguments.get('section') or ''
         weekly_priority_id = arguments.get('weekly_priority_id', '')
-        account = arguments.get('account', '')
-        people = arguments.get('people', [])
-        
-        # Validate pillar
-        if pillar not in PILLARS:
+        due = arguments.get('due', '')
+        project = arguments.get('project', '')
+        goal = arguments.get('goal', '')
+        next_up = arguments.get('next_up')
+        on_duplicate = arguments.get('on_duplicate', 'fail')
+        account = arguments.get('account', '') or ''
+        people = arguments.get('people', []) or []
+        source = arguments.get('source', '') or ''
+        stamp_source_line = arguments.get('stamp_source_line', '') or ''
+        external_service = arguments.get('external_service', '') or ''
+        external_id = arguments.get('external_id', '') or ''
+        if bool(external_service) != bool(external_id):
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
-                "error": f"Invalid pillar '{pillar}'. Must be one of: {list(PILLARS.keys())}"
+                "error": "external_service and external_id must be provided together",
+            }, indent=2))]
+        if external_service and (
+            not isinstance(external_service, str)
+            or re.fullmatch(r'[a-z][a-z0-9_-]*', external_service) is None
+            or not isinstance(external_id, str)
+            or not external_id.strip()
+        ):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "Invalid external task identity",
+            }, indent=2))]
+        if _LEAKED_TOOL_CALL_DELIMITER_RE.search(context):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": (
+                    "Malformed create_task arguments: context contains leaked "
+                    "tool-call delimiters."
+                ),
+                "suggestion": (
+                    "Retry create_task with plain context and pass metadata through "
+                    "the structured account and source fields."
+                ),
+            }, indent=2))]
+        if source.startswith('meeting:'):
+            source = source[len('meeting:'):]
+        account_link = None
+        people_links = []
+        goal_link = None
+        tentative_link = None
+        goal_tentative = False
+        
+        # Validate pillar
+        if pillar is None:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": f"Invalid pillar '{pillar_input}'. Must be one of: {list(PILLARS.keys())}"
             }, indent=2))]
         
         # Validate priority
@@ -3507,6 +5239,141 @@ async def _handle_call_tool_inner(
                 "success": False,
                 "error": f"Invalid priority '{priority}'. Must be one of: {PRIORITIES}"
             }, indent=2))]
+
+        if on_duplicate not in ('fail', 'force'):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "Invalid on_duplicate value. Must be one of: ['fail', 'force']"
+            }, indent=2))]
+
+        if not section:
+            existing_content = (
+                get_tasks_file().read_text() if get_tasks_file().exists() else ''
+            )
+            section = (
+                default_section_for_priority(priority, existing_content)
+                or 'Next Week'
+            )
+
+        if weekly_priority_id:
+            weekly_priorities = parse_weekly_priorities(get_week_priorities_file())
+            available_weekly_ids = [
+                weekly.get('priority_id')
+                for weekly in weekly_priorities
+                if weekly.get('priority_id')
+            ]
+            if weekly_priority_id not in available_weekly_ids:
+                available_text = ', '.join(available_weekly_ids) or 'none'
+                return [types.TextContent(type="text", text=json.dumps({
+                    "success": False,
+                    "error": (
+                        f"Unknown weekly priority '{weekly_priority_id}'. "
+                        f"Available weekly priority ids: {available_text}"
+                    ),
+                    "available_weekly_priority_ids": available_weekly_ids,
+                }, indent=2))]
+
+        if due and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', due):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": f"Invalid due date '{due}'. Use YYYY-MM-DD format."
+            }, indent=2))]
+
+        # bool is an int subtype, so exclude it explicitly.
+        if next_up is not None and (
+            isinstance(next_up, bool) or not isinstance(next_up, int) or next_up < 1
+        ):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": f"Invalid next_up '{next_up}'. Must be a positive integer."
+            }, indent=2))]
+
+        if project:
+            projects_dir = (BASE_DIR / PROJECTS_DIR.name).resolve()
+            supplied_project = Path(project)
+            project_path = (BASE_DIR / supplied_project).resolve()
+            project_is_contained = (
+                not supplied_project.is_absolute()
+                and (project_path == projects_dir or projects_dir in project_path.parents)
+            )
+            if not project_is_contained:
+                return [types.TextContent(type="text", text=json.dumps({
+                    "success": False,
+                    "error": f"Project must be a vault-relative file under {PROJECTS_DIR.name}/."
+                }, indent=2))]
+            if not project_path.is_file():
+                requested_stem = supplied_project.stem.casefold()
+                close_matches = []
+                if projects_dir.exists():
+                    close_matches = sorted(
+                        str(candidate.relative_to(BASE_DIR))
+                        for candidate in projects_dir.rglob('*.md')
+                        if (
+                            requested_stem in candidate.stem.casefold()
+                            or candidate.stem.casefold() in requested_stem
+                        )
+                    )
+                return [types.TextContent(type="text", text=json.dumps({
+                    "success": False,
+                    "error": f"Project file does not exist: {project}",
+                    "close_matches": close_matches,
+                }, indent=2))]
+
+        if goal:
+            quarterly_goals = parse_quarterly_goals(QUARTER_GOALS_FILE)
+            # Provisional goals carry generated IDs that exist nowhere on disk,
+            # so a task may not link to them until they are structured.
+            available_goal_ids = [
+                quarterly_goal.get('goal_id')
+                for quarterly_goal in quarterly_goals
+                if quarterly_goal.get('goal_id')
+                and not quarterly_goal.get('provisional')
+            ]
+            if goal not in available_goal_ids:
+                available_text = ', '.join(available_goal_ids) or 'none'
+                error_payload = {
+                    "success": False,
+                    "error": (
+                        f"Unknown quarterly goal '{goal}'. "
+                        f"Available goal ids: {available_text}"
+                    ),
+                    "available_goal_ids": available_goal_ids,
+                }
+                provisional_count = sum(
+                    1 for quarterly_goal in quarterly_goals
+                    if quarterly_goal.get('provisional')
+                )
+                if provisional_count:
+                    error_payload["note"] = (
+                        f"{provisional_count} goals were recovered from freeform "
+                        "text and need structuring (e.g. via /quarter-plan) "
+                        "before tasks can link to them."
+                    )
+                return [types.TextContent(type="text", text=json.dumps(error_payload, indent=2))]
+            goal_link = {
+                'goal_id': goal,
+                'how': 'explicit',
+                'tentative': False,
+            }
+
+        people_resolution = resolve_people_links(people)
+        if not people_resolution['success']:
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(people_resolution, indent=2),
+            )]
+        people = people_resolution['resolved']
+        people_links = people_resolution['links']
+
+        if account:
+            account_resolution = resolve_account_link(account)
+            if not account_resolution['success']:
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps(account_resolution, indent=2),
+                )]
+            account = account_resolution['resolved']
+            account_link = account_resolution['link']
         
         # Check ambiguity
         if is_ambiguous(title):
@@ -3521,31 +5388,79 @@ async def _handle_call_tool_inner(
         
         # Check for duplicates
         existing_tasks = get_all_tasks()
-        similar = find_similar_tasks(title, existing_tasks)
+        similar = find_similar_tasks(title, existing_tasks) if on_duplicate == 'fail' else []
         if similar:
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
                 "error": "Potential duplicate detected",
                 "title": title,
                 "similar_tasks": similar,
-                "suggestion": "Review these similar tasks. If still unique, rephrase the title to be more distinct."
+                "suggestion": "Review these similar tasks. If this is intentionally separate, retry with on_duplicate=force."
             }, indent=2))]
         
-        # Check priority limits
-        active_tasks = [t for t in existing_tasks if not t.get('completed')]
+        # Priority limits are a guideline, not a wall. Creating the task always
+        # succeeds; when a bucket is over its limit we attach a warning to the
+        # success payload rather than refusing (issue #80 — a mid-workflow
+        # refusal gets missed in the terminal scroll, silently losing the task
+        # or filing it at the wrong priority). The count reflects state BEFORE
+        # this task is added.
+        priority_warning = None
+        active_tasks = active_tasks_for_priority_limits(existing_tasks)
         priority_counts = Counter(t.get('priority', 'P2') for t in active_tasks)
-        
+
         if priority in PRIORITY_LIMITS and priority_counts.get(priority, 0) >= PRIORITY_LIMITS[priority]:
-            return [types.TextContent(type="text", text=json.dumps({
-                "success": False,
-                "error": f"Priority limit exceeded for {priority}",
-                "current_count": priority_counts.get(priority, 0),
+            new_count = priority_counts.get(priority, 0) + 1
+            priority_warning = {
+                "warning": (
+                    f"{priority} now holds {new_count} tasks "
+                    f"(guideline is {PRIORITY_LIMITS[priority]}) — consider "
+                    "completing or demoting one to keep this priority focused."
+                ),
+                "priority": priority,
+                "current_count": new_count,
                 "limit": PRIORITY_LIMITS[priority],
-                "suggestion": f"You have too many {priority} tasks. Complete or deprioritize some before adding more."
-            }, indent=2))]
+                "priority_counts": dict(priority_counts),
+            }
+
+        if not goal:
+            quarterly_goals = (
+                parse_quarterly_goals(QUARTER_GOALS_FILE)
+                if QUARTER_GOALS_FILE.exists()
+                else []
+            )
+            task_text = ' '.join(part for part in (title, context) if part).strip()
+            candidates = infer_goal_link(task_text, pillar, quarterly_goals)
+            top_candidate = next(
+                (
+                    candidate for candidate in candidates
+                    if candidate.get('goal_id')
+                ),
+                None,
+            )
+            if top_candidate and top_candidate['confidence'] == 'strong':
+                goal = top_candidate['goal_id']
+                goal_link = {
+                    'goal_id': goal,
+                    'how': 'inferred',
+                    'confidence': 'strong',
+                    'tentative': False,
+                }
+            elif top_candidate and top_candidate['confidence'] == 'weak':
+                goal = top_candidate['goal_id']
+                goal_tentative = True
+                tentative_link = {
+                    'goal_id': goal,
+                    'how': 'inferred',
+                    'confidence': 'weak',
+                    'tentative': True,
+                }
         
-        # Generate unique task ID
-        task_id = generate_task_id()
+        # Reuse a unique source-only legacy anchor; otherwise generate a new ID.
+        task_id = (
+            reusable_source_task_id(source, stamp_source_line)
+            if source and stamp_source_line
+            else None
+        ) or generate_task_id()
         
         # Build file references for account/people
         file_refs = []
@@ -3554,6 +5469,8 @@ async def _handle_call_tool_inner(
             file_refs.append(account if account.endswith('.md') else f"{account}.md")
         for person in people:
             file_refs.append(person if person.endswith('.md') else f"{person}.md")
+        if source:
+            file_refs.append(source if source.endswith('.md') else f"{source}.md")
         
         # Create the task entry with plain file references and task ID
         pillar_name = PILLARS[pillar]['name']
@@ -3568,6 +5485,15 @@ async def _handle_call_tool_inner(
         task_entry += f"\n\t- Pillar: {pillar_name} | Priority: {priority}"
         if weekly_priority_id:
             task_entry += f" | Weekly priority: [{weekly_priority_id}]"
+        if due:
+            task_entry += f" | Due: {due}"
+        if project:
+            task_entry += f" | Project: {project}"
+        if goal:
+            tentative_marker = ' (?)' if goal_tentative else ''
+            task_entry += f" | Goal: {goal}{tentative_marker}"
+        if next_up is not None:
+            task_entry += f" | Next up: {next_up}"
         
         # Add to 03-Tasks/Tasks.md under the appropriate section
         if get_tasks_file().exists():
@@ -3577,10 +5503,19 @@ async def _handle_call_tool_inner(
         
         # Find the section and add the task
         section_header = f"## {section}"
-        if section_header in content:
-            # Add after section header
-            parts = content.split(section_header)
-            new_content = parts[0] + section_header + "\n" + task_entry + "\n" + parts[1]
+        section_match = re.search(
+            rf'(?m)^{re.escape(section_header)}(?=\r?$)', content
+        )
+        if section_match:
+            # Insert after the first exact heading without reconstructing user data.
+            insert_at = section_match.end()
+            new_content = (
+                content[:insert_at]
+                + "\n"
+                + task_entry
+                + "\n"
+                + content[insert_at:]
+            )
         else:
             # Create new section at the top
             lines = content.split('\n')
@@ -3593,26 +5528,56 @@ async def _handle_call_tool_inner(
             new_content = '\n'.join(lines)
         
         get_tasks_file().write_text(new_content)
+
+        external_mapping = None
+        if external_service:
+            from core.integrations import task_sync
+
+            external_mapping = task_sync.record_external_task_mapping(
+                task_id=task_id,
+                service=external_service,
+                external_id=external_id,
+            )
+            if not external_mapping.get("success"):
+                raise RuntimeError(
+                    str(external_mapping.get("error") or "External task mapping failed")
+                )
+
+        if stamp_source_line and source:
+            try:
+                stamp_result = stamp_task_source_line(
+                    source,
+                    stamp_source_line,
+                    task_id,
+                )
+            except Exception as error:
+                logger.warning("Could not stamp task source line: %s", error)
+                stamp_result = {
+                    'attempted': True,
+                    'stamped': False,
+                    'reason': 'write_failed',
+                }
+        elif stamp_source_line:
+            stamp_result = {
+                'attempted': False,
+                'stamped': False,
+                'reason': 'source_required',
+            }
+        else:
+            stamp_result = {'attempted': False, 'stamped': False}
         
         # Sync Related Tasks sections in referenced pages
         synced_pages = []
-        if account:
-            result_sync = sync_task_refs_for_page(account)
-            if result_sync['success']:
-                synced_pages.append(account)
-        for person in people:
-            result_sync = sync_task_refs_for_page(person)
-            if result_sync['success']:
-                synced_pages.append(person)
-        
-        # Fire analytics event (silent, best-effort)
-        try:
-            _fire_analytics_event('task_created', {
-                'pillar': pillar,
-                'priority': priority,
-            })
-        except Exception:
-            pass
+        referenced_pages = [
+            page for page in (account, *people, source) if page
+        ]
+        for page in referenced_pages:
+            try:
+                result_sync = sync_task_refs_for_page(page)
+                if result_sync['success']:
+                    synced_pages.append(page)
+            except Exception as error:
+                logger.warning("Could not sync task references for %s: %s", page, error)
         
         result = {
             "success": True,
@@ -3623,14 +5588,261 @@ async def _handle_call_tool_inner(
                 "priority": priority,
                 "section": section,
                 "weekly_priority_id": weekly_priority_id if weekly_priority_id else None,
+                "due": due if due else None,
+                "project": project if project else None,
+                "goal": goal if goal else None,
+                "goal_tentative": goal_tentative,
+                "next_up": next_up,
                 "account": account if account else None,
-                "people": people if people else None
+                "people": people if people else None,
+                "source": source if source else None
             },
+            "links": {
+                "account": account_link,
+                "people": people_links,
+                "goal": goal_link,
+                "tentative": tentative_link,
+            },
+            "stamp": stamp_result,
+            "external_mapping": external_mapping,
             "synced_pages": synced_pages,
             "message": f"Task '{title}' created successfully under {section} with ID: {task_id}"
         }
+        if priority_warning:
+            result["priority_warning"] = priority_warning
+        surface_analytics_attempt(
+            result,
+            _fire_analytics_event,
+            'task_created',
+            {
+                'pillar': pillar,
+                'priority': priority,
+            },
+        )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
-    
+
+    elif name == "confirm_goal_link":
+        task_id = arguments["task_id"]
+        action = arguments["action"]
+        tasks_file = get_tasks_file()
+
+        if not tasks_file.exists():
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "task not found",
+            }))]
+
+        lines = tasks_file.read_text().split("\n")
+        task_anchor = re.compile(rf"\^{re.escape(task_id)}(?![A-Za-z0-9_-])")
+        task_index = next(
+            (
+                index
+                for index, line in enumerate(lines)
+                if re.match(r"^-\s*\[[ bBsSxX/]\]", line.strip()) and task_anchor.search(line)
+            ),
+            None,
+        )
+        if task_index is None:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "task not found",
+            }))]
+
+        indexed_child_lines = _task_child_lines(lines, task_index, include_indices=True)
+        child_lines = [line for _index, line in indexed_child_lines]
+        metadata = _parse_task_metadata(
+            child_lines,
+            _task_title_from_line(lines[task_index]),
+        )
+        goal_id = metadata["goal"]
+        if not goal_id:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "no goal link on this task",
+            }))]
+
+        if not metadata["goal_tentative"]:
+            error = (
+                "goal link is already confirmed"
+                if action == "confirm"
+                else "goal link is confirmed; edit explicitly if you want to remove it"
+            )
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": error,
+            }))]
+
+        goal_field = re.compile(
+            rf"\s*Goal\s*:\s*{re.escape(goal_id)}\s+\(\?\)\s*",
+            re.IGNORECASE,
+        )
+        metadata_line_index = None
+        metadata_parts = None
+        goal_part_index = None
+        for child_index, child_line in indexed_child_lines:
+            bullet_match = re.match(r"^([ \t]+-\s*)(.*)$", child_line)
+            if not bullet_match:
+                continue
+            parts = bullet_match.group(2).split("|")
+            for part_index, part in enumerate(parts):
+                if goal_field.fullmatch(part):
+                    metadata_line_index = child_index
+                    metadata_parts = parts
+                    goal_part_index = part_index
+                    break
+            if metadata_line_index is not None:
+                break
+
+        if metadata_line_index is None or metadata_parts is None or goal_part_index is None:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "no goal link on this task",
+            }))]
+
+        if action == "confirm":
+            metadata_parts[goal_part_index] = re.sub(
+                r"\s+\(\?\)(?=\s*$)",
+                "",
+                metadata_parts[goal_part_index],
+            )
+            prefix = re.match(r"^([ \t]+-\s*)", lines[metadata_line_index]).group(1)
+            lines[metadata_line_index] = prefix + "|".join(metadata_parts)
+            result = {
+                "success": True,
+                "task_id": task_id,
+                "action": action,
+                "goal_id": goal_id,
+                "goal_tentative": False,
+            }
+        else:
+            remaining_parts = [
+                part.strip()
+                for part_index, part in enumerate(metadata_parts)
+                if part_index != goal_part_index and part.strip()
+            ]
+            if remaining_parts:
+                prefix = re.match(r"^([ \t]+-\s*)", lines[metadata_line_index]).group(1)
+                lines[metadata_line_index] = prefix + " | ".join(remaining_parts)
+            else:
+                del lines[metadata_line_index]
+            result = {
+                "success": True,
+                "task_id": task_id,
+                "action": action,
+                "goal_id": goal_id,
+            }
+
+        tasks_file.write_text("\n".join(lines))
+        return [types.TextContent(type="text", text=json.dumps(result))]
+
+    elif name == "set_task_next_up":
+        task_id = arguments["task_id"]
+        next_up = arguments.get("next_up")
+        # bool is an int subtype, so exclude it explicitly.
+        if next_up is not None and (
+            isinstance(next_up, bool) or not isinstance(next_up, int) or next_up < 1
+        ):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": f"Invalid next_up '{next_up}'. Must be a positive integer or null.",
+            }))]
+
+        tasks_file = get_tasks_file()
+        if not tasks_file.exists():
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "task not found",
+            }))]
+
+        lines = tasks_file.read_text().split("\n")
+        task_anchor = re.compile(rf"\^{re.escape(task_id)}(?![A-Za-z0-9_-])")
+        task_index = next(
+            (
+                index
+                for index, line in enumerate(lines)
+                if re.match(r"^-\s*\[[ bBsSxX/]\]", line.strip()) and task_anchor.search(line)
+            ),
+            None,
+        )
+        if task_index is None:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "task not found",
+            }))]
+
+        indexed_child_lines = _task_child_lines(lines, task_index, include_indices=True)
+        next_up_field = re.compile(r"\s*Next up\s*:\s*(\d+)\s*", re.IGNORECASE)
+
+        metadata_line_index = None
+        metadata_parts = None
+        field_part_index = None
+        for child_index, child_line in indexed_child_lines:
+            bullet_match = re.match(r"^([ \t]+-\s*)(.*)$", child_line)
+            if not bullet_match:
+                continue
+            parts = bullet_match.group(2).split("|")
+            for part_index, part in enumerate(parts):
+                if next_up_field.fullmatch(part):
+                    metadata_line_index = child_index
+                    metadata_parts = parts
+                    field_part_index = part_index
+                    break
+            if metadata_line_index is not None:
+                break
+
+        previous_next_up = None
+        if metadata_line_index is not None:
+            previous_next_up = int(
+                next_up_field.fullmatch(metadata_parts[field_part_index]).group(1)
+            )
+
+        changed = True
+        if next_up is None:
+            if metadata_line_index is None:
+                changed = False
+            else:
+                remaining_parts = [
+                    part.strip()
+                    for part_index, part in enumerate(metadata_parts)
+                    if part_index != field_part_index and part.strip()
+                ]
+                if remaining_parts:
+                    prefix = re.match(r"^([ \t]+-\s*)", lines[metadata_line_index]).group(1)
+                    lines[metadata_line_index] = prefix + " | ".join(remaining_parts)
+                else:
+                    del lines[metadata_line_index]
+        elif metadata_line_index is not None:
+            metadata_parts[field_part_index] = re.sub(
+                r"\d+", str(next_up), metadata_parts[field_part_index], count=1
+            )
+            prefix = re.match(r"^([ \t]+-\s*)", lines[metadata_line_index]).group(1)
+            lines[metadata_line_index] = prefix + "|".join(metadata_parts)
+        else:
+            # New bullet goes after everything indented under the task so no
+            # existing child structure is reordered.
+            task_indent = _indent_width(lines[task_index])
+            insert_at = task_index + 1
+            while (
+                insert_at < len(lines)
+                and _is_indented_bullet(lines[insert_at])
+                and _indent_width(lines[insert_at]) > task_indent
+            ):
+                insert_at += 1
+            leading = re.match(r"^[ \t]*", lines[task_index]).group(0)
+            lines.insert(insert_at, f"{leading}\t- Next up: {next_up}")
+
+        if changed:
+            tasks_file.write_text("\n".join(lines))
+
+        result = {
+            "success": True,
+            "task_id": task_id,
+            "next_up": next_up,
+            "previous_next_up": previous_next_up,
+            "changed": changed,
+        }
+        return [types.TextContent(type="text", text=json.dumps(result))]
+
     elif name == "update_task_status":
         task_id = arguments.get('task_id')
         task_title = arguments.get('task_title')
@@ -3639,7 +5851,7 @@ async def _handle_call_tool_inner(
         
         # If task_id provided, use it directly
         if task_id:
-            result = update_task_status_everywhere(task_id, completed)
+            result = update_task_status_everywhere(task_id, new_status)
             if not result['success']:
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
             
@@ -3648,10 +5860,12 @@ async def _handle_call_tool_inner(
             result['related_tasks_synced'] = synced_pages
             
             if completed:
-                try:
-                    _fire_analytics_event('task_completed', {'method': 'task_id'})
-                except Exception:
-                    pass
+                surface_analytics_attempt(
+                    result,
+                    _fire_analytics_event,
+                    'task_completed',
+                    {'method': 'task_id'},
+                )
             
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
         
@@ -3665,53 +5879,76 @@ async def _handle_call_tool_inner(
                     "success": False,
                     "error": f"No task found matching '{task_title}'"
                 }, indent=2))]
+
+            exact_matching = [
+                task for task in matching
+                if task['title'].lower() == task_title.lower()
+            ]
+            if exact_matching:
+                matching = exact_matching
+            elif len(matching) > 1:
+                return [types.TextContent(type="text", text=json.dumps({
+                    "success": False,
+                    "error": f"Multiple tasks found matching '{task_title}'"
+                }, indent=2))]
+
+            if completed:
+                open_matching = [
+                    task for task in matching if not task.get('completed', False)
+                ]
+                if open_matching:
+                    matching = open_matching
             
             task = matching[0]
             
             # If task has an ID, use the sync function
             if task.get('task_id'):
-                result = update_task_status_everywhere(task['task_id'], completed)
+                result = update_task_status_everywhere(task['task_id'], new_status)
+
+                if not result['success']:
+                    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
                 
                 # Also sync Related Tasks sections
                 synced_pages = propagate_task_status_to_refs(task['title'], completed)
                 result['related_tasks_synced'] = synced_pages
                 
                 if completed:
-                    try:
-                        _fire_analytics_event('task_completed', {'method': 'task_title'})
-                    except Exception:
-                        pass
+                    surface_analytics_attempt(
+                        result,
+                        _fire_analytics_event,
+                        'task_completed',
+                        {'method': 'task_title'},
+                    )
                 
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
             
             # Legacy support: task without ID, update only in source file
             else:
                 filepath = Path(task['source_file'])
-                content = filepath.read_text()
+                with filepath.open('r', encoding='utf-8', newline='') as file:
+                    content = file.read()
                 lines = content.split('\n')
                 
                 line_idx = task['line_number'] - 1
                 old_line = lines[line_idx]
                 
                 # Update checkbox based on status
-                if new_status == 'd':
-                    new_line = old_line.replace('- [ ]', '- [x]')
-                else:
-                    new_line = old_line.replace('- [x]', '- [ ]')
+                target_checkbox = STATUS_CHECKBOXES.get(new_status, '- [ ]')
+                new_line = re.sub(
+                    r'^(\s*)-\s*\[[ bBsSxX/]\]',
+                    lambda match: f'{match.group(1)}{target_checkbox}',
+                    old_line,
+                    count=1,
+                )
                 
                 lines[line_idx] = new_line
-                filepath.write_text('\n'.join(lines))
+                with filepath.open('w', encoding='utf-8', newline='') as file:
+                    file.write('\n'.join(lines))
                 
                 # Propagate status change to referenced pages
                 synced_pages = propagate_task_status_to_refs(task['title'], completed)
                 
                 status_name = STATUS_CODES.get(new_status, new_status)
-                
-                if completed:
-                    try:
-                        _fire_analytics_event('task_completed', {'method': 'legacy'})
-                    except Exception:
-                        pass
                 
                 result = {
                     "success": True,
@@ -3721,6 +5958,13 @@ async def _handle_call_tool_inner(
                     "synced_pages": synced_pages,
                     "note": "Task has no ID - only updated in source file. Create new tasks with IDs for multi-location sync."
                 }
+                if completed:
+                    surface_analytics_attempt(
+                        result,
+                        _fire_analytics_event,
+                        'task_completed',
+                        {'method': 'legacy'},
+                    )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
         
         else:
@@ -3729,18 +5973,46 @@ async def _handle_call_tool_inner(
                 "error": "Must provide either task_id or task_title"
             }, indent=2))]
     
+    elif name == "sync_external_tasks":
+        from core.integrations import task_sync
+
+        arguments = arguments or {}
+        result = task_sync.sync_external_tasks(
+            services=arguments.get("services"),
+            dry_run=arguments.get("dry_run", False),
+        )
+        return [types.TextContent(
+            type="text",
+            text=json.dumps(result, indent=2, cls=DateTimeEncoder),
+        )]
+
+    elif name == "record_external_task_mapping":
+        from core.integrations import task_sync
+
+        result = task_sync.record_external_task_mapping(
+            task_id=arguments["task_id"],
+            service=arguments["service"],
+            external_id=arguments["external_id"],
+        )
+        return [types.TextContent(
+            type="text",
+            text=json.dumps(result, indent=2, cls=DateTimeEncoder),
+        )]
+
     elif name == "get_system_status":
         all_tasks = get_all_tasks()
         active_tasks = [t for t in all_tasks if not t.get('completed')]
         
+        limit_tasks = active_tasks_for_priority_limits(all_tasks)
         priority_counts = Counter(t.get('priority', 'P2') for t in active_tasks)
+        priority_limit_counts = Counter(t.get('priority', 'P2') for t in limit_tasks)
         pillar_counts = Counter(t.get('pillar') or 'unassigned' for t in active_tasks)
         source_counts = Counter(t.get('source', 'unknown') for t in active_tasks)
         
         # Check priority limits
         alerts = []
         for priority, limit in PRIORITY_LIMITS.items():
-            count = priority_counts.get(priority, 0)
+            count = priority_limit_counts.get(priority, 0)
             if count > limit:
                 alerts.append(f"{priority} has {count} tasks (limit: {limit})")
         
@@ -3772,7 +6044,7 @@ async def _handle_call_tool_inner(
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "check_priority_limits":
-        tasks = [t for t in get_all_tasks() if not t.get('completed')]
+        tasks = active_tasks_for_priority_limits(get_all_tasks())
         priority_counts = Counter(t.get('priority', 'P2') for t in tasks)
         
         alerts = []
@@ -3796,7 +6068,6 @@ async def _handle_call_tool_inner(
     
     elif name == "process_inbox_with_dedup":
         items = arguments.get('items', [])
-        auto_create = arguments.get('auto_create', False)
         
         if not items:
             return [types.TextContent(type="text", text=json.dumps({
@@ -3809,7 +6080,6 @@ async def _handle_call_tool_inner(
             "new_tasks": [],
             "potential_duplicates": [],
             "needs_clarification": [],
-            "auto_created": [],
             "summary": {}
         }
         
@@ -3865,18 +6135,32 @@ async def _handle_call_tool_inner(
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "get_blocked_tasks":
-        # In this system, blocked tasks would be marked somehow
-        # For now, we look for keywords indicating blocked status
+        # Primary signal: the real `- [b]` blocked status. Title keywords stay
+        # as a secondary heuristic for tasks never explicitly marked blocked.
         all_tasks = get_all_tasks()
         blocked = []
-        
+        seen = set()
+
+        def _add(task, signal):
+            key = (task.get('source_file'), task.get('line_number'))
+            if key in seen:
+                return
+            seen.add(key)
+            blocked.append({**task, 'blocked_signal': signal})
+
+        for task in all_tasks:
+            if task.get('completed'):
+                continue
+            if task.get('status') == 'b':
+                _add(task, 'status')
+
         for task in all_tasks:
             if task.get('completed'):
                 continue
             title_lower = task['title'].lower()
             if any(word in title_lower for word in ['waiting', 'blocked', 'pending', 'waiting on']):
-                blocked.append(task)
-        
+                _add(task, 'title_keyword')
+
         result = {
             "blocked_tasks": blocked,
             "count": len(blocked)
@@ -4022,17 +6306,22 @@ async def _handle_call_tool_inner(
         quarter = arguments.get('quarter') if arguments else None
         include_completed = arguments.get('include_completed', True) if arguments else True
         
-        # Determine quarter if not provided
-        if not quarter:
-            quarter_info = get_quarter_info()
-            quarter = quarter_info['quarter']
-        
         # Read goals
         goals_file = QUARTER_GOALS_FILE
-        if is_demo_mode():
-            goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
         
         goals = parse_quarterly_goals(goals_file)
+        
+        # Determine quarter if not provided
+        if not quarter:
+            quarter = get_quarter_info()['quarter']
+            # Someone planning the next quarter early said so in their profile.
+            # Answer for that quarter, but only once it actually has goals —
+            # otherwise honoring it would replace the goals they can see today
+            # with an empty list, which is the very complaint this addresses.
+            declared = _declared_planning_quarter(_tz_today())
+            if declared and declared != quarter:
+                if any(goal.get('quarter') == declared for goal in goals):
+                    quarter = declared
         
         # Filter by quarter and completion
         filtered_goals = []
@@ -4040,9 +6329,18 @@ async def _handle_call_tool_inner(
             if goal['quarter'] == quarter or not goal['quarter']:
                 if include_completed or goal['progress'] < 100:
                     # Enrich with linked priorities
-                    linked_priorities = find_linked_priorities(goal['goal_id']) if goal['goal_id'] else []
-                    goal['linked_priorities'] = linked_priorities
-                    goal['linked_priorities_count'] = len(linked_priorities)
+                    # A hand-written goal has no ID, and a provisional goal's
+                    # ID is generated and exists nowhere on disk. Neither one's
+                    # links can be read, so report unknown rather than zero.
+                    activity_known = bool(goal['goal_id']) and not goal.get('provisional')
+                    linked_priorities = (
+                        find_linked_priorities(goal['goal_id']) if activity_known else []
+                    )
+                    goal['activity_known'] = activity_known
+                    goal['linked_priorities'] = linked_priorities if activity_known else None
+                    goal['linked_priorities_count'] = (
+                        len(linked_priorities) if activity_known else None
+                    )
                     filtered_goals.append(goal)
         
         result = {
@@ -4050,18 +6348,55 @@ async def _handle_call_tool_inner(
             "goals": filtered_goals,
             "count": len(filtered_goals)
         }
+        provisional_count = sum(
+            1 for filtered_goal in filtered_goals if filtered_goal.get('provisional')
+        )
+        if provisional_count:
+            result["provisional_count"] = provisional_count
+            result["provisional_note"] = (
+                f"{provisional_count} goals were recovered from a freeform list "
+                "and are provisional: their IDs are generated, nothing links to "
+                "them automatically, and they parse fully once structured "
+                "(### N. Title — **Pillar** ^Qn-YYYY-goal-N). Offer once to "
+                "structure them; don't nag."
+            )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
-    
+
     elif name == "get_goal_status":
         goal_id = arguments['goal_id']
-        
+
+        # get_goal_by_id(None) happily matches a hand-written goal, whose ID
+        # is also None, and every link lookup below then crashes on it.
+        if not goal_id:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": (
+                    "This goal has no ID, so Dex cannot tell what links to it. "
+                    "Add an ID like ^Qx-YYYY-goal-N straight after the bolded "
+                    "pillar in its heading in Quarter_Goals.md, or run "
+                    "migrate_quarterly_goals."
+                ),
+            }, indent=2))]
+
         goal = get_goal_by_id(goal_id)
         if not goal:
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
                 "error": f"Goal not found: {goal_id}"
             }, indent=2))]
-        
+
+        if goal.get('provisional'):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": (
+                    f"Goal '{goal['title']}' is provisional: it was recovered "
+                    "from a freeform list and its ID is generated, so it exists "
+                    "nowhere on disk and any match would be a collision. "
+                    "Structure it (e.g. via /quarter-plan) as "
+                    "### N. Title — **Pillar** ^Qn-YYYY-goal-N first."
+                ),
+            }, indent=2))]
+
         # Get linked priorities
         linked_priorities = find_linked_priorities(goal_id)
         
@@ -4082,6 +6417,8 @@ async def _handle_call_tool_inner(
             "linked_priorities_count": len(linked_priorities),
             "completed_priorities": progress_info['completed_priorities'],
             "total_priorities": progress_info['total_priorities'],
+            "open_tasks": progress_info['open_tasks'],
+            "done_tasks": progress_info['done_tasks'],
             "stalled": stalled,
             "warning": "No linked priorities yet" if stalled else None
         }
@@ -4143,8 +6480,6 @@ async def _handle_call_tool_inner(
         goal_inference = None
         if not quarterly_goal_id:
             goals_file = QUARTER_GOALS_FILE
-            if is_demo_mode():
-                goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
             goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
             
             if goals:
@@ -4195,9 +6530,10 @@ async def _handle_call_tool_inner(
         priority_id = generate_priority_id(week_date, existing_priorities)
         
         # Build priority entry
-        priority_num = len([p for p in existing_priorities if p.get('priority_num', 0) <= 3]) + 1
-        if priority_num > 3:
-            priority_num = 3  # Cap at 3 for Top 3
+        priority_num = max(
+            (priority.get('priority_num', 0) for priority in existing_priorities),
+            default=0,
+        ) + 1
         
         pillar_name = PILLARS[pillar]['name']
         priority_line = f"{priority_num}. {title} — **{pillar_name}** ^{priority_id}"
@@ -4219,8 +6555,17 @@ async def _handle_call_tool_inner(
         # Insert after "## 🎯 Top 3 This Week" section
         top3_marker = "## 🎯 Top 3 This Week"
         if top3_marker in content:
-            parts = content.split(top3_marker)
-            new_content = parts[0] + top3_marker + "\n\n" + priority_entry + "\n" + parts[1]
+            before_top3, after_top3 = content.split(top3_marker, 1)
+            next_section = re.search(r'\n##\s', after_top3)
+            section_end = next_section.start() if next_section else len(after_top3)
+            section_content = after_top3[:section_end]
+            section_tail = after_top3[section_end:]
+            if section_content.strip():
+                separator = '' if section_content.endswith('\n') else '\n'
+                section_content += separator + priority_entry + '\n'
+            else:
+                section_content = '\n\n' + priority_entry + '\n\n'
+            new_content = before_top3 + top3_marker + section_content + section_tail
         else:
             content += "\n" + priority_entry + "\n"
             new_content = content
@@ -4237,6 +6582,11 @@ async def _handle_call_tool_inner(
             "goal_inference": goal_inference,
             "message": f"Created weekly priority: {title}"
         }
+        if len(existing_priorities) + 1 > 3:
+            result["note"] = (
+                f"You now have {len(existing_priorities) + 1} priorities this week — "
+                "'Top 3' is meant to keep focus tight; consider clearing one."
+            )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "get_week_priorities":
@@ -4263,8 +6613,6 @@ async def _handle_call_tool_inner(
         
         # ---- ALIGNMENT SUMMARY ----
         goals_file = QUARTER_GOALS_FILE
-        if is_demo_mode():
-            goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
         goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
         quarter_info = get_quarter_info()
 
@@ -4341,16 +6689,28 @@ async def _handle_call_tool_inner(
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "get_work_summary":
-        # Get current quarter info
-        quarter_info = get_quarter_info()
-        quarter = quarter_info['quarter']
-        
-        # Get quarterly goals
-        goals_file = QUARTER_GOALS_FILE
-        if is_demo_mode():
-            goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
-        
-        goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
+        quarter_room_enabled = capability_rooms.enabled(
+            "quarter_goals", profile_path=USER_PROFILE_FILE
+        )
+        if quarter_room_enabled:
+            quarter_info = get_quarter_info()
+            quarter = quarter_info['quarter']
+            goals_file = QUARTER_GOALS_FILE
+            goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
+            quarterly_summary = {
+                "total_goals": len(goals),
+                "avg_progress": sum(g['progress'] for g in goals) / len(goals) if goals else 0,
+                "goals": goals,
+            }
+        else:
+            quarter_info = None
+            quarter = None
+            goals = []
+            quarterly_summary = feature_status(
+                "Quarter Goals room",
+                "off",
+                "The Quarter Goals room is off. Turn it on with /manage-capabilities when you want it.",
+            )
         
         # Get weekly priorities
         priorities_file = get_week_priorities_file()
@@ -4365,7 +6725,9 @@ async def _handle_call_tool_inner(
         
         # Check for stalled goals
         for goal in goals:
-            if goal.get('goal_id'):
+            # A provisional goal's ID is generated; it can neither be linked to
+            # nor be shown to lack links, so it is never "stalled".
+            if goal.get('goal_id') and not goal.get('provisional'):
                 linked_priorities = find_linked_priorities(goal['goal_id'])
                 if len(linked_priorities) == 0:
                     warnings.append({
@@ -4380,11 +6742,7 @@ async def _handle_call_tool_inner(
         result = {
             "quarter": quarter,
             "quarter_info": quarter_info,
-            "quarterly_summary": {
-                "total_goals": len(goals),
-                "avg_progress": sum(g['progress'] for g in goals) / len(goals) if goals else 0,
-                "goals": goals
-            },
+            "quarterly_summary": quarterly_summary,
             "weekly_summary": {
                 "total_priorities": len(priorities),
                 "completed": sum(1 for p in priorities if p.get('completed')),
@@ -4401,8 +6759,6 @@ async def _handle_call_tool_inner(
     elif name == "check_goal_alignment":
         # Get all goals, priorities, and tasks
         goals_file = QUARTER_GOALS_FILE
-        if is_demo_mode():
-            goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
         
         goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
         priorities_file = get_week_priorities_file()
@@ -4410,13 +6766,27 @@ async def _handle_call_tool_inner(
         all_tasks = get_all_tasks()
         active_tasks = [t for t in all_tasks if not t.get('completed')]
         
-        # Find orphaned work
+        # Find orphaned work: open canonical tasks with neither a quarterly-goal
+        # link nor a weekly-priority link.
         priorities_with_no_goal = [p for p in priorities if not p.get('linked_goal_id')]
-        tasks_with_no_priority = []  # Simplified for now
+        tasks_with_no_priority = [
+            {
+                'task_id': t.get('task_id'),
+                'title': t.get('title'),
+                'priority': t.get('priority'),
+                'pillar': t.get('pillar'),
+                'section': t.get('section'),
+                'line_number': t.get('line_number'),
+            }
+            for t in active_tasks
+            if t.get('source', 'tasks') == 'tasks'
+            and not t.get('goal')
+            and not t.get('weekly_priority_id')
+        ]
         goals_with_no_priorities = []
         
         for goal in goals:
-            if goal.get('goal_id'):
+            if goal.get('goal_id') and not goal.get('provisional'):
                 linked_priorities = find_linked_priorities(goal['goal_id'])
                 if len(linked_priorities) == 0:
                     goals_with_no_priorities.append(goal)
@@ -4439,12 +6809,178 @@ async def _handle_call_tool_inner(
         
         if len(priorities_with_no_goal) > 0:
             result['recommendations'].append(f"Consider linking {len(priorities_with_no_goal)} priorities to quarterly goals or mark as operational")
-        
+
+        if len(tasks_with_no_priority) > 0:
+            result['recommendations'].append(
+                f"{len(tasks_with_no_priority)} open tasks are linked to neither a "
+                "quarterly goal nor a weekly priority - link them or consciously "
+                "leave them operational"
+            )
+
         if len(goals_with_no_priorities) > 0:
             result['recommendations'].append(f"{len(goals_with_no_priorities)} goals have no weekly priorities - create priorities to advance them")
         
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
-    
+
+    elif name == "get_goal_backlog":
+        # An explicit null means the caller has a goal with no ID. Coercing that
+        # to 'all' hands back every other goal's backlog as if it were this
+        # goal's, which is worse than refusing.
+        if arguments and 'goal_id' in arguments and arguments['goal_id'] is None:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": (
+                    "That goal has no ID, so Dex cannot tell which tasks belong "
+                    "to it. Add an ID like ^Qx-YYYY-goal-N straight after the "
+                    "bolded pillar in its heading in Quarter_Goals.md, or run "
+                    "migrate_quarterly_goals. Pass 'all' if you meant every goal."
+                ),
+            }, indent=2))]
+        requested_goal_id = str(arguments.get('goal_id') or 'all').strip() or 'all'
+
+        goals = (
+            parse_quarterly_goals(QUARTER_GOALS_FILE)
+            if QUARTER_GOALS_FILE.exists()
+            else []
+        )
+        goals_by_id = {
+            quarterly_goal['goal_id']: quarterly_goal
+            for quarterly_goal in goals
+            if quarterly_goal.get('goal_id')
+        }
+        if requested_goal_id != 'all' and requested_goal_id not in goals_by_id:
+            available_text = ', '.join(sorted(goals_by_id)) or 'none'
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": (
+                    f"Unknown quarterly goal '{requested_goal_id}'. "
+                    f"Available goal ids: {available_text}, or 'all'."
+                ),
+                "available_goal_ids": sorted(goals_by_id),
+            }, indent=2))]
+
+        open_backlog = sorted(
+            (
+                task for task in get_all_tasks()
+                if not task.get('completed')
+                and task.get('source', 'tasks') == 'tasks'
+            ),
+            key=backlog_sort_key,
+        )
+
+        def summarize_task(task: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                'id': task.get('task_id'),
+                'title': task.get('title'),
+                'priority': task.get('priority'),
+                'pillar': task.get('pillar'),
+                'due': task.get('due'),
+                'next_up': task.get('next_up'),
+                'tentative': bool(task.get('goal_tentative')),
+                'staleness_days': task_staleness_days(task),
+            }
+
+        def group_counts(summaries: List[Dict[str, Any]]) -> Dict[str, int]:
+            return {
+                'count': len(summaries),
+                'stale_count': sum(
+                    1 for summary in summaries
+                    if summary['staleness_days'] is not None
+                    and summary['staleness_days'] >= STALE_TASK_DAYS
+                ),
+            }
+
+        tasks_by_goal: Dict[str, List[Dict[str, Any]]] = {}
+        tasks_by_pillar: Dict[str, List[Dict[str, Any]]] = {}
+        orphaned_tasks: List[Dict[str, Any]] = []
+        for task in open_backlog:
+            if task.get('goal'):
+                tasks_by_goal.setdefault(task['goal'], []).append(task)
+            elif task.get('pillar'):
+                tasks_by_pillar.setdefault(task['pillar'], []).append(task)
+            else:
+                orphaned_tasks.append(task)
+
+        goal_groups = []
+        for quarterly_goal in goals:
+            goal_id = quarterly_goal.get('goal_id')
+            if not goal_id:
+                continue
+            if requested_goal_id != 'all' and goal_id != requested_goal_id:
+                continue
+            summaries = [
+                summarize_task(task) for task in tasks_by_goal.pop(goal_id, [])
+            ]
+            group = {
+                'goal_id': goal_id,
+                'goal_title': quarterly_goal.get('title'),
+                'pillar': quarterly_goal.get('pillar'),
+                'tasks': summaries,
+                **group_counts(summaries),
+            }
+            if quarterly_goal.get('provisional'):
+                group['provisional'] = True
+                group['note'] = (
+                    "This goal is provisional (recovered from freeform text); "
+                    "tasks cannot link to it until it is structured."
+                )
+            goal_groups.append(group)
+
+        # Tasks linked to a goal ID absent from the current goals file (e.g.
+        # a previous quarter's goal) still surface rather than silently vanish.
+        if requested_goal_id == 'all':
+            for goal_id in sorted(tasks_by_goal):
+                summaries = [summarize_task(task) for task in tasks_by_goal[goal_id]]
+                goal_groups.append({
+                    'goal_id': goal_id,
+                    'goal_title': None,
+                    'pillar': None,
+                    'goal_missing': True,
+                    'tasks': summaries,
+                    **group_counts(summaries),
+                })
+
+        pillar_groups = []
+        orphaned_group = None
+        if requested_goal_id == 'all':
+            for pillar_id in sorted(tasks_by_pillar):
+                summaries = [
+                    summarize_task(task) for task in tasks_by_pillar[pillar_id]
+                ]
+                pillar_groups.append({
+                    'pillar': pillar_id,
+                    'pillar_name': PILLARS.get(pillar_id, {}).get('name', pillar_id),
+                    'tasks': summaries,
+                    **group_counts(summaries),
+                })
+            orphaned_summaries = [summarize_task(task) for task in orphaned_tasks]
+            orphaned_group = {
+                'tasks': orphaned_summaries,
+                **group_counts(orphaned_summaries),
+            }
+
+        result = {
+            'goal_id': requested_goal_id,
+            'goal_groups': goal_groups,
+            'pillar_groups': pillar_groups,
+            'orphaned': orphaned_group,
+            'open_task_count': len(open_backlog),
+            'stale_after_days': STALE_TASK_DAYS,
+        }
+        provisional_count = sum(
+            1 for quarterly_goal in goals if quarterly_goal.get('provisional')
+        )
+        if provisional_count:
+            result['provisional_count'] = provisional_count
+            result['provisional_note'] = (
+                f"{provisional_count} goals were recovered from a freeform list "
+                "and are provisional: their IDs are generated, nothing links to "
+                "them automatically, and they parse fully once structured "
+                "(### N. Title — **Pillar** ^Qn-YYYY-goal-N). Offer once to "
+                "structure them; don't nag."
+            )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
     elif name == "get_quarter_velocity":
         quarter = arguments.get('quarter') if arguments else None
         
@@ -4457,8 +6993,6 @@ async def _handle_call_tool_inner(
         
         # Get quarterly goals
         goals_file = QUARTER_GOALS_FILE
-        if is_demo_mode():
-            goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
         
         goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
         
@@ -4516,18 +7050,33 @@ async def _handle_call_tool_inner(
     elif name == "get_weekly_planning_context":
         # Pre-planning intelligence: goal health + optional priority matching
         goals_file = QUARTER_GOALS_FILE
-        if is_demo_mode():
-            goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
 
         goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
         quarter_info = get_quarter_info()
         weeks_remaining = quarter_info.get('weeks_remaining', 0)
         weeks_elapsed = 13 - weeks_remaining
 
+        # Open backlog pool, so goal health reflects tasks and not just the
+        # week's priorities.
+        open_backlog = [
+            task for task in get_all_tasks()
+            if not task.get('completed')
+            and task.get('source', 'tasks') == 'tasks'
+        ]
+
         # Build goal health report
         goal_health = []
         for goal in goals:
-            linked_priorities = find_linked_priorities(goal.get('goal_id', ''))
+            # A hand-written goal heading carries no ^Qx-YYYY-goal-N anchor, so
+            # the parser yields goal_id None. Nothing can be linked to a goal
+            # with no ID, so report no links instead of crashing, and keep it
+            # out of every count that would otherwise claim work it cannot own.
+            goal_id = goal.get('goal_id')
+            # A provisional goal was recovered from freeform text; its ID
+            # exists nowhere on disk, so nothing can be linked to it either.
+            provisional = bool(goal.get('provisional'))
+            activity_known = bool(goal_id) and not provisional
+            linked_priorities = find_linked_priorities(goal_id) if activity_known else []
             completed_milestones = sum(1 for m in goal.get('milestones', []) if m.get('completed'))
             total_milestones = len(goal.get('milestones', []))
             next_milestone = None
@@ -4536,20 +7085,49 @@ async def _handle_call_tool_inner(
                     next_milestone = m.get('title')
                     break
 
+            goal_tasks = sorted(
+                (
+                    task for task in open_backlog
+                    if task.get('goal') == goal_id
+                ),
+                key=backlog_sort_key,
+            ) if activity_known else []
+            next_up_tasks = [
+                {
+                    'task_id': task.get('task_id'),
+                    'title': task.get('title'),
+                    'priority': task.get('priority'),
+                    'next_up': task.get('next_up'),
+                }
+                for task in goal_tasks
+                if task.get('next_up') is not None
+            ][:3]
+
             goal_health.append({
-                'goal_id': goal.get('goal_id'),
+                'goal_id': goal_id,
                 'title': goal.get('title'),
                 'pillar': goal.get('pillar'),
                 'progress': goal.get('progress', 0),
                 'milestones_completed': completed_milestones,
                 'milestones_total': total_milestones,
                 'next_milestone': next_milestone,
-                'linked_priority_count': len(linked_priorities),
-                'has_activity': len(linked_priorities) > 0,
+                'linked_priority_count': len(linked_priorities) if activity_known else None,
+                'has_activity': len(linked_priorities) > 0 if activity_known else None,
+                'activity_known': activity_known,
+                'provisional': provisional,
+                'open_task_count': len(goal_tasks) if activity_known else None,
+                'next_up_tasks': next_up_tasks if activity_known else None,
             })
 
-        # Identify neglected goals (0 linked priorities)
-        neglected_goals = [g for g in goal_health if not g['has_activity']]
+        # Identify neglected goals (0 linked priorities). A goal whose links
+        # cannot be read at all is unknown, not neglected.
+        neglected_goals = [
+            g for g in goal_health if g['activity_known'] and not g['has_activity']
+        ]
+        goals_missing_ids = [
+            g for g in goal_health if not g['goal_id'] and not g['provisional']
+        ]
+        provisional_goals = [g for g in goal_health if g['provisional']]
 
         # Auto-match proposed priorities against goals if provided
         proposed = arguments.get('proposed_priorities', []) if arguments else []
@@ -4576,6 +7154,34 @@ async def _handle_call_tool_inner(
 
         # Build recommendations
         recommendations = []
+        if goals_missing_ids:
+            names = ', '.join(f"\"{g['title']}\"" for g in goals_missing_ids)
+            count = len(goals_missing_ids)
+            subject = f"{count} goals have" if count > 1 else "1 goal has"
+            belong = "belong to them" if count > 1 else "belong to it"
+            heading = "each heading" if count > 1 else "its heading"
+            recommendations.append(
+                f"{subject} no ID, so Dex cannot tell which weekly priorities or "
+                f"tasks {belong}: {names}. Add an ID like ^Qx-YYYY-goal-N "
+                f"straight after the bolded pillar in {heading} in "
+                "Quarter_Goals.md, or run migrate_quarterly_goals "
+                f"to add {'them all at once' if count > 1 else 'it'}."
+            )
+        if provisional_goals:
+            names = ', '.join(f"\"{g['title']}\"" for g in provisional_goals)
+            count = len(provisional_goals)
+            many = count > 1
+            recommendations.append(
+                f"{count} goals were" if many else "1 goal was"
+            )
+            recommendations[-1] += (
+                f" recovered from a freeform list and {'are' if many else 'is'} "
+                f"provisional: {'their IDs are' if many else 'its ID is'} generated, "
+                f"so nothing links to {'them' if many else 'it'} automatically "
+                f"({names}). Structure {'them' if many else 'it'} (e.g. via "
+                "/quarter-plan) as ### N. Title — **Pillar** ^Qn-YYYY-goal-N "
+                "to link real work."
+            )
         if neglected_goals:
             names = ', '.join(f"Goal {g['goal_id']}: {g['title']}" for g in neglected_goals)
             recommendations.append(f"{len(neglected_goals)} goals have zero weekly activity: {names}")
@@ -4621,11 +7227,24 @@ async def _handle_call_tool_inner(
         
         result = get_meeting_context_data(meeting_title, attendees)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
-    
+
+    elif name == "match_capture_to_calendar":
+        result = match_capture_to_calendar(
+            arguments.get("capture", {}),
+            arguments.get("calendar_events", []),
+        )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
     elif name == "get_commitments_due":
         date_range = arguments.get('date_range', 'today') if arguments else 'today'
         
         result = get_commitments_due_data(date_range)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "detect_soft_commitments":
+        text = arguments.get("text", "")
+        candidates = detect_soft_promises(text)
+        result = {"candidates": candidates, "count": len(candidates)}
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "classify_task_effort":
@@ -4655,7 +7274,7 @@ async def _handle_call_tool_inner(
             # Analyze each day
             for i in range(days_ahead):
                 target_date = today + timedelta(days=i)
-                if target_date.weekday() >= 5:  # Skip weekends
+                if not _is_working_day(target_date):
                     continue
                 
                 date_str = target_date.isoformat()
@@ -4715,7 +7334,7 @@ async def _handle_call_tool_inner(
 
             for i in range(5):
                 target_date = today + timedelta(days=i)
-                if target_date.weekday() >= 5:
+                if not _is_working_day(target_date):
                     continue
 
                 date_str = target_date.isoformat()
@@ -4740,10 +7359,64 @@ async def _handle_call_tool_inner(
             'built_at': result['built_at'],
         }, indent=2))]
 
+    elif name == "build_company_index":
+        result = build_company_index_data()
+        return [types.TextContent(type="text", text=json.dumps({
+            'success': True,
+            'total': result['total'],
+            'index_path': str(COMPANY_INDEX_FILE),
+            'built_at': result['built_at'],
+        }, indent=2))]
+
     elif name == "lookup_person":
         person_name = arguments['name']
         company_filter = arguments.get('company')
         result = lookup_person_data(person_name, company_filter)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "boot_today":
+        result = build_session_boot(BASE_DIR)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "get_person_context":
+        person_name = arguments.get("name", "") if isinstance(arguments, dict) else ""
+        result = get_person_context_payload(BASE_DIR, person_name)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "check_safety_gate":
+        args = arguments if isinstance(arguments, dict) else {}
+        result = evaluate_safety_gate(
+            tool_name=args.get("tool_name", ""),
+            command=args.get("command", ""),
+            path=args.get("path", ""),
+            vault=BASE_DIR,
+        ).as_payload()
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "create_person":
+        result = create_person_data(
+            name=arguments.get('name', ''),
+            role=arguments.get('role'),
+            company=arguments.get('company'),
+            emails=arguments.get('emails'),
+            aliases=arguments.get('aliases'),
+            location=arguments.get('location'),
+            notes=arguments.get('notes'),
+            allow_duplicate=arguments.get('allow_duplicate', False),
+        )
+        if result.get('success') is True and result.get('created') is True:
+            surface_analytics_attempt(
+                result,
+                _fire_analytics_event,
+                'person_page_created',
+            )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "reroute_people":
+        result = reroute_people_data(
+            dry_run=arguments.get('dry_run', True) if arguments else True,
+            domains=arguments.get('domains') if arguments else None,
+        )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
     elif name == "query_meeting_cache":
@@ -4783,20 +7456,21 @@ async def _handle_call_tool_inner(
         with open(SKILL_RATINGS_FILE, 'a') as f:
             f.write(json.dumps(entry) + '\n')
 
-        # Fire analytics event (anonymous, consent-checked)
-        try:
-            _fire_analytics_event('skill_rated', {
-                'skill_name': skill_name,
-                'rating': rating,
-            })
-        except Exception:
-            pass
-
-        return [types.TextContent(type="text", text=json.dumps({
+        result = {
             "success": True,
             "message": f"Rated {skill_name}: {rating}/5" + (f" — {note}" if note else ""),
             "entry": entry
-        }, indent=2))]
+        }
+        surface_analytics_attempt(
+            result,
+            _fire_analytics_event,
+            'skill_rated',
+            {
+                'skill_name': skill_name,
+                'rating': rating,
+            },
+        )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
     elif name == "get_skill_ratings":
         skill_filter = arguments.get('skill_name', '') if arguments else ''
@@ -4851,7 +7525,7 @@ async def _main():
     """Async main entry point for the MCP server"""
     if _HAS_HEALTH:
         _mark_healthy("work-mcp")
-    logger.info(f"Starting Dex Work MCP Server")
+    logger.info("Starting Dex Work MCP Server")
     logger.info(f"Vault path: {BASE_DIR}")
     logger.info(f"Tasks file: {get_tasks_file()}")
     logger.info(f"Pillars loaded: {list(PILLARS.keys())}")

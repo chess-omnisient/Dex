@@ -46,6 +46,10 @@ find_node() {
 
 NODE_PATH=$(find_node)
 
+has_granola_api_key() {
+    [ -n "$NODE_PATH" ] && "$NODE_PATH" "$SCRIPT_DIR/lib/granola-api-key.cjs" "$VAULT_PATH"
+}
+
 # Check status
 if [ "$1" = "--status" ]; then
     echo "Checking status..."
@@ -70,11 +74,16 @@ if [ "$1" = "--status" ]; then
     exit 0
 fi
 
-# Re-authenticate with Granola
+# Check Granola authentication
 if [ "$1" = "--auth" ]; then
-    echo "Re-authenticating with Granola MCP..."
-    "$NODE_PATH" "$SCRIPT_DIR/granola-auth.cjs" --setup
-    exit $?
+    echo "Checking Granola authentication..."
+    if has_granola_api_key; then
+        echo -e "${GREEN}✓${NC} Granola API key found"
+    else
+        echo -e "${RED}✗${NC} Granola API key not found."
+        echo "  Run /granola-setup to connect Granola (requires a Granola Business plan)."
+    fi
+    exit 0
 fi
 
 # Stop and uninstall
@@ -97,6 +106,18 @@ if [ "$1" = "--stop" ] || [ "$1" = "--uninstall" ]; then
 fi
 
 # Installation
+
+# Never point machine-wide background jobs (or the shared Dex path record) at a
+# temporary checkout: agent tooling runs this installer from short-lived git
+# worktrees, which then vanish and leave the job failing silently every 30 min.
+# A git worktree marks .git as a file; a real clone or plain vault does not.
+if [ -f "$VAULT_PATH/.git" ] || case "$VAULT_PATH" in */worktrees/*) true;; *) false;; esac; then
+    echo -e "${RED}✗${NC} $VAULT_PATH looks like a temporary working copy (a git worktree), not your real Dex vault."
+    echo "  Installing from here would point background sync — and the machine-wide Dex path record —"
+    echo "  at a folder that may disappear. Run this installer from your real vault."
+    exit 1
+fi
+
 echo "Installing background sync..."
 echo ""
 
@@ -111,36 +132,17 @@ echo -e "${GREEN}✓${NC} Node.js found at: $NODE_PATH"
 
 if [ ! -f "$VAULT_PATH/.env" ]; then
     echo -e "${YELLOW}!${NC} Warning: .env file not found. Make sure GEMINI_API_KEY (or another LLM key) is set."
+else
+    # API keys live in this file — keep it owner-only.
+    chmod 600 "$VAULT_PATH/.env" 2>/dev/null || true
 fi
 
-# Check for Granola
-GRANOLA_CACHE=$(ls -1 "$HOME/Library/Application Support/Granola/cache-v"*.json 2>/dev/null | sort -t'v' -k2 -rn | head -1)
-if [ -n "$GRANOLA_CACHE" ]; then
-    echo -e "${GREEN}✓${NC} Granola cache found: $(basename "$GRANOLA_CACHE")"
+# Check the same authentication source the sync worker uses.
+if has_granola_api_key; then
+    echo -e "${GREEN}✓${NC} Granola API key found"
 else
-    echo -e "${YELLOW}!${NC} Granola cache not found. Install Granola and record a meeting first."
-fi
-
-# Authenticate with Granola MCP
-GRANOLA_TOKENS="$HOME/.config/dex/granola-tokens.json"
-if [ -f "$GRANOLA_TOKENS" ]; then
-    echo -e "${GREEN}✓${NC} Granola MCP authentication found"
-else
-    echo ""
-    echo "Authenticating with Granola..."
-    echo "This will open your browser to sign in to Granola."
-    echo ""
-    read -p "Press Enter to continue (or Ctrl+C to skip)..."
-
-    if [ -n "$NODE_PATH" ]; then
-        "$NODE_PATH" "$SCRIPT_DIR/granola-auth.cjs" --setup
-        if [ $? -eq 0 ] && [ -f "$GRANOLA_TOKENS" ]; then
-            echo -e "${GREEN}✓${NC} Granola MCP authenticated"
-        else
-            echo -e "${YELLOW}!${NC} Granola auth skipped. Background sync will use local cache only."
-            echo "    Run: node .scripts/meeting-intel/granola-auth.cjs --setup"
-        fi
-    fi
+    echo -e "${YELLOW}!${NC} Granola API key not found."
+    echo "    Run /granola-setup to connect Granola (requires a Granola Business plan)."
 fi
 
 # Write vault-path breadcrumb (used by dex-launcher.sh for resilient path resolution)
@@ -199,17 +201,14 @@ echo -e "${GREEN}Installation complete!${NC}"
 echo ""
 echo "What happens now:"
 echo "  • Meetings sync automatically every 30 minutes"
-echo "  • Syncs via Granola's official MCP (includes mobile recordings)"
+echo "  • Syncs via Granola's official API (includes mobile recordings)"
 echo "  • Also syncs when you log in or wake your laptop"
 echo "  • /process-meetings now reads synced files (no terminal output)"
 echo ""
 echo "Commands:"
 echo "  ./install-automation.sh --status    Check if running"
 echo "  ./install-automation.sh --stop      Disable background sync"
-echo "  ./install-automation.sh --auth      Re-authenticate with Granola"
-echo ""
-echo "  node .scripts/meeting-intel/granola-auth.cjs --status   Check Granola auth"
-echo "  node .scripts/meeting-intel/granola-auth.cjs --setup    Re-authenticate"
+echo "  ./install-automation.sh --auth      Check Granola API key"
 echo ""
 echo "Logs:"
 echo "  $LOG_DIR/meeting-intel.stdout.log"

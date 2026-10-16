@@ -32,7 +32,7 @@ async function generateWithAnthropic(prompt, options = {}) {
   const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
   
   const message = await anthropic.messages.create({
-    model: options.model || 'claude-3-5-sonnet-20241022',
+    model: options.model || 'claude-sonnet-4-6',
     max_tokens: options.maxOutputTokens || 4096,
     messages: [
       {
@@ -42,7 +42,8 @@ async function generateWithAnthropic(prompt, options = {}) {
     ]
   });
   
-  return message.content[0].text;
+  const textBlock = message.content.find(block => block.type === 'text');
+  return textBlock ? textBlock.text : '';
 }
 
 // ============================================================================
@@ -76,7 +77,7 @@ async function generateWithGemini(prompt, options = {}) {
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
   
   const model = genAI.getGenerativeModel({
-    model: options.model || 'gemini-2.0-flash-thinking-exp-1219',
+    model: options.model || 'gemini-2.5-flash',
     generationConfig: {
       maxOutputTokens: options.maxOutputTokens || 4096,
       temperature: options.temperature || 1.0,
@@ -107,7 +108,9 @@ async function generateContent(prompt, options = {}) {
   
   if (!provider) {
     throw new Error(
-      'No LLM API key found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in your .env file'
+      'No LLM API key found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in the vault-root .env file '
+        + 'and keep that file owner-only (chmod 600 .env). Dex\'s encrypted credential store (/connect) does not '
+        + 'feed background LLM features yet, so .env is still the supported location for these keys.'
     );
   }
   

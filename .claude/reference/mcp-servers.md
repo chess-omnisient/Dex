@@ -199,7 +199,7 @@ You want to capture improvement ideas from any context (during reviews, while pl
 - **Backlog statistics** - View ideas by category, priority, and implementation status
 
 **Real-world example:**  
-During `/review`, you realize: "I keep forgetting to check task dependencies. We should auto-suggest blocked-by relationships."
+During `/daily-review`, you realize: "I keep forgetting to check task dependencies. We should auto-suggest blocked-by relationships."
 
 You mention this → Dex Improvements MCP:
 1. Generates ID `idea-042`
@@ -240,22 +240,22 @@ New user runs onboarding → provides name, role, company size → **tries to sk
 ### Update Checker MCP (`update_checker.py`)
 
 **What it does:**  
-GitHub update detection for `/dex-update` and `/dex-rollback`. Checks Dex repository for new releases, parses changelogs, and manages version comparison.
+Runs bounded, fetch-only release-evidence checks for SessionStart, `/dex-update`, and Doctor. It reports only the closed unauthenticated evidence statuses and never updates Dex automatically.
 
 **Why it's an MCP:**  
-Update checking requires structured version tracking, git operations, changelog parsing, and rollback state management. MCP provides consistent interface for update workflows vs. shell scripts with unpredictable outputs.
+Release awareness requires strict tag, semantic-version, package, commit, tree, manifest, and selected-profile agreement. The MCP provides a structured interface to the isolated verifier without exposing ambient worktree Git operations.
 
 **Power:**
-- **Version comparison** - Detects if updates are available from GitHub
-- **Changelog parsing** - Extracts release notes and breaking changes
-- **Safe updates** - One-command updates with automatic backups
-- **Rollback support** - Undo last update if something goes wrong
-- **Breaking change detection** - Flags releases requiring user action
+- **Pinned transport** - Fetches only immutable release tags from the canonical HTTPS repository
+- **Closed evidence profiles** - Supports `legacy-v1` and verification-only `catalog-v1` without downgrade fallback
+- **Fail-closed results** - Contradictory or unsupported evidence returns `UNKNOWN` with no notice
+- **Deterministic dedup** - Bounds attempts to once daily and notices to once per exact release identity
+- **No automatic update** - Shows exact evidence and routes review through `/dex-doctor`
 
 **Real-world example:**  
-User runs `/dex-update` → Update Checker MCP checks GitHub → finds v2.1.0 with new features → shows changelog with "Added Obsidian integration, improved onboarding" → user confirms → creates backup → pulls updates → installs dependencies → success message with "Run `/getting-started` to explore new features."
+SessionStart runs the bounded verifier → one higher immutable candidate passes every selected-profile check → Dex shows the exact unauthenticated caution, version, tag, full commit, profile, canonical release page, and `/dex-doctor` guidance.
 
-**Tools:** `check_for_updates`, `get_changelog`, `perform_update`, `create_backup`, `rollback_update`
+**Tools:** `check_for_updates`, `get_pending_update_notification`, `mark_update_notified`, `dismiss_update`, `get_changelog_from_github`, `get_update_status`
 
 ---
 
@@ -272,7 +272,7 @@ User runs `/dex-update` → Update Checker MCP checks GitHub → finds v2.1.0 wi
 | Onboarding | `onboarding_server.py` | Built-in |
 | Update Checker | `update_checker.py` | Built-in |
 | Dex Improvements | `dex_improvements_server.py` | Built-in |
-| Pendo | Hosted (OAuth) | External (optional) |
+| External MCPs (e.g. product analytics like Pendo) | Hosted (OAuth) | External (optional) |
 
 ### Setting Up Integrations
 
@@ -289,7 +289,7 @@ See `System/.mcp.json.example` for a complete config with all built-in servers:
 - `update_checker.py` - GitHub update detection
 
 **External integrations (optional):**
-- Pendo MCP - Hosted by Pendo with OAuth (https://support.pendo.io/hc/en-us/articles/41102236924955)
+- Any hosted or local MCP server your AI client supports, added in the client's own MCP config and authenticated per the vendor. Product-analytics servers such as Pendo (for teams that use it) are one example.
 
 Example config:
 
@@ -372,12 +372,12 @@ node .scripts/check-anthropic-changelog.cjs --dry-run  # Preview mode
 **Purpose:** Remind user to review accumulated session learnings
 
 **How it works:**
-1. Scans `System/Session_Learnings/` for files from past 7 days
-2. Counts learnings with `**Status:** pending`
-3. If 5+ pending learnings:
+1. Scans every `System/Session_Learnings/` file (not only the past 7 days)
+2. Counts learnings whose `**Status:**` is still open: `pending`, `captured`, `noted`, `partially fixed`, or `in-progress` (hyphen/space and capitalization variants included). Closed labels such as `implemented` and `won't-fix` are ignored.
+3. If 5+ open learnings:
    - Writes reminder to `System/learning-review-pending.md`
    - Session start hook displays count and suggests `/dex-whats-new --learnings`
-4. If <5 pending, removes any existing reminder file
+4. If <5 open, removes any existing reminder file
 
 **Manual testing:**
 ```bash

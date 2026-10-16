@@ -143,7 +143,7 @@ The best skills solve **your** specific problems. Don't build generic tools - bu
 ## What Goes Here
 
 Skill definition files (`SKILL.md` format) that:
-- Define user-invoked commands (e.g., `/daily-plan`, `/review`)
+- Define user-invoked commands (e.g., `/daily-plan`, `/daily-review`)
 - Orchestrate tools and workflows
 - Provide interactive guidance
 - Execute single-purpose tasks
@@ -174,14 +174,12 @@ Invoked with `/skill-name` - automatically discovered by Claude.
 
 ## What's New
 
-### v1.11.0 — Isolated Context & Agent Memory
-
-Skills that run heavy workflows now execute in **isolated context** — your conversation stays clean, no context bleed. Key enhancements:
-
-- **Daily/Weekly workflows** (`/daily-plan`, `/daily-review`, `/week-plan`, `/week-review`) — Isolated context execution. `/daily-plan` generates a quickref summary and is powered by agents with memory that track trends across sessions.
-- **Meetings** (`/meeting-prep`, `/process-meetings`) — Isolated context. `/process-meetings` auto-updates person pages and supports background execution for large batches.
-- **Career** (`/career-coach`) — Isolated context. Auto-captures career evidence when achievements with metrics are discussed.
-- **Triage** (`/triage`) — Tuned for speed. Quick routing decisions without over-analysis.
+Release notes aren't maintained here — run `/dex-whats-new` or read `CHANGELOG.md`
+for what changed recently. For the full, always-current skill catalog (every skill,
+its description, and its trigger analysis), see the generated
+`docs/architecture/INVENTORY.md` § "Skills" in the dex-core repo; in a live vault,
+`/dex-level-up` surfaces the skills you're not using yet. Each skill's frontmatter
+`description` is its authoritative trigger contract.
 
 ---
 
@@ -197,41 +195,55 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/getting-started` - Interactive post-onboarding tour (adaptive to your setup)
 
 **Daily Workflow:**
-- `/daily-plan` - Context-aware daily planning *(v1.11: isolated context, quickref summary, agent memory tracks trends)*
-- `/daily-review` - End of day review with learning capture *(v1.11: isolated context)*
+- `/daily-plan` - Context-aware daily planning *(quickref summary, agent memory tracks trends)*
+- `/daily-review` - End of day review with learning capture
 - `/journal` - Start or manage journaling
 
 **Weekly Workflow:**
-- `/week-plan` - Set weekly priorities *(v1.11: isolated context)*
+- `/week-plan` - Set weekly priorities
 - `/week-review` - Weekly synthesis
+- `/goal-backlog` - Groom the open task pool goal by goal (confirm links, retire stale work, set what's picked up first)
 
 **Quarterly Workflow:**
 - `/quarter-plan` - Set quarterly goals
 - `/quarter-review` - Review and capture learnings
 
 **Meetings:**
-- `/meeting-prep` - Prepare for meetings *(v1.11: isolated context)*
-- `/process-meetings` - Process Granola meetings *(v1.11: isolated context, auto-updates person pages, background execution)*
+- `/meeting-prep` - Prepare for meetings
+- `/process-meetings` - Process Granola meetings *(auto-updates person pages)*
+
+**Integrations (Connect Your Tools):**
+- `/todoist-setup` - Connect Todoist for two-way task sync (any platform)
+- `/things-setup` - Connect Things 3 for two-way task sync (macOS, no account, offline)
+- `/trello-setup` - Connect Trello so cards and Dex tasks stay in step
+- `/google-workspace-setup` - Gmail + Calendar + Docs (email digest, follow-up detection)
+- `/ms-teams-setup` - Microsoft Teams chat digest alongside Slack
+- `/zoom-setup` - Zoom recording access and scheduling
+- `/atlassian-setup` - Jira tickets and Confluence docs in daily plans
+- `/granola-setup` - Connect Granola for automatic meeting capture
+- `/calendar-setup` - Connect your calendar
+- `/apple-mail-setup` - Connect Apple Mail search and build the index it needs (macOS)
+- `/integrate-mcp` - Browse and connect more tools via the MCP marketplace
 
 **Career Development:**
 - `/career-setup` - Initialize career system
-- `/career-coach` - Career reflections and assessments *(v1.11: isolated context, auto-captures career evidence)*
+- `/career-coach` - Career reflections and assessments *(suggests sourced evidence and asks before saving)*
 - `/resume-builder` - Build resume through guided interview
 
 **Projects:**
 - `/project-health` - Review project status
 - `/product-brief` - Generate PRD from ideas
 - `/triage` - Organize inbox and extract tasks *(v1.11: tuned for speed)*
+- `/industry-truths` - Define time-horizoned assumptions that ground strategic thinking
 
-**AI Configuration:**
-- `/ai-setup` - Configure budget cloud models (80% cheaper) and offline mode
-- `/ai-status` - Check your AI configuration and credits
-
-**Ambient Intelligence (Beta):**
-- `/screenpipe-setup` - Enable screen capture for work context *(requires beta activation)*
-- `/screenpipe-disable` - Stop screen capture and optionally delete data
+**Backups:**
+- `/backup-setup` - Schedule automatic vault backups to a synced folder or cloud provider
+- `/backup-now` - Take a verified backup immediately (before big changes)
+- `/backup-restore` - Prove a backup restores, or restore one to a folder of your choosing
 
 **System Management:**
+- `/change-job` - Guided role transition: setup questions with carry-forward, people re-sorted for the new email domain, old-role planning archived (never deleted), open tasks re-pointed
+- `/dex-doctor` - Full system checkup: verifies every feature honestly, self-heals what's safe, guides you through the rest
 - `/enable-semantic-search` - Enable local AI-powered semantic search with smart collection discovery
 - `/xray` - AI education: understand what just happened under the hood, learn how context, MCPs, hooks work
 - `/prompt-improver` - Transform vague prompts via Anthropic Messages API
@@ -242,10 +254,7 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/dex-update` - Update Dex automatically (shows what's new, updates if confirmed, no technical knowledge needed)
 - `/dex-rollback` - Undo last update if something went wrong
 - `/dex-obsidian-setup` - Enable Obsidian integration and migrate vault to wiki links
-- `/integrate-mcp` - Integrate existing MCP servers from Smithery.ai marketplace
-- `/integrate-notion` - Connect Notion for workspace search and meeting context
-- `/integrate-slack` - Connect Slack for conversation search and people context
-- `/integrate-google` - Connect Google Workspace (Gmail, Calendar, Contacts)
+- `/integrate-mcp` - Connect tools such as Notion, Slack, and Google Workspace through MCP servers
 - `/create-mcp` - Create new MCP integrations
 
 ### Anthropic Skills (General-Purpose)

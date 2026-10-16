@@ -3,14 +3,13 @@
 Page generation utilities for Dex
 Creates person pages, meeting notes, and other content with proper reference formatting
 """
-from typing import Optional, List
 from datetime import datetime
+from typing import List, Optional
+
+from .entity_pages import render_person_page
 from .reference_formatter import (
     format_person_reference,
-    format_company_reference,
     format_project_reference,
-    format_meeting_reference,
-    format_task_reference
 )
 
 
@@ -34,34 +33,14 @@ def generate_person_page(
     Returns:
         Formatted markdown content
     """
-    # Convert underscores to spaces for display
     display_name = name.replace('_', ' ')
-    content = f"# {display_name}\n\n"
-    
-    if role:
-        content += f"**Role:** {role}\n"
-    
-    if company:
-        # Format company reference based on obsidian_mode
-        company_ref = format_company_reference(
-            company, 
-            full_path=f"05-Areas/Companies/{company}"
-        )
-        content += f"**Company:** {company_ref}\n"
-    
-    if email:
-        content += f"**Email:** {email}\n"
-    
-    content += "\n"
-    
-    if notes:
-        content += f"## Notes\n\n{notes}\n\n"
-    
-    content += "## Recent Interactions\n\n"
-    content += "## Related Tasks\n\n"
-    content += "## Key Context\n\n"
-    
-    return content
+    return render_person_page(
+        display_name,
+        role=role,
+        company=company,
+        emails=[email] if email else None,
+        notes=notes,
+    )
 
 
 def generate_meeting_note(

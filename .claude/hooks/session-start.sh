@@ -4,7 +4,7 @@
 # For Dex personal knowledge system
 
 # Prevent duplicate injection (symlinked working directories)
-DEDUP_FILE="/tmp/dex-session-context-dedup"
+DEDUP_FILE="${DEX_SESSION_CONTEXT_DEDUP_FILE:-/tmp/dex-session-context-dedup}"
 NOW=$(date +%s)
 if [[ -f "$DEDUP_FILE" ]]; then
     LAST=$(cat "$DEDUP_FILE" 2>/dev/null || echo "0")
@@ -15,75 +15,123 @@ fi
 echo "$NOW" > "$DEDUP_FILE"
 
 CLAUDE_DIR="$CLAUDE_PROJECT_DIR"
-PILLARS_FILE="$CLAUDE_DIR/System/pillars.yaml"
-QUARTER_GOALS="$CLAUDE_DIR/01-Quarter_Goals/Quarter_Goals.md"
-WEEK_PRIORITIES="$CLAUDE_DIR/02-Week_Priorities/Week_Priorities.md"
-TASKS_FILE="$CLAUDE_DIR/03-Tasks/Tasks.md"
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEX_REPO_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
 LEARNINGS_DIR="$CLAUDE_DIR/06-Resources/Learnings"
 MISTAKES_FILE="$LEARNINGS_DIR/Mistake_Patterns.md"
 PREFERENCES_FILE="$LEARNINGS_DIR/Working_Preferences.md"
 ONBOARDING_MARKER="$CLAUDE_DIR/System/.onboarding-complete"
+
+# Resolve one portable Python command for every stock hook path. Native Windows
+# installs expose either a venv python.exe or the Python launcher (`py -3`),
+# while macOS installs normally expose a Unix venv or python3.
+DEX_PYTHON_CMD=()
+if [[ -n "${DEX_PYTHON:-}" && -x "$DEX_PYTHON" ]]; then
+    DEX_PYTHON_CMD=("$DEX_PYTHON")
+elif [[ -x "$CLAUDE_DIR/.venv/bin/python" ]]; then
+    DEX_PYTHON_CMD=("$CLAUDE_DIR/.venv/bin/python")
+elif [[ -x "$CLAUDE_DIR/.venv/Scripts/python.exe" ]]; then
+    DEX_PYTHON_CMD=("$CLAUDE_DIR/.venv/Scripts/python.exe")
+elif [[ -x "$DEX_REPO_DIR/.venv/bin/python" ]]; then
+    DEX_PYTHON_CMD=("$DEX_REPO_DIR/.venv/bin/python")
+elif [[ -x "$DEX_REPO_DIR/.venv/Scripts/python.exe" ]]; then
+    DEX_PYTHON_CMD=("$DEX_REPO_DIR/.venv/Scripts/python.exe")
+elif command -v py >/dev/null 2>&1 && py -3 -c "raise SystemExit(0)" >/dev/null 2>&1; then
+    DEX_PYTHON_CMD=(py -3)
+elif command -v python >/dev/null 2>&1; then
+    DEX_PYTHON_CMD=(python)
+elif command -v python3 >/dev/null 2>&1; then
+    DEX_PYTHON_CMD=(python3)
+fi
 
 echo "=== Dex Session Context ==="
 echo ""
 echo "📅 Today: $(date '+%A, %B %d, %Y')"
 echo ""
 
-# Demo Mode Check
-DEMO_STATE="$CLAUDE_DIR/System/.demo-mode-state.json"
-if [[ -f "$DEMO_STATE" ]]; then
-    DEMO_ACTIVE=$(python3 -c "import json; d=json.load(open('$DEMO_STATE')); print(d.get('active', False))" 2>/dev/null)
-    if [[ "$DEMO_ACTIVE" == "True" ]]; then
-        TERM_COUNT=$(python3 -c "
-import sys; sys.path.insert(0, '$CLAUDE_DIR')
-from importlib import import_module
-m = import_module('dex-core.core.mcp.demo_mode_server')
-import os; os.environ['VAULT_PATH'] = '$CLAUDE_DIR'
-state = m.load_state()
-print(len(m.get_all_terms(state)))
-" 2>/dev/null || echo "?")
-        echo "🔒 DEMO MODE ACTIVE — $TERM_COUNT terms redacted"
-        echo "   Call get_demo_status() from demo-mode MCP at session start."
-        echo "   ALL output (files, chat, MCP params) must be redacted via redact_text()."
-        echo "   PTY wrapper is the safety net. You are the primary filter."
-        echo ""
+# Detect launch agents that still point to this vault's former location.
+# Doctor owns the repair; session start remains read-only for these machine
+# files. Detection is delegated to core/utils/launch_agents.py — the exact
+# module Doctor uses — so the hook can never warn about something Doctor
+# refuses to see (breadcrumb guards, symlink normalization, plist parsing,
+# and path-boundary matching all come from that one implementation).
+if [[ -f "$ONBOARDING_MARKER" && -f "$CLAUDE_DIR/core/utils/launch_agents.py" ]]; then
+    STALE_JOB_STATUS=""
+    if (( ${#DEX_PYTHON_CMD[@]} )); then
+        STALE_JOB_STATUS=$( (cd "$CLAUDE_DIR" && "${DEX_PYTHON_CMD[@]}" -m core.utils.launch_agents --stale-check --vault "$CLAUDE_DIR") 2>/dev/null || true )
+    fi
+    if [[ "$STALE_JOB_STATUS" == "stale-job-found" ]]; then
+        echo "Dex found a background job that still points to this vault's old location — run /dex-doctor to fix this safely."
     fi
 fi
 
-# Silent self-healing: ensure vault-path breadcrumb and launch agents stay in sync
-VAULT_BREADCRUMB="$HOME/.config/dex/vault-path"
-if [[ -f "$ONBOARDING_MARKER" ]]; then
-    STORED_VAULT=""
-    if [[ -f "$VAULT_BREADCRUMB" ]]; then
-        STORED_VAULT=$(tr -d '[:space:]' < "$VAULT_BREADCRUMB")
-    fi
-    if [[ "$STORED_VAULT" != "$CLAUDE_DIR" ]]; then
-        # Vault has moved — update breadcrumb and fix all launch agents
-        mkdir -p "$HOME/.config/dex"
-        echo "$CLAUDE_DIR" > "$VAULT_BREADCRUMB"
-        if [[ -n "$STORED_VAULT" ]]; then
-            for plist in "$HOME/Library/LaunchAgents"/com.dex.*.plist "$HOME/Library/LaunchAgents"/com.claudesidian.*.plist; do
-                [[ -f "$plist" ]] || continue
-                if grep -q "$STORED_VAULT" "$plist" 2>/dev/null; then
-                    AGENT_NAME=$(basename "$plist" .plist)
-                    launchctl unload "$plist" 2>/dev/null || true
-                    sed -i '' "s|$STORED_VAULT|$CLAUDE_DIR|g" "$plist"
-                    launchctl load "$plist" 2>/dev/null || true
-                fi
-            done
-        fi
-    fi
-fi
-
-# Skip background checks during onboarding - nothing to check yet!
+# First-time setup must use the completion marker, not a seeded folder: fresh
+# vaults already contain the standard folder structure. Make the canonical MCP
+# onboarding flow explicit at session start so even a first message of "hi"
+# cannot bypass it. A completed vault stays silent and continues normally.
 if [[ ! -f "$ONBOARDING_MARKER" ]]; then
-    echo "⏩ Onboarding in progress - background checks disabled"
+    echo "🚨 FIRST-TIME SETUP REQUIRED — THIS VAULT HAS NEVER BEEN SET UP"
+    if [[ -f "$CLAUDE_DIR/System/.onboarding-session.json" ]]; then
+        echo "Onboarding was started earlier but never finished. Whatever the user's first message says — even just 'hi' — resume setup NOW: call start_onboarding_session() from onboarding-mcp (it restores their progress) and continue the flow in .claude/flows/onboarding.md."
+    else
+        echo "Whatever the user's first message says — even just 'hi' — begin onboarding NOW: call start_onboarding_session() from onboarding-mcp and follow the flow in .claude/flows/onboarding.md. Do not ask what they are working on; setup comes first."
+    fi
+    echo "(Background checks stay disabled until setup completes.)"
     echo ""
 fi
 
 # SELF-LEARNING: Run background checks inline (fallback if Launch Agents not installed)
 # These are fast checks with interval throttling - only run when needed
 if [[ -f "$ONBOARDING_MARKER" ]]; then
+
+    # This records only the built-in session_started event and the analytics
+    # helper owns consent, delivery, and the safe local receipt. Keep the
+    # result long enough to show a fixed, non-sensitive receipt failure; never
+    # print helper output or retry the delivery. A first-run vault emits none.
+    if [[ -f "$CLAUDE_DIR/core/mcp/analytics_helper.py" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]]; then
+        ANALYTICS_TOTAL_TIMEOUT_SECONDS=3
+        # macOS has no GNU timeout command. This standard-library wrapper
+        # bounds the whole helper process (startup, imports, receipt work, and
+        # request), not just requests.post, and kills its process group on a
+        # timeout so a stalled descendant cannot outlive session start.
+        ANALYTICS_RESULT=$(
+            cd "$CLAUDE_DIR" && VAULT_PATH="$CLAUDE_DIR" \
+                "${DEX_PYTHON_CMD[@]}" - "${DEX_PYTHON_CMD[@]}" \
+                    core/mcp/analytics_helper.py --event session_started \
+                    --request-timeout-seconds 2 "$ANALYTICS_TOTAL_TIMEOUT_SECONDS" \
+                    2>/dev/null <<'PY'
+import os
+import signal
+import subprocess
+import sys
+
+command = sys.argv[1:-1]
+timeout_seconds = float(sys.argv[-1])
+process = subprocess.Popen(
+    command,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.DEVNULL,
+    text=True,
+    start_new_session=True,
+)
+try:
+    output, _ = process.communicate(timeout=timeout_seconds)
+except subprocess.TimeoutExpired:
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    process.communicate()
+    raise SystemExit(124)
+sys.stdout.write(output)
+raise SystemExit(process.returncode)
+PY
+        )
+        ANALYTICS_STATUS=$?
+        if [[ "$ANALYTICS_STATUS" -ne 0 || "$ANALYTICS_RESULT" == *receipt_write_failed* ]]; then
+            echo "Dex could not save the local analytics receipt. No usage event was retried."
+        fi
+    fi
 
     # Claude Code changelog is now checked in daily plan Step 0.5 via fetch-changelog.cjs
     # Background checker removed (was never installed as LaunchAgent, redundant)
@@ -105,50 +153,14 @@ fi
 
 echo ""
 
-# STRATEGIC HIERARCHY (Top-Down)
-
-# 1. Strategic Pillars
-if [[ -f "$PILLARS_FILE" ]]; then
-    echo "--- Strategic Pillars ---"
-    # Extract pillar names and descriptions
-    awk '/^  - id:/{getline; name=$0; getline; desc=$0; gsub(/^[[:space:]]*name: "/, "", name); gsub(/"$/, "", name); gsub(/^[[:space:]]*description: "/, "", desc); gsub(/"$/, "", desc); print "• " name " — " desc}' "$PILLARS_FILE" 2>/dev/null | head -5
-    echo "---"
-    echo ""
-fi
-
-# 2. Quarterly Goals
-if [[ -f "$QUARTER_GOALS" ]]; then
-    # Check if goals are filled in (not template)
-    if ! grep -q "^\[Goal 1 Title\]" "$QUARTER_GOALS" 2>/dev/null; then
-        echo "--- Quarter Goals ---"
-        # Extract goal titles and progress
-        awk '/^### [0-9]\./,/^---$/{if(/^### [0-9]\./) print; if(/^\*\*Progress:\*\*/) print}' "$QUARTER_GOALS" 2>/dev/null | head -10
-        echo "---"
-        echo ""
-    fi
-fi
-
-# 3. Weekly Priorities
-if [[ -f "$WEEK_PRIORITIES" ]]; then
-    # Extract current week's priorities section
-    WEEK_PRIORITIES_CONTENT=$(awk '/^## 🎯 This Week|^## This Week/,/^---$/{if(!/^##/ && !/^---/ && NF) print}' "$WEEK_PRIORITIES" 2>/dev/null)
-    if [[ -n "$WEEK_PRIORITIES_CONTENT" ]]; then
-        echo "--- Weekly Priorities ---"
-        echo "$WEEK_PRIORITIES_CONTENT"
-        echo "---"
-        echo ""
-    fi
-fi
-
-# TACTICAL CONTEXT
-
-# 4. Urgent Tasks
-if [[ -f "$TASKS_FILE" ]]; then
-    URGENT=$(grep -i "P0\|urgent\|today\|overdue" "$TASKS_FILE" 2>/dev/null | grep "^\- \[ \]" | head -3)
-    if [[ -n "$URGENT" ]]; then
-        echo "--- Urgent Tasks ---"
-        echo "$URGENT"
-        echo "---"
+# STRATEGIC HIERARCHY + urgent tasks — same payload as Work MCP boot_today.
+# The hook stays a thin wrapper so Cursor/ChatGPT/Codex calling the tool get
+# the same facts Claude Code injects here. Do not re-extract these in bash.
+SESSION_BOOT_PY="$HOOK_DIR/../../core/context/session_boot.py"
+if [[ -f "$SESSION_BOOT_PY" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]]; then
+    BOOT_OUTPUT=$("${DEX_PYTHON_CMD[@]}" "$SESSION_BOOT_PY" --vault "$CLAUDE_DIR" --format hook-text 2>/dev/null || true)
+    if [[ -n "$BOOT_OUTPUT" ]]; then
+        echo "$BOOT_OUTPUT"
         echo ""
     fi
 fi
@@ -222,7 +234,7 @@ fi
 
 # 11. QMD Index Refresh (if stale > 12 hours)
 QMD_TIMESTAMP="$CLAUDE_DIR/System/.last-qmd-update"
-QMD_BIN="/Users/dave/.bun/bin/qmd"
+QMD_BIN="${QMD_BIN:-$(which qmd 2>/dev/null || echo '')}"
 if [[ -x "$QMD_BIN" && -f "$ONBOARDING_MARKER" ]]; then
     NEEDS_UPDATE=false
     if [[ ! -f "$QMD_TIMESTAMP" ]]; then
@@ -244,112 +256,11 @@ if [[ -x "$QMD_BIN" && -f "$ONBOARDING_MARKER" ]]; then
     fi
 fi
 
-# 12. Innovation Engine - Run daily scan (once per day) and check for discoveries
-INNOVATION_STATE="$CLAUDE_DIR/System/Innovation_Research/.state.json"
-INNOVATION_SCAN="$CLAUDE_DIR/System/Innovation_Research/daily-research-scan.cjs"
-INNOVATION_CHECKER="$CLAUDE_DIR/.claude/hooks/innovation-engine-checker.cjs"
-if [[ -f "$INNOVATION_SCAN" && -f "$ONBOARDING_MARKER" ]]; then
-    TODAY=$(date +%Y-%m-%d)
-    LAST_SCAN_DATE=""
-    if [[ -f "$INNOVATION_STATE" ]]; then
-        LAST_SCAN_DATE=$(python3 -c "
-import json
-try:
-    with open('$INNOVATION_STATE') as f:
-        s = json.load(f)
-    ts = s.get('last_scan_completed', '')
-    print(ts[:10] if ts else '')
-except:
-    print('')
-" 2>/dev/null)
-    fi
-
-    if [[ "$LAST_SCAN_DATE" != "$TODAY" && -n "$GITHUB_TOKEN" ]]; then
-        # Run silently — no need to inject into context
-        node "$INNOVATION_SCAN" > "$CLAUDE_DIR/System/Innovation_Research/logs/pipeline-stdout.log" 2> "$CLAUDE_DIR/System/Innovation_Research/logs/pipeline-stderr.log" &
-    elif [[ -z "$GITHUB_TOKEN" ]]; then
-        : # Silent — no token, no scan
-    fi
-
-    # Check for discoveries from previous scans
-    if [[ -f "$INNOVATION_CHECKER" ]]; then
-        node "$INNOVATION_CHECKER" 2>/dev/null
-    fi
-fi
-
-# 14. Intel Pipeline Refresh (YouTube, Newsletter, Twitter)
-# Checks if today's digests exist. If not, fires pipelines in background.
-# Also resumes any pipelines that started but didn't complete.
-INTEL_REFRESH="$CLAUDE_DIR/.claude/hooks/intel-pipeline-refresh.cjs"
-if [[ -f "$INTEL_REFRESH" && -f "$ONBOARDING_MARKER" ]]; then
-    INTEL_OUTPUT=$(node "$INTEL_REFRESH" 2>/dev/null)
-    if [[ -n "$INTEL_OUTPUT" ]]; then
-        echo "--- 📡 Intel Pipeline Status ---"
-        echo "$INTEL_OUTPUT"
-        echo "---"
-        echo ""
-    fi
-fi
-
-# 15. Product Context — strategy one-liner only (insights load on-demand)
-PRODUCT_CONTEXT="$CLAUDE_DIR/System/product-context.md"
-if [[ -f "$PRODUCT_CONTEXT" && -f "$ONBOARDING_MARKER" ]]; then
-    STRATEGY=$(grep -F "**The One-Sentence Strategy:**" "$PRODUCT_CONTEXT" 2>/dev/null | head -1 | sed 's/.*Strategy:\*\* //')
-    if [[ -n "$STRATEGY" ]]; then
-        echo "--- 🎯 Product Strategy ---"
-        echo "$STRATEGY"
-        echo "Details: System/product-context.md"
-        echo "---"
-        echo ""
-    fi
-fi
-
-# 15. Top Backlog Ideas — removed from startup (available via /dex-improve)
-
-# 16. Hot Research Repos — removed from startup (available via /repo-radar)
-
-# 17. Pendo Partnership — removed from startup (loaded contextually when relevant)
-
-# 19. Critical Decisions Memory (cross-session awareness)
-CRITICAL_DECISIONS="$CLAUDE_DIR/System/Memory/critical-decisions.md"
-if [[ -f "$CRITICAL_DECISIONS" && -f "$ONBOARDING_MARKER" ]]; then
-    # Count recent decisions (last 7 days)
-    WEEK_AGO=$(date -v-7d +%Y-%m-%d 2>/dev/null || date -d "7 days ago" +%Y-%m-%d 2>/dev/null)
-    if [[ -n "$WEEK_AGO" ]]; then
-        RECENT_DECISIONS=$(awk -v cutoff="$WEEK_AGO" '/^### [0-9]{4}-[0-9]{2}-[0-9]{2}/{date=substr($2,1,10); if(date>=cutoff) show=1; else show=0} show && !/^---$/' "$CRITICAL_DECISIONS" 2>/dev/null | head -10)
-        if [[ -n "$RECENT_DECISIONS" ]]; then
-            echo "--- 🧠 Recent Critical Decisions ---"
-            echo "$RECENT_DECISIONS"
-            echo "---"
-            echo ""
-        fi
-    fi
-fi
-
-# 20. Session Memory Context (cross-session awareness)
-SESSION_MEMORY_PRIMER="$CLAUDE_DIR/.claude/hooks/session-memory-primer.cjs"
-if [[ -f "$SESSION_MEMORY_PRIMER" && -f "$ONBOARDING_MARKER" ]]; then
-    SESSION_MEMORY_OUTPUT=$(node "$SESSION_MEMORY_PRIMER" 2>/dev/null)
-    if [[ -n "$SESSION_MEMORY_OUTPUT" ]]; then
-        echo "$SESSION_MEMORY_OUTPUT"
-        echo ""
-    fi
-fi
-
-# 21. Slack Token Health Check (once per day)
-SLACK_CHECKER="$CLAUDE_DIR/.claude/hooks/slack-token-checker.cjs"
-if [[ -f "$SLACK_CHECKER" && -f "$ONBOARDING_MARKER" ]]; then
-    SLACK_CHECK_OUTPUT=$(node "$SLACK_CHECKER" 2>/dev/null)
-    if [[ -n "$SLACK_CHECK_OUTPUT" ]]; then
-        echo "$SLACK_CHECK_OUTPUT"
-    fi
-fi
-
 # 13. Recent Errors (from web app, server, or CLI)
 ERROR_QUEUE="$CLAUDE_DIR/.logs/error-queue.json"
-if [[ -f "$ERROR_QUEUE" ]]; then
+if [[ -f "$ERROR_QUEUE" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]]; then
     # Count unacknowledged errors using python (available on macOS)
-    UNACK_COUNT=$(python3 -c "
+    UNACK_COUNT=$("${DEX_PYTHON_CMD[@]}" -c "
 import json
 try:
     with open('$ERROR_QUEUE') as f:
@@ -363,7 +274,7 @@ except:
     if [[ "$UNACK_COUNT" -gt 0 ]]; then
         echo "--- ⚠️ Recent Errors ($UNACK_COUNT) ---"
         # Show the most recent 3 unacknowledged errors
-        python3 -c "
+        "${DEX_PYTHON_CMD[@]}" -c "
 import json
 with open('$ERROR_QUEUE') as f:
     q = json.load(f)
@@ -386,9 +297,9 @@ fi
 # Runs preflight health checks (MCP servers, config files, etc.) and displays
 # any queued errors. Silent when everything is healthy (no output = no display).
 if [[ -f "$ONBOARDING_MARKER" ]]; then
-    DEX_CORE_DIR="$CLAUDE_DIR/dex-core"
-    if [[ -f "$DEX_CORE_DIR/core/utils/preflight.py" ]]; then
-        HEALTH_OUTPUT=$(cd "$DEX_CORE_DIR" && python3 -c "
+    DEX_CORE_DIR="$CLAUDE_DIR"
+    if [[ -f "$DEX_CORE_DIR/core/utils/preflight.py" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]]; then
+        if ! HEALTH_OUTPUT=$(cd "$DEX_CORE_DIR" && "${DEX_PYTHON_CMD[@]}" -c "
 import sys
 sys.path.insert(0, '.')
 from core.utils.preflight import run_preflight, format_output, format_errors
@@ -399,11 +310,151 @@ if preflight:
     print(preflight)
 if errors:
     print(errors)
-" 2>/dev/null)
-        if [[ -n "$HEALTH_OUTPUT" ]]; then
+" 2>/dev/null); then
+            echo "⚠️ Dex health check failed to run (see .claude/hooks/session-start.sh)"
+        elif [[ -n "$HEALTH_OUTPUT" ]]; then
             echo "$HEALTH_OUTPUT"
         fi
     fi
+fi
+
+# 19. Daily self-check fallback.
+# The 03:15 Launch Agent remains the normal trigger. If the Mac was asleep or
+# off, the first Dex session of the local day runs the same bounded smoke check.
+# A clean report suppresses later session starts; broken, inconclusive, or
+# interrupted checks remain eligible for retry. The Python runner owns the
+# process-safe lock so overlapping sessions cannot launch duplicate checks.
+if [[ -f "$ONBOARDING_MARKER" && -f "$CLAUDE_DIR/core/utils/session_health.py" ]]; then
+    if (( ${#DEX_PYTHON_CMD[@]} )); then
+        "${DEX_PYTHON_CMD[@]}" "$CLAUDE_DIR/core/utils/session_health.py" \
+        --vault "$CLAUDE_DIR" \
+        --repo "$CLAUDE_DIR" >/dev/null 2>&1
+        DAILY_HEALTH_STATUS=$?
+    else
+        DAILY_HEALTH_STATUS=127
+    fi
+    if [[ "$DAILY_HEALTH_STATUS" -ne 0 \
+        && "$DAILY_HEALTH_STATUS" -ne 1 \
+        && "$DAILY_HEALTH_STATUS" -ne 3 ]]; then
+        echo "⚠️ Dex's daily self-check could not finish — it will try again next session."
+        echo ""
+    elif [[ "$DAILY_HEALTH_STATUS" -eq 3 ]]; then
+        echo "⚠️ Dex's daily self-check was inconclusive — it will try again next session."
+        echo ""
+    fi
+fi
+
+# 20. Latest smoke result — surface only actionable broken journeys.
+SMOKE_LAST_RUN="$CLAUDE_DIR/System/.smoke-last-run.json"
+if [[ -f "$ONBOARDING_MARKER" && -f "$SMOKE_LAST_RUN" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]]; then
+    SMOKE_ALERT=$("${DEX_PYTHON_CMD[@]}" -c "
+import json
+try:
+    with open('$SMOKE_LAST_RUN') as handle:
+        report = json.load(handle)
+    if report.get('summary', {}).get('broken', 0) > 0:
+        print('--- 🚨 Overnight check found a problem ---')
+        for journey in report.get('journeys', []):
+            if journey.get('verdict') == 'BROKEN':
+                detail = ' '.join(str(journey.get('detail', 'Unknown problem')).split())[:140]
+                print(f\"{journey.get('id', '?')} — {detail}\")
+        print('Run /dex-doctor for diagnosis and the fix.')
+except Exception:
+    pass
+" 2>/dev/null)
+    if [[ -n "$SMOKE_ALERT" ]]; then
+        echo "$SMOKE_ALERT"
+        echo ""
+    fi
+fi
+
+# 21. Unprocessed synced meetings — detect only; processing happens via /process-meetings.
+if [[ -f "$ONBOARDING_MARKER" ]]; then
+    MEETING_QUEUE_OUTPUT=$(node "$CLAUDE_DIR/.claude/hooks/meeting-queue-check.cjs" "$CLAUDE_DIR" 2>/dev/null || true)
+    if [[ -n "$MEETING_QUEUE_OUTPUT" ]]; then
+        echo "$MEETING_QUEUE_OUTPUT"
+        echo ""
+    fi
+fi
+
+# Background job staleness — keep in sync with the health promise register
+# (core/health/promises.py), which Doctor and Proactive Health audit.
+{
+    DEX_LAUNCH_AGENTS_DIR="${DEX_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
+    while IFS='|' read -r JOB_NAME JOB_LOG_RELATIVE_PATH JOB_MAX_AGE_SECONDS JOB_EXPECTED_CADENCE JOB_LABEL JOB_MODE; do
+        [[ -f "$DEX_LAUNCH_AGENTS_DIR/$JOB_NAME.plist" ]] || continue
+        if [[ -f "$CLAUDE_DIR/core/utils/launch_agents.py" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]] && (
+            cd "$CLAUDE_DIR" && "${DEX_PYTHON_CMD[@]}" -m core.utils.launch_agents \
+                --offloaded-check --vault "$CLAUDE_DIR" \
+                --plist-relative "Library/LaunchAgents/$JOB_NAME.plist"
+        ) >/dev/null 2>&1; then
+            continue
+        fi
+
+        JOB_LOG="$CLAUDE_DIR/$JOB_LOG_RELATIVE_PATH"
+        if [[ ! -f "$JOB_LOG" ]]; then
+            echo "⏰ $JOB_LABEL is installed but has never run — run /dex-doctor to investigate."
+            continue
+        fi
+
+        if [[ "$JOB_MODE" == json:* ]]; then
+            # A completed run is the only writer of the receipt key; the log
+            # keeps updating even when every run fails, so log age proves nothing.
+            JOB_KEY="${JOB_MODE#json:}"
+            JOB_TS=$(sed -n 's/.*"'"$JOB_KEY"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$JOB_LOG" | head -1)
+            if [[ -z "$JOB_TS" ]]; then
+                echo "⏰ $JOB_LABEL is installed but has never completed a successful run — run /dex-doctor to investigate."
+                continue
+            fi
+            # BSD date needs bare seconds (strip fraction, Z, and ±HH:MM);
+            # GNU date parses the raw stamp, offsets included.
+            JOB_TS_SECONDS="${JOB_TS%%.*}"; JOB_TS_SECONDS="${JOB_TS_SECONDS%Z}"; JOB_TS_SECONDS="${JOB_TS_SECONDS%[+-]??:??}"
+            JOB_MTIME=$(date -u -j -f "%Y-%m-%dT%H:%M:%S" "$JOB_TS_SECONDS" +%s 2>/dev/null || date -u -d "$JOB_TS" +%s 2>/dev/null || true)
+        else
+            # GNU stat first: on Linux, `stat -f %m` SUCCEEDS with filesystem
+            # info (BSD -f means mtime, GNU -f means file system), so trying
+            # the BSD form first only works by accident of the numeric guard
+            # below catching the garbage output. GNU-first is deterministic.
+            JOB_MTIME=$(stat -c %Y "$JOB_LOG" 2>/dev/null || true)
+            if [[ ! "$JOB_MTIME" =~ ^[0-9]+$ ]]; then
+                JOB_MTIME=$(stat -f %m "$JOB_LOG" 2>/dev/null || true)
+            fi
+        fi
+        [[ "$JOB_MTIME" =~ ^[0-9]+$ && "$NOW" =~ ^[0-9]+$ ]] || continue
+
+        JOB_AGE_SECONDS=$(( NOW - JOB_MTIME ))
+        if (( JOB_AGE_SECONDS > JOB_MAX_AGE_SECONDS )); then
+            if (( JOB_AGE_SECONDS < 86400 )); then
+                JOB_AGE=$(( JOB_AGE_SECONDS / 3600 ))
+                JOB_AGE_UNIT="hours"
+            else
+                JOB_AGE=$(( JOB_AGE_SECONDS / 86400 ))
+                JOB_AGE_UNIT="days"
+            fi
+            if (( JOB_AGE == 1 )); then
+                JOB_AGE_UNIT="${JOB_AGE_UNIT%s}"
+            fi
+            JOB_VERB="last ran"
+            [[ "$JOB_MODE" == json:* || "$JOB_MODE" == "mtime-success" ]] && JOB_VERB="last completed successfully"
+            echo "⏰ $JOB_LABEL $JOB_VERB $JOB_AGE $JOB_AGE_UNIT ago (expected every $JOB_EXPECTED_CADENCE) — run /dex-doctor to investigate."
+        fi
+    done <<'EOF'
+com.dex.smoke-nightly|.scripts/logs/smoke-nightly.log|93600|26 hours|Nightly smoke|mtime-success
+com.dex.meeting-intel|.scripts/meeting-intel/processed-meetings.json|172800|2 days|Meeting sync|json:lastSync
+com.dex.changelog-checker|.scripts/logs/changelog-checker.log|604800|7 days|Claude update watcher|mtime
+com.dex.learning-review|.scripts/logs/learning-review.log|604800|7 days|Learning review|mtime
+EOF
+} || true
+
+# 22. Proactive health status — read the latest complete snapshot only.
+# No snapshot is the quiet preparing state. Warnings, staleness, recoveries,
+# and repeated critical states do not interrupt the session; only a newly
+# critical latest snapshot receives the attention block.
+if [[ -f "$CLAUDE_DIR/core/utils/health_session.py" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]]; then
+    (
+        cd "$CLAUDE_DIR" || exit 0
+        "${DEX_PYTHON_CMD[@]}" -m core.utils.health_session --vault "$CLAUDE_DIR"
+    ) 2>/dev/null || true
 fi
 
 echo "=== End Session Context ==="

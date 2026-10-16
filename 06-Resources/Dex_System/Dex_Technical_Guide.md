@@ -1,7 +1,7 @@
 # Dex Technical Guide
 
 **Version:** 1.0  
-**Last Updated:** January 28, 2026
+**Last Updated:** July 2026
 
 **Audience:** People who want to understand how Dex works under the hood - whether to customize it, contribute to it, or learn from its design patterns.
 
@@ -17,7 +17,8 @@
 6. [Planning Architecture](#planning-architecture)
 7. [Integration Layer](#integration-layer)
 8. [Self-Learning System](#self-learning-system)
-9. [Design Constraints](#design-constraints)
+9. [Testing Doctor](#testing-doctor)
+10. [Design Constraints](#design-constraints)
 
 **Related Guides:**
 - [Cursor Compatibility](Cursor_Compatibility.md) - Working with both Cursor and Claude Code
@@ -134,9 +135,6 @@ name: daily-plan
 description: Generate context-aware daily plan with calendar, tasks, and priorities
 ---
 
-## Step 0: Demo Mode Check
-...
-
 ## Step 1: Gather Calendar Context
 ...
 
@@ -148,7 +146,7 @@ Claude reads this file when you type `/daily-plan`, follows the steps, and doesn
 
 ### Role-Specific Skills
 
-Dex has 25 core skills, plus 27 role-specific skills (Product, Sales, Marketing, etc.) stored in `.claude/skills/_available/[role]/[skill-name]/`.
+Dex has 24 core skills, plus 27 role-specific skills (Product, Sales, Marketing, etc.) stored in `.claude/skills/_available/[role]/[skill-name]/`.
 
 **Why separate?** Not everyone needs `/pipeline-health` or `/board-prep`. Skills are discovered via `/dex-level-up` based on your role and installed on demand.
 
@@ -243,7 +241,7 @@ This ensures every task gets a unique, sortable ID that's stable across files.
 
 **Why this matters:** Task IDs are how we maintain relationships. When a meeting note says "^task-20260128-001", Dex can find that task in `03-Tasks/Tasks.md` AND on the person page AND link back to the meeting.
 
-#### 2. **Calendar MCP** (`user-dave-calendar-mcp`)
+#### 2. **Calendar MCP** (`calendar-mcp`)
 
 **Purpose:** Read-only access to Apple Calendar for meeting context.
 
@@ -261,23 +259,23 @@ This ensures every task gets a unique, sortable ID that's stable across files.
 
 **What's Granola?** AI meeting assistant that records, transcribes, and summarizes meetings.
 
-**Architecture:** API-first with cache fallback (v2.0)
-- **Primary:** Uses Granola's unofficial API for complete historical data (91% success rate)
-- **Fallback:** Reads from local cache (`~/Library/Application Support/Granola/cache-v*.json`, auto-detects latest) if API fails
-- **Protection:** Response caching (5 min TTL), exponential backoff, graceful degradation
+**Architecture:** Official Granola public API only
+- **Source:** The official Granola API at `https://public-api.granola.ai` — the single source of truth
+- **Auth:** Bearer `GRANOLA_API_KEY` (format `grn_...`), created on a Granola Business plan and connected via `/granola-setup`
+- **No local-file fallback:** No reading of `supabase.json`, cache files, spoofed headers, or local crypto
+- **Protection:** Sequential detail fetches with a gentle retry on HTTP 429
 
 **Key tools:**
 - `granola_get_recent_meetings` - Get meetings within date range
 - `granola_get_meeting_details` - Get full details + transcript
 - `granola_search_meetings` - Search by title/attendee/content
-- `granola_check_available` - Verify API + cache availability
+- `granola_check_available` - Verify the API key is connected
 
 **How it works:**
-1. Reads auth token from `~/Library/Application Support/Granola/supabase.json`
-2. Hits `https://api.granola.ai/v2/get-documents` with Bearer auth
-3. Converts ProseMirror JSON to Markdown
-4. Falls back to cache on rate limits (429), auth failures (401), or network errors
-5. Caches responses (5 min) to avoid rate limits
+1. Reads `GRANOLA_API_KEY` from the environment, falling back to the `.env` file at the vault root
+2. `GET https://public-api.granola.ai/v1/notes` (list) with `Authorization: Bearer <key>`, paginating via the returned `cursor` until `hasMore` is false
+3. `GET /v1/notes/{note_id}?include=transcript` per note for summary, attendees, and transcript (list items contain none of these)
+4. Retries once on HTTP 429 with a short backoff; if no key is configured, prompts the user to run `/granola-setup` and exits cleanly
 
 **How it's used:** The `/process-meetings` skill calls `granola_get_recent_meetings(days_back=7)` to find recent meetings, then extracts:
 - Action items
@@ -285,7 +283,7 @@ This ensures every task gets a unique, sortable ID that's stable across files.
 - People mentioned
 - Career development context (if it's a 1:1 with manager)
 
-**Why API-first?** Granola's cache doesn't retain full content for older meetings. API provides 9x more complete historical data than cache-only approach.
+**Why the official API?** It's the supported, stable source for complete desktop and mobile meeting data, with no dependency on Granola's local files.
 
 #### 4. **Career MCP** (`core/mcp/career_server.py`)
 
@@ -362,47 +360,24 @@ This ensures every task gets a unique, sortable ID that's stable across files.
 
 If interrupted, calling `start_onboarding_session()` resumes from the last completed step.
 
+### How servers report feature status
+
+Dex servers use five shared states so skills and diagnostics describe each feature consistently:
+
+- `ok` — Enabled and working.
+- `off` — Deliberately not enabled or configured by the user. Skills render `off` as healthy, never use an error tone, and never nag.
+- `not_installed` — A required app, binary, or dependency is absent.
+- `broken` — Configured and expected to work, but failing.
+- `unknown` — Dex could not determine the state because the check itself failed.
+
 ### External MCP Integrations
 
-#### Pendo (Optional for Pendo Customers)
-
-**Type:** Hosted external MCP server (not shipped with Dex)
-
-**Purpose:** Product analytics for Pendo customers - track guide performance, feature adoption, visitor/account engagement.
-
-**Setup:**
-1. Admin must enable in Pendo: Settings → Subscription Settings → AI Features → Pendo MCP Server
-2. Add to AI client config (Cursor example):
-```json
-{
-  "mcpServers": {
-    "pendo": {
-      "url": "https://app.pendo.io/mcp/v0/shttp"
-    }
-  }
-}
-```
-3. Authenticate with OAuth using Pendo login credentials
-
-**Regional URLs:**
-- US: `https://app.pendo.io/mcp/v0/shttp`
-- US1: `https://us1.app.pendo.io/mcp/v0/shttp`
-- EU: `https://app.eu.pendo.io/mcp/v0/shttp`
-- Japan: `https://app.jpn.pendo.io/mcp/v0/shttp`
-- Australia: `https://app.au.pendo.io/mcp/v0/shttp`
-
-**Available tools:**
-- Visitor and account metadata
-- Page, Feature, and Track Event analytics
-- Event-level aggregation queries
-- Activity and engagement patterns
-
-**Use cases:**
-- "What's our top performing guide this month?"
-- "Which accounts are most active in the last 30 days?"
-- "How many users adopted the new dashboard feature?"
-
-**Documentation:** https://support.pendo.io/hc/en-us/articles/41102236924955
+Dex works with any hosted or local MCP server your AI client supports. These are
+optional, are **not** shipped with Dex, and are added in your AI client's own MCP
+config and authenticated per the vendor's instructions. Examples include
+product-analytics servers (e.g. Pendo, for teams that use it), issue trackers, and
+documentation tools. Follow each vendor's MCP documentation for setup, OAuth, and
+regional endpoints.
 
 ### MCP Development Pattern
 
@@ -539,7 +514,7 @@ Skills aren't loaded until invoked:
 4. Claude follows the instructions
 5. Skill is unloaded after command completes
 
-**Alternative (bad):** Load all 42 skills at session start = 84K tokens before chat begins.
+**Alternative (bad):** Load all 41 bundled skills at session start = 82K tokens before chat begins.
 
 ---
 
@@ -666,7 +641,7 @@ Quarter Goals (01-Quarter_Goals/)
     ↓
 Week Priorities (02-Week_Priorities/)
     ↓
-Daily Plan (07-Archives/Plans/)
+Daily Plan (00-Inbox/Daily_Plans/)
     ↓
 Tasks (03-Tasks/)
 ```
@@ -698,29 +673,46 @@ Tasks (03-Tasks/)
 - 2pm: Test signup flow end-to-end
 
 **Tasks:**
-- `- [ ] Review onboarding mockups ^task-20260128-001 #product [Q1-1] [Week-3]`
-- `- [ ] Implement OAuth with Google ^task-20260128-002 #product [Q1-1] [Week-3]`
+
+```markdown
+- [ ] **Review onboarding mockups** ^task-20260128-001
+	- Pillar: Product | Priority: P1
+	- Goal: Q1-2026-goal-1
+	- Weekly priority: [week-2026-W05-p1]
+- [ ] **Implement OAuth with Google** ^task-20260128-002
+	- Pillar: Product | Priority: P1 | Due: 2026-02-06
+	- Goal: Q1-2026-goal-1
+```
 
 **Why this works:**
 
 1. **Tasks are contextualized:** You know *why* you're doing them (goal linkage)
 2. **Priority is clear:** Week priorities = top 3 things advancing quarterly goals
-3. **Reviews are meaningful:** "Did I advance Q1-1 this week?" (measurable)
+3. **Reviews are meaningful:** "Did I advance Q1-2026-goal-1 this week?" (measurable)
 4. **System learns:** Patterns emerge (e.g., "onboarding always takes 2x estimate")
 
-### Tags as Metadata
+### Metadata as Child Bullets
 
-Tasks use three tag types:
+Each task line ends with a caret ID (`^task-YYYYMMDD-XXX`) so Dex can sync its
+status everywhere it appears. Everything else lives in indented child bullets
+directly under the task:
 
-- **Pillar tags:** `#product`, `#growth`, `#operations`
-- **Goal tags:** `[Q1-1]`, `[Q1-2]` (quarter-goal linkage)
-- **Week tags:** `[Week-3]` (which week to focus on)
+- **Pillar:** `- Pillar: Product` (a pillar name from `System/pillars.yaml`)
+- **Priority:** `- Priority: P1` (P0–P3; when absent, Dex falls back to the section heading, e.g. `## P1 - Important`)
+- **Due date:** `- Due: 2026-02-06` (YYYY-MM-DD)
+- **Goal link:** `- Goal: Q1-2026-goal-1` (the `^Qn-YYYY-goal-N` ID from your quarter goals; a trailing `(?)` marks a tentative link awaiting confirmation)
+- **Weekly priority link:** `- Weekly priority: [week-2026-W05-p1]`
+- **Project link:** `- Project: 04-Projects/Mobile_App.md`
+- **Next up:** `- Next up: 1` (optional "take this first" position within the task's goal — or its pillar when it has no goal; set during `/goal-backlog` grooming, pulled first by `/week-plan`)
 
-**Why tags not folders?**
+Several fields can share one bullet separated by `|`, exactly as Dex writes them
+when it creates a task for you.
+
+**Why child bullets not folders?**
 
 - Tasks can relate to multiple contexts (folder = one location)
-- Tags are grepable (`grep "#product" 03-Tasks/Tasks.md`)
-- Tags are flexible (add new ones without restructuring)
+- Bullets are grepable (`grep "Goal: Q1-2026-goal-1" 03-Tasks/Tasks.md`)
+- Malformed fields are ignored safely rather than misread
 
 ---
 
@@ -731,7 +723,7 @@ Tasks use three tag types:
 **Goal:** Surface today's meetings in daily plan with context about attendees.
 
 **Tech stack:**
-- **Calendar MCP** (`user-dave-calendar-mcp`)
+- **Calendar MCP** (`calendar-mcp`)
 - **Apple Calendar.app** (syncs Google Calendar accounts locally)
 
 **Flow:**
@@ -744,13 +736,13 @@ Tasks use three tag types:
      {
        "title": "API Review",
        "start": "2026-01-28T10:00:00",
-       "attendees": ["john@company.com", "maya@company.com"]
+       "attendees": ["john@example.com", "maya@example.com"]
      }
    ]
    ```
 4. Skill cross-references attendees with person pages:
-   - `john@company.com` → `05-Areas/People/Internal/John_Doe.md`
-   - `maya@company.com` → `05-Areas/People/Internal/Maya_Patel.md`
+   - `john@example.com` → `05-Areas/People/Internal/John_Doe.md`
+   - `maya@example.com` → `05-Areas/People/Internal/Maya_Patel.md`
 5. Skill reads person pages, extracts context:
    - John: Tech Lead, last 1:1 was about API architecture
    - Maya: Designer, working on onboarding flow redesign
@@ -769,8 +761,8 @@ Tasks use three tag types:
 **Goal:** Process meeting transcripts to extract action items and update person pages.
 
 **Tech stack:**
-- **Granola MCP** (`user-granola`)
-- **Granola app** (records + transcribes meetings)
+- **Granola MCP** (`granola_server.py`) — calls the official Granola public API
+- **Granola Business plan + API key** (`GRANOLA_API_KEY`, connected via `/granola-setup`)
 - **Background automation** (`.scripts/meeting-intel/sync-from-granola.cjs`)
 
 **Flow (automated, runs daily):**
@@ -788,7 +780,7 @@ Tasks use three tag types:
    - Person pages: Add meeting reference + action items
    - Career folder: If manager 1:1, save feedback to `05-Areas/Career/Evidence/`
 
-**User experience:** Meetings auto-sync. Just run `/process-meetings` to review and triage.
+**User experience:** Meetings auto-sync. Dex notices waiting meetings at the start of a session — synced from Granola or captured by hand — and processes them in the background automatically. Nothing appears when there is nothing to do. You can still run `/process-meetings` directly whenever you want to review or triage meetings yourself.
 
 ### Why MCP for Integrations?
 
@@ -1047,6 +1039,72 @@ Ideas requiring unavailable capabilities are rejected with explanation.
 
 ---
 
+## Testing Doctor
+
+`/dex-doctor` separates four states: working, switched off, broken, and unable to check.
+Its quick scan validates configuration, skills, MCP wiring, and changes to shipped Dex
+files. Its optional deep scan also runs `core/utils/smoke.py`, which exercises config
+loading, a real task lifecycle, MCP startup, skills, and hook structure in isolated
+subprocesses.
+
+The public proof for the latest successful release build is on the repository's GitHub Pages site at `/health.html`.
+
+The smoke runner copies the minimum vault data into a temporary directory before product
+code is imported. It uses a temporary home, disables analytics, never reads credential or
+`.env` files, redacts secret-like config values before child journeys, never contacts the
+network, and never writes into the live vault. Task code and Dex-owned MCP code run from a
+read-only snapshot of the installed release. Unmodified Dex-owned local Python MCP servers
+are started automatically. Custom commands, remote or npm servers, symlinks, and modified
+shipped servers remain structural-only unless a custom local Python server has the exact
+user-owned trust record described below.
+
+### Trusting your own servers
+
+`/create-mcp` can optionally check a custom local Python MCP server once, then separately
+offer recurring startup checks. The recurring choice defaults to no. Before asking, Dex
+shows the MCP name, vault-relative `.py` path, and SHA-256 content hash. The consent text is
+literal: this runs `<file>` with your user permissions (nightly and in deep scans), and
+trusts whatever it imports.
+
+Only a `custom-*` entry using Dex's current Python interpreter with exactly one `.py`
+argument can be trusted. `-c`, `-m`, extra arguments, configured environment variables,
+remote/HTTP servers, npm/npx commands, and other binaries are never eligible. The entry's
+configured `env` is ignored during the startup check.
+
+Consent is stored in the user-owned, gitignored `System/trusted-mcps.yaml`; the shipped
+`System/trusted-mcps.example.yaml` is only a template. Dex binds all three identities: the
+registry name must equal the `.mcp.json` name, both normalized paths must match, and the
+opened file bytes must match the recorded hash. It opens every path component without
+following links, hashes and copies from that same open file, and executes only the private
+copy. A missing file, link anywhere in the path, changed hash, invalid registry, or command
+shape mismatch stays `UNKNOWN` and does not run. Re-run `/create-mcp` to bless changed
+content again.
+
+Customization failures name the exact user-owned file to fix. Dex only suggests an
+update or rollback for failures in unmodified Dex-owned code.
+
+### Nightly self-checks
+
+Run `.scripts/install-smoke-automation.sh` once to install the macOS nightly check. At
+03:15 it exercises Dex's five isolated smoke journeys and records the latest result in
+`System/.smoke-last-run.json`, with up to 120 versioned runs in
+`System/.dex/smoke-history.jsonl`.
+
+When a journey breaks, the next session start names it and points to `/dex-doctor`.
+The daily plan also includes a system-health line only while a broken result is present.
+The doctor's quick `smoke.history` check narrows the change window and reports only
+matching configuration/custom-skill modification times or a Dex version change. The
+automation heartbeat lives at `.scripts/logs/smoke-nightly.log`.
+
+When a check stays broken across runs and points to a defect in Dex itself rather than
+local setup, Doctor offers to report it through `/feedback`. That is not the only route:
+the persona's "Something in Dex Is Broken (Natural Language Triggers)" block in `CLAUDE.md`
+(shipped v1.94.0) routes ordinary descriptions of a fault to the same place, and routes
+setup problems back to Doctor instead. The user-facing troubleshooting path is documented
+in `Dex_System_Guide.md` under "Troubleshooting: When Something Seems Broken".
+
+---
+
 ## Design Constraints
 
 ### What Cursor/Claude Code Can't Do
@@ -1193,15 +1251,12 @@ This reference contains:
 - API quick reference
 - Working code examples
 
-**Official Pi docs:** `/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/docs/tui.md`
-
 **Why this matters:** Pi TUI has strict rules. Skipping the reference leads to crashes and wasted debugging time.
 
 ### Best Practices
 
 - **Don't edit canonical files manually:** Use MCP tools to ensure syncing works
 - **Backup regularly:** `git commit` daily (or use `.claude/hooks/session-end.sh` to auto-commit)
-- **Test in demo mode:** Use `System/Demo/` to experiment without touching real data
 - **Document learnings:** Use `System/Session_Learnings/` to capture improvements
 - **Read Pi TUI Reference before TUI work:** See above - mandatory for extension development
 

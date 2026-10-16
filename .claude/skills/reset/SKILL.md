@@ -1,174 +1,97 @@
 ---
 name: reset
-description: Restructure Dex system based on new role or preferences
-disable-model-invocation: true
+description: "Re-run the setup questions over an existing Dex vault when preferences or setup answers changed, without losing data. Use when the user says 'restructure my Dex', 'redo my setup', 'my pillars are wrong now'. Not for a job or role change; use `change-job` — it runs this same reset plus the people, archive and task passes. Not for first-time setup; use `setup`. Not for just toggling one feature; use `manage-capabilities`."
 ---
 
-## Purpose
+# Reset Dex for changed answers
 
-Re-run the onboarding flow to restructure your Dex system. Useful when:
-- Your role changes (promotion, new job, pivot)
-- You want to reorganize after using Dex for a while
-- You're experimenting with different structures
-- Your company size tier changes (startup → scaling, etc.)
+If `04-Projects/` does not exist, this vault was never set up. Use `setup` instead.
 
-## Behavior
+If the user actually changed jobs or roles — new employer, new email domain, an
+old identity to archive — use `change-job` instead: it runs this same reset and
+then guides the passes a reset alone never touches (re-sorting people for the
+new domain, archiving old-role goals, priorities and projects, re-pointing open
+tasks). A reset by itself is the right lever only for changed preferences or
+answers within the same working life.
 
-When the user types `/reset`, execute the following:
+To turn a single room on or off, use `manage-capabilities` — it is a much smaller
+change than a full reset and never touches the rest of the profile.
 
-### Step 1: Acknowledge and Explain
+Otherwise:
 
-Say: "Let's reset your Dex setup. I'll walk you through the same questions as initial setup, then reorganize your structure. **Your existing content will be preserved** - I'll move files to match the new structure, not delete them."
+1. Tell the user what a reset does and does not do, and get an explicit yes before
+   calling anything:
 
-### Step 2: Current State Check
+   > "I'll walk you through the same questions as first-time setup and rewrite your
+   > profile — role, company, pillars, communication style, working week and rooms.
+   > Every setting you don't re-answer carries forward unchanged, and nothing
+   > you've written is deleted or moved: your notes, people, meetings and
+   > projects all stay exactly where they are. Want to go ahead?"
 
-Before asking questions, check and display:
-- Current role (from CLAUDE.md User Profile section)
-- Current company size
-- Current pillars
-- Existing folder structure
+   Stop here if they decline.
 
-Say: "Here's your current setup: [summary]. Want to change it?"
+2. Call `start_onboarding_session(force_new=True)` from `onboarding-mcp`. The
+   `force_new` flag is what makes this a reset rather than resuming a half-finished
+   setup. Know what it re-arms: the fresh session clears the calendar answer and
+   the harness confirmation, so the flow's calendar step and harness-selection
+   confirmation must both be replayed — `finalize_onboarding` refuses to run
+   until each has been addressed again. Do not skip past them expecting the old
+   answers to still count.
+3. Read `.claude/flows/onboarding.md` and follow it as the single source of the
+   conversation, exactly as `setup` does.
+4. Before finalizing, call `finalize_onboarding(dry_run=True)` and show the user
+   what it reports it would create, plus the `profile_changes` list — every
+   profile setting that will change, old value → new value. Settings not in that
+   list carry forward. Tell the user that on a vault that already completed
+   onboarding, finalizing first takes a snapshot of the current profile, pillars
+   and room choices — before anything is rewritten — so the reset can be checked
+   afterwards and undone if it went wrong. Then call `finalize_onboarding()`.
+5. After finalizing, show the user the `transition_verification` summary from the
+   finalize response — it reads "Changed (you chose): … Carried forward: N
+   settings. Lost: none." Read it before relaying it: if it reports anything
+   lost or changed outside their answers, say so plainly instead of declaring
+   success, and offer `restore_transition_capsule` — preview first (it defaults
+   to a dry run), then rerun it with `dry_run=false` if they want the two
+   settings files put back exactly as they were. `verify_transition` re-runs the
+   same check anytime against the snapshot named in the response.
 
-### Step 3: Role Selection (if changing)
+## What a reset actually changes
 
-If user wants to change role, present the numbered role list:
+Say this honestly — do not promise more:
 
-```
-**Core Functions**
-1. Product Manager
-2. Sales / Account Executive
-3. Marketing
-4. Engineering
-5. Design
+- **Rewritten:** `System/user-profile.yaml`, `System/pillars.yaml`, and the room
+  set, through the onboarding MCP and `core/capabilities.py`.
+- **Carried forward:** on a vault that completed onboarding, every profile
+  setting the user does not re-answer keeps its current value — calendar
+  connection, work email, working context, journaling, meeting sources,
+  timezone, quarterly planning, entity-creation mode, analytics identity, and
+  the rest. Rooms the user disabled stay disabled unless they are re-answered.
+  In `System/pillars.yaml`, `priority_limits` survives, and a pillar kept under
+  the same name keeps its keywords and description. Only a vault that never
+  finished onboarding is rebuilt from the answers alone.
+- **Added if missing:** any folders and starter files the new role needs.
+  Finalizing only creates what is not already there.
+- **Left alone:** every existing folder and file. A reset does not rename, merge
+  or move your content. If the new role means you want `Pipeline/` renamed to
+  `Portfolio/`, that is a manual choice the user makes afterwards — offer to help,
+  do not do it silently as part of the reset. The completion marker keeps its
+  original setup date; the reset is recorded alongside it, not over it.
+- **Snapshotted and checked:** before rewriting anything, finalize captures the
+  current `user-profile.yaml`, `pillars.yaml` and room states, then verifies the
+  result against the keys the re-answered steps were allowed to change. The
+  snapshot stays in `System/.dex/transition-capsules/` and can restore those two
+  files exactly — it is not a backup of anything else.
 
-**Customer-Facing**
-6. Customer Success
-7. Solutions Engineering
+## Rules
 
-**Operations**
-8. Product Operations
-9. RevOps / BizOps
-10. Data / Analytics
+This file deliberately contains no question script, no role list and no company-size
+list, so reset cannot fork away from setup. The roles, the area→role picker and every
+other question live in `.claude/flows/onboarding.md`; change them only there.
 
-**Support Functions**
-11. Finance
-12. People (HR)
-13. Legal
-14. IT Support
-
-**Leadership**
-15. Founder
-
-**C-Suite**
-16. CEO
-17. CFO
-18. COO
-19. CMO
-20. CRO
-21. CTO
-22. CPO
-23. CIO
-24. CISO
-25. CHRO / Chief People Officer
-26. CLO / General Counsel
-27. CCO (Chief Customer Officer)
-
-**Independent / Advisory**
-28. Fractional CPO
-29. Consultant
-30. Coach
-
-Type a number, or describe your role:
-```
-
-### Step 4: Company Size (if changing)
-
-```
-1. 1-100 people (startup/small)
-2. 100-1,000 people (scaling)
-3. 1,000-10,000 people (enterprise)
-4. 10,000+ people (large enterprise)
-```
-
-### Step 5: Priorities (if changing)
-
-Ask: "What are your 2-3 main priorities right now?"
-
-### Step 6: Migration Plan
-
-Before making changes, show the user:
-1. What folders will be created
-2. What folders will be renamed/merged
-3. Where existing content will move
-4. What templates will be added
-
-Ask: "Does this look right? Type 'yes' to proceed or suggest changes."
-
-### Step 7: Execute Changes
-
-1. **Create new folder structure** using standard PARA structure
-2. **Move existing content** to appropriate new locations:
-   - Match by folder name where possible
-   - Put ambiguous content in `00-Inbox/` for user to sort
-   - Never delete user content
-3. **Update CLAUDE.md** User Profile section with:
-   - New role
-   - New company size
-   - New pillars
-4. **Update `System/user-profile.yaml`** with new role and preferences
-
-### Step 8: Summary
-
-After completion, show:
-- What changed
-- Where to find moved content
-- Any items in Inbox that need manual sorting
-- Suggested next actions
-
-## Content Preservation Rules
-
-**NEVER delete user content during reset.** Follow these rules:
-
-1. **Exact matches** - If old folder name matches new structure, keep content in place
-2. **Similar matches** - If folders are similar (e.g., `Pipeline/` → `Opportunities/`), move content
-3. **No match** - Move to `00-Inbox/To_Sort/` with a note about original location
-4. **Person pages** - Always preserve `People/` folder structure
-5. **Meeting notes** - Always preserve `00-Inbox/Meetings/` content
-
-## Example Migrations
-
-### PM at Startup → PM at Enterprise
-- Add `Governance/` folder
-- Expand `Relationships/` with more stakeholder categories
-- Add enterprise-specific templates
-- Keep all existing content in place
-
-### Sales → Customer Success
-- Rename `Pipeline/` → `Portfolio/`
-- Add `Health/`, `Renewals/` folders
-- Move account folders to new structure
-- Add CS-specific templates
-
-### Engineer → Engineering Manager
-- Add `Team/` folder for 1:1s, hiring
-- Keep `04-Projects/` and `Systems/`
-- Add management templates
-- Adjust focus from IC to leadership
-
-## Error Handling
-
-If something goes wrong:
-1. Stop immediately
-2. Show what was changed and what wasn't
-3. Offer to rollback (if possible)
-4. Suggest manual recovery steps
-
-## Notes
-
-- Reset is non-destructive by design
-- User can run `/reset` as many times as needed
-- Each reset creates a log entry in `System/reset_log.md`
+Never create folders, move files, or edit `CLAUDE.md` or `System/user-profile.yaml`
+by hand in this skill. `core/provision.cjs`, `core.lifecycle.service` and
+`core/capabilities.py` own all vault mutation, and the onboarding MCP owns all
+profile writes and their validation.
 
 ---
 

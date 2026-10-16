@@ -11,21 +11,29 @@ Provides tools for capturing and managing Dex system improvement ideas with:
 - Idea enrichment with new evidence
 """
 
-import os
-import sys
 import json
 import logging
+import os
 import re
-import glob as glob_module
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime, date, timedelta
+import sys
+from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
+from mcp.server import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
+
+_ANALYTICS_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+if _ANALYTICS_REPO_ROOT not in sys.path:
+    sys.path.insert(0, _ANALYTICS_REPO_ROOT)
+
+from core.mcp.analytics_receipts import (
+    surface_analytics_attempt,
+    unavailable_analytics_delivery,
+)
 
 # QMD semantic search (optional - gracefully degrade if not available)
 try:
@@ -34,19 +42,23 @@ try:
 except ImportError:
     HAS_QMD = False
 
-# Analytics helper (optional - gracefully degrade if not available)
+# Analytics receipts must remain observable in both direct-launch and package
+# import modes. If the helper cannot load, callers receive only the fixed safe
+# receipt failure below.
 try:
-    from analytics_helper import fire_event as _fire_analytics_event
+    from core.mcp.analytics_helper import fire_event as _fire_analytics_event
     HAS_ANALYTICS = True
 except ImportError:
     HAS_ANALYTICS = False
+
     def _fire_analytics_event(event_name, properties=None):
-        return {'fired': False, 'reason': 'analytics_not_available'}
+        return unavailable_analytics_delivery()
 
 # Health system — error queue and health reporting
 try:
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from core.utils.dex_logger import log_error as _log_health_error, mark_healthy as _mark_healthy
+    from core.utils.dex_logger import log_error as _log_health_error
+    from core.utils.dex_logger import mark_healthy as _mark_healthy
     _HAS_HEALTH = True
 except ImportError:
     _HAS_HEALTH = False
@@ -457,7 +469,37 @@ def insert_idea_into_priority_queue(idea_id: str, title: str, description: str, 
     match = re.search(section_pattern, content)
     if match:
         insert_pos = match.end()
-        new_content = content[:insert_pos] + "\n" + idea_entry + content[insert_pos:]
+        next_section = re.search(r'\n(?:### |---)', content[insert_pos:])
+        section_end = (
+            insert_pos + next_section.start()
+            if next_section
+            else len(content)
+        )
+        section_content = content[insert_pos:section_end]
+        existing_ideas = list(re.finditer(
+            r'^-\s*\*\*\[[^\]]+\]\*\*.*?(?=^-\s*\*\*\[[^\]]+\]\*\*|\Z)',
+            section_content,
+            re.MULTILINE | re.DOTALL,
+        ))
+        for existing_idea in existing_ideas:
+            existing_score = re.search(
+                r'\*\*Score:\*\*\s*(\d+)',
+                existing_idea.group(0),
+            )
+            if existing_score and int(existing_score.group(1)) < score:
+                insert_pos += existing_idea.start()
+                break
+        else:
+            if existing_ideas:
+                insert_pos = section_end
+
+        leading_newline = '\n' if not existing_ideas else ''
+        new_content = (
+            content[:insert_pos]
+            + leading_newline
+            + idea_entry
+            + content[insert_pos:]
+        )
     else:
         fallback = re.search(r'(## Archive|## Summary|---\s*$)', content)
         if fallback:
@@ -817,7 +859,10 @@ def mark_idea_implemented(idea_id: str, implementation_date: Optional[str] = Non
     
     # Create archive entry
     impl_date = implementation_date or datetime.now().strftime('%Y-%m-%d')
-    archive_entry = f"- **[{idea_id}]** {idea['title']} - *Implemented: {impl_date}*\n"
+    archive_entry = (
+        f"- **[{idea_id}]** {idea['title']}\n"
+        f"  - **Implemented:** {impl_date}\n"
+    )
     
     # Add to archive section
     archive_pattern = r'(## Archive \(Implemented\)\s*\n(?:\s*\*.*?\*\s*\n)?)'
@@ -1064,17 +1109,19 @@ async def _handle_call_tool_inner(
                 "idea_id": idea_id,
                 "title": title,
                 "category": category,
-                "message": f"Idea captured successfully! Run `/dex-backlog` to see it ranked against other ideas.",
+                "message": "Idea captured successfully! Run `/dex-backlog` to see it ranked against other ideas.",
                 "next_steps": [
                     "Run `/dex-backlog` to see AI-powered ranking",
                     "Run `/dex-improve \"{title}\"` to workshop this idea",
                     "Check `System/Dex_Backlog.md` to see all your ideas"
                 ]
             }
-            try:
-                _fire_analytics_event('idea_captured', {'category': category})
-            except Exception:
-                pass
+            surface_analytics_attempt(
+                result,
+                _fire_analytics_event,
+                'idea_captured',
+                {'category': category},
+            )
         else:
             result = {
                 "success": False,
@@ -1138,10 +1185,11 @@ async def _handle_call_tool_inner(
         result = mark_idea_implemented(idea_id, impl_date)
         
         if result.get('success'):
-            try:
-                _fire_analytics_event('idea_implemented')
-            except Exception:
-                pass
+            surface_analytics_attempt(
+                result,
+                _fire_analytics_event,
+                'idea_implemented',
+            )
         
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
@@ -1293,7 +1341,7 @@ async def _handle_call_tool_inner(
                     f"Claude Code {version_info} ({entry['date']}) shipped: {feature_text}. "
                     f"Evaluate how Dex could leverage this for user workflows."
                 )
-                source = f"Anthropic Changelog Synthesis"
+                source = "Anthropic Changelog Synthesis"
 
                 success = add_ai_idea_to_backlog(idea_id, title, description, category, source)
                 if success:
@@ -1450,7 +1498,7 @@ async def _main():
     """Async main entry point for the MCP server"""
     if _HAS_HEALTH:
         _mark_healthy("dex-improvements-mcp")
-    logger.info(f"Starting Dex Improvements MCP Server")
+    logger.info("Starting Dex Improvements MCP Server")
     logger.info(f"Vault path: {BASE_DIR}")
     logger.info(f"Backlog file: {BACKLOG_FILE}")
     

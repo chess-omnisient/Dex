@@ -1,31 +1,35 @@
 ---
 name: things-setup
-description: Connect Things 3 to Dex for bi-directional task sync
+description: "Connect Things 3 (macOS only) so Dex reads and updates your Things tasks. Use when the user says 'I use Things', 'sync my Things inbox', or pastes a `things://` link. Not for Todoist (`todoist-setup`) or Trello (`trello-setup`)."
 manifest:
   id: things
   auth: none
-  category: task_sync
+  category: task_access
   platform: macos
   mcp_server: things3-mcp
 ---
 
 # Things 3 Setup
 
-Connect Things 3 to Dex for bi-directional task sync. No account needed. Everything stays on your Mac. Works offline.
+Connect Things 3 so Dex can work with your Things tasks whenever you ask. No account needed. Everything stays on your Mac. Works offline.
+
+**What this enables (on request):** Once connected, say "sync with Things" — Dex pushes new
+tasks to the right Things Area (mapped from your pillars), marks completions via AppleScript,
+and pulls tasks you completed or added to Things Inbox. Everything stays local — no network
+calls, no accounts. Sync runs on demand when you ask.
 
 ## What This Enables
 
-Once connected, Dex can:
-- **Task Sync:** Create tasks in Things 3 when you add them in Dex, and vice versa
-- **Daily Plan:** Pull in tasks you created in Things and merge them into your plan
-- **Completion Sync:** Complete a task in either place — it syncs to the other
-- **Priority Mapping:** P0/P1 tasks go to your Today list, P2/P3 to Anytime
-- **Pillar Mapping:** Dex pillars map to Things Areas for organized task views
+Once connected, you can ask Dex to:
+- **See your Things lists:** "What's in my Things Today list?" — including alongside your daily plan
+- **Create there instead:** "Put that in Things, not Dex" in any conversation
+- **Complete from chat:** "Mark the deck task done in Things"
+- **Cross-check:** "Anything in Things that isn't tracked in Dex?"
 
 ## Privacy
 
 - Everything is local. Things 3 uses AppleScript — no cloud API, no tokens, no accounts
-- Tasks sync between two apps on YOUR Mac. Nothing leaves your machine
+- Dex reads and writes Things only when you ask. Nothing leaves your machine
 - No credentials to store. No tokens to expire. No OAuth flows
 - Works completely offline
 
@@ -33,7 +37,7 @@ Once connected, Dex can:
 
 - User types `/things-setup`
 - User asks about connecting Things 3
-- User wants task sync with a Mac-native app
+- User wants Dex working with a Mac-native task app
 - During `/integrate-mcp` if Things is mentioned
 - During onboarding if user mentions Things 3
 
@@ -50,7 +54,7 @@ Things 3 is macOS only. Verify:
    ```
    Things 3 is a macOS-only app. It won't work on this platform.
 
-   For cross-platform task sync, consider:
+   For a cross-platform task app connection, consider:
    - /todoist-setup (works everywhere)
    - /trello-setup (web-based)
    ```
@@ -163,15 +167,15 @@ If the test fails, jump to Troubleshooting.
 
 ### Step 6: Configure Mapping
 
+First, read `System/pillars.yaml` and extract the user's pillar `id` and `name` fields. If pillars are empty/not yet configured, prompt the user to run `/quarter-plan` first.
+
 Map Dex pillars to Things Areas:
 
 ```
 Now let's map your Dex pillars to Things Areas.
 
-Your Dex pillars:
-1. Deal Support
-2. Thought Leadership
-3. Product Feedback
+Your Dex pillars (from System/pillars.yaml):
+[list each pillar name, numbered]
 
 Your Things Areas:
 [list from Step 5]
@@ -180,33 +184,22 @@ I'll suggest a mapping — adjust if needed:
 
 | Dex Pillar | Things Area |
 |------------|-------------|
-| Deal Support | [best match or "Deal Support"] |
-| Thought Leadership | [best match or "Thought Leadership"] |
-| Product Feedback | [best match or "Product Feedback"] |
+| [pillar 1 name] | [best match or "[pillar 1 name]"] |
+| [pillar 2 name] | [best match or "[pillar 2 name]"] |
+...
 
 Does this mapping look right? I can create any missing Areas in Things.
 ```
 
-If areas don't exist, offer to create them:
+If areas don't exist, offer to create them (run once per missing pillar):
 
 ```bash
-osascript -e 'tell application "Things3" to make new area with properties {name:"Deal Support"}'
-```
-
-Then ask about sync behavior:
-
-```
-One more question: How should task sync work?
-
-1. **Auto-sync** — Tasks sync automatically between Dex and Things
-2. **Ask each time** — I'll confirm before syncing each task
-
-Most people prefer auto-sync. Which do you want?
+osascript -e 'tell application "Things3" to make new area with properties {name:"[pillar name]"}'
 ```
 
 ### Step 7: Save Configuration
 
-Write to `System/integrations/config.yaml` — update the things section:
+Write to `System/integrations/config.yaml` — update the things section. Build `area_mapping` dynamically from the user's pillars: use each pillar's `id` as the key and the confirmed Things Area name as the value (used when the user asks Dex to file something in Things under the right Area).
 
 ```yaml
 things:
@@ -214,15 +207,8 @@ things:
   configured_at: YYYY-MM-DD
   mcp_server: things3-mcp
   auth_type: none
-  task_sync: true
-  sync_mode: auto
   area_mapping:
-    deal_support: Deal Support
-    thought_leadership: Thought Leadership
-    product_feedback: Product Feedback
-  features:
-    task_sync: true
-    external_task_merge: true
+    [pillar_id]: [Things Area name]   # one entry per pillar
 ```
 
 If the file already exists, only update the `things:` section. Preserve other integration configs.
@@ -234,16 +220,20 @@ Now that Things is connected, highlight what changes:
 ```
 Things 3 is connected.
 
-Here's what changes now:
+Here's what you can do now:
 
-- **/daily-plan** syncs tasks from Things into your morning plan
-- **Task creation** in Dex mirrors to Things (P0/P1 → Today, P2/P3 → Anytime)
-- **Task completion** syncs both ways — finish in either app
-- **Pillars → Areas** keep your Things organized by Dex structure
+- **Ask about Things anytime** — "What's in my Today list?", "Put that in
+  Things", "Mark the deck task done in Things"
+- **Bring it into planning** — during /daily-plan, ask me to include your
+  Things tasks and I will
+- **Right Area, automatically** — when I file something in Things for you,
+  your pillars map to your Things Areas
+- **Sync on demand** — say "sync Dex with Things" and Dex pushes pending tasks, marks
+  completions, and reviews anything new in your Things Inbox
 
 No accounts. No tokens. No expiration. Works offline.
 
-Tip: Tasks you create directly in Things will appear in your next /daily-plan.
+**Sync is on demand** — say "sync with Things" anytime. No background polling.
 ```
 
 ---
@@ -277,14 +267,6 @@ If no Areas appear during setup:
 3. Make sure Areas are enabled
 4. Create at least one Area, then retry
 
-### Sync Conflicts
-
-If a task is edited in both Dex and Things between syncs:
-
-- Dex is the source of truth for task status
-- Things is the source of truth for task title edits
-- Notes merge (Dex context is appended, not overwritten)
-
 ---
 
 ## Reconfiguration
@@ -294,7 +276,6 @@ If the user runs `/things-setup` when already configured:
 1. Show current config from `System/integrations/config.yaml`
 2. Offer options:
    - Update pillar-to-area mapping
-   - Change sync mode (auto vs. ask)
    - Re-test the connection
    - Disconnect Things
 

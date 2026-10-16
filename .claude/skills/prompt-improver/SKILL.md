@@ -1,6 +1,6 @@
 ---
 name: prompt-improver
-description: Transform vague prompts into rich, structured prompts with automatic fallback
+description: "Rewrite a vague prompt into a rich, structured one, with automatic fallback. Use when the user says 'improve this prompt', 'make this prompt better', or hands over a thin instruction. Not for creating a reusable skill; use `create-skill`."
 ---
 
 ## Purpose
@@ -206,6 +206,7 @@ For best results, add your Anthropic API key:
 
 1. Create `.env` file in vault root (if not exists)
 2. Add: `ANTHROPIC_API_KEY=your-key-here`
+3. Make the file owner-only: `chmod 600 .env` (API keys should never be readable by other users of the machine)
 
 Without the API key, the skill still works using the current LLM session.
 

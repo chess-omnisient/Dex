@@ -47,8 +47,10 @@ If they want to copy errors use a screenshot.
 ## Task Format
 
 ```
-- [ ] **Task title** — Context or notes #pillar
-- [s] Started task
+- [ ] **Task title** ^task-YYYYMMDD-XXX
+	- Context or notes
+	- Pillar: Pillar Name | Priority: P2 | Due: 2026-01-31
+- [/] Started task
 - [b] Blocked task (note blocker)
 - [x] Completed task
 ```

@@ -2,7 +2,7 @@
   "mcpServers": {
     "work-mcp": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/work_server.py"
       ],
@@ -12,7 +12,7 @@
     },
     "calendar-mcp": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/calendar_server.py"
       ],
@@ -22,7 +22,7 @@
     },
     "granola-mcp": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/granola_server.py"
       ],
@@ -32,7 +32,7 @@
     },
     "career-mcp": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/career_server.py"
       ],
@@ -42,7 +42,7 @@
     },
     "dex-improvements-mcp": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/dex_improvements_server.py"
       ],
@@ -52,7 +52,7 @@
     },
     "resume-mcp": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/resume_server.py"
       ],
@@ -62,7 +62,7 @@
     },
     "update-checker": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/update_checker.py"
       ],
@@ -72,7 +72,7 @@
     },
     "onboarding-mcp": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/onboarding_server.py"
       ],
@@ -82,7 +82,7 @@
     },
     "dex-analytics": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/analytics_server.py"
       ],
@@ -95,9 +95,29 @@
     },
     "session-memory": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/session_memory_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "{{VAULT_PATH}}"
+      }
+    },
+    "customization-migration-mcp": {
+      "type": "stdio",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
+      "args": [
+        "{{VAULT_PATH}}/core/mcp/customization_migration_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "{{VAULT_PATH}}"
+      }
+    },
+    "pipedrive-mcp": {
+      "type": "stdio",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
+      "args": [
+        "{{VAULT_PATH}}/core/integrations/pipedrive/pipedrive_server.py"
       ],
       "env": {
         "VAULT_PATH": "{{VAULT_PATH}}"
@@ -107,61 +127,6 @@
       "command": "npx",
       "args": ["-y", "slack-mcp"],
       "env": {}
-    },
-
-    "_comment_integrations": "--- Optional Integrations (add via /[tool]-setup) ---",
-
-    "google-workspace-mcp": {
-      "command": "npx",
-      "args": ["-y", "google-workspace-mcp"],
-      "env": {
-        "GOOGLE_CLIENT_ID": "{{GOOGLE_CLIENT_ID}}",
-        "GOOGLE_CLIENT_SECRET": "{{GOOGLE_CLIENT_SECRET}}"
-      }
-    },
-    "teams-mcp": {
-      "command": "npx",
-      "args": ["-y", "teams-mcp"],
-      "env": {
-        "TEAMS_TENANT_ID": "{{TEAMS_TENANT_ID}}",
-        "TEAMS_CLIENT_ID": "{{TEAMS_CLIENT_ID}}"
-      }
-    },
-    "todoist-mcp": {
-      "command": "npx",
-      "args": ["-y", "todoist-mcp-server"],
-      "env": {
-        "TODOIST_API_KEY": "{{TODOIST_API_KEY}}"
-      }
-    },
-    "things3-mcp": {
-      "command": "npx",
-      "args": ["-y", "things3-mcp"],
-      "env": {}
-    },
-    "trello-mcp": {
-      "command": "npx",
-      "args": ["-y", "mcp-server-trello"],
-      "env": {
-        "TRELLO_API_KEY": "{{TRELLO_API_KEY}}",
-        "TRELLO_TOKEN": "{{TRELLO_TOKEN}}"
-      }
-    },
-    "zoom-mcp": {
-      "command": "npx",
-      "args": ["-y", "zoom-mcp"],
-      "env": {
-        "ZOOM_CLIENT_ID": "{{ZOOM_CLIENT_ID}}",
-        "ZOOM_CLIENT_SECRET": "{{ZOOM_CLIENT_SECRET}}"
-      }
-    },
-    "atlassian-mcp": {
-      "command": "npx",
-      "args": ["-y", "@anthropic/atlassian-remote-mcp"],
-      "env": {
-        "ATLASSIAN_SITE": "{{ATLASSIAN_SITE}}",
-        "ATLASSIAN_TOKEN": "{{ATLASSIAN_TOKEN}}"
-      }
     }
   }
 }

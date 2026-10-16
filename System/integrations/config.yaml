@@ -1,13 +1,14 @@
 # Dex Productivity Integrations Config
-# This file tracks which integrations are enabled and their settings
+# This tracked file is a clean-install template. /integrate-mcp populates each
+# user's local integration state when they choose to connect a service.
 
-# Last updated: (auto-updated when integrations change)
-last_updated: '2026-02-04T18:41:25.882536'
+# Last updated: (auto-populated when integrations change)
+last_updated: null
 
 # Enabled integrations
 enabled:
   notion: false
-  slack: true
+  slack: false
   google: false
   teams: true
 
@@ -46,3 +47,21 @@ detected:
   slack: null
   teams: null
   google: null
+
+# Task-sync credentials are raw only in the ignored vault-root .env file.
+todoist:
+  enabled: false
+  api_key_env_var: TODOIST_API_KEY
+
+trello:
+  enabled: false
+  api_key_env_var: TRELLO_API_KEY
+  token_env_var: TRELLO_TOKEN
+
+# Pipedrive CRM (run /pipedrive-setup to connect).
+# The access token lives in the macOS Keychain (service dex-pipedrive) or the
+# ignored vault-root .env file. Non-secret settings live in pipedrive.yaml
+# (template: pipedrive.yaml.example).
+pipedrive:
+  enabled: false
+  token_env_var: PIPEDRIVE_API_TOKEN

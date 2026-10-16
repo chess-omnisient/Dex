@@ -1,6 +1,6 @@
 ---
 name: enable-semantic-search
-description: Enable local AI-powered semantic search with smart collection discovery
+description: "Turn on local AI-powered semantic (meaning-based) search over the vault, with smart collection discovery. Use when the user says 'enable semantic search', 'search by meaning', 'set up QMD', or search keeps missing obvious matches. Not for scraping the web; use `scrape`."
 ---
 
 # Enable Semantic Search
@@ -165,6 +165,26 @@ echo ""
 # Trigger model download with a simple embed operation
 cd "$VAULT_PATH" && qmd embed --help 2>/dev/null || true
 ```
+
+## Step 4.5: Register the QMD MCP Server
+
+qmd is intentionally NOT pre-registered in `.mcp.json` — a registered server whose binary
+is missing shows the user a failing MCP server every session. Now that qmd is installed,
+add the registration to the vault's `.mcp.json`:
+
+```bash
+python3 - <<'EOF'
+import json, pathlib
+p = pathlib.Path(".mcp.json")
+cfg = json.loads(p.read_text()) if p.exists() else {"mcpServers": {}}
+cfg.setdefault("mcpServers", {})["qmd"] = {"command": "qmd", "args": ["mcp"]}
+p.write_text(json.dumps(cfg, indent=2) + "\n")
+print("qmd registered in .mcp.json")
+EOF
+```
+
+Tell the user to restart their coding harness (Claude Code/Cursor) after setup completes
+so the new MCP server is picked up.
 
 ## Step 5: Smart Collection Discovery (THE CONCIERGE)
 

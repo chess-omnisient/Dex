@@ -1,836 +1,346 @@
 ---
 name: dex-update
-description: Safely update Dex with one command (handles everything automatically)
+description: "Preview and safely adopt a Dex update through the receipt-backed lifecycle (look → back up → apply → verify → rewindable). Use when the user says 'update Dex', 'install the new version', or a release notice appeared. Not for undoing an update; use `dex-rollback`. Not just seeing what changed; use `dex-whats-new`."
 ---
 
-## What This Command Does
+# Dex Update
+
+Use this skill when someone wants the latest Dex capabilities or asks what an update would change. Keep the conversation plain and reassuring. The skill collects choices and renders lifecycle results; it never edits, copies, renames, deletes, or merges vault files itself.
+
+## The one route
+
+Every lifecycle operation goes through `core.lifecycle.service` version 1.5.0. Treat its response as authoritative. Do not fall back to direct file operations, Git mutation, an update script, or a hand-built repair when the service refuses.
+
+Use the service operations in this order:
+
+1. Ask `build_and_preview_topology_migration` to check the installed layout as part of the normal update read.
+2. If it reports the older combined layout, follow the one-time migration branch below before reading the ordinary update plan.
+3. Ask `build_inventory_and_plan` for the verified inventory and ledger-aware plan.
+4. Render the five groups below without changing anything.
+5. For safe `adopt` items, ask `build_and_preview_adoption` for the exact preview and approval token.
+6. For conflict items, collect the choices below. Keep mine and Compare are read-only; Take theirs and Keep both go through `build_and_preview_conflict_resolution`.
+7. Show every proposed file from each preview. Execution requires an explicit yes to that exact preview.
+8. Pass unchanged adoption previews and tokens to `execute_approved_adoption`, and unchanged resolution previews and tokens to `execute_approved_conflict_resolution`.
+9. Ask `read_lifecycle_state` for the verified post-update state and retention warning, then render every receipt.
+
+For a split vault whose update needs new release bytes, never ask the user to
+run Git. Before presenting a delivery update, ask `deliver_latest_release`
+through `core.lifecycle.service`. It proves the newest immutable release in an
+isolated cache, fetches only that pinned tag and its release-channel ref into
+Dex's private brain store, then proves the fetched bytes again. This delivery
+step does not change vault content.
+
+Only when delivery returns its exact release identity, ask
+`build_and_preview_delivered_release` through `core.lifecycle.service` with
+that identity. Show every returned write and ask: “Apply this exact update?”
+Only a fresh explicit yes to that unchanged preview permits
+`execute_approved_delivered_release` with the same preview and approval token.
+Render its lifecycle receipt. Then ask `read_lifecycle_state` — the applied
+version now appears in the same rewind list `/dex-rollback` uses. If delivery,
+preview, or execution refuses, stop; no vault-content change was made.
+
+**Immediately after a successful apply, run the post-update canary** — one
+read-only walk through the same doors every later command will use. From the
+vault root, run `python3 core/health/post_update.py --vault .` (the direct
+file path matters: it keeps the canary runnable even when the installed
+packages are the thing that broke). Relay its one-line result verbatim. On
+failure, treat it as part of this update, not a separate errand: tell the user
+plainly that the update applied but something is wrong underneath, and run
+`/dex-doctor` now. Never report the update as complete while the canary is
+failing.
+
+Newly written `.claude/skills/*/SKILL.md` files are live in this session.
+The host slash list may still omit them until the next session; that does not
+make them unavailable. If the user asks for a skill that now has a SKILL.md
+on disk, Read that file and follow it. Do not tell them to restart first.
+
+If the service reports UNKNOWN, conflict, changed evidence, an unsafe path, or a rejected transaction, stop. Explain the refusal in ordinary language and leave the vault untouched. A refusal is a safety result, not an invitation to work around the engine.
+
+## One-time brain and vault upgrade
+
+The topology check can report that this Dex still keeps the product and the user's notes in one combined history. In that case, the service runs the shipped migrator in `dry-run` mode. This only prepares the local report; it does not start the move.
+
+Render the topology preview in the same five groups used for the ordinary update. The proposed move appears under **Needs your review**. Show the complete report returned by the service and explain:
+
+- Dex will separate its own product history from the user's private vault history.
+- Notes, tasks, projects, people, and custom additions stay where they are.
+- The new private vault history gets no remote, so Dex does not upload it.
+- The old combined history becomes the local undo archive named in the final receipt.
+
+Ask: “Make this exact one-time change?” Only an explicit yes to this displayed report authorizes the move. The earlier request to “update Dex” is not approval. Pass the unchanged preview and approval token to `execute_approved_topology_migration`.
+
+The lifecycle service owns the conversion and recovery loop. If the migrator returns exit code 75, the service routes it through resume until the bounded work is complete. Never run `--auto`, `--resume`, or the migrator directly from this skill.
+
+After success, show the topology receipt, including its transaction identifier, final report, undo archive when present, and each auto/resume attempt. Ask `build_and_preview_topology_migration` again and continue with the ordinary update only when it reports the split as complete.
+
+If the dry-run fails, the report changes before approval, approval is missing, conversion stops, or the final split cannot be proved, show the service refusal and stop. Do not improvise a repair.
+
+## One-time local connection refresh
+
+After the topology branch (or at the start of a split-vault update), ask
+`build_and_preview_mcp_registration`. This checks whether Dex's own
+Customization Migration connection is missing from an older local setup.
+
+- If `needed` is `false`, say that Dex's local connections are already current and continue.
+- If `needed` is `true`, show the returned server name and the complete write preview. Explain: “Dex will add this one Dex-owned local connection. It will not replace, remove, or alter any of your existing connections or their settings.” Ask: “Add this exact Dex connection?”
+- Only after a fresh explicit yes, pass the unchanged preview and approval token to `execute_approved_mcp_registration`. Render its transaction receipt, including the saved recovery snapshot.
+
+This is the only update route allowed to add this missing Dex-owned registration.
+Never edit `.mcp.json` directly, replace an existing server entry, or treat the
+earlier update approval as approval for this connection change.
+
+## Deeply customised setup
+
+Before applying an update, collect the deep Doctor report with
+`python3 core/utils/doctor.py --deep`. JSON is stdout-only; progress is stderr.
+This returns JSON on stdout: every check with a verdict (`OK` / `OFF` / `BROKEN` / `UNKNOWN`), any
+Tier-1 heals already applied, and an `instruments` block saying whether the doctor itself
+ran completely. While it runs, stderr prints `Checking this Dex install (read-only)...`.
+If the collector itself fails to run: that IS the
+finding. Report it first, with the error. Use that report to decide whether to offer this
+branch. Offer it when `customization_assessment.completeness` is `OK` and
+`customization_assessment.identity.customization_count` is at least 1, or when the user says
+they have customised Dex heavily. If the verified count is zero, follow the normal lightweight update
+path and do not mention this branch. If completeness is `UNKNOWN`, or the report has no
+`customization_assessment`, show Doctor's uncertainty
+and do not infer a zero count. When Doctor returns `partial: true`, show the observed
+records and every exclusion path, reason, and guidance as a partial inventory. Do not
+run the Capsule preview or ask for Capsule approval until reassessment returns
+completeness `OK`.
+
+### Detect and explain
+
+Render what the assessment found through `/dex-doctor` Step 3b's authority rules, including
+all four returned groups. Explain that this journey inventories what the user changed,
+preserves the evidence in a protected snapshot called the Capsule, guides the update through
+the existing approval flow, and then offers the rebuild with this exact promise: “rebuilds
+your customisations on the new version, shows you anything it can't safely carry forward,
+and the declared write set is previewed and snapshotted; rewind remains available while its
+snapshot is retained among the newest three and the activated files remain unchanged.”
+
+A Capsule is a protected local snapshot of the evidence for every customization. It is stored
+under `System/.dex/`, is never uploaded, and survives the update. This is not an automatic
+rebuild: candidate planning, staging, activation, and rewind each keep their own authority
+boundary.
+
+### Preview and create the Capsule
+
+Run `python3 -m core.customization_migration.cli preview`. Show every returned preview line and
+the `preview_sha256` verbatim. Then ask: “Create this exact snapshot?” The earlier request to
+“update Dex” is not approval.
+
+Only after a fresh explicit yes, run
+`python3 -m core.customization_migration.cli create --confirm-token PREVIEW_SHA256` with the
+unchanged digest from that preview. The returned Capsule receipt is authority: render its
+`capsule_id`, `file_count`, `byte_count`, and `transaction_id` verbatim. Do not say the
+evidence is preserved until that receipt exists.
+
+### Proceed through the normal update
+
+After the Capsule receipt exists, return to the one-route lifecycle above and use its normal
+preview and approval flow unchanged. Conflicts still offer Keep mine / Take theirs / Keep both,
+with Compare available before the user chooses. Capsule approval never counts as update or
+conflict approval.
+
+### Re-check after the update
+
+Read `migration_status_to_dict` through Doctor's `customization_migration_status` section or the
+registered Customization Migration MCP status tool. Reproduce the Capsule id, state, validation
+status, mismatches, and `pending` flag. Say the Capsule is intact only when its validation status
+is `OK`; otherwise say the preserved evidence cannot be verified and follow `/dex-update`
+guidance without inventing repair steps.
+
+Run the deep customization assessment again and render it through the Step 3b authority rules.
+State plainly which customizations are in `update-replaceable-location` and which are in
+`update-untouched-location`. Do not rename those groups or claim that a location predicts an
+automatic rebuild.
+
+### Propose the rebuild
+
+Read the Capsule evidence only through the registered MCP. Use
+`read_customization_capsule_section` for evidence and
+`read_customization_capsule_blob` with the exact Capsule id and SHA-256 for source bytes.
+Author candidates only from that evidence and those readable blobs. Classify an item
+`manual` when its source is restricted or model-unreadable; never reconstruct it from memory.
+Author one canonical candidate in a local scratch file outside the vault named
+`CANDIDATE_JSON`. The no-token `stage` command
+makes no vault write: it parses the closed candidate shape and delegates to `validate_regeneration_candidate` before it returns a preview. Run that preview before proposing the candidate.
+Every customization must have exactly one disposition; never omit an item or use model
+confidence as verification.
+
+Present every disposition and its evidence. If an item is blocked or needs manual review,
+present one question at a time. Update and revalidate the candidate after each answer. Do not
+stage while required questions remain unresolved or exact-set validation refuses the candidate.
+
+### Stage and verify
+
+Run `python3 -m core.customization_migration.cli stage CANDIDATE_JSON` to obtain the private
+staging preview. Render every line, including every disposition, future live path, and
+`preview_sha256`. Ask: “Stage this exact candidate for verification?” Capsule approval and
+update approval do not count.
+
+Only after a fresh explicit yes, run
+`python3 -m core.customization_migration.cli stage CANDIDATE_JSON --confirm-token PREVIEW_SHA256`
+with the unchanged token. Render the CLI's safe staging receipt summary.
+
+Run `python3 -m core.customization_migration.cli verify CAPSULE_ID PROPOSAL_ID` to preview
+the verification verdict and obtain `VERIFICATION_TOKEN`; this makes no verification-report
+write. Ask: “Seal this exact verification report?” Only after a fresh explicit yes, run
+`python3 -m core.customization_migration.cli verify CAPSULE_ID PROPOSAL_ID --confirm-token VERIFICATION_TOKEN`.
+Render only the CLI's safe verification and receipt summaries. Treat a result as
+verified only when the engine says `verified`. If the returned per-item value is `manual`, render `manual`; if it is
+`unknown`, render `unknown`. Never promote either one, and never describe a blocked report as
+complete.
+
+### Preview and activate
+
+Run
+`python3 -m core.customization_migration.cli preview-activation CAPSULE_ID PROPOSAL_ID`.
+Render every live path, every disposition, the snapshot-retention note, the rewind note, and
+`approval_token` verbatim. Ask: “Activate this exact verified rebuild?” A fresh explicit yes
+must be bound to the displayed token: an earlier yes is not this yes.
+
+Only after that yes, run
+`python3 -m core.customization_migration.cli activate CAPSULE_ID PROPOSAL_ID --confirm-token APPROVAL_TOKEN`.
+Render only the CLI's safe activation receipt summary; candidate-controlled free text and
+complete file-list payloads are deliberately not printed. Then run
+`python3 -m core.customization_migration.cli activation-status CAPSULE_ID` and state rewind
+availability only from its returned `rewindable` value.
 
-**For non-technical users:** Updates Dex to the latest version automatically. No command line knowledge needed - just run the command and follow the prompts.
+### Rewind the rebuild
 
-**When to use:**
-- After `/dex-whats-new` shows new version available
-- When you want the latest features and bug fixes
+When the user asks to undo the activation, run
+`python3 -m core.customization_migration.cli preview-rewind CAPSULE_ID`. Render every restore
+path, whether it existed before activation, the reason, and `acknowledgement_token` verbatim.
+Explain that rewind restores the exact pre-activation live file state. It does not undo
+external actions from manual verification, and it refuses after unsafe live drift or lost
+snapshot evidence.
 
-**What it handles:**
-- Downloads updates automatically
-- Protects your data (never touches your notes, tasks, projects)
-- Preserves protected user blocks and user-owned MCP entries
-- Resolves conflicts with a guided choice (no manual merge editor)
-- Shows clear progress and confirmation
+Ask: “Rewind this exact activation?” Only after a fresh explicit yes, run
+`python3 -m core.customization_migration.cli rewind CAPSULE_ID --acknowledge-token ACKNOWLEDGEMENT_TOKEN`.
+Render the CLI's safe rewind receipt summary, then run
+`python3 -m core.customization_migration.cli activation-status CAPSULE_ID` again. Never infer a
+successful rewind from command exit alone.
 
-**Time:** 2-5 minutes
+### Interrupted journey
 
----
-
-## Process
-
-### Step 1: Pre-Check
-
-**A. Check if Git is available**
-
-Try running basic git command:
-```bash
-git --version
-```
-
-**If Git not found:**
-```
-❌ Git not detected
-
-Dex updates require Git. Here's how to install:
-
-**Mac:** 
-1. Open Terminal (Cmd+Space, type "Terminal")
-2. Run: xcode-select --install
-3. Click Install when prompted
-4. Come back here when done
-
-**Windows:**
-1. Download from: https://git-scm.com/download/win
-2. Run installer with default options
-3. Restart Cursor
-4. Try /dex-update again
-
-[Skip update] — I'll do this later
-```
-
-If user skips, exit gracefully.
-
----
-
-**B. Check current setup**
-
-Run: `git remote -v`
-
-**Scenario 1: Downloaded as ZIP (no Git)**
-```
-❌ Not a Git repository
-
-Looks like you downloaded Dex as a ZIP file instead of cloning it.
-
-**To update:**
-1. Download latest version: https://github.com/davekilleen/dex/archive/refs/heads/main.zip
-2. Unzip to a new folder
-3. Copy these folders from your current Dex to the new one:
-   • System/user-profile.yaml
-   • System/pillars.yaml
-   • 00-Inbox/
-   • 01-Quarter_Goals/
-   • 02-Week_Priorities/
-   • 03-Tasks/
-   • 04-Projects/
-   • 05-Areas/
-   • 07-Archives/
-4. Delete old Dex folder
-5. Rename new folder to 'dex'
-6. Open in Cursor
-
-[Show detailed guide] — Open step-by-step instructions
-[Cancel] — I'll do this later
-```
-
-If detailed guide selected, open `06-Resources/Dex_System/Updating_Dex.md` (Manual Update section).
-
----
-
-**Scenario 2: Cloned but no upstream remote**
-
-If `git remote -v` shows only "origin" pointing to github.com/davekilleen/dex:
-
-```
-✓ Git repository detected
-
-Setting up automatic updates...
-```
-
-Run:
-```bash
-git remote rename origin upstream
-```
-
-Continue to Step 2.
-
----
-
-**Scenario 3: Already configured**
-
-If upstream exists, continue to Step 2.
-
----
-
-### Step 2: Check for Updates
-
-Call update checker:
-```
-check_for_updates(force=True)
-```
-
-**If no updates available:**
-```
-✅ You're already on the latest version (v1.2.0)
-
-No update needed!
-```
-Exit.
-
-**If updates available, show summary:**
-```
-🎁 Dex v1.3.0 is available
-
-You're on: v1.2.0
-Latest: v1.3.0
-
-What's new:
-- Career coach improvements
-- Task deduplication fix  
-- Meeting intelligence enhancement
-
-[View full release notes]
-[Update now]
-[Cancel]
-```
-
----
-
-### Step 3: Pre-Update Safety Check
-
-**A. Check for uncommitted changes**
-
-Run: `git status --porcelain`
-
-**If there are changes:**
-```
-💾 Saving your work...
-
-Dex found unsaved changes in your vault.
-Let me save them before updating.
-```
-
-Run:
-```bash
-git add .
-git commit -m "Auto-save before Dex update to v1.3.0"
-```
-
-Show:
-```
-✓ Your work is saved
-```
-
-**B. Create backup reference (safety net)**
-
-Run:
-```bash
-git tag backup-before-v1.3.0
-```
-
-This creates a snapshot user can revert to if needed.
-
----
-
-### Step 4: Download Updates
-
-```
-⬇️ Downloading updates from GitHub...
-```
-
-Run:
-```bash
-git fetch upstream
-```
-
-**If network error:**
-```
-❌ Couldn't connect to GitHub
-
-Please check your internet connection and try again.
-
-[Retry]
-[Cancel]
-```
-
-**Success:**
-```
-✓ Updates downloaded
-```
-
----
-
-### Step 5: Check for Breaking Changes
-
-Parse the update response from Step 2.
-
-**If `breaking_changes: true`:**
-
-```
-⚠️ Important: This update includes major changes
-
-Dex v2.0.0 includes breaking changes that require extra steps:
-
-[Show what's changing]
-
-This is safe to proceed, but:
-• Some folders may be renamed
-• Configuration format may change  
-• Migration will run automatically
-
-[Continue with update]
-[Cancel — I'll read the details first]
-```
-
-If cancelled:
-- Show link to release notes
-- Exit gracefully
-- User can run `/dex-update` again when ready
-
----
-
-### Step 6: Apply Updates
-
-```
-🔄 Applying updates...
-```
-
-**A. Merge updates**
-
-Run:
-```bash
-git merge upstream/main --no-edit
-```
-
-**B. Handle merge outcome**
-
-**Case 1: Clean merge (no conflicts)**
-```
-✓ Updates applied successfully
-```
-
-Continue to Step 7.
-
----
-
-**Case 2: Merge conflicts**
-
-Check which files have conflicts:
-```bash
-git status | grep "both modified"
-```
-
-**Automatic conflict resolution (protected blocks + guided choices):**
-
-**Protected user blocks (preserved verbatim):**
-- `CLAUDE.md` contains a user block:
-  - `USER_EXTENSIONS_START` ... `USER_EXTENSIONS_END`
-
-**Custom MCP servers (preserved by name):**
-- Any MCP server name starting with `custom-` is preserved
-- Example: `custom-gmail`, `custom-hubspot`
-
-**Custom skills (preserved by name):**
-- Any skill folder ending with `-custom` is preserved
-- Example: `meeting-prep-custom`, `daily-plan-custom`
-
-**When conflicts occur:**
-
-1. **If file is user data** (00-07, System/user-profile.yaml, System/pillars.yaml):
-   - Keep user version
-   - Run: `git checkout --ours <file>`
-
-2. **If file contains protected user block** (CLAUDE.md):
-   - Take upstream version
-   - Re-insert preserved user block(s) verbatim
-   - Validate markers still present
-
-3. **If file is .mcp.json**:
-   - Preserve any MCP entries named `custom-*`
-   - Continue with Dex core updates for all other MCPs
-
-4. **If skill folder ends with `-custom`**:
-   - Preserve entirely, never modify
-   - These are user's personal skills
-
-5. **If file is core Dex** (skills, core MCP, scripts) **and user edited it**:
-   - Use AskUserQuestion to resolve, instead of a merge editor
-
-**AskUserQuestion flow (generic, parameterized):**
-```
-Title: Dex update conflict: {{item_name}}
-
-Your change:
-{{user_change_summary}}
-Enables: {{user_use_case_summary}}
-
-Dex update:
-{{dex_change_summary}}
-Enables: {{dex_use_case_summary}}
-
-Options:
-1) Keep my version (preserve my changes)
-2) Use Dex version (take upstream changes)
-3) Keep both (rename one)
-4) Let me tell you what to do (I'll write instructions)
-```
-
-**If AskUserQuestion is not available (non-Claude Code):**
-- Use a simple CLI prompt with the same 4 options.
-- Add one-line tradeoffs to each option (what you keep vs lose).
-- If user types an invalid choice, re-prompt once and default to "Use Dex version".
-
-**If user chooses "Keep both":**
-- MCP: `name` → `name-custom`
-- Skill folder: `name/` → `name-custom/`
-
-**After resolving all conflicts:**
-```bash
-git add <file>
-git commit --no-edit
-```
-
-**Show to user:**
-```
-✓ Updates applied successfully
-
-Handled conflicts:
-• Preserved your protected blocks
-• Updated core Dex features
-• Resolved overlapping changes with your choice
-
-[See what changed]
-```
-
----
-
-**Case 3: Merge failed (rare)**
-
-```
-❌ Update couldn't complete automatically
-
-This is rare, but sometimes updates need manual review.
-
-**What happened:**
-[Error message]
-
-**Options:**
-[Restore to before update] — Uses the backup we created
-[Get help] — Opens GitHub issue template
-```
-
-If restore:
-```bash
-git merge --abort
-git reset --hard backup-before-v1.3.0
-```
-
----
-
-### Step 7: Post-Update Steps
-
-**A. Check for migration needs**
-
-If breaking_changes was true, check for migration script:
-
-```bash
-ls core/migrations/v*-to-v*.sh
-```
-
-If found:
-```
-🔧 Running migration...
-
-This update requires a one-time migration to update your data structure.
-This is safe and automatic.
-```
-
-Run:
-```bash
-./core/migrations/v1-to-v2.sh --auto
-```
-
-Show migration output.
-
-**B. Update dependencies**
-
-```
-📦 Updating dependencies...
-```
-
-Run:
-```bash
-npm install
-pip3 install -r core/mcp/requirements.txt
-```
-
-**C. Sync MCP Configuration (Automatic)**
-
-Check if new MCP servers were added in the update by comparing `.mcp.json.example` entries against the user's live `.mcp.json` (or `System/.mcp.json`).
-
-For each entry in `.mcp.json.example` that is NOT in the user's `.mcp.json`:
-1. Read the entry from `.mcp.json.example`
-2. Replace `{{VAULT_PATH}}` with the actual vault path
-3. Add to the user's `.mcp.json`
-4. Log: "✓ Added new MCP server: [name]"
-
-**Never remove or modify existing user MCP entries.** Only add missing ones.
-
-**Example:** If `.mcp.json.example` has `dex-analytics` but user's config doesn't:
-```json
-"dex-analytics": {
-  "type": "stdio",
-  "command": "python",
-  "args": ["<vault_path>/core/mcp/analytics_server.py"],
-  "env": { "VAULT_PATH": "<vault_path>" }
-}
-```
-
-Add to summary if new MCPs added: "✓ Added new MCP servers: dex-analytics"
-
-**D. Sync Usage Log Features (Automatic)**
-
-Merge new feature entries from the template `System/usage_log.md` into the user's existing `System/usage_log.md`.
-
-**Merge logic:**
-1. Read the upstream template `System/usage_log.md` (from the just-updated dex-core files)
-2. Read the user's existing `System/usage_log.md`
-3. For each `- [ ]` or `- [x]` line in the template:
-   - Extract the feature description (text after the checkbox)
-   - Search the user's file for a line containing the same feature description
-   - **If found:** Keep the user's version (preserves their `[x]` state)
-   - **If NOT found:** This is a new feature — add it to the same section in the user's file
-4. Preserve ALL user state: checked boxes, consent decisions, journey metadata, dates
-5. Update the feature count in `Feature adoption score: X/Y` (Y = new total)
-
-**Section matching:** Match new entries to the correct section by the `## Section Name` headers (e.g., "## Core Workflows", "## Advanced"). If a new section exists in the template but not in the user's file, add the entire section.
-
-**Never:**
-- Uncheck a user's checked box
-- Change consent or metadata values
-- Remove entries the user has
-
-Log: "✓ Added N new features to usage_log.md" (or "✓ Usage log up to date" if nothing added)
-
-**E. Enable new background automations (Automatic)**
-
-Check for automation scripts that need installation. These run silently without prompting.
-
-**Meeting Sync (if Granola detected):**
-
-Check if Granola is installed:
-```bash
-ls "$HOME/Library/Application Support/Granola/cache-v3.json" 2>/dev/null
-```
-
-If Granola cache exists AND meeting automation not yet installed:
-```bash
-# Check if already installed
-launchctl list | grep com.dex.meeting-intel
-```
-
-If not installed:
-```bash
-cd .scripts/meeting-intel && ./install-automation.sh 2>/dev/null
-```
-
-Add to summary if installed: "✓ Enabled automatic meeting sync (runs every 30 min)"
-
-**Future automations:** This pattern extends to other background services. Check for the prerequisite (e.g., app installed, API key present), then run the installer silently.
-
----
-
-### Step 8: Verification
-
-```
-✓ Update complete! Now testing...
-```
-
-**Quick smoke test:**
-
-1. Check key files exist:
-   - `03-Tasks/Tasks.md`
-   - `System/user-profile.yaml`
-   - `.claude/skills/daily-plan/SKILL.md`
-
-2. Check MCP configuration:
-   - `.mcp.json` exists and is valid JSON
-   - Custom MCP entries (`custom-*`) still present
-
-3. Check CLAUDE.md:
-   - `USER_EXTENSIONS_START/END` markers still present
-
-3. Try loading user profile:
-   - Read `System/user-profile.yaml`
-
-**If all pass:**
-```
-✅ Update successful!
-```
-
-**If something fails:**
-```
-⚠️ Update completed but found an issue
-
-[Details of what failed]
-
-Your data is safe, but you may want to:
-[Restore to previous version]
-[Report this issue]
-[Continue anyway]
-```
-
----
-
-### Step 9: Summary
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ Dex Updated: v1.2.0 → v1.3.0
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-What's new:
-• Career coach improvements
-• Task deduplication fix
-• Meeting intelligence enhancement
-
-Your data:
-✓ All notes preserved
-✓ All tasks preserved
-✓ All customizations preserved
-
-[View full changelog]
-[Start using new features]
-```
-
-**If new automations were enabled:**
-```
-🤖 New automations enabled:
-✓ Automatic meeting sync (runs every 30 min)
-```
-
-**If there were conflicts:**
-```
-🔍 Changes applied:
-• Updated 12 core files
-• Kept 5 of your customized files
-• Protected all your data folders
-
-[See detailed change list]
-```
-
----
-
-### Step 9b: Check New Integrations (After Success)
-
-After successful update, check if new integration features are available:
-
-```python
-from core.integrations import get_post_update_integration_message, should_show_integration_prompt
-
-if should_show_integration_prompt():
-    msg = get_post_update_integration_message()
-    if msg:
-        print(msg)
-```
-
-**If integrations are available but not configured:**
-```
----
-
-## 🔌 New: Productivity Integrations
-
-This update includes integrations for your favorite tools:
-
-- **Notion** — Search your workspace, pull docs into meeting prep
-- **Slack** — Search conversations, get context about people
-- **Google** — Gmail search, email context in person pages
-
-**Set up now?** These are optional but unlock powerful features like:
-- "What did Sarah say about the Q1 budget?" → Searches Slack
-- Meeting prep pulls relevant docs from Notion
-- Person pages show email/Slack history
-
-Run `/integrate-notion`, `/integrate-slack`, or `/integrate-google` to set up.
-```
-
-**If user has integrations that could be upgraded:**
-```
----
-
-## 🔄 Integration Upgrade Available
-
-You have some integrations that could be upgraded to Dex recommended packages:
-
-### Notion
-- **Current:** custom-notion-mcp
-- **Recommended:** @notionhq/notion-mcp-server
-- **Benefits:** Official from Notion, Best maintained, Full API coverage
-
-**Options:**
-1. **Keep existing** — Your current setup works fine
-2. **Upgrade** — Run `/integrate-notion` to switch to recommended
-```
-
----
-
-### Step 10: Track Usage (Silent)
-
-Update `System/usage_log.md` to mark Dex update as used.
-
-**Analytics (Silent):**
-
-Call `track_event` with event_name `dex_update_completed` and properties:
-- `from_version`
-- `to_version`
-
-This only fires if the user has opted into analytics. No action needed if it returns "analytics_disabled".
-
-**Clear update notification:**
-
-Call `dismiss_update()` from the Update Checker MCP to remove the `System/.update-available` file. This stops the daily update reminder from appearing in future sessions.
-
----
-
-## Error Recovery
-
-### If Update Fails at Any Point
-
-User always has escape hatch:
-
-```
-🔙 Restoring to before update...
-```
-
-Run:
-```bash
-git merge --abort 2>/dev/null || true
-git reset --hard backup-before-v1.3.0
-git clean -fd
-```
-
-```
-✓ Restored to v1.2.0
-
-Nothing was changed. Your Dex is exactly as it was.
-
-[Try update again]
-[Report issue]
-[Cancel]
-```
-
----
-
-## Migration Support (for Breaking Changes)
-
-### Auto-Migration Flag
-
-If migration script supports `--auto` flag, run non-interactively:
-
-```bash
-./core/migrations/v1-to-v2.sh --auto
-```
-
-**Migration script must:**
-- Accept `--auto` flag
-- Skip confirmation prompts
-- Return exit code 0 on success
-- Log to `System/.migration-log`
-
-### Manual Migration Required
-
-If script doesn't support `--auto`:
-
-```
-⚠️ Manual step required
-
-This update needs you to run a migration script.
-
-Don't worry - it's one command and takes 30 seconds.
-
-**In Cursor's terminal (bottom panel), run:**
-
-./core/migrations/v1-to-v2.sh
-
-**Then come back here when it's done.**
-
-[I've run the migration — continue]
-[Show me what the migration does]
-[Cancel update]
-```
-
----
-
-## Alternative: ZIP Download Path
-
-For users who can't/won't use Git, provide manual instructions:
-
-```
-📥 Manual Update Method
-
-If automatic updates don't work, you can update manually:
-
-1. **Download latest Dex:**
-   https://github.com/davekilleen/dex/archive/refs/heads/main.zip
-
-2. **Copy your data and custom blocks:**
-   From OLD Dex folder, copy these to NEW Dex folder:
-   
-   ✓ System/user-profile.yaml
-   ✓ System/pillars.yaml
-   ✓ 00-Inbox/ (entire folder)
-   ✓ 01-Quarter_Goals/ (entire folder)
-   ✓ 02-Week_Priorities/ (entire folder)
-   ✓ 03-Tasks/ (entire folder)
-   ✓ 04-Projects/ (entire folder)
-   ✓ 05-Areas/ (entire folder)
-   ✓ 07-Archives/ (entire folder)
-   ✓ .env (if it exists)
-   ✓ Your `USER_EXTENSIONS` block from `CLAUDE.md`
-   ✓ Any custom MCP entries named `custom-*` from `.mcp.json`
-   ✓ Any custom skills ending with `-custom`
-
-3. **DON'T copy:**
-   ✗ .claude/skills/ (use new version)
-   ✗ core/mcp/ (use new version)
-   ✗ README.md (use new version)
-
-4. **Open new folder in Cursor**
-
-5. **Run /setup to verify**
-
-[Download now]
-[Copy step-by-step instructions to clipboard]
-```
-
----
-
-## Settings
-
-User can configure update behavior in `System/user-profile.yaml`:
-
-```yaml
-updates:
-  auto_check: true              # Check during /daily-plan
-  check_interval_days: 7        # How often to check
-  auto_update: false            # Never auto-update without asking
-  backup_before_update: true    # Always create backup tag
-```
-
----
-
-## Related Commands
-
-- `/dex-whats-new` - Check what's new without updating
-- `/dex-rollback` - Undo last update (if something went wrong)
-- `/dex-update-settings` - Configure update preferences
-
----
-
-## Non-Technical User Experience
-
-**User sees in daily plan:**
-```
-🎁 Dex v1.3.0 is available. Run /dex-whats-new for details.
-```
-
-**User runs:**
-```
-/dex-update
-```
-
-**User sees:**
-```
-✓ Git detected
-✓ Updates downloaded
-✓ No conflicts
-✓ Dependencies updated
-✅ Update complete! v1.2.0 → v1.3.0
-```
-
-**Total clicks:** 1 (just ran the command)
-**Total time:** 2 minutes
-**Technical knowledge required:** Zero
-
----
-
-## Philosophy
-
-**Automatic where possible:**
-- Git commands run silently
-- Conflicts resolved automatically
-- Dependencies updated automatically
-- Migrations run automatically (when safe)
-
-**Interactive where necessary:**
-- Breaking changes: confirm understanding
-- Manual migration: clear instructions
-- Errors: always offer restoration
-
-**Safe always:**
-- Backup created before any changes
-- User data never at risk (gitignored)
-- One-command rollback if issues
-- Clear status at every step
-
-**No jargon:**
-- Don't say "merge conflict" - say "overlapping changes"
-- Don't say "upstream" - say "main Dex repository"
-- Don't say "git fetch" - say "downloading updates"
-- Don't say "rebase" - just don't use rebase
+Status and Doctor return an exact phase-specific recovery action for interrupted staging,
+interrupted activation, and interrupted rewind. Show the returned phase, Capsule, proposal,
+and action verbatim. Ask for a fresh explicit acknowledgement, then run only the returned
+`python3 -m core.customization_migration.cli recover --confirm-token RECOVERY_TOKEN` action.
+The engine restores the interrupted transaction to its last complete state; re-run status
+before continuing the relevant stage, activation, or rewind preview.
+
+A half-created Capsule can instead appear as `recovery-required` or with `UNKNOWN` validation.
+Never claim its evidence is preserved before a Capsule receipt exists. Show that status, ask
+for a fresh explicit acknowledgement, then route abandonment through
+`python3 -m core.customization_migration.cli abandon CAPSULE_ID --acknowledge`. After a
+confirmed abandonment, run the preview again and require a new exact-snapshot approval. If
+the deterministic adapter refuses any action, show the refusal and stop.
+
+### Customization journey boundaries
+
+- The Customization Migration MCP tools are read-only.
+- Capsule creation, abandonment, staging, verification sealing, activation, and rewind happen
+  only through the human-confirmed CLI.
+- Never search for, edit, delete, or repair Capsule files directly.
+- Never use an MCP call, a raw vault write, an earlier approval, or a shortened token as an
+  actuation substitute.
+
+## Five-group preview
+
+Always show these groups in this order, even when a group is empty:
+
+1. **New and safe to adopt** — items whose plan action is `adopt`.
+2. **Needs your review** — conflicts or customized release files. Say which files caused the hold, then offer the four choices below. Dex leaves each file untouched until the user makes and approves a choice.
+3. **Held back by you** — items whose plan action is `skip-held-back`.
+4. **Could not be proved** — UNKNOWN items or incomplete lifecycle evidence. Say no change will be made to them.
+5. **Already yours** — adopted items and their receipt-backed rewind status.
+
+Example register:
+
+> Here’s exactly what this changes for you. Two items are new and safe, one customized item stays untouched, and everything else is already current.
+
+Do not describe an item as safe merely because its name looks familiar. Use only the action and reasons returned by the service.
+
+## Conflict choices
+
+For each conflicted file, explain that the user changed it and the update carries a new release version. Offer:
+
+- **Keep mine** — “Leave your version exactly as it is. Nothing is written.” Make no service call for this choice.
+- **Take theirs** — “Put the new release version live. Your current version remains recoverable with rewind.”
+- **Keep both** — “Put the new release version live and save your version beside it as `{name}-custom`, where it stays invocable. The whole change remains rewindable.” Offer this only for a modified skill file. A missing file has nothing to preserve.
+- **Compare** — “Show the differences first. Nothing is written.” Read the current and verified release byte sources, render a concise inline diff, then offer the same four choices again. For a large file, summarize the changed regions instead of dumping the whole file.
+
+Collect one `take-theirs` or `keep-both` strategy for each item the user wants resolved. Leave Keep mine items out of the request. Pass only those selected strategies to `build_and_preview_conflict_resolution`, one object per item to resolve, each naming that item and its chosen strategy.
+
+The resolution preview is a separate approval boundary. Show every write exactly as returned, including its path, `release` or `preserved` source, SHA-256, and byte size. Explain which canonical file becomes live and which `-custom` sidecar preserves the user's bytes. Ask: “Apply this exact resolution?” Only an explicit yes to that unchanged preview and approval token permits `execute_approved_conflict_resolution`.
+
+If Keep both is refused because a `{name}-custom` already exists, reassure the user that neither file changed and re-offer Keep mine, Take theirs, or Compare. Never overwrite, rename, merge, or number the existing sidecar.
+
+## Approval
+
+Before execution, show:
+
+- item name and version;
+- every file in the preview;
+- whether the file is being placed for the first time or refreshed by the authorized lifecycle plan;
+- that one crash-safe transaction will apply the complete approved set;
+- that the receipt is the source for a later rewind.
+
+Ask one direct question: “Apply this exact update?” for an adoption preview, or “Apply this exact resolution?” for a conflict preview. A vague earlier request to “update Dex” is not approval of a later concrete preview. If anything changes between preview and execution, render the service refusal and build a fresh preview only after the user asks to continue.
+
+## Receipt view
+
+After success, render the receipt returned by `execute_approved_adoption`,
+`execute_approved_conflict_resolution`, or `execute_approved_delivered_release`:
+
+- adopted items (a version update appears as `dex-release` at the installed version);
+- transaction identifier;
+- every receipt-declared file;
+- snapshot reference;
+- rewind acknowledgement availability;
+- any retention warning from `read_lifecycle_state`.
+
+Use language such as:
+
+> Update complete. Dex committed one protected transaction and recorded a receipt for every changed file. Your own content was not part of the write set.
+
+Never claim success from a command exit alone. Success means the service returned a committed receipt and the post-update lifecycle state verifies it.
+
+### When the receipt says CLAUDE.md was kept
+
+A result whose `kept_reasons` names lines edited directly into CLAUDE.md means
+the update completed and deliberately left that one file untouched. Explain
+that plainly (nothing failed, nothing was lost), show the named lines, and
+offer to carry them into CLAUDE-custom.md so the next update writes cleanly.
+
+If the user says yes, classify each named line before touching anything — a
+blind append causes real harm:
+
+1. **Supersedes a line already in CLAUDE-custom.md** (same instruction, older
+   wording there): replace the old wording in place. Never append a second,
+   contradictory copy.
+2. **An edit made inside Dex's own standard text** (a corrected path, a
+   changed default in release prose): there is nothing to move. Write a fresh
+   instruction in the protected block stating the correct value in the user's
+   own words, explicit enough to override the standard text it contradicts.
+3. **A genuinely new instruction living only in CLAUDE.md**: copy it into the
+   protected block as-is. This is the only plain copy.
+
+Show the user the classified plan (which lines get which treatment) before
+writing, make the whole edit in one pass, and afterwards confirm the
+recompose carries every instruction — nothing may remain that exists only in
+the live file.
+
+## Boundaries
+
+- Never perform a raw vault write.
+- Read-only Compare may render differences, but it must never mutate either byte source.
+- Never instruct the user to move files around as part of an update.
+- Never bypass a conflict by replacing the customized file.
+- Never synthesize, edit, or shorten an approval token or receipt.
+- Never treat an update receipt as permission to rewind; rollback has its own exact acknowledgement.
+- For a legacy install that cannot activate the service, explain that the compatibility bridge or installer must complete first. Do not recreate that bridge manually.
+
+The user should see choices, consequences, and receipts. The lifecycle service owns every mutation.

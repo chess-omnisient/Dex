@@ -20,59 +20,76 @@ Tools:
 - export_resume: Export to file
 """
 
-import os
-import re
-import sys
+import hashlib
 import json
 import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Any
+import re
+import sys
 from datetime import datetime
-import uuid
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
+from mcp.server import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
 
-# Analytics helper (optional - gracefully degrade if not available)
+_ANALYTICS_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+if _ANALYTICS_REPO_ROOT not in sys.path:
+    sys.path.insert(0, _ANALYTICS_REPO_ROOT)
+
+from core.mcp.analytics_receipts import (
+    surface_analytics_attempt,
+    unavailable_analytics_delivery,
+)
+
+# Analytics receipts must remain observable in both direct-launch and package
+# import modes. If the helper cannot load, callers receive only the fixed safe
+# receipt failure below.
 try:
-    from analytics_helper import fire_event as _fire_analytics_event
+    from core.mcp.analytics_helper import fire_event as _fire_analytics_event
     HAS_ANALYTICS = True
 except ImportError:
     HAS_ANALYTICS = False
+
     def _fire_analytics_event(event_name, properties=None):
-        return {'fired': False, 'reason': 'analytics_not_available'}
+        return unavailable_analytics_delivery()
+
+# Ensure sibling modules (resume_parser) are importable
+_mcp_dir = str(Path(__file__).parent)
+if _mcp_dir not in sys.path:
+    sys.path.insert(0, _mcp_dir)
 
 # Import resume utilities
 from resume_parser import (
+    Achievement,
+    Education,
+    Metric,
+    MetricType,
+    PhaseEnum,
     ResumeSession,
     Role,
-    Achievement,
-    Metric,
-    Education,
-    PhaseEnum,
-    MetricType,
-    validate_date_format,
-    validate_achievement_metrics,
-    extract_metrics_from_text,
+    calculate_ats_score,
     calculate_bullet_quality_score,
-    suggest_improvements,
-    format_role_bullets,
-    format_resume,
-    format_linkedin_headline,
+    calculate_estimated_pages,
+    extract_metrics_from_text,
+    find_relevant_evidence,
     format_linkedin_about,
     format_linkedin_experience,
-    find_relevant_evidence,
+    format_linkedin_headline,
+    format_resume,
+    format_role_bullets,
     map_evidence_to_achievement,
-    calculate_ats_score,
-    calculate_estimated_pages,
+    suggest_improvements,
+    validate_achievement_metrics,
+    validate_date_format,
 )
 
 # Health system — error queue and health reporting
 try:
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from core.utils.dex_logger import log_error as _log_health_error, mark_healthy as _mark_healthy
+    from core.utils.dex_logger import log_error as _log_health_error
+    from core.utils.dex_logger import mark_healthy as _mark_healthy
     _HAS_HEALTH = True
 except ImportError:
     _HAS_HEALTH = False
@@ -92,15 +109,28 @@ class EnhancedJSONEncoder(json.JSONEncoder):
             return obj.__dict__
         return super().default(obj)
 
-# Configuration - Vault paths
-BASE_DIR = Path(os.environ.get('VAULT_PATH', Path.cwd()))
-CAREER_DIR = BASE_DIR / 'Active' / 'Career'
-RESUME_DIR = CAREER_DIR / 'Resume'
-SESSIONS_DIR = RESUME_DIR / 'Sessions'
-EVIDENCE_DIR = BASE_DIR / 'Resources' / 'Career_Evidence'
+# Configuration - Vault paths (centralized in core.paths)
+_repo_root = str(Path(__file__).parent.parent.parent)
+if _repo_root not in sys.path:
+    sys.path.append(_repo_root)
+from core import capabilities as capability_rooms
+from core.paths import (
+    EVIDENCE_DIR,
+    RESUME_DIR,
+    SESSIONS_DIR,
+    USER_PROFILE_FILE,
+)
+from core.paths import (
+    VAULT_ROOT as BASE_DIR,
+)
+from core.utils.feature_status import feature_status
 
-# Ensure directories exist
-SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+CAREER_TRACKING_OFF_MESSAGE = (
+    "Career tracking isn't set up yet — run /career-setup when you want it."
+)
+CAREER_ROOM_OFF_MESSAGE = (
+    "The Career room is off. Turn it on with /manage-capabilities when you want it."
+)
 
 # In-memory session storage
 sessions: Dict[str, ResumeSession] = {}
@@ -122,6 +152,7 @@ def generate_session_id() -> str:
 def auto_save_session(session: ResumeSession):
     """Automatically save session to disk after state changes."""
     session.last_modified = datetime.now().isoformat()
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     
     session_file = SESSIONS_DIR / f"{session.session_id}.json"
     
@@ -447,6 +478,19 @@ async def handle_call_tool(
     """Handle tool calls"""
     
     arguments = arguments or {}
+
+    known_tools = {tool.name for tool in await handle_list_tools()}
+    # Gate only tools this server actually serves: an unknown tool name must
+    # still get the explicit unknown-tool error, room state notwithstanding.
+    if name in known_tools and not capability_rooms.enabled(
+        "career", profile_path=USER_PROFILE_FILE
+    ):
+        payload = feature_status(
+            "Career room",
+            "off",
+            CAREER_ROOM_OFF_MESSAGE,
+        )
+        return [types.TextContent(type="text", text=json.dumps(payload, indent=2))]
     
     try:
         if name == "start_session":
@@ -812,11 +856,15 @@ async def handle_pull_career_evidence(arguments: dict) -> list[types.TextContent
     if not EVIDENCE_DIR.exists():
         return [types.TextContent(
             type="text",
-            text=json.dumps({
-                "success": False,
-                "error": "Career Evidence directory not found",
-                "note": "Run /career-setup to initialize career system"
-            }, indent=2)
+            text=json.dumps(
+                feature_status(
+                    "Career evidence",
+                    "off",
+                    CAREER_TRACKING_OFF_MESSAGE,
+                    note="Run /career-setup to initialize career system",
+                ),
+                indent=2,
+            )
         )]
     
     # Find relevant evidence
@@ -1002,10 +1050,11 @@ async def handle_compile_resume(arguments: dict) -> list[types.TextContent]:
         "message": "Resume compiled. Use export_resume to save to file."
     }
     
-    try:
-        _fire_analytics_event('resume_compiled')
-    except Exception:
-        pass
+    surface_analytics_attempt(
+        result,
+        _fire_analytics_event,
+        'resume_compiled',
+    )
     
     return [types.TextContent(
         type="text",
@@ -1126,53 +1175,123 @@ async def handle_export_resume(arguments: dict) -> list[types.TextContent]:
             }, indent=2)
         )]
     
-    # Generate resume
+    extensions = {
+        'markdown': 'markdown',
+        'plain_text': 'txt',
+        'json': 'json',
+    }
+    if format_type not in extensions:
+        return [types.TextContent(
+            type="text",
+            text=json.dumps({
+                "success": False,
+                "error": f"Unsupported resume export format: {format_type}",
+            }, indent=2),
+        )]
+
+    if custom_filename is not None:
+        if not isinstance(custom_filename, str):
+            filename_error = "Custom filename must be a string"
+        else:
+            custom_filename = custom_filename.strip()
+            filename_error = None
+            if (
+                not custom_filename
+                or custom_filename in {'.', '..'}
+                or Path(custom_filename).name != custom_filename
+                or '/' in custom_filename
+                or '\\' in custom_filename
+                or any(ord(character) < 32 for character in custom_filename)
+                or len(custom_filename) > 120
+            ):
+                filename_error = (
+                    "Custom filename must be one local filename without path "
+                    "separators or control characters"
+                )
+        if filename_error:
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": False,
+                    "error": filename_error,
+                }, indent=2),
+            )]
+
+    # Generate resume only after all caller-controlled path input is validated.
     resume_content = format_resume(session, enforce_limit=True)
-    
-    # Determine filename
+
+    # Determine a base filename. Existing paths are never overwritten; the
+    # exclusive-create loop below selects a new numbered filename on collision.
     if custom_filename:
-        filename = f"{custom_filename}.{format_type}"
+        filename_stem = custom_filename
     else:
         date_str = datetime.now().strftime('%Y-%m-%d')
-        filename = f"{date_str} - Resume.{format_type if format_type != 'plain_text' else 'txt'}"
-    
-    # Ensure Resume directory exists
-    RESUME_DIR.mkdir(parents=True, exist_ok=True)
-    
-    filepath = RESUME_DIR / filename
-    
-    # Export based on format
+        filename_stem = f"{date_str} - Resume"
+
+    if format_type == 'markdown':
+        export_bytes = resume_content.encode('utf-8')
+    elif format_type == 'plain_text':
+        plain_text = re.sub(r'#+ ', '', resume_content)
+        plain_text = re.sub(r'\*\*(.+?)\*\*', r'\1', plain_text)
+        plain_text = re.sub(r'---', '', plain_text)
+        export_bytes = plain_text.encode('utf-8')
+    else:
+        export_bytes = json.dumps(
+            session.to_dict(),
+            indent=2,
+            cls=EnhancedJSONEncoder,
+        ).encode('utf-8')
+
+    filepath: Path | None = None
     try:
-        if format_type == 'markdown':
-            with open(filepath, 'w') as f:
-                f.write(resume_content)
-        
-        elif format_type == 'plain_text':
-            # Convert markdown to plain text (remove markdown syntax)
-            plain_text = resume_content
-            plain_text = re.sub(r'#+ ', '', plain_text)  # Remove headers
-            plain_text = re.sub(r'\*\*(.+?)\*\*', r'\1', plain_text)  # Remove bold
-            plain_text = re.sub(r'---', '', plain_text)  # Remove dividers
-            
-            with open(filepath, 'w') as f:
-                f.write(plain_text)
-        
-        elif format_type == 'json':
-            # Export session as JSON
-            with open(filepath, 'w') as f:
-                json.dump(session.to_dict(), f, indent=2, cls=EnhancedJSONEncoder)
+        try:
+            relative_resume_dir = Path(RESUME_DIR).absolute().relative_to(
+                Path(BASE_DIR).absolute()
+            )
+            capability_rooms.preflight_mutation_targets(
+                BASE_DIR,
+                [{"path": relative_resume_dir.as_posix(), "kind": "directory"}],
+            )
+        except (ValueError, capability_rooms.CapabilityError) as error:
+            raise RuntimeError(f"Unsafe resume export directory: {error}") from error
+        RESUME_DIR.mkdir(parents=True, exist_ok=True)
+        extension = extensions[format_type]
+        for suffix in range(1, 10_000):
+            disambiguator = '' if suffix == 1 else f" ({suffix})"
+            candidate = RESUME_DIR / f"{filename_stem}{disambiguator}.{extension}"
+            try:
+                with candidate.open('xb') as export_file:
+                    export_file.write(export_bytes)
+                    export_file.flush()
+                filepath = candidate
+                break
+            except FileExistsError:
+                continue
+        if filepath is None:
+            raise RuntimeError("Could not allocate a unique resume export filename")
+
+        read_back = filepath.read_bytes()
+        if read_back != export_bytes:
+            filepath.unlink(missing_ok=True)
+            filepath = None
+            raise RuntimeError("Resume export read-back did not match the written bytes")
         
         session.phase = PhaseEnum.COMPLETE
         auto_save_session(session)
-        
+        relative_path = filepath.relative_to(BASE_DIR)
         result = {
             "success": True,
-            "filepath": str(filepath.relative_to(BASE_DIR)),
+            "filepath": str(relative_path),
             "format": format_type,
-            "message": f"Resume exported to {filepath.relative_to(BASE_DIR)}"
+            "byte_size": len(read_back),
+            "sha256": hashlib.sha256(read_back).hexdigest(),
+            "read_back_verified": True,
+            "message": f"Resume exported to new file {relative_path}",
         }
     
     except Exception as e:
+        if filepath is not None:
+            filepath.unlink(missing_ok=True)
         result = {
             "success": False,
             "error": f"Failed to export resume: {str(e)}"

@@ -1,6 +1,6 @@
 ---
 name: integrate-mcp
-description: Integrate existing MCP servers from Smithery.ai or GitHub repositories
+description: "Install and wire up an existing MCP server from Smithery.ai or a GitHub repo. Use when the user names a tool that already has a server — 'add the Notion MCP', 'install this Smithery server'. Not for building a new integration from nothing; use `create-mcp`. Not for adding one already-known server safely; use `dex-add-mcp`."
 ---
 
 ## Purpose
@@ -21,7 +21,13 @@ Say:
 ```
 **Want to connect more tools to Dex?**
 
-There's a marketplace of 100+ pre-built MCP servers at:
+Some tools have a built-in, guided setup — no marketplace hunting needed:
+• **Task apps:** Todoist (`/todoist-setup`), Things 3 (`/things-setup`), Trello (`/trello-setup`) — two-way task sync
+• **Email & calendar:** Google Workspace (`/google-workspace-setup`), Microsoft Teams (`/ms-teams-setup`)
+• **Meetings:** Granola (`/granola-setup`), Zoom (`/zoom-setup`)
+• **Work tracking:** Jira + Confluence (`/atlassian-setup`)
+
+For anything else, there's a marketplace of 100+ pre-built MCP servers at:
 **[Smithery.ai](https://smithery.ai/servers)**
 
 These are production-ready integrations for:
@@ -195,6 +201,8 @@ Collect values and add to `.env` file:
 ENVVAR_1=value1
 ENV_VAR_2=value2
 ```
+
+After writing, make the file owner-only (`chmod 600 .env`) — create it with that mode if it's new, and tighten it if an existing `.env` was left readable by other users.
 
 ### Step 5: Update MCP Config
 

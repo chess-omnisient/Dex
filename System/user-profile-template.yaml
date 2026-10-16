@@ -2,11 +2,6 @@
 #
 # This file stores your identity, role context, and preferences for personalized AI interactions.
 
-# Demo Mode
-# When true, commands read from System/Demo/ instead of real vault
-# Toggle with /demo on or /demo off
-demo_mode: false
-
 # Basic Identity
 name: ""
 role: ""
@@ -15,13 +10,35 @@ company: ""
 company_size: ""  # startup (1-100), scaling (100-1000), enterprise (1000-10000), large_enterprise (10000+)
 
 # Your company email domain (used to identify internal vs external people)
-# Example: "pendo.io" (without @)
-# Multiple domains: "pendo.io, pendo.com"
+# Example: "acme.com" (without @)
+# Multiple domains: "acme.com, acme.io"
 email_domain: ""
 
 # Your timezone (IANA format, e.g., "America/New_York", "Europe/London", "Asia/Tokyo")
 # Auto-detected from system if not set. Used for time-of-day greetings and focus time calculations.
 timezone: ""
+
+# Which days you work. Used for daily planning, weekly review timing, and anything
+# that needs to know your weekend. Defaults to Monday-Friday when not set.
+working_week:
+  days: [monday, tuesday, wednesday, thursday, friday]
+
+# Update Channel
+# Additional channels are reserved for a future release.
+updates:
+  channel: stable
+
+# Bug reports to the Dex team (/feedback).
+# review_mode controls whether you approve each report before it is sent:
+#   always-review (default) — Dex shows you the exact report and waits for a yes
+#   auto-send — reports go automatically; a local receipt is always kept, and
+#   the first report plus every follow-up answer is still shown to you first
+feedback:
+  review_mode: always-review
+
+# Optional local Git snapshots after the brain/vault split. This never pushes.
+vault:
+  auto_commit: false
 
 # Role Intelligence
 # This section is populated during onboarding based on the role definition
@@ -65,11 +82,28 @@ pillars: []
 # Meeting Processing Configuration
 # How Dex processes meetings from Granola
 meeting_processing:
-  # Mode: "manual" (run /process-meetings) or "automatic" (background sync)
-  mode: manual
+  # Mode: "automatic" (notes appear in your vault within 30min) or "manual" (run /process-meetings)
+  mode: automatic
   
   # API provider for automatic mode: gemini, anthropic, or openai
   api_provider: gemini
+
+# Where meeting notes come from. Meeting skills consult this before searching.
+# primary: granola | zoom | teams | exported-folder | wispr | none
+# notes_folder: vault-relative folder where exported/recorder notes land
+#   (for exported-folder, or a recorder like ClickUp AI dropping notes into the vault)
+meeting_sources:
+  primary: none
+  notes_folder: ""
+
+# Person-page creation from repeated meeting observations.
+# Options: auto, suggest, off. Fresh setup starts at suggest until the user chooses.
+entity_creation:
+  mode: suggest
+
+# Background person-summary maintenance; missing key is enabled, explicit false disables.
+entity_gardener:
+  enabled: true
 
 # Meeting Intelligence Configuration
 # Controls what gets extracted from your meetings (set during onboarding based on role)
@@ -107,11 +141,24 @@ journaling:
   # Weekly journal: patterns and synthesis
   weekly: false
 
+# Optional capability rooms. Meetings, people, and tasks are the always-on spine
+# and intentionally have no switch here.
+capabilities:
+  career:
+    enabled: true
+  companies:
+    enabled: true
+  quarter_goals:
+    enabled: true
+
 # Quarterly Planning Configuration
 # Controls whether you use quarterly goal setting
+# Legacy compatibility: when capabilities.quarter_goals is absent, Dex reads
+# quarterly_planning.enabled once as a fallback. New writes use the capability
+# key and keep this legacy switch aligned; the migration never runs in reverse.
 quarterly_planning:
   # Whether quarterly planning is enabled
-  enabled: false
+  enabled: true
   
   # Has user been asked about quarterly planning during onboarding?
   prompted: false
@@ -120,43 +167,28 @@ quarterly_planning:
   # Common: 1 (calendar year), 2 (some fiscal years), 4 (many fiscal years)
   q1_start_month: 1
   
-  # Current quarter (auto-calculated by system)
-  current_quarter: "Q1 2026"
+  # The quarter you are planning. Leave empty to follow today's date.
+  # Set it to the quarter you are actively planning — for example "Q4 2026"
+  # while you get a head start on next quarter — and your quarterly goals
+  # lookup answers for that quarter instead. It is only followed when the
+  # quarter has not already ended, starts no more than one quarter from now,
+  # and you have goals written for it, so it can never blank out the goals you
+  # can see today. Pacing and velocity always follow today's real quarter.
+  # Ship empty so no frozen quarter is distributed.
+  current_quarter: ""
   
-  # Current quarter dates (auto-calculated)
-  quarter_start_date: "2026-01-01"
-  quarter_end_date: "2026-03-31"
+  # Current quarter dates — derived at runtime; ship empty (see above).
+  quarter_start_date: ""
+  quarter_end_date: ""
 
 # Integration Configuration
 # Tracks which external integrations are enabled
 integrations:
-  pendo_mcp_enabled: false  # Pendo product analytics (OAuth via Cursor MCP)
+  pendo_mcp_enabled: false  # optional external product-analytics MCP (OAuth via your AI client)
 
 # Analytics Configuration
-# Controls anonymous feature usage tracking to help Dave improve Dex
+# Controls anonymous feature usage tracking to help the Dex maintainers improve Dex
 # Only Dex built-in features are tracked, never content or what you do with features
 analytics:
-  # Master switch - set to true if you opted in to help improve Dex
-  enabled: false
-
-# ScreenPipe Configuration
-# Enables ambient work intelligence - Dex learns what you're working on via screen OCR
-# All data stays local on your machine, never sent anywhere
-screenpipe:
-  # Master switch - set to true after opt-in to enable ScreenPipe features
-  enabled: false
-  
-  # Whether user has been asked about ScreenPipe
-  prompted: false
-  
-  # Features to enable when ScreenPipe is running
-  features:
-    # Detect uncommitted asks/promises from apps (Slack, Email, etc.)
-    commitment_detection: true
-    # Show time audit in daily review
-    time_audit: true
-    # Allow screen recall queries ("What was I doing at 2pm?")
-    screen_recall: true
-  
-  # Data retention in days (auto-delete old data)
-  retention_days: 30
+  # Willingness to send usage analytics. Sending is not active until a usage relay is configured. Say "turn off Dex analytics" to keep it off.
+  enabled: true

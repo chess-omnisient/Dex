@@ -1,8 +1,15 @@
 ---
 name: week-plan
-description: Set weekly priorities and plan the week ahead with intelligent suggestions based on goals, calendar shape, and task effort.
-context: fork
+description: "Set the week's priorities against goals, calendar shape and task effort. Use when the user says 'plan my week', 'what should I focus on this week', or on their first working day. Also use proactively at the first session of a new week. Not for reviewing the week just past; use `week-review`."
 ---
+
+## Execution mode
+
+Run inline in the current conversation by default, so this work can see what the
+user has already discussed, decided, or settled this session. Do not fork merely
+because this skill was selected. Only run in the background when the user
+explicitly asks for a background run or the host has already obtained a specific
+background-work approval for this run.
 
 ## Purpose
 
@@ -10,7 +17,7 @@ Set priorities and plan the week ahead. Now with **intelligent priority suggesti
 
 ## Usage
 
-- `/week-plan` — Plan current week (or next week if run on Friday/weekend)
+- `/week-plan` — Plan current week (or next week if run on the last working day or a non-working day)
 - `/week-plan next` — Explicitly plan next week
 - `/week-plan current` — Force planning current week
 
@@ -19,15 +26,11 @@ Set priorities and plan the week ahead. Now with **intelligent priority suggesti
 ## When to Use
 
 **Best times:**
-- **Monday morning** - Before diving into daily work
-- **Friday evening** - Set up next week while context is fresh
-- **Sunday evening** - Weekend planning session
+- **First working day, before work** - Before diving into daily work
+- **Last working day, after work** - Set up next week while context is fresh
+- **Evening before the first working day** - Plan before the week begins
 
----
-
-## Step 0: Demo Mode Check
-
-Check `System/user-profile.yaml` for `demo_mode`. If true, use demo paths.
+Read `working_week.days` in `System/user-profile.yaml` before deciding which days are first, last, or outside the working week.
 
 ---
 
@@ -53,8 +56,11 @@ Check for `00-Inbox/Weekly_Synthesis_[last-monday].md`:
 
 ```
 Use: get_quarterly_goals()
-Use: get_goal_status(goal_id) for each goal
+Use: get_goal_status(goal_id) for each goal that has a goal_id
 ```
+
+Skip `get_goal_status` for any goal whose `goal_id` is null — it has no ID to
+look up, and the call will tell you so rather than return a status.
 
 For each goal, get:
 - Current progress (concrete: "2 of 5 milestones complete")
@@ -62,10 +68,18 @@ For each goal, get:
 - Weeks since last activity
 - Stall warnings
 
-**Identify goals needing attention:**
+**Check `activity_known` before judging any goal.** When it is `false` — the
+goal was typed by hand with no ID, or recovered from a freeform list —
+`linked_priorities` and `linked_priorities_count` are `null`, meaning *not
+known*, never *none*. Never call such a goal orphaned or stalled on that basis.
+
+**Identify goals needing attention** (only among goals where `activity_known`
+is `true`):
 - Goals with no linked priorities (orphaned)
 - Goals with no activity in 2+ weeks (stalled)
 - Goals behind expected pace
+
+If the response flags goals as `provisional` (recovered from a freeform list), offer once — "Want me to structure these into trackable goals?" — and move on without nagging if declined.
 
 ### 2.3 Open Tasks and Projects
 
@@ -77,13 +91,50 @@ Get all open tasks and:
 - Classify by effort (deep_work / medium / quick)
 - Group by pillar alignment
 - Identify P0/P1 items
-- Find tasks that could advance stalled goals
+
+**Goal-advancing tasks — read the groomed backlog, don't guess:**
+
+```
+Use: get_weekly_planning_context()
+```
+
+Each goal in the response's `goal_health` carries `open_task_count` and `next_up_tasks` — the top items the user already marked "take these first" during grooming.
+
+**First, check `activity_known`.** When it is `false`, that goal has no usable ID — it was typed by hand, or recovered from a freeform list — so Dex cannot tell what links to it. `linked_priority_count`, `has_activity`, `open_task_count` and `next_up_tasks` are all `null` for that goal, meaning *not known*, never *none*. Do not read a `null` as zero, do not call it stalled or neglected, and do not call `get_goal_backlog` for it (a null ID falls back to every goal's backlog). Plan around it normally and pass on the `recommendations` line that says how to give it an ID.
+
+For every goal where `activity_known` is `true`, use the fields directly:
+
+- **Goal has `next_up_tasks`:** suggest those items by name — "Goal X's next-up items are A and B — they fit Wednesday's block."
+- **Stalled goal with open tasks but no groomed order:** call `get_goal_backlog(goal_id)` and pick candidates from the top of its ordering (priority, then oldest).
+- **Goal with a large `open_task_count` (10+) and no `next_up_tasks`:** mention `/goal-backlog` once — "Goal X has 14 open tasks and no groomed order — worth a `/goal-backlog` pass after planning?" Say it once for the whole plan, not per goal, and drop it if declined.
 
 ### 2.4 Calendar Shape Analysis (NEW)
 
+Read `calendar.provider` from `System/user-profile.yaml` before any calendar call.
+
+**If `provider` is `google`:** use Google Workspace MCP, not calendar-mcp event tools.
+
+Read `calendar.work_calendar` from the same profile. Call `list_calendars(detailed=true)` first. Match `work_calendar` against a returned calendar summary, id, or primary flag, then pass that calendar's id. If `work_calendar` is missing or `primary`, use `primary`. Do not pass a display name as calendar_id. Set max_results high enough that a stacked week is not truncated.
+
 ```
+Use: list_calendars(detailed=true)
+Use: get_events(time_min="[week start]", time_max="[day after week end]", calendar_id="<resolved id or primary>", max_results=2500, detailed=true)
+Use: analyze_calendar_capacity(days_ahead=7, events=[...mapped from get_events...])
+```
+
+Map returned events into the shape `analyze_calendar_capacity` expects (`title`, `date` as `YYYY-MM-DD`, `duration_minutes`, `attendees`, `all_day`). Apply CLAUDE.md's **Calendar response confidence contract** to the outcome: a missing or failing Google Workspace calendar tool is not an empty week, and do not call `analyze_calendar_capacity` with missing results. If the tools are unavailable or not connected, point to `/google-workspace-setup` using that skill's existing copy. Do not invent new privacy or consent language.
+
+**If `provider` is `none`:** skip calendar gathering. Do not call calendar-mcp event tools. Do not treat the week as open.
+
+**If `provider` is `apple`, missing, or any other value:** use calendar-mcp:
+
+```
+Use: calendar_get_events_with_attendees(start_date="[week start]", end_date="[day after week end]")
 Use: analyze_calendar_capacity(days_ahead=7, events=[...from calendar MCP...])
 ```
+
+Apply CLAUDE.md's **Calendar response confidence contract** before consuming
+events or passing them to `analyze_calendar_capacity`.
 
 Understand the **shape of the week**:
 
@@ -168,7 +219,8 @@ Surface things you've committed to that are due this week.
 Based on the gathered context, generate 4-5 suggested priorities:
 
 **Goal-driven suggestions:**
-- "Goal X has no activity in 3 weeks. Suggested priority: {{specific work that advances it}}"
+- Prefer groomed next-up items when a goal has them: "Goal X's next-up items are A and B — they fit Wednesday's block."
+- "Goal X has no activity in 3 weeks. Suggested priority: {{specific work that advances it}}" — drawn from its backlog, not invented
 - "Goal Y is at 2 of 5 milestones with 6 weeks left. Suggested priority: Complete milestone 3"
 
 **Commitment-driven suggestions:**
@@ -234,12 +286,16 @@ Check `System/Dex_Backlog.md` for high-priority improvement ideas worth tackling
 
 Archive old file to `07-Archives/Plans/YYYY-Wxx.md`.
 
+Use the exact `goal_id` returned by the planning tools in each linked
+`Quarterly goal` bullet. For work that advances no quarterly goal, write
+`Operational` instead of inventing or paraphrasing an ID.
+
 Create updated `02-Week_Priorities/Week_Priorities.md`:
 
 ```markdown
 # Week Priorities
 
-**Week of:** [Monday YYYY-MM-DD]
+**Week of:** [first working day YYYY-MM-DD]
 
 ---
 
@@ -274,19 +330,19 @@ Create updated `02-Week_Priorities/Week_Priorities.md`:
 
 1. **[Priority 1]** — **[Pillar]** ^week-YYYY-WXX-p1
    - Success criteria: [What done looks like]
-   - Quarterly goal: [Q1 Goal #X]
+   - Quarterly goal: [Qx-YYYY-goal-N]
    - **Scheduled:** [Day/time block]
    - Effort: [deep_work / medium / quick]
    
 2. **[Priority 2]** — **[Pillar]** ^week-YYYY-WXX-p2
    - Success criteria: [What done looks like]
-   - Quarterly goal: [Q1 Goal #X]
+   - Quarterly goal: [Qx-YYYY-goal-N]
    - **Scheduled:** [Day/time block]
    - Effort: [deep_work / medium / quick]
    
 3. **[Priority 3]** — **[Pillar]** ^week-YYYY-WXX-p3
    - Success criteria: [What done looks like]
-   - Quarterly goal: [Q1 Goal #X] or Operational
+   - Quarterly goal: [Qx-YYYY-goal-N] or Operational
    - **Scheduled:** [Day/time block]
    - Effort: [deep_work / medium / quick]
 
@@ -339,7 +395,7 @@ Create updated `02-Week_Priorities/Week_Priorities.md`:
 
 ## 🏁 End of Week Review
 
-*Fill in on Friday*
+*Fill in on the last working day*
 
 ### Completed
 - 
@@ -394,7 +450,7 @@ After generating the file, provide a summary:
 > - [Capacity warning if applicable]
 > - [Stalled goal reminder]
 > 
-> Ready to run `/daily-plan` for Monday?"
+> Ready to run `/daily-plan` for your first working day?"
 
 ---
 
@@ -402,6 +458,6 @@ After generating the file, provide a summary:
 
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
-| Calendar | dex-calendar-mcp | `calendar_get_events_with_attendees` |
-| Work | dex-work-mcp | `list_tasks`, `get_quarterly_goals`, `get_goal_status`, `create_weekly_priority`, `analyze_calendar_capacity`, `classify_task_effort`, `suggest_task_scheduling`, `get_commitments_due` |
-| Granola | dex-granola-mcp | `get_upcoming_meetings` (optional) |
+| Calendar | calendar-mcp, or google-workspace-mcp when `calendar.provider` is `google` | Apple: `calendar_get_events_with_attendees`. Google: `list_calendars`, `get_events` |
+| Work | work-mcp | `list_tasks`, `get_quarterly_goals`, `get_goal_status`, `get_weekly_planning_context`, `get_goal_backlog`, `create_weekly_priority`, `analyze_calendar_capacity`, `classify_task_effort`, `suggest_task_scheduling`, `get_commitments_due` |
+| Granola | granola-mcp | `granola_get_today_meetings` (optional) |

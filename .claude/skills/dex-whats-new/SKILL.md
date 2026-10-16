@@ -1,6 +1,6 @@
 ---
 name: dex-whats-new
-description: Check for system improvements (learnings + Claude updates)
+description: "Show recent system improvements — captured learnings plus new Claude capabilities. Use when the user says 'what's new', 'any updates to how Dex works'. Not for previewing and applying a version update; use `dex-update`. Not for unused existing features; use `dex-level-up`."
 ---
 
 Check for improvements to your Dex system from TWO sources:
@@ -323,7 +323,7 @@ Current Claude Code features to track:
 
 | Feature | What It Does | Dex Potential |
 |---------|--------------|---------------|
-| **Commands** | User-triggered workflows | `/plan`, `/review`, etc. |
+| **Commands** | User-triggered workflows | `/plan`, `/daily-review`, etc. |
 | **Skills** | Reusable behaviors, always loaded | Person lookup, writing style |
 | **Hooks** | Auto-triggers at events | Session start, file changes |
 | **Sub-agents** | Parallel workers, isolated context | Research, analysis |
@@ -372,7 +372,7 @@ Current version: 1.0.32
 2. Auto-Research on New Topics
    Uses: Sub-agent Communication
    What: When you mention a new company, auto-research in background
-   Pillar: Deal Support
+   Pillar: [context-dependent]
 
 Want me to implement any of these? (Enter 1 or 2)
 ```

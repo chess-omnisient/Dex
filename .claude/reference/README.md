@@ -76,9 +76,7 @@ Reference docs should:
 
 - **mcp-servers.md** - MCP setup, troubleshooting, and integration patterns
 - **meeting-intel.md** - Meeting processing pipeline details
-- **demo-mode.md** - Demo mode implementation and usage
 
 ## Related
 
-- **MCP** (`.claude/mcp/`) - MCP server configurations
 - **Core** (`core/`) - Implementation code

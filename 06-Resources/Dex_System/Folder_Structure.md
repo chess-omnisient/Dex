@@ -25,7 +25,7 @@ Dex/
 │   │   ├── Internal/         # Colleagues (same email domain)
 │   │   └── External/         # Customers, partners (different domain)
 │   ├── Companies/            # External organizations (universal)
-│   ├── Career/               # Career development (via /career-setup)
+│   ├── Career/               # Career development (set up for you)
 │   └── [Role-specific]/     # Accounts/, Team/, Content/, etc.
 ├── 06-Resources/                # Reference material
 │   ├── Dex_System/           # System documentation
@@ -45,13 +45,13 @@ Dex/
 │   └── Dex_Backlog.md        # System improvement backlog
 ├── 03-Tasks/                    # Task management
 │   └── Tasks.md              # Main task backlog
-├── 01-Quarter_Goals/            # Quarterly planning (optional)
+├── 01-Quarter_Goals/            # Quarterly planning (set up for you)
 │   └── Quarter_Goals.md      # Current quarter's 3-5 goals
-└── 02-Week_Priorities/          # Weekly planning (optional)
+└── 02-Week_Priorities/          # Weekly planning
     └── Week_Priorities.md    # Current week's Top 3
 ```
 
-**Note:** The numbered folders (`01-`, `02-`, `03-`) appear after running the respective planning commands (`/quarter-plan`, `/week-plan`, `/triage`). Before then, you'll just see the PARA folders (04-07) plus 00-Inbox/ and System/.
+**Note:** These folders are all created for you during setup, each with a starter page waiting inside. They stay empty until you run the matching command (`/quarter-plan`, `/week-plan`, `/triage`) or start writing in them yourself.
 
 ---
 
@@ -90,13 +90,18 @@ Area = ongoing ("Customer success management")
   - `External/` — Customers, prospects, partners (different email domain)
 - **Companies/** — External organizations you interact with
 
+The background sync tracks everyone it sees, but only people with an email can become pages. After someone appears in at least two meetings across at least two weeks (or has transcript evidence across two meetings), Dex either creates the person page or suggests it, depending on your `entity_creation` mode.
+
+Eligible external email domains can also become company pages. New vaults start in `auto` mode; existing vaults without a setting default to `suggest`, where `/daily-plan` and `/process-meetings` ask before creating anything.
+
 ### Role-Specific Areas
 
 Most users only need the universal areas (People and Companies). You can create additional areas as needed for your workflow.
 
-### Career Area (Optional)
+### Career Area
 
-Created via `/career-setup` command:
+Set up for you during onboarding. Run `/career-setup` to fill it in, or `/manage-capabilities` to switch it off — switching it off never deletes anything already written there.
+
 - `Career/` — Career development tracking
   - `Current_Role.md` — Job description and responsibilities
   - `Career_Ladder.md` — Competency framework
@@ -154,18 +159,19 @@ Archives = historical record, rarely consulted
 ```
 07-Archives/
 ├── Projects/        # Completed or cancelled projects
-├── Plans/           # Daily and weekly plans (auto-archived)
+├── Plans/           # Weekly plans (auto-archived)
 └── Reviews/         # Daily, weekly, and quarterly reviews (auto-archived)
 ```
 
 ### Auto-Archiving
 
 Plans and reviews automatically move here:
-- Daily plans → after `/daily-plan` runs
 - Daily reviews → after `/daily-review` runs
 - Weekly plans → after `/week-plan` runs
 - Weekly reviews → after `/week-review` runs
 - Quarterly reviews → after `/quarter-review` runs
+
+Daily plans stay in `00-Inbox/Daily_Plans/` so today's plan is with the rest of today's capture.
 
 ### Manual Archiving
 
@@ -188,6 +194,7 @@ Keep archives indefinitely—they're your historical record and learning source 
 00-Inbox/
 ├── Meetings/        # Meeting notes (auto-created by /process-meetings)
 │   └── YYYY-MM-DD/  # Meetings organized by date
+├── Daily_Plans/     # Today's plan from /daily-plan
 └── Ideas/           # Quick captures and random thoughts
 ```
 
@@ -222,13 +229,13 @@ System/
 ├── user-profile.yaml         # User preferences and settings
 ├── claude-code-state.json    # Tracks last changelog check
 ├── Dex_Backlog.md            # System improvement backlog (AI-ranked)
-├── usage_log.md              # Feature adoption tracking (for /dex-level-up)
-└── Demo/                     # Demo mode sandbox (if enabled)
+└── usage_log.md              # Feature adoption tracking (for /dex-level-up)
 ```
 
 Most users won't edit this directly—Dex manages it. But when you want to adjust strategic direction or preferences, the key files are here.
 
 **Background automation:** Dex also includes scripts in `.scripts/` that run automatically:
+- `meeting-intel/sync-from-granola.cjs` — Syncs meetings, records attendee emails and locations, creates or suggests eligible people and companies, and verifies entity coverage. In Obsidian mode, names link to their actual person pages.
 - `check-anthropic-changelog.cjs` — Checks for Claude updates every 6 hours
 - `learning-review-prompt.sh` — Daily 5pm check for pending learnings
 - These run via macOS Launch Agents and require no user intervention
@@ -248,13 +255,13 @@ If you enable quarterly and weekly planning, everything connects from pillars �
 3. **Week Priorities** (`02-Week_Priorities/Week_Priorities.md`)  
    Top 3 this week advancing quarterly goals (via `/week-plan`)
 
-4. **Daily Plan** (`07-Archives/Plans/`)  
-   Today's work supporting weekly priorities (auto-archived after `/daily-plan`)
+4. **Daily Plan** (`00-Inbox/Daily_Plans/`)  
+   Today's work supporting weekly priorities (created by `/daily-plan`)
 
 5. **Tasks** (`03-Tasks/Tasks.md`)  
-   Backlog tagged with `#pillar [Q1-2] [Week-1]` connecting to goals
+   Backlog linked to goals through child bullets (e.g. `- Goal: Q1-2026-goal-2`)
 
-**Note:** Weekly planning (`02-Week_Priorities/`) is always available. Quarterly planning (`01-Quarter_Goals/`) is optional and created when you run `/quarter-plan`.
+**Note:** Both weekly planning (`02-Week_Priorities/`) and quarterly planning (`01-Quarter_Goals/`) are set up from the start. Quarterly planning can be switched off with `/manage-capabilities` if you don't work that way.
 
 ---
 
@@ -308,7 +315,7 @@ Tasks sync bidirectionally with person pages, company pages, and meeting notes v
 | **00-Inbox/** | Quick captures | Days (until triaged) | Onboarding |
 | **System/** | Configuration | Indefinite | Onboarding |
 | **03-Tasks/** | Task backlog | Indefinite | First `/triage` or `/daily-plan` |
-| **01-Quarter_Goals/** | Quarterly goals | Per quarter | First `/quarter-plan` |
+| **01-Quarter_Goals/** | Quarterly goals | Per quarter | Onboarding |
 | **02-Week_Priorities/** | Weekly priorities | Per week | First `/week-plan` |
 
 ---
@@ -318,12 +325,6 @@ Tasks sync bidirectionally with person pages, company pages, and meeting notes v
 New to Dex? Run `/setup` or just ask to start onboarding. The structure will be customized for your role and working style.
 
 The numbered folders (01-, 02-, 03-) appear as you use their respective features. Don't worry if you don't see them immediately—they'll be created when needed.
-
----
-
-## Demo Mode
-
-Want to explore Dex with sample data before adding your own? Run `/dex-demo on` to work with pre-populated demo content for "Alex Chen," a fictional PM at TechCorp. Demo mode creates a sandboxed `System/Demo/` folder so your real vault stays untouched.
 
 ---
 

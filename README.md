@@ -1,30 +1,96 @@
 # Dex by Dave — Your AI Chief of Staff
 
-**A personal operating system powered by Claude.** Strategic work management, meeting intelligence, relationship tracking, daily planning — all configured for your specific role. No coding required.
+[![Latest release](https://img.shields.io/github/v/release/davekilleen/dex?label=release&color=2ea44f)](https://github.com/davekilleen/dex/releases) [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE) [![Built for non-engineers](https://img.shields.io/badge/coding%20required-none-ff69b4)](https://heydex.ai/help/)
 
-Companion to [Episode 8 of The Vibe PM Podcast](https://youtu.be/WaqgSvL-V10?si=b2Pfwf7I5rozWCo0) and the [full blog post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/).
+**A personal operating system for your work.** Strategic work management, meeting intelligence, relationship tracking, daily planning — all configured for your specific role. Claude Code remains the full-experience reference; the unreleased portability build adds native, capability-aware packages for more agent harnesses without pretending every host is identical. No coding required.
+
+<p align="center">
+  <img src="docs/assets/dex-hero.gif" alt='Dex in action: "plan my day" scans your calendar, Slack, Salesforce, Granola and goals, then protects your morning — "what do I owe people?" finds every open promise and drafts the replies.' width="960">
+</p>
+
+**The story behind Dex:** 🎥 [Malleable Software — when everyone can build, what makes a great product?](https://www.youtube.com/watch?v=QcqBsxw9hQM) (Dave's keynote on the thinking behind Dex) · 🎙️ [Episode 8 of The Vibe PM Podcast](https://youtu.be/WaqgSvL-V10?si=b2Pfwf7I5rozWCo0) (full walkthrough) · ✍️ [the original launch post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/) · 💬 [the honest highs-and-lows of building it](https://www.linkedin.com/feed/update/urn:li:activity:7486431643524796418/) — the pause, the unlock, and 52 releases in two weeks
+
+> 🖥️ **Prefer never to see a terminal?** Dex desktop and mobile apps are on the way — sign up for early access at **[heydex.ai/beta](https://heydex.ai/beta)**.
+
+> ### 📖 New here? Start with the [Dex Guide →](https://heydex.ai/help/)
+>
+> A plain-English walkthrough from install to making Dex your own, with
+> copy-paste prompts throughout — written for non-technical professionals, no
+> coding background assumed. The README below covers the same ground in
+> reference form. (AI agents: [llms.txt](https://heydex.ai/help/llms.txt).)
 
 ---
 
 ## Setup Overview
 
-**Total time:** ~10 minutes. Three steps: install tools → get the code → tell it your role.
+**Total time:** ~10 minutes. One pasted line installs everything, then you tell Dex your role.
 
 **Pick one of these to get started:**
 
-| Option | Cost | What It Is |
-|--------|------|------------|
-| **[Cursor](https://cursor.com)** | Free tier works, or $20/month for Pro | An app with a built-in AI assistant (Claude). No separate Claude account needed. |
-| **[Claude Code Desktop](https://claude.ai/download)** | Claude Pro $20/month | Anthropic's own app. Better experience — guaranteed self-learning hooks, automatic context loading. |
-| **Claude Code Terminal** | Claude Pro $20/month | Same as Desktop but runs in Terminal (Mac) or PowerShell (Windows). |
+| Option | Cost | What It Is | Dex tier |
+|--------|------|------------|----------|
+| **[Cursor](https://cursor.com)** | Free tier works, or $20/month for Pro | An app with a built-in AI assistant. No separate Claude account needed. | **Tier 2 Skills** — vault, tools, and named journeys |
+| **[Claude Code Desktop](https://claude.ai/download)** | Claude Pro $20/month | Anthropic's own app. The full Dex experience — hooks, automatic context, self-learning. | **Tier 3 Full** — the reference implementation |
+| **Claude Code Terminal** | Claude Pro $20/month | Same as Desktop but runs in Terminal (Mac) or PowerShell (Windows). | **Tier 3 Full** |
 
 > **You do NOT go to claude.ai and type commands.** You need one of the apps above. Cursor is the easiest starting point. Claude Code (Desktop or Terminal) gives you a better experience with self-learning hooks — setup instructions for those are [further down this page](#want-guaranteed-hooks-use-claude-code-cli-or-desktop-app).
 
-**Not sure which?** Start with Cursor — it's free and gets you running in minutes. You can add or switch to Claude Code later.
+**Not sure which?** Start with Cursor — it's free and gets you running in minutes. You can add Claude Code later if you want the automatic behaviors.
+
+### What you get with each assistant
+
+Dex is the vault and the tools. The app you talk to is a **harness**. What you get depends on which harness you use — that is a documented contract, not a silent subset.
+
+| Tier | Name | What you get | Who it's for |
+|------|------|--------------|--------------|
+| **Tier 0 Vault** | Your notes | Markdown folders (inbox, projects, people, tasks). Dex is just files. | Any editor. No AI required. |
+| **Tier 1 Core** | Tools + background jobs | Tasks, people index, meeting sync, search, and portable context/gate payloads. | Any assistant that can run Dex's MCP tools |
+| **Tier 2 Skills** | Named journeys | `/daily-plan`, `/process-meetings`, and the rest of the skill surface, generated into `.agents/`. | Any assistant that reads Agent Skills |
+| **Tier 3 Full** | Automatic in-chat behavior | Person context when you open a file, safety gates, session learning, and the mid-session health pulse. | **Claude Code today** — the reference implementation |
+
+Cursor, Codex, Gemini CLI, and other Agent Skills harnesses are Tier 2. The vault is always Tier 0. Cursor, ChatGPT, and Codex should call `boot_today` at session start and `get_person_context` when a person is mentioned. `check_safety_gate` is an advisory MCP check; only a verified pre-tool interceptor can enforce a refusal. The longer split is in [`docs/architecture/HARNESS-CAPABILITY.md`](docs/architecture/HARNESS-CAPABILITY.md) and [`docs/architecture/HOOK-INVENTORY.md`](docs/architecture/HOOK-INVENTORY.md).
+
+> **Unreleased portability preview:** this branch contains one portable plugin package for
+> Codex CLI/desktop, ChatGPT desktop, Claude Code/Cowork, Copilot CLI, and compatible
+> Agent Plugin clients; a native BB plugin is built separately; and Pi keeps its native
+> extension. The package shares Dex's read-only session context, person context, and
+> safety decision code. It has not been merged, published, submitted to a marketplace,
+> or released. Codex IDE extensions do not currently load plugins, and ChatGPT web/Cowork
+> connectors need a separately secured public endpoint before they can reach a local vault.
+> The developer-preview journeys and exact boundaries are in
+> [`docs/HARNESS-PORTABILITY.md`](docs/HARNESS-PORTABILITY.md).
 
 ---
 
-## Getting Started
+## Quick Install (Recommended)
+
+One pasted line checks your computer, installs anything missing (asking first), downloads Dex to `Documents/Dex`, and sets everything up. Safe to run more than once.
+
+**Mac** — press `Cmd+Space`, type "Terminal", press Enter, then paste this and press Enter:
+
+```bash
+curl -fsSL https://heydex.ai/install.sh | bash
+```
+
+**Windows** — open the Start menu, type "PowerShell", press Enter, then paste this and press Enter:
+
+```powershell
+irm https://heydex.ai/install.ps1 | iex
+```
+
+**Or let your AI do the whole thing.** If you already use Claude, ChatGPT, or another AI assistant that can run things on your computer, just tell it:
+
+> Install Dex on my computer. Follow the instructions at https://heydex.ai/install.md and walk me through anything you can't do yourself.
+
+When the installer finishes, open the Dex folder in Cursor or Claude Code, say **"hi"**, and Dex introduces itself and sets itself up around your role. Full details and troubleshooting: **[heydex.ai/install](https://heydex.ai/install/)**.
+
+**If anything goes wrong:** nothing on your computer is changed half-way — copy the error message, paste it to your AI assistant, and it can tell you exactly what to do. Or follow the step-by-step path below instead.
+
+---
+
+## Manual Setup (Step-by-Step Alternative)
+
+Prefer to see every step, or the quick install hit a snag? This section does the same thing by hand.
 
 ### What You'll Need to Install (One-Time)
 
@@ -136,15 +202,18 @@ Copy and paste this command and press Enter:
 
 **When it's done:** You'll see your cursor blinking again, ready for the next command.
 
-⚠️ **IMPORTANT: You're not done yet. Complete Steps 2B and 3 to finish setup.**
+**Your system Python stays clean:** The installer creates a project-local virtual environment (`.venv`) inside your vault and installs all Python dependencies there — your system, Homebrew, or pyenv Python is never modified. No global installs, and no `pipx` needed.
+
+⚠️ **IMPORTANT: You're not done yet. Complete Step 3 below to finish setup.**
 
 **Verify MCP servers:** Cursor should automatically detect `.mcp.json` and enable the MCP servers. Look for the MCP icon in Cursor's bottom panel - you should see server names with green checkmarks.
 
-**If you see errors:** The most common issue is Python dependencies. First upgrade pip, then install packages:
+**If you see errors:** The most common issue is Python dependencies not landing in Dex's virtual environment. Recreate it and reinstall — this keeps everything inside `.venv` and never touches your system Python:
 
 ```bash
-python3 -m pip install --upgrade pip
-pip3 install --user "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r core/mcp/requirements.txt
 ```
 
 Then restart Cursor.
@@ -225,18 +294,20 @@ Git for Windows isn't installed.
 
 The installer tries two methods automatically. If both fail, your pip version might be too old.
 
-**Fix (upgrade pip first, then install):**
+**Fix (reinstall into Dex's virtual environment):**
 
 ```bash
-python3 -m pip install --upgrade pip
-pip3 install --user "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r core/mcp/requirements.txt
 ```
 
 **Windows:**
 
 ```bash
-python -m pip install --upgrade pip
-pip install --user "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil
+python -m venv .venv
+.venv\Scripts\pip install --upgrade pip
+.venv\Scripts\pip install -r core/mcp/requirements.txt
 ```
 
 ---
@@ -247,11 +318,12 @@ If you see red error indicators next to MCP server names in Cursor:
 
 **"No server info found" error:**
 
-This means the Python MCP servers can't start. Most common fix (upgrade pip first):
+This means the Python MCP servers can't start. Most common fix — reinstall the dependencies into Dex's virtual environment:
 
 ```bash
-python3 -m pip install --upgrade pip
-pip3 install --user "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r core/mcp/requirements.txt
 ```
 
 Then **restart Cursor completely** (Cmd+Q and reopen, or File → Quit).
@@ -294,9 +366,17 @@ If `/daily-plan` doesn't show your meetings, or your recurring meetings (e.g. we
 
 1. **Add Google to the Calendar app** — Open **Calendar** (Mac's built-in app) → **Calendar** → **Add Account…** → **Google** → sign in. Dex reads from this app.
 2. **Let Cursor see your calendar** — **System Settings** → **Privacy & Security** → **Calendars** → turn **Cursor** on, then click **Cursor** and set access to **Full** (not "Add Only"). Restart Cursor after changing it.
-3. **If you skipped the installer or fixed Python yourself** — The installer normally sets up calendar support on Mac. If you didn't run it or installed packages by hand, in Terminal run: `pip3 install --user pyobjc-framework-EventKit`, then restart Cursor.
+3. **If you skipped the installer or fixed Python yourself** — The installer normally sets up calendar support on Mac. If you didn't run it or installed packages by hand, in Terminal run: `.venv/bin/pip install -r core/mcp/requirements.txt`, then restart Cursor.
 
 See **[Calendar_Setup.md](06-Resources/Dex_System/Calendar_Setup.md)** for the full guide.
+
+---
+
+### Something else seems broken after setup?
+
+Once Dex is running, ask it to run `/dex-doctor` — a whole-system checkup that tells you honestly what's working, what's switched off and what's broken, repairs what it can on its own, and guides you through the rest.
+
+And if the problem turns out to be a bug in Dex itself, you don't need a command or the right words: just describe what happened ("the meeting sync is doing something weird"). Dex investigates on your machine, writes the bug report for you, and by default waits for your yes before anything leaves — never anything from your notes, meetings or conversations. It tells you when the fix ships. Details: [what a report can contain](https://heydex.ai/help/feedback.html) · [the checkup](https://heydex.ai/help/updating-troubleshooting.html#health-dex-doctor)
 
 </details>
 
@@ -512,7 +592,7 @@ Out of the box, working immediately:
 
 - **8 core capabilities** - Daily focus, relationship tracking, commitment management, career evidence, task sync that actually works, learning system, project health monitoring, system evolution (see jobs table above)
 - **Complete planning system** - Quarterly goals → weekly priorities → daily plans, all connected with rollup tracking
-- **25+ ready-to-use skills** - `/daily-plan`, `/meeting-prep`, `/career-coach`, `/week-review` and more - invoke with `/skill-name`
+- **70+ ready-to-use skills** - `/daily-plan`, `/meeting-prep`, `/process-meetings`, `/week-review`, `/commitments`, `/relationship-radar` and more - invoke with `/skill-name`. Role-specific packs (career coaching, sales, finance…) switch on via `/manage-capabilities`.
 - **Role-based setup** - 31 roles from CEO to IC, scaffolds appropriate folder structure and workflows. Onboarding MCP enforces validation (email domain required for Internal/External person routing) with session resume capability
 - **Meeting intelligence** - Process transcripts into structured notes with action items auto-synced. Works with Granola MCP (included), or paste transcripts from any source - system recognizes and processes them
 - **Task management with unique IDs (Work MCP)** - Tasks sync everywhere automatically (meeting notes, person pages, project files). Check off once, updates everywhere. Deduplication prevents doubles. Priority limits stop overcommit.
@@ -568,14 +648,14 @@ One decision instead of many. Immediate filing.
 
 Great work happens daily, but evidence disappears. Review time becomes a scramble to remember what you accomplished.
 
-Run `/career-setup` once (job description, career ladder, recent review, growth goals). From that point forward, Dex automatically captures career evidence:
+Career coaching lives in Dex's optional **Career room** — Dex offers it during setup, or turn it on anytime with `/manage-capabilities`. Then run `/career-setup` once (job description, career ladder, recent review, growth goals). From that point forward, Dex can surface possible career evidence during supported workflows. It shows the exact sourced candidate and asks before saving anything:
 
-| When | What Gets Captured |
+| When | What Dex May Suggest |
 |------|-------------------|
-| Daily reviews | Achievements worth saving for promotion discussions |
-| Manager 1:1s (via Granola) | Feedback and development context |
-| Project completions | Impact and skills demonstrated |
-| Weekly reviews | Work tagged with career skills |
+| Daily reviews | Achievements that may be worth saving for promotion discussions |
+| Manager 1:1s (via Granola) | Feedback and development context found in the source note |
+| Project completions | Sourced impact and skills that may be useful later |
+| Weekly reviews | Work that may support a career skill |
 
 ### Your Personal Career Coach
 
@@ -661,32 +741,6 @@ The system teaches you progressively. You learn what you need, when you need it.
 
 ---
 
-## Demo Mode
-
-Want to explore without adding your data? Want to show colleagues what's possible before they commit?
-
-Run `/dex-demo on` for pre-populated sample content that demonstrates **all 8 Jobs to Be Done**:
-
-**What's included:**
-- **Career Development System** - Role definition, career ladder (L4→L5), performance reviews, growth goals, evidence library
-- **Full Week of Planning** - Daily plans (Mon-Fri), weekly plan, morning/evening journals, weekly reflection  
-- **Learning & Reflection** - Working preferences, mistake patterns, session learnings, pattern recognition
-- **Company Intelligence** - Acme Corp page aggregating contacts, meetings, and tasks across the organization
-- **Active Projects** - Mobile launch (high-stakes), portal redesign, API partnerships
-- **Meeting Intelligence** - Week of notes with scattered tasks for `/triage` to demonstrate cleanup workflow
-- **System Evolution** - Improvement backlog with 10 AI-ranked ideas, usage tracking, orphaned ideas
-- **People & Relationships** - 5 person pages (internal/external) with meeting history and context
-
-Everything happens in `System/Demo/` - your real vault stays untouched. Run `/dex-demo off` to switch back. Reset demo content anytime with `/dex-demo reset`.
-
-Useful for:
-- Exploring features risk-free before adding real data (see all 8 Jobs in action)
-- Demoing to colleagues - show what AI systems can do beyond chat
-- Driving AI fluency across your team without setup friction
-- Testing new workflows and commands (`/career-coach`, `/dex-backlog`, etc.)
-
----
-
 ## The System That Improves Itself
 
 The system captures learnings and improves over time:
@@ -738,14 +792,17 @@ Each session makes the next one better.
 
 | Item | Cost |
 |------|------|
-| Cursor Pro | $20/month (Claude included) |
 | Cursor Free | $0 (limited usage, enough to try it) |
+| Cursor Pro | $20/month (Claude included) |
+| Claude Pro (for Claude Code) | $20/month — alternative to Cursor Pro |
 | Time | 10 minutes to set up |
 | Coding skills | None required |
 
 ---
 
 ## Documentation
+
+**📖 Start with the [Dex Guide](https://heydex.ai/help/)** — a plain-English walkthrough from install to making Dex your own, with copy-paste prompts throughout. It's written for non-technical professionals and doubles as a hands-on education in Claude Code itself. (Also readable by AI agents: [llms.txt](https://heydex.ai/help/llms.txt).)
 
 Comprehensive guides included in the repo:
 
@@ -766,13 +823,9 @@ These guides live in your vault after setup.
 
 **Get updates with one command - no technical knowledge needed.**
 
-### Automatic Notifications
+### Automatic Release Awareness
 
-Dex checks for updates every 7 days during `/daily-plan`:
-
-```
-🎁 Dex v1.3.0 is available. Run /dex-update to see what's new and update.
-```
+At most once a day, Dex quietly checks whether a newer release exists and, if it can verify one, mentions it at the start of your session — with the exact version and a link so you can review before deciding. It never downloads or installs anything on its own, and if it can't verify a release it says nothing rather than guess.
 
 ### Update in One Command
 
@@ -780,16 +833,15 @@ Dex checks for updates every 7 days during `/daily-plan`:
 /dex-update
 ```
 
-**That's it.** Dex shows you what's new, you confirm, and then it handles everything:
-- ✓ Downloads latest version
-- ✓ Protects your data (never touches notes/tasks/projects)
-- ✓ Handles conflicts automatically
-- ✓ Creates safety backup
-- ✓ Shows progress at every step
+**That's it.** Dex shows you exactly what would change, you approve, and it handles the rest:
+- ✓ Previews every change before touching anything
+- ✓ Protects your data (your notes/tasks/projects are never part of an update)
+- ✓ If you've customized a file, nothing moves until you choose: keep yours, take the new one, or keep both
+- ✓ Backs up first, verifies after, and writes an undo receipt
+- ✓ `/dex-rollback` rewinds the exact change, byte for byte
 
 **Time:** 2-5 minutes  
-**Technical knowledge:** None  
-**Risk:** Zero - your data is always safe
+**Technical knowledge:** None
 
 ### If Something Goes Wrong
 
@@ -808,36 +860,6 @@ Updates never touch:
 - Your API keys
 
 **For detailed instructions:** See [Updating_Dex.md](06-Resources/Dex_System/Updating_Dex.md)
-
----
-
-## AI Model Options (Optional)
-
-Dex works with Claude by default, but you can also use cheaper cloud models or offline local models.
-
-**Why configure alternatives?**
-- **Save money:** Budget cloud models cost 80-97% less for routine tasks
-- **Work offline:** Download a model to use on planes, trains, or without internet
-- **Privacy:** Local models keep your data on your computer
-
-**Configure your options:**
-
-```
-/ai-setup
-```
-
-**What this offers:**
-- **Budget Cloud** — Kimi K2.5, DeepSeek (~$5-10 upfront, then very cheap)
-- **Offline Mode** — Qwen 2.5 running locally (free forever, requires 8GB+ RAM)
-- **Smart Routing** — Automatically pick the best model per task
-
-**Check your configuration:**
-
-```
-/ai-status
-```
-
-**For detailed guide:** See [AI_Model_Options.md](06-Resources/Dex_System/AI_Model_Options.md)
 
 ---
 
@@ -874,8 +896,11 @@ Obsidian is completely optional - Dex works perfectly in Cursor/terminal alone. 
 
 ## Resources
 
+- [Malleable Software: When Everyone Can Build, What Makes a Great Product?](https://www.youtube.com/watch?v=QcqBsxw9hQM) — Dave's keynote on the journey and thinking behind Dex
 - [Vibe PM Episode 8](https://youtu.be/WaqgSvL-V10?si=b2Pfwf7I5rozWCo0) — Video walkthrough
 - [Companion Blog Post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/) — Deep dive on all the concepts
+- [The highs and lows of building Dex](https://www.linkedin.com/feed/update/urn:li:activity:7486431643524796418/) — Dave's honest account: the pause, the unlock, and what shipped
+- [heydex.ai](https://heydex.ai) — the Dex site: [guide](https://heydex.ai/help/), [DexDiff profiles](https://heydex.ai), and [desktop/mobile beta signup](https://heydex.ai/beta)
 - [Cursor](https://cursor.com) — The AI-powered editor
 - [Granola](https://granola.ai) — Meeting transcription (optional)
 
@@ -919,4 +944,4 @@ Commercial use is not allowed without a separate written commercial license from
 
 ---
 
-**Ready to start?** Follow the [setup instructions above](#getting-started) — install Cursor, get the code, run `/setup` inside Cursor's chat panel.
+**Ready to start?** Follow the [quick install above](#quick-install-recommended) — one pasted line, then open the Dex folder in Cursor or Claude Code and say "hi".

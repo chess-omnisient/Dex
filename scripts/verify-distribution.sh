@@ -11,6 +11,11 @@ echo ""
 ERRORS=0
 WARNINGS=0
 
+# Tau removal is a release invariant, not merely a source cleanup.
+if ! python3 scripts/check-tau-removal.py --source-root "$PWD"; then
+    ERRORS=$((ERRORS + 1))
+fi
+
 # Check 1: Verify .mcp.json is not tracked
 echo "✓ Checking .mcp.json is gitignored..."
 if git ls-files --error-unmatch .mcp.json 2>/dev/null; then
@@ -51,12 +56,12 @@ USER_FOLDERS=("00-Inbox" "01-Quarter_Goals" "02-Week_Priorities" "03-Tasks" "04-
 for folder in "${USER_FOLDERS[@]}"; do
     if git ls-files --error-unmatch "$folder" 2>/dev/null | head -1 >/dev/null; then
         echo "  ⚠️  WARNING: $folder has tracked files"
-        echo "     These should be in demo mode only: System/Demo/$folder"
+        echo "     User data folders should remain untracked"
         WARNINGS=$((WARNINGS + 1))
     fi
 done
 if [ $WARNINGS -eq 0 ]; then
-    echo "  ✅ No user data folders tracked (or only System/Demo)"
+    echo "  ✅ No user data folders tracked"
 fi
 
 # Check 5: Check for personal identifiable information
@@ -108,19 +113,116 @@ else
     echo "  ✅ Template uses {{VAULT_PATH}} placeholder"
 fi
 
-# Check 9: Count MCP servers
+# Check 9: Every top-level MCP server is registered exactly once
 echo ""
-echo "✓ Verifying MCP server count..."
-MCP_COUNT=$(find core/mcp -name '*_server.py' -o -name 'update_checker.py' | wc -l | tr -d ' ')
-TEMPLATE_COUNT=$(grep -c '{{VAULT_PATH}}/core/mcp/' System/.mcp.json.example)
-if [ "$MCP_COUNT" != "$TEMPLATE_COUNT" ]; then
-    echo "  ⚠️  WARNING: MCP mismatch - $MCP_COUNT servers found, $TEMPLATE_COUNT in template"
-    WARNINGS=$((WARNINGS + 1))
+echo "✓ Verifying MCP server registrations..."
+MCP_FILES=$(find core/mcp -maxdepth 1 \( -name '*_server.py' -o -name 'update_checker.py' \) -print | sort)
+TEMPLATE_FILES=$(python3 - <<'PY'
+import json
+from pathlib import Path
+
+config = json.loads(Path("System/.mcp.json.example").read_text(encoding="utf-8"))
+prefix = "{{VAULT_PATH}}/"
+for server in config.get("mcpServers", {}).values():
+    for arg in server.get("args", []):
+        if isinstance(arg, str) and arg.startswith(prefix + "core/mcp/"):
+            print(arg.removeprefix(prefix))
+PY
+)
+TEMPLATE_FILES=$(printf '%s\n' "$TEMPLATE_FILES" | sort)
+
+if [ "$MCP_FILES" != "$TEMPLATE_FILES" ]; then
+    echo "  ❌ ERROR: MCP server files and template registrations differ"
+    MISSING_REGISTRATIONS=$(comm -23 <(printf '%s\n' "$MCP_FILES") <(printf '%s\n' "$TEMPLATE_FILES"))
+    MISSING_FILES=$(comm -13 <(printf '%s\n' "$MCP_FILES") <(printf '%s\n' "$TEMPLATE_FILES"))
+    if [ -n "$MISSING_REGISTRATIONS" ]; then
+        echo "     Unregistered server files:"
+        echo "$MISSING_REGISTRATIONS" | sed 's/^/       /'
+    fi
+    if [ -n "$MISSING_FILES" ]; then
+        echo "     Missing or duplicate server files referenced by the template:"
+        echo "$MISSING_FILES" | sed 's/^/       /'
+    fi
+    ERRORS=$((ERRORS + 1))
 else
-    echo "  ✅ All $MCP_COUNT MCP servers in template"
+    MCP_COUNT=$(printf '%s\n' "$MCP_FILES" | wc -l | tr -d ' ')
+    echo "  ✅ All $MCP_COUNT MCP server files match the template exactly"
 fi
 
-# Check 10: Personal paths in .mcp.json (if exists)
+# Check 10: Tracked integration templates must not enable personal integrations
+echo ""
+echo "✓ Checking integration templates contain no personal enabled state..."
+INTEGRATION_STATE_VIOLATIONS=$(python3 - <<'PY'
+import re
+import subprocess
+from pathlib import Path
+
+tracked = subprocess.run(
+    ["git", "ls-files", "--", "System/integrations/*.yaml"],
+    check=True,
+    capture_output=True,
+    text=True,
+).stdout.splitlines()
+
+for filename in tracked:
+    enabled_block_indent = None
+    hooks_block_indent = None
+    for line_number, raw_line in enumerate(
+        Path(filename).read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        content = raw_line.split("#", 1)[0].rstrip()
+        if not content.strip() or ":" not in content:
+            continue
+
+        indent = len(content) - len(content.lstrip())
+        key, value = content.lstrip().split(":", 1)
+        key = key.strip()
+        value = value.strip()
+
+        if enabled_block_indent is not None and indent <= enabled_block_indent:
+            enabled_block_indent = None
+        if hooks_block_indent is not None and indent <= hooks_block_indent:
+            hooks_block_indent = None
+
+        normalized = value.strip("'\"").lower()
+        is_true = normalized == "true"
+        inline_true = bool(re.search(r"(?i)(?<![A-Za-z0-9_])true(?![A-Za-z0-9_])", value))
+        enabled_true = bool(
+            re.search(
+                r"(?i)(?:^|[,{\s])['\"]?enabled['\"]?\s*:\s*true(?![A-Za-z0-9_])",
+                content,
+            )
+        )
+        violation = enabled_true or (
+            is_true
+            and (
+                key == "enabled"
+                or enabled_block_indent is not None
+                or hooks_block_indent is not None
+            )
+        )
+        if key in {"enabled", "hooks"} and value and inline_true:
+            violation = True
+
+        if violation:
+            print(f"{filename}:{line_number}:{raw_line}")
+
+        if not value and key == "enabled":
+            enabled_block_indent = indent
+        if not value and key == "hooks":
+            hooks_block_indent = indent
+PY
+)
+if [ -n "$INTEGRATION_STATE_VIOLATIONS" ]; then
+    echo "  ❌ ERROR: Tracked integration templates contain enabled integrations or hooks:"
+    echo "$INTEGRATION_STATE_VIOLATIONS" | sed 's/^/     /'
+    echo "     Keep shipped templates off; /integrate-mcp populates each user's local state."
+    ERRORS=$((ERRORS + 1))
+else
+    echo "  ✅ Tracked integration templates are safely disabled"
+fi
+
+# Check 11: Personal paths in .mcp.json (if exists)
 if [ -f ".mcp.json" ]; then
     echo ""
     echo "✓ Checking local .mcp.json doesn't contain personal paths..."
@@ -128,6 +230,167 @@ if [ -f ".mcp.json" ]; then
         echo "  ℹ️  INFO: Your local .mcp.json has /Users/dave paths (this is fine - file is gitignored)"
     fi
 fi
+
+# Check 12: No hardcoded /Users/ paths in tracked code files
+echo ""
+echo "✓ Checking for hardcoded /Users/ paths in code..."
+HARDCODED_PATHS=$(git ls-files -- '*.py' '*.ts' '*.cjs' '*.sh' | \
+    xargs grep -n '/Users/' 2>/dev/null | \
+    grep -v 'scripts/verify-distribution\.sh' | \
+    grep -v 'scripts/check-path-consistency\.sh' | \
+    grep -v '#.*/Users/' | \
+    grep -v '//.*/Users/' || true)
+if [ -n "$HARDCODED_PATHS" ]; then
+    echo "  ❌ ERROR: Hardcoded /Users/ paths found in code:"
+    echo "$HARDCODED_PATHS" | head -10 | sed 's/^/     /'
+    ERRORS=$((ERRORS + 1))
+else
+    echo "  ✅ No hardcoded /Users/ paths in code"
+fi
+
+# Check 13: package.json version matches CHANGELOG latest
+echo ""
+echo "✓ Checking package.json version matches CHANGELOG..."
+PKG_VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+CHANGELOG_VERSION=$(grep -m1 '^\#\# \[' CHANGELOG.md | sed 's/.*\[\([0-9][0-9.]*\)\].*/\1/')
+if [ "$PKG_VERSION" != "$CHANGELOG_VERSION" ]; then
+    echo "  ❌ ERROR: package.json ($PKG_VERSION) != CHANGELOG ($CHANGELOG_VERSION)"
+    echo "     CI would otherwise rebuild the already-published package version and skip this release."
+    ERRORS=$((ERRORS + 1))
+else
+    echo "  ✅ Versions match: $PKG_VERSION"
+fi
+
+# Check 14: All MCP servers in .mcp.json.example exist as files
+echo ""
+echo "✓ Checking MCP server files exist..."
+MCP_MISSING=0
+if [ -f "System/.mcp.json.example" ]; then
+    for server_path in $(grep -o '{{VAULT_PATH}}/core/mcp/[^"]*' System/.mcp.json.example | sed 's|{{VAULT_PATH}}/||'); do
+        if [ ! -f "$server_path" ]; then
+            echo "  ❌ ERROR: MCP server missing: $server_path"
+            MCP_MISSING=$((MCP_MISSING + 1))
+        fi
+    done
+    if [ $MCP_MISSING -gt 0 ]; then
+        ERRORS=$((ERRORS + MCP_MISSING))
+    else
+        echo "  ✅ All MCP server files exist"
+    fi
+else
+    echo "  ⚠️  WARNING: System/.mcp.json.example not found"
+    WARNINGS=$((WARNINGS + 1))
+fi
+
+# Check 15: No hardcoded /Users/ paths in docs/config (.md, .yaml, .json)
+# These ship to users and either break installs or leak personal paths.
+echo ""
+echo "✓ Checking for hardcoded /Users/ paths in docs/config..."
+DOC_USER_PATHS=$(git ls-files -- '*.md' '*.yaml' '*.yml' '*.json' | \
+    xargs grep -n '/Users/' 2>/dev/null | \
+    grep -v 'env.example\|Distribution_Checklist\|DISTRIBUTION_READY\|verify-distribution\|^\.ci/' | \
+    grep -vE '/Users/(your-name|your-username|username|testuser|you|name|<|\{)' || true)
+if [ -n "$DOC_USER_PATHS" ]; then
+    echo "  ❌ ERROR: Hardcoded /Users/ paths found in docs/config:"
+    echo "$DOC_USER_PATHS" | head -10 | sed 's/^/     /'
+    echo "     Use \$CLAUDE_PROJECT_DIR, ~/your-vault, or a placeholder instead."
+    ERRORS=$((ERRORS + 1))
+else
+    echo "  ✅ No hardcoded /Users/ paths in docs/config"
+fi
+
+# Check 16: Scripts that docs tell Dex to RUN must exist.
+# Catches "instruction shipped, implementation didn't" (e.g. auto-link-people.cjs).
+# Only matches runnable invocations (node/bash/sh/python <path>) of Dex-owned
+# dirs (.scripts/.claude/core) — prose mentions of a filename are ignored.
+echo ""
+echo "✓ Checking referenced runnable scripts exist..."
+# Keep in sync with core/tests/test_skill_integrity.py MISSING_RUNNABLE_ALLOWLIST.
+MISSING_RUNNABLE_ALLOWLIST=(
+    ".scripts/improve-prompt.cjs"
+    ".scripts/mcp/gmail-mcp.js"
+)
+MISSING_RUN=$(git grep -hoE '(node|bash|sh|python3?)[[:space:]]+(\./)?(\.scripts|\.claude|core)/[A-Za-z0-9_./-]+\.(cjs|js|sh|py)' -- '*.md' 2>/dev/null \
+    | grep -oE '(\.scripts|\.claude|core)/[A-Za-z0-9_./-]+\.(cjs|js|sh|py)' \
+    | sort -u | while read -r p; do if [ ! -e "$p" ]; then echo "$p"; fi; done || true)
+MISSING_REQUIRED_RUN=""
+if [ -n "$MISSING_RUN" ]; then
+    while IFS= read -r p; do
+        ALLOWLISTED=false
+        for allowed in "${MISSING_RUNNABLE_ALLOWLIST[@]}"; do
+            if [ "$p" = "$allowed" ]; then
+                ALLOWLISTED=true
+                break
+            fi
+        done
+        if [ "$ALLOWLISTED" = true ]; then
+            echo "  ℹ️  INFO: Optional referenced script is not shipped: $p"
+        elif [ -z "$MISSING_REQUIRED_RUN" ]; then
+            MISSING_REQUIRED_RUN="$p"
+        else
+            MISSING_REQUIRED_RUN="${MISSING_REQUIRED_RUN}"$'\n'"$p"
+        fi
+    done <<< "$MISSING_RUN"
+fi
+if [ -n "$MISSING_REQUIRED_RUN" ]; then
+    echo "  ❌ ERROR: Docs tell Dex to run scripts that don't exist:"
+    echo "$MISSING_REQUIRED_RUN" | sed 's/^/     /'
+    echo "     Either ship the script or remove the instruction."
+    ERRORS=$((ERRORS + 1))
+else
+    echo "  ✅ All required referenced runnable scripts exist"
+fi
+
+# Check 17: A real release build contains no test suites.
+echo ""
+echo "✓ Verifying release branch strips all test suites..."
+RELEASE_CHECK_DIR=$(mktemp -d)
+RELEASE_CHECK_REPO="$RELEASE_CHECK_DIR/repo"
+if git clone --local --no-hardlinks --quiet "$PWD" "$RELEASE_CHECK_REPO" \
+    && git -C "$RELEASE_CHECK_REPO" config user.name "Dex Distribution Check" \
+    && git -C "$RELEASE_CHECK_REPO" config user.email "distribution@example.com" \
+    && git -C "$RELEASE_CHECK_REPO" checkout -B main HEAD --quiet \
+    && bash "$RELEASE_CHECK_REPO/scripts/build-release.sh" >/dev/null \
+    && git -C "$RELEASE_CHECK_REPO" checkout release --quiet \
+    && python3 scripts/check-catalog-coverage.py --release-root "$RELEASE_CHECK_REPO" >/dev/null; then
+    RELEASE_TEST_FILES=$(git -C "$RELEASE_CHECK_REPO" ls-tree -r --name-only release -- \
+        core/tests core/mcp/tests core/migrations/tests .claude/hooks/tests \
+        core/integrations/connection-manager | \
+        grep -E '(^core/(tests|mcp/tests|migrations/tests)/|^\.claude/hooks/tests/|\.test\.cjs$|/hardening\.child\.cjs$)' || true)
+    if [ -n "$RELEASE_TEST_FILES" ]; then
+        echo "  ❌ ERROR: Test files found in generated release branch:"
+        echo "$RELEASE_TEST_FILES" | sed 's/^/     /'
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "  ✅ Generated release branch contains no test suites"
+    fi
+    RELEASE_DEAD_SCRIPTS=$(git -C "$RELEASE_CHECK_REPO" show release:package.json | node -e '
+      let raw = "";
+      process.stdin.on("data", (chunk) => raw += chunk);
+      process.stdin.on("end", () => {
+        const scripts = JSON.parse(raw).scripts || {};
+        const stripped = [
+          "test:hooks",
+          "test:scripts",
+          "test:integrations",
+          "check:connections-contract",
+          "test:connections-consumer-smoke",
+        ];
+        process.stdout.write(stripped.filter((name) => Object.hasOwn(scripts, name)).join("\n"));
+      });
+    ')
+    if [ -n "$RELEASE_DEAD_SCRIPTS" ]; then
+        echo "  ❌ ERROR: Release package contains scripts whose targets were stripped:"
+        echo "$RELEASE_DEAD_SCRIPTS" | sed 's/^/     /'
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "  ✅ Release package contains no scripts pointing at stripped tests/helpers"
+    fi
+else
+    echo "  ❌ ERROR: Could not build a temporary release branch"
+    ERRORS=$((ERRORS + 1))
+fi
+rm -rf "$RELEASE_CHECK_DIR"
 
 # Summary
 echo ""

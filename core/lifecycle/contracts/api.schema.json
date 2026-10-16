@@ -1,0 +1,1324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dex/contracts/lifecycle-api-v1.schema.json",
+  "title": "Dex Frozen Lifecycle Service API v1",
+  "description": "Changing a frozen operation signature or shape requires an API version bump and a compatibility bridge.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "x-operations"],
+  "properties": {
+    "api_version": {"const": "1.5.0"},
+    "x-operations": {"type": "object"}
+  },
+  "x-operations": {
+    "build_inventory_and_plan": {
+      "request": {"$ref": "#/$defs/vaultRequest"},
+      "response": {"$ref": "#/$defs/inventoryPlanResponse"}
+    },
+    "build_and_preview_adoption": {
+      "request": {"$ref": "#/$defs/previewRequest"},
+      "response": {"$ref": "#/$defs/previewResponse"}
+    },
+    "execute_approved_adoption": {
+      "request": {"$ref": "#/$defs/executeRequest"},
+      "response": {"$ref": "#/$defs/executeResponse"}
+    },
+    "rewind_adoption_by_receipt": {
+      "request": {"$ref": "#/$defs/rewindRequest"},
+      "response": {"$ref": "#/$defs/rewindResponse"}
+    },
+    "read_lifecycle_state": {
+      "request": {"$ref": "#/$defs/vaultRequest"},
+      "response": {"$ref": "#/$defs/stateResponse"}
+    },
+    "deliver_and_apply_latest_release": {
+      "request": {"$ref": "#/$defs/vaultRequest"},
+      "response": {"$ref": "#/$defs/releaseDeliveryResponse"}
+    },
+    "deliver_latest_release": {
+      "request": {"$ref": "#/$defs/vaultRequest"},
+      "response": {"$ref": "#/$defs/releaseDeliveryResponse"}
+    },
+    "build_and_preview_delivered_release": {
+      "request": {"$ref": "#/$defs/deliveredReleasePreviewRequest"},
+      "response": {"$ref": "#/$defs/deliveredReleasePreviewResponse"}
+    },
+    "execute_approved_delivered_release": {
+      "request": {"$ref": "#/$defs/deliveredReleaseExecuteRequest"},
+      "response": {"$ref": "#/$defs/deliveredReleaseExecuteResponse"}
+    },
+    "build_and_preview_mcp_registration": {
+      "request": {"$ref": "#/$defs/vaultRequest"},
+      "response": {"$ref": "#/$defs/mcpRegistrationPreviewResponse"}
+    },
+    "execute_approved_mcp_registration": {
+      "request": {"$ref": "#/$defs/mcpRegistrationExecuteRequest"},
+      "response": {"$ref": "#/$defs/mcpRegistrationExecuteResponse"}
+    },
+    "build_and_preview_onboarding_context": {
+      "request": {"$ref": "#/$defs/onboardingContextPreviewRequest"},
+      "response": {"$ref": "#/$defs/onboardingContextPreviewResponse"}
+    },
+    "execute_approved_onboarding_context": {
+      "request": {"$ref": "#/$defs/onboardingContextExecuteRequest"},
+      "response": {"$ref": "#/$defs/onboardingContextExecuteResponse"}
+    },
+    "build_and_preview_automation_claim": {
+      "request": {"$ref": "#/$defs/automationClaimPreviewRequest"},
+      "response": {"$ref": "#/$defs/automationPreviewResponse"}
+    },
+    "execute_approved_automation_claim": {
+      "request": {"$ref": "#/$defs/automationExecuteRequest"},
+      "response": {"$ref": "#/$defs/automationExecuteResponse"}
+    },
+    "build_and_preview_automation_release": {
+      "request": {"$ref": "#/$defs/automationReleasePreviewRequest"},
+      "response": {"$ref": "#/$defs/automationPreviewResponse"}
+    },
+    "execute_approved_automation_release": {
+      "request": {"$ref": "#/$defs/automationExecuteRequest"},
+      "response": {"$ref": "#/$defs/automationExecuteResponse"}
+    },
+    "build_and_preview_conflict_resolution": {
+      "request": {"$ref": "#/$defs/resolutionsRequest"},
+      "response": {"$ref": "#/$defs/conflictPreviewResponse"}
+    },
+    "execute_approved_conflict_resolution": {
+      "request": {"$ref": "#/$defs/conflictExecuteRequest"},
+      "response": {"$ref": "#/$defs/executeResponse"}
+    },
+    "build_archive_removal_preview": {
+      "request": {"$ref": "#/$defs/vaultRequest"},
+      "response": {"$ref": "#/$defs/archivePreviewResponse"}
+    },
+    "execute_approved_archive_removal": {
+      "request": {"$ref": "#/$defs/archiveExecuteRequest"},
+      "response": {"$ref": "#/$defs/archiveExecuteResponse"}
+    },
+    "build_and_preview_topology_migration": {
+      "request": {"$ref": "#/$defs/vaultRequest"},
+      "response": {"$ref": "#/$defs/topologyPreviewResponse"}
+    },
+    "execute_approved_topology_migration": {
+      "request": {"$ref": "#/$defs/topologyExecuteRequest"},
+      "response": {"$ref": "#/$defs/topologyExecuteResponse"}
+    },
+    "execute_approved_rebuild_capsule": {
+      "request": {"$ref": "#/$defs/rebuildExecuteRequest"},
+      "response": {"$ref": "#/$defs/rebuildCapsuleResponse"}
+    },
+    "execute_approved_rebuild_staging": {
+      "request": {"$ref": "#/$defs/rebuildExecuteRequest"},
+      "response": {"$ref": "#/$defs/rebuildStagingResponse"}
+    },
+    "execute_approved_rebuild_verification": {
+      "request": {"$ref": "#/$defs/rebuildVerificationRequest"},
+      "response": {"$ref": "#/$defs/rebuildVerificationResponse"}
+    },
+    "execute_approved_rebuild_activation": {
+      "request": {"$ref": "#/$defs/rebuildExecuteRequest"},
+      "response": {"$ref": "#/$defs/rebuildActivationResponse"}
+    },
+    "rewind_rebuild_activation_by_receipt": {
+      "request": {"$ref": "#/$defs/rebuildRewindRequest"},
+      "response": {"$ref": "#/$defs/rebuildRewindResponse"}
+    },
+    "abandon_rebuild_capsule": {
+      "request": {"$ref": "#/$defs/rebuildAbandonRequest"},
+      "response": {"$ref": "#/$defs/rebuildAbandonResponse"}
+    },
+    "recover_rebuild_transactions": {
+      "request": {"$ref": "#/$defs/vaultRequest"},
+      "response": {"$ref": "#/$defs/rebuildRecoveryResponse"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "path": {"type": "string", "minLength": 1},
+    "itemId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+    "resolutionStrategy": {
+      "type": "string",
+      "enum": ["take-theirs", "keep-both"]
+    },
+    "resolutionSource": {
+      "type": "string",
+      "enum": ["release", "preserved"]
+    },
+    "apiEnvelope": {
+      "type": "object",
+      "required": ["api_version"],
+      "properties": {"api_version": {"const": "1.5.0"}}
+    },
+    "vaultRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root"],
+      "properties": {"vault_root": {"$ref": "#/$defs/path"}}
+    },
+    "automationClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automation_id", "owner_id", "plist_relative_path", "plist_sha256"],
+      "properties": {
+        "automation_id": {"type": "string", "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"},
+        "owner_id": {"const": "dex-solo"},
+        "plist_relative_path": {"type": "string", "pattern": "^Library/LaunchAgents/[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?\\.plist$"},
+        "plist_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "automationClaimRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automation_id", "owner_id", "plist_relative_path", "plist_sha256", "launchd_state"],
+      "properties": {
+        "automation_id": {"type": "string", "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"},
+        "owner_id": {"const": "dex-solo"},
+        "plist_relative_path": {"type": "string", "pattern": "^Library/LaunchAgents/[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?\\.plist$"},
+        "plist_sha256": {"$ref": "#/$defs/sha256"},
+        "launchd_state": {"const": "unloaded"}
+      }
+    },
+    "automationReleaseRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automation_id", "owner_id", "scheduler_state"],
+      "properties": {
+        "automation_id": {"type": "string", "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"},
+        "owner_id": {"const": "dex-solo"},
+        "scheduler_state": {"const": "stopped"}
+      }
+    },
+    "automationClaimPreviewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "claim"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "claim": {"$ref": "#/$defs/automationClaimRequest"}
+      }
+    },
+    "automationReleasePreviewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "release"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "release": {"$ref": "#/$defs/automationReleaseRequest"}
+      }
+    },
+    "automationClaimPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automation_ownership_version", "operation", "claim", "launchd_state", "current_sidecar_sha256", "next_sidecar_sha256"],
+      "properties": {
+        "automation_ownership_version": {"const": 1},
+        "operation": {"const": "claim"},
+        "claim": {"$ref": "#/$defs/automationClaim"},
+        "launchd_state": {"const": "unloaded"},
+        "current_sidecar_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "next_sidecar_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "automationReleasePreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automation_ownership_version", "operation", "claim", "scheduler_state", "current_sidecar_sha256", "next_sidecar_sha256"],
+      "properties": {
+        "automation_ownership_version": {"const": 1},
+        "operation": {"const": "release"},
+        "claim": {"$ref": "#/$defs/automationClaim"},
+        "scheduler_state": {"const": "stopped"},
+        "current_sidecar_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "next_sidecar_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "automationPreview": {
+      "anyOf": [
+        {"$ref": "#/$defs/automationClaimPreview"},
+        {"$ref": "#/$defs/automationReleasePreview"}
+      ]
+    },
+    "automationPreviewResponse": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api_version", "needed", "preview", "approval_token"],
+          "properties": {
+            "api_version": {"const": "1.5.0"},
+            "needed": {"const": true},
+            "preview": {"$ref": "#/$defs/automationPreview"},
+            "approval_token": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api_version", "needed", "preview", "approval_token"],
+          "properties": {
+            "api_version": {"const": "1.5.0"},
+            "needed": {"const": false},
+            "preview": {"type": "null"},
+            "approval_token": {"type": "null"}
+          }
+        }
+      ]
+    },
+    "automationExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/automationPreview"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "automationExecuteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "receipt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operation", "status", "automation_id", "owner_id", "transaction_id", "sidecar_sha256"],
+          "properties": {
+            "operation": {"type": "string", "enum": ["claim", "release"]},
+            "status": {"type": "string", "enum": ["claimed", "already-claimed", "released", "already-released"]},
+            "automation_id": {"type": "string"},
+            "owner_id": {"const": "dex-solo"},
+            "transaction_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "sidecar_sha256": {"$ref": "#/$defs/sha256"}
+          }
+        }
+      }
+    },
+    "releaseDeliveryResponse": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api_version", "status", "evidence"],
+          "properties": {
+            "api_version": {"const": "1.5.0"},
+            "status": {"const": "not-delivered"},
+            "evidence": {"type": "object"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api_version", "status", "release"],
+          "properties": {
+            "api_version": {"const": "1.5.0"},
+            "status": {"const": "delivered"},
+            "release": {"$ref": "#/$defs/releaseIdentity"}
+          }
+        }
+      ]
+    },
+    "releaseIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag", "tag_object", "commit", "tree", "version", "channel"],
+      "properties": {
+        "tag": {"type": "string", "minLength": 1},
+        "tag_object": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+        "tree": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "channel": {"type": "string", "enum": ["stable", "beta"]}
+      }
+    },
+    "deliveredReleaseWrite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "action", "sha256", "byte_size", "mode", "current"],
+      "properties": {
+        "path": {"$ref": "#/$defs/path"},
+        "action": {"type": "string", "enum": ["write", "delete"]},
+        "sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "byte_size": {"type": "integer", "minimum": 0},
+        "mode": {"type": "integer", "minimum": 0, "maximum": 511},
+        "current": {"type": "object"}
+      }
+    },
+    "deliveredReleasePreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["release", "previous_commit", "writes"],
+      "properties": {
+        "release": {"$ref": "#/$defs/releaseIdentity"},
+        "previous_commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+        "writes": {"type": "array", "items": {"$ref": "#/$defs/deliveredReleaseWrite"}}
+      }
+    },
+    "deliveredReleasePreviewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "release"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "release": {"$ref": "#/$defs/releaseIdentity"}
+      }
+    },
+    "deliveredReleasePreviewResponse": {
+      "allOf": [
+        {"$ref": "#/$defs/apiEnvelope"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api_version", "preview", "approval_token"],
+          "properties": {
+            "api_version": {"const": "1.5.0"},
+            "preview": {"$ref": "#/$defs/deliveredReleasePreview"},
+            "approval_token": {"$ref": "#/$defs/sha256"}
+          }
+        }
+      ]
+    },
+    "deliveredReleaseExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/deliveredReleasePreview"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "deliveredReleaseExecuteResponse": {
+      "allOf": [
+        {"$ref": "#/$defs/apiEnvelope"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api_version", "receipt", "release"],
+          "properties": {
+            "api_version": {"const": "1.5.0"},
+            "receipt": {"type": "object"},
+            "release": {"$ref": "#/$defs/releaseIdentity"}
+          }
+        }
+      ]
+    },
+    "mcpRegistrationPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registration", "writes"],
+      "properties": {
+        "registration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["config_path", "server_name", "action"],
+          "properties": {
+            "config_path": {"const": ".mcp.json"},
+            "server_name": {"const": "customization-migration-mcp"},
+            "action": {"const": "add-only"}
+          }
+        },
+        "writes": {"type": "array", "minItems": 1, "items": {"type": "object"}}
+      }
+    },
+    "mcpRegistrationPreviewResponse": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api_version", "needed", "preview", "approval_token"],
+          "properties": {
+            "api_version": {"const": "1.5.0"},
+            "needed": {"const": true},
+            "preview": {"$ref": "#/$defs/mcpRegistrationPreview"},
+            "approval_token": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api_version", "needed", "preview", "approval_token"],
+          "properties": {
+            "api_version": {"const": "1.5.0"},
+            "needed": {"const": false},
+            "preview": {"type": "null"},
+            "approval_token": {"type": "null"}
+          }
+        }
+      ]
+    },
+    "mcpRegistrationExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/mcpRegistrationPreview"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "mcpRegistrationExecuteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "receipt": {"type": "object"}
+      }
+    },
+    "onboardingContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["working_context", "calendar_source", "writes"],
+      "properties": {
+        "working_context": {"type": "object"},
+        "calendar_source": {"type": "object"},
+        "writes": {"type": "array", "minItems": 1, "items": {"type": "object"}}
+      }
+    },
+    "onboardingContextPreviewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "working_context", "calendar_source"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "working_context": {"type": "object"},
+        "calendar_source": {"type": "object"}
+      }
+    },
+    "onboardingContextPreviewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "preview", "approval_token"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "preview": {"$ref": "#/$defs/onboardingContext"},
+        "approval_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "onboardingContextExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/onboardingContext"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "onboardingContextExecuteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "receipt": {"type": "object"}
+      }
+    },
+    "previewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "release_root", "requested_item_ids"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "release_root": {"$ref": "#/$defs/path"},
+        "requested_item_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/itemId"}
+        }
+      }
+    },
+    "inventory": {
+      "type": "object",
+      "required": ["inventory_version", "complete", "entries", "inventory_sha256"],
+      "properties": {
+        "inventory_version": {"const": 1},
+        "complete": {"type": "boolean"},
+        "entries": {"type": "array"},
+        "inventory_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan_version", "release_version", "catalog_sha256", "items", "counts"],
+      "properties": {
+        "plan_version": {"const": 1},
+        "release_version": {"type": "string", "minLength": 1},
+        "catalog_sha256": {"$ref": "#/$defs/sha256"},
+        "items": {"type": "array"},
+        "counts": {"type": "object"}
+      }
+    },
+    "inventoryPlanResponse": {
+      "allOf": [
+        {"$ref": "#/$defs/apiEnvelope"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api_version", "inventory", "plan"],
+          "properties": {
+            "api_version": {"const": "1.5.0"},
+            "inventory": {"$ref": "#/$defs/inventory"},
+            "plan": {"$ref": "#/$defs/plan"}
+          }
+        }
+      ]
+    },
+    "previewWrite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "new_sha256", "byte_size"],
+      "properties": {
+        "path": {"$ref": "#/$defs/path"},
+        "new_sha256": {"$ref": "#/$defs/sha256"},
+        "byte_size": {"type": "integer", "minimum": 0}
+      }
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preview_version", "catalog_sha256", "inventory_sha256", "items"],
+      "properties": {
+        "preview_version": {"const": 1},
+        "catalog_sha256": {"$ref": "#/$defs/sha256"},
+        "inventory_sha256": {"$ref": "#/$defs/sha256"},
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["item_id", "item_version", "action", "writes"],
+            "properties": {
+              "item_id": {"$ref": "#/$defs/itemId"},
+              "item_version": {"type": "string", "minLength": 1},
+              "action": {"const": "adopt"},
+              "writes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/previewWrite"}}
+            }
+          }
+        }
+      }
+    },
+    "previewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "preview", "approval_token"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "preview": {"$ref": "#/$defs/preview"},
+        "approval_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "executeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "release_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "release_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/preview"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "resolutionWrite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "new_sha256", "byte_size", "source"],
+      "properties": {
+        "path": {"$ref": "#/$defs/path"},
+        "new_sha256": {"$ref": "#/$defs/sha256"},
+        "byte_size": {"type": "integer", "minimum": 0},
+        "source": {"$ref": "#/$defs/resolutionSource"}
+      }
+    },
+    "resolutionItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_id", "item_version", "strategy", "writes"],
+      "properties": {
+        "item_id": {"$ref": "#/$defs/itemId"},
+        "item_version": {"type": "string", "minLength": 1},
+        "strategy": {"$ref": "#/$defs/resolutionStrategy"},
+        "writes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/resolutionWrite"}
+        }
+      }
+    },
+    "conflictResolutionPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolution_preview_version", "catalog_sha256", "inventory_sha256", "items"],
+      "properties": {
+        "resolution_preview_version": {"const": 1},
+        "catalog_sha256": {"$ref": "#/$defs/sha256"},
+        "inventory_sha256": {"$ref": "#/$defs/sha256"},
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/resolutionItem"}
+        }
+      }
+    },
+    "resolutionsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "release_root", "resolutions"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "release_root": {"$ref": "#/$defs/path"},
+        "resolutions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["item_id", "strategy"],
+            "properties": {
+              "item_id": {"$ref": "#/$defs/itemId"},
+              "strategy": {"$ref": "#/$defs/resolutionStrategy"}
+            }
+          }
+        }
+      }
+    },
+    "conflictPreviewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "preview", "approval_token"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "preview": {"$ref": "#/$defs/conflictResolutionPreview"},
+        "approval_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "conflictExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "release_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "release_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/conflictResolutionPreview"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "receiptFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_id", "path", "sha256", "byte_size"],
+      "properties": {
+        "item_id": {"$ref": "#/$defs/itemId"},
+        "path": {"$ref": "#/$defs/path"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "byte_size": {"type": "integer", "minimum": 0}
+      }
+    },
+    "adoptionReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receipt_version", "items_adopted", "files_written", "transaction_id", "snapshot_ref", "catalog_sha256", "inventory_sha256", "preview_sha256"],
+      "properties": {
+        "receipt_version": {"const": 1},
+        "items_adopted": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/itemId"}},
+        "files_written": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/receiptFile"}},
+        "transaction_id": {"type": "string", "pattern": "^[0-9]{8}T[0-9]{6}-[0-9a-f]{8}$"},
+        "snapshot_ref": {"$ref": "#/$defs/path"},
+        "catalog_sha256": {"$ref": "#/$defs/sha256"},
+        "inventory_sha256": {"$ref": "#/$defs/sha256"},
+        "preview_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "executeResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt", "rewind_acknowledgement_token"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "receipt": {"$ref": "#/$defs/adoptionReceipt"},
+        "rewind_acknowledgement_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "rewindRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "receipt", "acknowledgement_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "receipt": {"$ref": "#/$defs/adoptionReceipt"},
+        "acknowledgement_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "rewindFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_id", "path", "existed_before_adoption", "restored_sha256", "byte_size", "mode"],
+      "properties": {
+        "item_id": {"$ref": "#/$defs/itemId"},
+        "path": {"$ref": "#/$defs/path"},
+        "existed_before_adoption": {"type": "boolean"},
+        "restored_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "byte_size": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "mode": {"anyOf": [{"type": "integer", "minimum": 0, "maximum": 511}, {"type": "null"}]}
+      }
+    },
+    "rewindReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rewind_receipt_version", "adoption_transaction_id", "rewind_transaction_id", "snapshot_ref", "source_receipt_sha256", "files_restored"],
+      "properties": {
+        "rewind_receipt_version": {"const": 1},
+        "adoption_transaction_id": {"type": "string"},
+        "rewind_transaction_id": {"type": "string"},
+        "snapshot_ref": {"$ref": "#/$defs/path"},
+        "source_receipt_sha256": {"$ref": "#/$defs/sha256"},
+        "files_restored": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/rewindFile"}}
+      }
+    },
+    "rewindResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "rewind_receipt"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "rewind_receipt": {"$ref": "#/$defs/rewindReceipt"}
+      }
+    },
+    "ledgerState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ledger_version", "install_id", "adopted", "held_back", "last_seq", "last_event_sha256"],
+      "properties": {
+        "ledger_version": {"const": 1},
+        "install_id": {"anyOf": [{"type": "string", "format": "uuid"}, {"type": "null"}]},
+        "adopted": {"type": "object"},
+        "held_back": {"type": "array", "items": {"$ref": "#/$defs/itemId"}},
+        "last_seq": {"type": "integer", "minimum": 0},
+        "last_event_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total_bytes", "committed_snapshot_count", "warning", "warning_threshold_bytes"],
+      "properties": {
+        "total_bytes": {"type": "integer", "minimum": 0},
+        "committed_snapshot_count": {"type": "integer", "minimum": 0},
+        "warning": {"type": "boolean"},
+        "warning_threshold_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "archivePreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["archive_relative", "archive_sha256", "size_bytes", "file_count", "retention"],
+      "properties": {
+        "archive_relative": {"const": ".dex/pre-split-archive.git"},
+        "archive_sha256": {"$ref": "#/$defs/sha256"},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "file_count": {"type": "integer", "minimum": 0},
+        "retention": {"const": "one full release cycle after conversion"}
+      }
+    },
+    "archivePreviewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "preview", "approval_token"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "preview": {"$ref": "#/$defs/archivePreview"},
+        "approval_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "archiveExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "archiveReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["archive_relative", "archive_sha256", "size_bytes", "file_count", "retention", "receipt_version", "transaction_id", "receipt_relative", "committed"],
+      "properties": {
+        "archive_relative": {"const": ".dex/pre-split-archive.git"},
+        "archive_sha256": {"$ref": "#/$defs/sha256"},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "file_count": {"type": "integer", "minimum": 0},
+        "retention": {"const": "one full release cycle after conversion"},
+        "receipt_version": {"const": 1},
+        "transaction_id": {"type": "string", "minLength": 1},
+        "receipt_relative": {"$ref": "#/$defs/path"},
+        "committed": {"const": true}
+      }
+    },
+    "archiveExecuteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "receipt": {"$ref": "#/$defs/archiveReceipt"}
+      }
+    },
+    "stateResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "ledger_state", "retention"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "ledger_state": {"$ref": "#/$defs/ledgerState"},
+        "retention": {"$ref": "#/$defs/retention"}
+      }
+    },
+    "topologyGroupItem": {
+      "type": "object",
+      "properties": {
+        "item_id": {"const": "brain-vault-topology"},
+        "status": {"type": "string"},
+        "report_path": {"$ref": "#/$defs/path"},
+        "report_sha256": {"$ref": "#/$defs/sha256"},
+        "byte_size": {"type": "integer", "minimum": 0},
+        "report_markdown": {"type": "string"}
+      }
+    },
+    "topologyGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "items"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "items": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/topologyGroupItem"}
+        }
+      }
+    },
+    "topologyPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preview_version", "operation", "topology", "groups"],
+      "properties": {
+        "preview_version": {"const": 1},
+        "operation": {"const": "brain-vault-topology-migration"},
+        "topology": {"type": "string", "minLength": 1},
+        "groups": {
+          "type": "array",
+          "minItems": 5,
+          "items": {"$ref": "#/$defs/topologyGroup"}
+        }
+      }
+    },
+    "topologyPreviewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "topology", "preview", "approval_token"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "topology": {"type": "string", "minLength": 1},
+        "preview": {"$ref": "#/$defs/topologyPreview"},
+        "approval_token": {
+          "anyOf": [
+            {"$ref": "#/$defs/sha256"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "topologyExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/topologyPreview"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "topologyAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "exit_code"],
+      "properties": {
+        "mode": {"type": "string", "minLength": 1},
+        "exit_code": {"type": "integer", "minimum": 0}
+      }
+    },
+    "topologyReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receipt_version",
+        "operation",
+        "transaction_id",
+        "topology_before",
+        "topology_after",
+        "preview_sha256",
+        "final_report_path",
+        "final_report_sha256",
+        "archive_ref",
+        "migration_started_at",
+        "attempts"
+      ],
+      "properties": {
+        "receipt_version": {"const": 1},
+        "operation": {"const": "brain-vault-topology-migration"},
+        "transaction_id": {
+          "type": "string",
+          "pattern": "^[0-9]{8}T[0-9]{6}-[0-9a-f]{8}$"
+        },
+        "topology_before": {"const": "combined"},
+        "topology_after": {"const": "post-split"},
+        "preview_sha256": {"$ref": "#/$defs/sha256"},
+        "final_report_path": {"$ref": "#/$defs/path"},
+        "final_report_sha256": {"$ref": "#/$defs/sha256"},
+        "archive_ref": {
+          "anyOf": [
+            {"$ref": "#/$defs/path"},
+            {"type": "null"}
+          ]
+        },
+        "migration_started_at": {
+          "anyOf": [
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
+        "attempts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/topologyAttempt"}
+        }
+      }
+    },
+    "topologyExecuteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt", "receipt_path"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "receipt": {"$ref": "#/$defs/topologyReceipt"},
+        "receipt_path": {"$ref": "#/$defs/path"}
+      }
+    },
+    "capsuleId": {
+      "type": "string",
+      "pattern": "^cap-[0-9a-f]{16}$"
+    },
+    "proposalId": {
+      "type": "string",
+      "pattern": "^prop-[0-9a-f]{16}$"
+    },
+    "rebuildExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "preview": {"type": "object"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "rebuildCapsuleReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "capsule_id",
+        "manifest_sha256",
+        "file_count",
+        "byte_count",
+        "transaction_id"
+      ],
+      "properties": {
+        "schema_version": {"const": 0},
+        "capsule_id": {"$ref": "#/$defs/capsuleId"},
+        "manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "file_count": {"type": "integer", "minimum": 0},
+        "byte_count": {"type": "integer", "minimum": 0},
+        "transaction_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "rebuildCapsuleResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "receipt": {"$ref": "#/$defs/rebuildCapsuleReceipt"}
+      }
+    },
+    "rebuildStagingReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "capsule_id",
+        "proposal_id",
+        "staged_file_count",
+        "staged_byte_count",
+        "staging_digest",
+        "transaction_id"
+      ],
+      "properties": {
+        "schema_version": {"const": 0},
+        "capsule_id": {"$ref": "#/$defs/capsuleId"},
+        "proposal_id": {"$ref": "#/$defs/proposalId"},
+        "staged_file_count": {"type": "integer", "minimum": 0},
+        "staged_byte_count": {"type": "integer", "minimum": 0},
+        "staging_digest": {"$ref": "#/$defs/sha256"},
+        "transaction_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "rebuildStagingResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "receipt": {"$ref": "#/$defs/rebuildStagingReceipt"}
+      }
+    },
+    "rebuildVerificationRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "vault_root",
+        "capsule_id",
+        "proposal_id",
+        "report",
+        "approved_token"
+      ],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "capsule_id": {"$ref": "#/$defs/capsuleId"},
+        "proposal_id": {"$ref": "#/$defs/proposalId"},
+        "report": {"type": "object"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "rebuildVerificationReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "capsule_id",
+        "staging_id",
+        "report_path",
+        "report_sha256",
+        "transaction_id"
+      ],
+      "properties": {
+        "schema_version": {"const": 0},
+        "capsule_id": {"$ref": "#/$defs/capsuleId"},
+        "staging_id": {"$ref": "#/$defs/proposalId"},
+        "report_path": {"$ref": "#/$defs/path"},
+        "report_sha256": {"$ref": "#/$defs/sha256"},
+        "transaction_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "rebuildVerificationResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "receipt": {"$ref": "#/$defs/rebuildVerificationReceipt"}
+      }
+    },
+    "rebuildActivatedFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "byte_size", "mode"],
+      "properties": {
+        "path": {"$ref": "#/$defs/path"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "byte_size": {"type": "integer", "minimum": 1},
+        "mode": {"type": "integer", "minimum": 0, "maximum": 511}
+      }
+    },
+    "rebuildActivationReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "capsule_id",
+        "proposal_id",
+        "verification_report_sha256",
+        "candidate_sha256",
+        "files_written",
+        "transaction_id",
+        "snapshot_ref",
+        "activated_epoch_seconds",
+        "rewind_available"
+      ],
+      "properties": {
+        "schema_version": {"const": 0},
+        "capsule_id": {"$ref": "#/$defs/capsuleId"},
+        "proposal_id": {"$ref": "#/$defs/proposalId"},
+        "verification_report_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_sha256": {"$ref": "#/$defs/sha256"},
+        "files_written": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/rebuildActivatedFile"}
+        },
+        "transaction_id": {"type": "string", "minLength": 1},
+        "snapshot_ref": {"$ref": "#/$defs/path"},
+        "activated_epoch_seconds": {"type": "integer", "minimum": 0},
+        "rewind_available": {"const": true}
+      }
+    },
+    "rebuildActivationResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api_version",
+        "receipt",
+        "rewind_acknowledgement_token"
+      ],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "receipt": {"$ref": "#/$defs/rebuildActivationReceipt"},
+        "rewind_acknowledgement_token": {
+          "anyOf": [
+            {"$ref": "#/$defs/sha256"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "rebuildRewindRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "receipt", "acknowledgement_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "receipt": {"$ref": "#/$defs/rebuildActivationReceipt"},
+        "acknowledgement_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "rebuildRewindFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "existed_before_activation",
+        "restored_sha256",
+        "byte_size",
+        "mode"
+      ],
+      "properties": {
+        "path": {"$ref": "#/$defs/path"},
+        "existed_before_activation": {"type": "boolean"},
+        "restored_sha256": {
+          "anyOf": [
+            {"$ref": "#/$defs/sha256"},
+            {"type": "null"}
+          ]
+        },
+        "byte_size": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "mode": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0, "maximum": 511},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "rebuildRewindReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "capsule_id",
+        "proposal_id",
+        "activation_transaction_id",
+        "rewind_transaction_id",
+        "status",
+        "reason",
+        "files_restored",
+        "rewound_epoch_seconds"
+      ],
+      "properties": {
+        "schema_version": {"const": 0},
+        "capsule_id": {"$ref": "#/$defs/capsuleId"},
+        "proposal_id": {"$ref": "#/$defs/proposalId"},
+        "activation_transaction_id": {"type": "string", "minLength": 1},
+        "rewind_transaction_id": {
+          "anyOf": [
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
+        "status": {"type": "string", "enum": ["OK", "UNKNOWN"]},
+        "reason": {"type": "string", "minLength": 1},
+        "files_restored": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/rebuildRewindFile"}
+        },
+        "rewound_epoch_seconds": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "rebuildRewindResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "rewind_receipt"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "rewind_receipt": {"$ref": "#/$defs/rebuildRewindReceipt"}
+      }
+    },
+    "rebuildAbandonRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "capsule_id"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "capsule_id": {"$ref": "#/$defs/capsuleId"}
+      }
+    },
+    "rebuildAbandonResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "capsule_id", "abandoned"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "capsule_id": {"$ref": "#/$defs/capsuleId"},
+        "abandoned": {"const": true}
+      }
+    },
+    "rebuildRecoveryResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "outcomes"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "outcomes": {
+          "type": "array",
+          "items": {"type": "object"}
+        }
+      }
+    }
+  }
+}

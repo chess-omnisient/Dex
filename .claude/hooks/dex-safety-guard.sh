@@ -1,101 +1,88 @@
 #!/bin/bash
-# Dex Safety Guard — PreToolUse hook
-# Guards both Bash commands AND MCP tool preferences.
-# Exit 0 = allow, Exit 2 = block
+# Dex Safety Guard — PreToolUse hook.
+# The shared Python gate owns destructive-command and path decisions. The only
+# Claude-specific rule left here is the configured scraper preference.
+# Exit 0 = allow, exit 2 = block.
 
-INPUT=$(cat)
+INPUT=$(/bin/cat)
 
-# Extract tool name and command from input
-TOOL_NAME=$(echo "$INPUT" | python3 -c "
-import sys, json
+HOOK_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+SAFETY_PY="$HOOK_DIR/../../core/gates/safety.py"
+PYTHON_CMD=()
+if [[ -n "${DEX_PYTHON:-}" && -x "$DEX_PYTHON" ]]; then
+    PYTHON_CMD=("$DEX_PYTHON")
+elif [[ -n "$CLAUDE_PROJECT_DIR" && -x "$CLAUDE_PROJECT_DIR/.venv/bin/python" ]]; then
+    PYTHON_CMD=("$CLAUDE_PROJECT_DIR/.venv/bin/python")
+elif [[ -n "$CLAUDE_PROJECT_DIR" && -x "$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe" ]]; then
+    PYTHON_CMD=("$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe")
+elif [[ -x "$HOOK_DIR/../../.venv/bin/python" ]]; then
+    PYTHON_CMD=("$HOOK_DIR/../../.venv/bin/python")
+elif [[ -x "$HOOK_DIR/../../.venv/Scripts/python.exe" ]]; then
+    PYTHON_CMD=("$HOOK_DIR/../../.venv/Scripts/python.exe")
+elif command -v py >/dev/null 2>&1 && py -3 -c "raise SystemExit(0)" >/dev/null 2>&1; then
+    PYTHON_CMD=(py -3)
+elif command -v python >/dev/null 2>&1; then
+    PYTHON_CMD=(python)
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_CMD=(python3)
+fi
+
+# === CLAUDE-ONLY MATCHER (not a shared interceptor) ===
+TOOL_LOWER=""
+if [[ "${#PYTHON_CMD[@]}" -gt 0 ]]; then
+    TOOL_LOWER=$(printf '%s' "$INPUT" | "${PYTHON_CMD[@]}" -c '
+import json
+import sys
 try:
     data = json.loads(sys.stdin.read())
-    print(data.get('tool_name', ''))
-except:
-    print('')
-" 2>/dev/null)
+    print(str(data.get("tool_name", "")).lower())
+except Exception:
+    print("")
+' 2>/dev/null)
+else
+    case "$INPUT" in
+        *mcp__firecrawl__*|*mcp__rag-web-browser__*|*mcp__rag_web_browser__*)
+            echo "WRONG SCRAPER: Scrapling is the configured default."
+            exit 2
+            ;;
+    esac
+fi
 
-COMMAND=$(echo "$INPUT" | python3 -c "
-import sys, json
-try:
-    data = json.loads(sys.stdin.read())
-    print(data.get('tool_input', {}).get('command', ''))
-except:
-    print('')
-" 2>/dev/null)
-TOOL_LOWER=$(echo "$TOOL_NAME" | tr '[:upper:]' '[:lower:]')
-
-# === MCP TOOL PREFERENCE GUARDS ===
-# Scrapling is the default scraper. Block Firecrawl/WebFetch/Apify RAG browser.
-
-BLOCKED_SCRAPERS="firecrawl_scrape firecrawl_search firecrawl_crawl firecrawl_map firecrawl_extract firecrawl_batch_scrape firecrawl_deep_research firecrawl_generate_llmstxt webfetch rag-web-browser rag_web_browser"
-
-for scraper in $BLOCKED_SCRAPERS; do
-    if echo "$TOOL_LOWER" | grep -q "$scraper"; then
-        echo "WRONG SCRAPER: Scrapling is the configured default. Use scrapling get/fetch/stealthy_fetch instead of $TOOL_NAME."
+case "$TOOL_LOWER" in
+    mcp__firecrawl__*|mcp__rag-web-browser__*|mcp__rag_web_browser__*)
+        echo "WRONG SCRAPER: Scrapling is the configured default. Use scrapling get/fetch/stealthy_fetch instead of $TOOL_LOWER."
         exit 2
-    fi
-done
+        ;;
+esac
 
-# Nothing further to check for non-Bash tools
-if [ -z "$COMMAND" ]; then
-    exit 0
-fi
-
-# === HARD BLOCKS (exit 2) ===
-
-# Catastrophic filesystem destruction
-if echo "$COMMAND" | grep -qE 'rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?(-[a-zA-Z]*r[a-zA-Z]*\s+)?(\/|~\/?\s|"\$HOME"|\/Users)'; then
-    echo '{"decision":"block","reason":"Blocked: recursive delete targeting root, home, or /Users"}'
+# A missing helper or interpreter means the shared decision cannot be made.
+# Fail closed instead of duplicating matchers here or silently allowing work.
+if [[ ! -f "$SAFETY_PY" ]]; then
+    echo "BLOCKED: the shared Dex safety gate is unavailable. Restore Core before running tools."
     exit 2
 fi
 
-if echo "$COMMAND" | grep -qE 'rm\s+-rf\s+/'; then
-    echo '{"decision":"block","reason":"Blocked: rm -rf /"}'
+if [[ "${#PYTHON_CMD[@]}" -eq 0 ]]; then
+    echo "BLOCKED: the shared Dex safety gate needs Python 3. Install Python or set DEX_PYTHON."
     exit 2
 fi
 
-# Disk wiping
-if echo "$COMMAND" | grep -qiE '(diskutil\s+eraseDisk|mkfs\s|dd\s+if=)'; then
-    echo '{"decision":"block","reason":"Blocked: disk wipe/format command"}'
+SAFETY_ARGS=(--hook)
+if [[ -n "$CLAUDE_PROJECT_DIR" ]]; then
+    SAFETY_ARGS+=(--vault "$CLAUDE_PROJECT_DIR")
+fi
+printf '%s' "$INPUT" | "${PYTHON_CMD[@]}" "$SAFETY_PY" "${SAFETY_ARGS[@]}"
+STATUS=$?
+if [[ "$STATUS" -eq 2 ]]; then
     exit 2
 fi
-
-# Force push to main/master
-if echo "$COMMAND" | grep -qE 'git\s+push\s+.*--force.*\s+(main|master)'; then
-    echo '{"decision":"block","reason":"Blocked: force push to main/master"}'
+# A gate that crashed decided nothing. Treating "not exactly 2" as permission
+# would let a broken interpreter, a failed import, or a half-installed Core
+# silently reopen every destructive command this guard exists to refuse, so a
+# gate that did not answer cleanly is refused for the same reason a missing one
+# is.
+if [[ "$STATUS" -ne 0 ]]; then
+    echo "BLOCKED: the shared Dex safety gate could not reach a decision (exit $STATUS). Run /dex-doctor."
     exit 2
 fi
-if echo "$COMMAND" | grep -qE 'git\s+push\s+.*\s+(main|master).*--force'; then
-    echo '{"decision":"block","reason":"Blocked: force push to main/master"}'
-    exit 2
-fi
-
-# SQL destruction
-if echo "$COMMAND" | grep -qiE '(DROP\s+TABLE|DROP\s+DATABASE)'; then
-    echo '{"decision":"block","reason":"Blocked: SQL DROP command"}'
-    exit 2
-fi
-
-# GitHub repo deletion
-if echo "$COMMAND" | grep -qE 'gh\s+repo\s+delete'; then
-    echo '{"decision":"block","reason":"Blocked: GitHub repo deletion"}'
-    exit 2
-fi
-
-# === WARNINGS (allow but flag) ===
-
-# chmod 777
-if echo "$COMMAND" | grep -qE 'chmod\s+777'; then
-    echo '{"decision":"allow","reason":"WARNING: chmod 777 grants full permissions to all users. Consider more restrictive permissions."}'
-    exit 0
-fi
-
-# kill -9
-if echo "$COMMAND" | grep -qE 'kill\s+-9'; then
-    echo '{"decision":"allow","reason":"WARNING: kill -9 force-terminates without cleanup. Ensure this is the intended process."}'
-    exit 0
-fi
-
-# === DEFAULT: ALLOW ===
 exit 0

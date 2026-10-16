@@ -1,0 +1,31 @@
+{
+  "name": "@dex/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared Dex contracts for cross-repo path consistency",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./paths": "./dist/paths.contract.json",
+    "./connections": "./dist/connections.contract.json",
+    "./connections-schema": "./dist/connections.schema.json",
+    "./connections-engine-manifest": "./dist/connections-engine.manifest.json",
+    "./connections-fixtures/*": "./fixtures/connections/*",
+    "./release-catalog-schema": "./dist/release-catalog-v1.schema.json",
+    "./release-catalog-v2-schema": "./dist/release-catalog-v2.schema.json",
+    "./schema": "./dist/paths.schema.json"
+  },
+  "files": [
+    "dist",
+    "fixtures"
+  ],
+  "scripts": {
+    "build": "python3 ../../scripts/generate-path-contracts.py && node ../../scripts/generate-connections-contract.mjs && node ../../scripts/build-connections-engine-manifest.mjs",
+    "check": "node ../../scripts/check-connections-contract.mjs && node ../../scripts/build-connections-engine-manifest.mjs --check"
+  }
+}

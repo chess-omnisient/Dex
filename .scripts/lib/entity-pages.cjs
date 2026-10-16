@@ -1,0 +1,745 @@
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const yaml = require('js-yaml');
+
+const CANONICAL_FIELDS = new Set([
+  'type', 'name', 'role', 'company', 'company_page', 'emails', 'aliases',
+  'location', 'last_interaction', 'domains', 'website', 'status',
+]);
+const RELATIONSHIP_TYPES = [
+  'works_at', 'reports_to', 'part_of', 'stakeholder_on', 'deal_with', 'related_to',
+];
+const RELATIONSHIP_STATUSES = new Set(['suggested', 'confirmed']);
+const OWNED_FIELDS = new Set([...CANONICAL_FIELDS, 'relationships']);
+const V2_FIELDS = new Set([
+  'dex_pinned', 'dex_last_written', 'dex_dismissed_relationships',
+  'last_touched', 'touches', 'relationships',
+]);
+const LIST_FIELDS = new Set(['emails', 'aliases', 'domains']);
+const LABELS = {
+  type: 'type', name: 'name', role: 'role', company: 'company',
+  'company page': 'company_page', email: 'emails', emails: 'emails', aliases: 'aliases',
+  location: 'location', 'last interaction': 'last_interaction',
+  'last interaction date': 'last_interaction', website: 'website', domain: 'domains',
+  domains: 'domains', status: 'status', stage: 'status',
+};
+
+function emptyResult() {
+  return {
+    type: null, name: null, role: null, company: null, company_page: null,
+    emails: [], aliases: [], location: null, last_interaction: null,
+    domains: [], website: null, status: null, touches: [], last_touched: null,
+    quarantined: false, exclude_from_matching: false, declared_non_entity: false,
+    source_formats: [],
+  };
+}
+
+function normaliseScalar(value) {
+  if (value instanceof Date && !Number.isNaN(value.valueOf())) return value.toISOString().slice(0, 10);
+  if (value === null || value === undefined || Array.isArray(value) || typeof value === 'object') return null;
+  const text = String(value).trim();
+  return text || null;
+}
+
+function normaliseList(value, lowercase = false) {
+  if (value === null || value === undefined) return null;
+  const values = Array.isArray(value) ? value : String(value).split(',');
+  return values.map(normaliseScalar).filter(Boolean).map(item => lowercase ? item.toLowerCase() : item);
+}
+
+function fold(value) {
+  return String(value).normalize('NFC').toLowerCase();
+}
+
+function localIsoDate() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function relationshipEdgeKey(relationship) {
+  return `${relationship.type}::${fold(relationship.target)}`;
+}
+
+function normaliseDismissedRelationships(value, strict = false) {
+  const invalid = (message) => {
+    if (strict) throw new Error(message);
+    return null;
+  };
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) {
+    return invalid('dex_dismissed_relationships must be a list');
+  }
+  const result = [];
+  const seen = new Set();
+  for (const entry of value) {
+    if (!entry || Array.isArray(entry) || typeof entry !== 'object') {
+      invalid('dismissed relationship entries must be objects');
+      continue;
+    }
+    const rawKey = normaliseScalar(entry.key);
+    const date = normaliseScalar(entry.date);
+    if (!rawKey || !rawKey.includes('::')) {
+      invalid('dismissed relationship key must be an edge key');
+      continue;
+    }
+    const separator = rawKey.indexOf('::');
+    const type = rawKey.slice(0, separator);
+    const target = rawKey.slice(separator + 2);
+    if (!RELATIONSHIP_TYPES.includes(type) || !target) {
+      invalid(`invalid dismissed relationship key: ${rawKey}`);
+      continue;
+    }
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      invalid('dismissed relationship date must be YYYY-MM-DD');
+      continue;
+    }
+    const key = `${type}::${fold(target)}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push({ key, date });
+    }
+  }
+  return result;
+}
+
+function normaliseField(key, value) {
+  if (key === 'relationships') return normaliseRelationships(value);
+  if (LIST_FIELDS.has(key)) return normaliseList(value, key === 'emails' || key === 'domains');
+  value = normaliseScalar(value);
+  if (key === 'type') return value === 'person' || value === 'company' ? value : null;
+  if (key === 'location') return ['internal', 'external', 'unknown'].includes(value) ? value : null;
+  if (key === 'last_interaction' && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  return value;
+}
+
+function normaliseRelationships(value, strict = false) {
+  const invalid = (message) => {
+    if (strict) throw new Error(message);
+    return null;
+  };
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) return invalid('relationships must be a list');
+  const result = [];
+  for (const entry of value) {
+    if (!entry || Array.isArray(entry) || typeof entry !== 'object') {
+      invalid('relationship entries must be objects');
+      continue;
+    }
+    const type = normaliseScalar(entry.type);
+    if (!RELATIONSHIP_TYPES.includes(type)) {
+      invalid(`unknown relationship type: ${type || '<missing>'}`);
+      continue;
+    }
+    const target = normaliseScalar(entry.target);
+    if (!target) {
+      invalid('relationship target must be a non-empty string');
+      continue;
+    }
+    const status = normaliseScalar(entry.status);
+    if (!RELATIONSHIP_STATUSES.has(status)) {
+      invalid(`invalid relationship status: ${status || '<missing>'}`);
+      continue;
+    }
+    const source = entry.source;
+    if (!source || Array.isArray(source) || typeof source !== 'object') {
+      invalid('relationship source must be an object');
+      continue;
+    }
+    const sourceKind = normaliseScalar(source.kind);
+    const sourceId = normaliseScalar(source.id);
+    if (!sourceKind || !sourceId) {
+      invalid('relationship source requires kind and id');
+      continue;
+    }
+    const date = normaliseScalar(entry.date);
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      invalid('relationship date must be YYYY-MM-DD');
+      continue;
+    }
+    result.push({
+      type,
+      target,
+      status,
+      source: normaliseYamlValue(source),
+      date,
+    });
+  }
+  return result;
+}
+
+function normaliseYamlValue(value) {
+  if (value instanceof Date && !Number.isNaN(value.valueOf())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (Array.isArray(value)) return value.map(normaliseYamlValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, normaliseYamlValue(item)]),
+    );
+  }
+  return value;
+}
+
+function normaliseV2Field(key, value) {
+  if (key === 'dex_pinned' || key === 'dex_last_written') {
+    return value && !Array.isArray(value) && typeof value === 'object' ? { ...value } : null;
+  }
+  if (key === 'touches') return Array.isArray(value) ? normaliseYamlValue(value) : null;
+  if (key === 'relationships') return normaliseRelationships(value);
+  if (key === 'dex_dismissed_relationships') {
+    return normaliseDismissedRelationships(value);
+  }
+  return normaliseScalar(value);
+}
+
+function splitFrontmatter(text) {
+  if (!text.startsWith('---')) return { frontmatter: null, body: text, had: false, quarantined: false };
+  const match = /^---[ \t]*\r?\n([\s\S]*?)^---[ \t]*\r?$(?:\r?\n)?/m.exec(text);
+  if (!match || match.index !== 0) {
+    const newline = text.indexOf('\n');
+    return { frontmatter: null, body: newline >= 0 ? text.slice(newline + 1) : '', had: true, quarantined: true };
+  }
+  try {
+    const loaded = yaml.load(match[1]) ?? {};
+    if (!loaded || Array.isArray(loaded) || typeof loaded !== 'object') throw new Error('frontmatter must be a mapping');
+    return { frontmatter: loaded, body: text.slice(match[0].length), had: true, quarantined: false };
+  } catch (_) {
+    return { frontmatter: null, body: text.slice(match[0].length), had: true, quarantined: true };
+  }
+}
+
+function legacyFields(body) {
+  const pipe = {};
+  const inline = {};
+  const formats = [];
+  for (const line of body.split(/\r?\n/)) {
+    let match = /^\s*\|\s*(?:\*\*)?([^|*]+?)(?:\*\*)?\s*\|\s*(.*?)\s*\|\s*$/.exec(line);
+    if (match) {
+      const key = LABELS[match[1].replace(/\s+/g, ' ').trim().toLowerCase().replace(/:$/, '')];
+      if (key && match[2].trim() && !(key in pipe)) {
+        pipe[key] = match[2].trim();
+        if (!formats.includes('pipe_table')) formats.push('pipe_table');
+      }
+      continue;
+    }
+    match = /^\s*\*\*([^*:\n]+):\*\*\s*(.*?)\s*$/.exec(line);
+    if (match) {
+      const key = LABELS[match[1].replace(/\s+/g, ' ').trim().toLowerCase()];
+      if (key && match[2].trim() && !(key in inline)) {
+        inline[key] = match[2].trim();
+        if (!formats.includes('inline_bold')) formats.push('inline_bold');
+      }
+    }
+  }
+  return { pipe, inline, formats };
+}
+
+function inferType(filePath, values) {
+  if (values.type === 'person' || values.type === 'company') return values.type;
+  if (values.declared_non_entity) return null;
+  const parts = filePath.split(path.sep).map(part => part.toLowerCase());
+  if (parts.includes('people')) return 'person';
+  if (parts.includes('companies')) return 'company';
+  if (['role', 'company', 'company_page', 'emails', 'last_interaction'].some(key => values[key] && values[key].length !== 0)) return 'person';
+  if (['domains', 'website', 'status'].some(key => values[key] && values[key].length !== 0)) return 'company';
+  return null;
+}
+
+function parseEntityPage(filePath) {
+  let text = fs.readFileSync(filePath, 'utf8');
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  const split = splitFrontmatter(text);
+  const legacy = legacyFields(split.body);
+  const result = emptyResult();
+  result.quarantined = split.quarantined;
+  if (split.frontmatter && !split.quarantined) {
+    result.exclude_from_matching = split.frontmatter.exclude_from_matching === true;
+    if (Object.hasOwn(split.frontmatter, 'type')) {
+      const declared = normaliseScalar(split.frontmatter.type);
+      result.declared_non_entity = Boolean(
+        declared && declared !== 'person' && declared !== 'company',
+      );
+    }
+  }
+  if (split.had) result.source_formats.push('frontmatter');
+  result.source_formats.push(...legacy.formats);
+  for (const key of CANONICAL_FIELDS) {
+    const candidates = [];
+    if (split.frontmatter && Object.hasOwn(split.frontmatter, key)) candidates.push(split.frontmatter[key]);
+    if (Object.hasOwn(legacy.pipe, key)) candidates.push(legacy.pipe[key]);
+    if (Object.hasOwn(legacy.inline, key)) candidates.push(legacy.inline[key]);
+    for (const candidate of candidates) {
+      const value = normaliseField(key, candidate);
+      if (value !== null) { result[key] = value; break; }
+    }
+  }
+  if (split.frontmatter && !split.quarantined) {
+    const touches = normaliseV2Field('touches', split.frontmatter.touches);
+    const lastTouched = normaliseV2Field('last_touched', split.frontmatter.last_touched);
+    const relationships = normaliseV2Field('relationships', split.frontmatter.relationships);
+    if (touches !== null) result.touches = touches;
+    if (lastTouched !== null) result.last_touched = lastTouched;
+    if (relationships !== null) result.relationships = relationships;
+  }
+  result.type = inferType(filePath, result);
+  if (result.type && !result.name) {
+    const heading = /^#\s+(.+?)\s*$/m.exec(split.body);
+    result.name = heading ? heading[1].trim() : path.basename(filePath, path.extname(filePath)).replace(/_/g, ' ');
+  }
+  return result;
+}
+
+function readFrontmatterField(text, key) {
+  const split = splitFrontmatter(text);
+  if (!split.frontmatter || split.quarantined) return key === 'touches' ? [] : null;
+  const value = normaliseV2Field(key, split.frontmatter[key]);
+  return value === null && key === 'touches' ? [] : value;
+}
+
+function displayScalar(value) {
+  if (value instanceof Date && !Number.isNaN(value.valueOf())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (value === null || value === undefined
+      || Array.isArray(value) || typeof value === 'object') return null;
+  const text = String(value).trim().replace(/\s+/g, ' ');
+  return text || null;
+}
+
+function sourceLabel(value) {
+  if (value && !Array.isArray(value) && typeof value === 'object') {
+    const title = displayScalar(value.title || value.name);
+    const sourceId = displayScalar(value.id);
+    if (title && sourceId) return `${title} [${sourceId}]`;
+    return title || (sourceId ? `[${sourceId}]` : null);
+  }
+  return displayScalar(value);
+}
+
+function directionLabel(value, touchType) {
+  const direction = displayScalar(value);
+  if (touchType === 'mention') return 'mention';
+  if (touchType === 'meeting' && direction === 'none') return 'two-way';
+  return { in: 'inbound', out: 'outbound', none: 'none' }[direction || ''] || null;
+}
+
+function compareStrings(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function renderUpdateLog({
+  touches = null,
+  relationshipProvenance = null,
+  creationMetadata = null,
+} = {}) {
+  const entries = [];
+  if (creationMetadata) {
+    const timestamp = displayScalar(
+      creationMetadata.created_at || creationMetadata.ts,
+    );
+    const source = sourceLabel(creationMetadata.source);
+    if (timestamp) {
+      let line = `- ${timestamp.slice(0, 10)} — created`;
+      if (source) line += ` — ${source}`;
+      entries.push([timestamp, line]);
+    }
+  }
+  for (const relationship of relationshipProvenance || []) {
+    if (!relationship || typeof relationship !== 'object') continue;
+    const timestamp = displayScalar(
+      relationship.recorded_at || relationship.ts || relationship.date,
+    );
+    const relationType = displayScalar(relationship.type);
+    const target = displayScalar(
+      relationship.target || relationship.target_path || relationship.target_ref,
+    );
+    if (!timestamp || !relationType || !target) continue;
+    let line = `- ${timestamp.slice(0, 10)} — relationship · ${relationType} — ${target}`;
+    const source = sourceLabel(relationship.source);
+    if (source) line += ` — ${source}`;
+    entries.push([timestamp, line]);
+  }
+  for (const touch of touches || []) {
+    if (!touch || typeof touch !== 'object') continue;
+    const timestamp = displayScalar(touch.ts);
+    const touchType = displayScalar(touch.type);
+    const source = sourceLabel(touch.source);
+    if (!timestamp || !touchType || !source) continue;
+    const direction = directionLabel(touch.direction, touchType);
+    let line = `- ${timestamp.slice(0, 10)} — ${touchType}`;
+    if (direction) line += ` · ${direction}`;
+    line += ` — ${source}`;
+    const nature = displayScalar(touch.nature);
+    if (nature) line += ` — ${nature}`;
+    entries.push([timestamp, line]);
+  }
+  entries.sort((left, right) => (
+    compareStrings(left[0], right[0]) || compareStrings(left[1], right[1])
+  ));
+  return entries.map(([_timestamp, line]) => line).join('\n');
+}
+
+function renderRelationships(relationships = null) {
+  const normalised = normaliseRelationships([...(relationships || [])], true);
+  const rank = new Map(RELATIONSHIP_TYPES.map((type, index) => [type, index]));
+  normalised.sort((left, right) => (
+    rank.get(left.type) - rank.get(right.type)
+    || compareStrings(fold(left.target), fold(right.target))
+    || compareStrings(left.target, right.target)
+    || compareStrings(left.status, right.status)
+    || compareStrings(left.date, right.date)
+    || compareStrings(
+      JSON.stringify(stableObject(left.source)),
+      JSON.stringify(stableObject(right.source)),
+    )
+  ));
+  const groups = [];
+  for (const type of RELATIONSHIP_TYPES) {
+    const rows = normalised.filter(relationship => relationship.type === type);
+    if (rows.length === 0) continue;
+    groups.push([
+      `### ${type}`,
+      ...rows.map(relationship => (
+        `- ${relationship.target}${relationship.status === 'suggested' ? ' (suggested)' : ''}`
+      )),
+    ].join('\n'));
+  }
+  return groups.join('\n\n');
+}
+
+function stableObject(value) {
+  if (Array.isArray(value)) return value.map(stableObject);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value).sort().map(key => [key, stableObject(value[key])]),
+    );
+  }
+  return value;
+}
+
+function atomicWrite(filePath, text) {
+  const temp = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
+  const existingMode = fs.existsSync(filePath) ? fs.statSync(filePath).mode : null;
+  try {
+    fs.writeFileSync(temp, text, 'utf8');
+    if (existingMode !== null) fs.chmodSync(temp, existingMode);
+    fs.renameSync(temp, filePath);
+  } catch (error) {
+    try { fs.unlinkSync(temp); } catch (_) { /* already absent */ }
+    throw error;
+  }
+}
+
+function mergeFrontmatterText(
+  filePath,
+  rawOriginal,
+  fields,
+  { relationshipRemovedKeys = [] } = {},
+) {
+  const bom = rawOriginal.charCodeAt(0) === 0xfeff ? '\ufeff' : '';
+  const original = bom ? rawOriginal.slice(1) : rawOriginal;
+  const split = splitFrontmatter(original);
+  if (split.quarantined) return null;
+  const merged = { ...(split.frontmatter || {}) };
+
+  const hadPins = Boolean(merged.dex_pinned && !Array.isArray(merged.dex_pinned)
+    && typeof merged.dex_pinned === 'object');
+  const hadLastWritten = Boolean(merged.dex_last_written && !Array.isArray(merged.dex_last_written)
+    && typeof merged.dex_last_written === 'object');
+  const pinned = hadPins ? { ...merged.dex_pinned } : {};
+  const lastWritten = hadLastWritten ? { ...merged.dex_last_written } : {};
+  const ownershipEnabled = hadPins || hadLastWritten
+    || Object.keys(fields).some(key => V2_FIELDS.has(key));
+  const relationshipWrite = Object.hasOwn(fields, 'relationships');
+  const migratePinnedRelationships = relationshipWrite
+    && normaliseScalar(pinned.relationships) === 'user';
+  if (relationshipWrite) delete pinned.relationships;
+
+  const suppliedPins = normaliseV2Field('dex_pinned', fields.dex_pinned);
+  if (suppliedPins) {
+    for (const [key, value] of Object.entries(suppliedPins)) {
+      if (OWNED_FIELDS.has(key) && key !== 'relationships' && normaliseScalar(value)) {
+        pinned[key] = value;
+      }
+    }
+  }
+  const suppliedLastWritten = normaliseV2Field('dex_last_written', fields.dex_last_written);
+  if (suppliedLastWritten) {
+    for (const [key, candidate] of Object.entries(suppliedLastWritten)) {
+      if (!OWNED_FIELDS.has(key)) continue;
+      const value = normaliseField(key, candidate);
+      if (value !== null || (candidate === null && !LIST_FIELDS.has(key))) lastWritten[key] = value;
+    }
+  }
+
+  const legacy = legacyFields(split.body);
+  const explicitCurrentValue = key => {
+    const candidates = [];
+    if (split.frontmatter && Object.hasOwn(split.frontmatter, key)) candidates.push(split.frontmatter[key]);
+    if (Object.hasOwn(legacy.pipe, key)) candidates.push(legacy.pipe[key]);
+    if (Object.hasOwn(legacy.inline, key)) candidates.push(legacy.inline[key]);
+    for (const candidate of candidates) {
+      const value = normaliseField(key, candidate);
+      if (value !== null || (candidate === null && !LIST_FIELDS.has(key))) return value;
+    }
+    return LIST_FIELDS.has(key) ? [] : null;
+  };
+  const effectiveCurrent = {};
+  for (const key of CANONICAL_FIELDS) effectiveCurrent[key] = explicitCurrentValue(key);
+  effectiveCurrent.relationships = normaliseRelationships(
+    split.frontmatter?.relationships,
+  ) || [];
+  if (split.frontmatter && Object.hasOwn(split.frontmatter, 'type')) {
+    const declared = normaliseScalar(split.frontmatter.type);
+    effectiveCurrent.declared_non_entity = Boolean(
+      declared && declared !== 'person' && declared !== 'company',
+    );
+  }
+  effectiveCurrent.type = inferType(filePath, effectiveCurrent);
+  if (effectiveCurrent.type && !effectiveCurrent.name) {
+    const heading = /^#\s+(.+?)\s*$/m.exec(split.body);
+    effectiveCurrent.name = heading
+      ? heading[1].trim()
+      : path.basename(filePath, path.extname(filePath)).replace(/_/g, ' ');
+  }
+  const currentValue = key => effectiveCurrent[key];
+  const hasNonemptyRawValue = key => {
+    const candidates = [];
+    if (split.frontmatter && Object.hasOwn(split.frontmatter, key)) candidates.push(split.frontmatter[key]);
+    if (Object.hasOwn(legacy.pipe, key)) candidates.push(legacy.pipe[key]);
+    if (Object.hasOwn(legacy.inline, key)) candidates.push(legacy.inline[key]);
+    for (const candidate of candidates) {
+      if (candidate === null || candidate === undefined) continue;
+      if (typeof candidate === 'string' && !candidate.trim()) continue;
+      if (Array.isArray(candidate) && candidate.length === 0) continue;
+      if (!Array.isArray(candidate) && typeof candidate === 'object'
+        && Object.keys(candidate).length === 0) continue;
+      return true;
+    }
+    return false;
+  };
+  const implicitBootstrap = ownershipEnabled && !hadPins && !hadLastWritten
+    && suppliedLastWritten === null;
+  if (implicitBootstrap) {
+    for (const key of OWNED_FIELDS) {
+      if (key === 'relationships') continue;
+      if (hasNonemptyRawValue(key) && !Object.hasOwn(pinned, key)) pinned[key] = 'user';
+    }
+  }
+  for (const [key, previous] of Object.entries(lastWritten)) {
+    if (!OWNED_FIELDS.has(key) || key === 'relationships' || Object.hasOwn(pinned, key)) continue;
+    const normalisedPrevious = normaliseField(key, previous);
+    if (normalisedPrevious === null && !(previous === null && !LIST_FIELDS.has(key))) continue;
+    if (JSON.stringify(currentValue(key)) !== JSON.stringify(normalisedPrevious)) pinned[key] = 'user';
+  }
+
+  if (relationshipWrite) {
+    const current = migratePinnedRelationships
+      ? effectiveCurrent.relationships.map(relationship => ({
+        ...relationship,
+        status: 'confirmed',
+      }))
+      : effectiveCurrent.relationships;
+    const incoming = normaliseRelationships(fields.relationships, true);
+    const previous = normaliseRelationships(lastWritten.relationships);
+    const reliableSnapshot = Object.hasOwn(lastWritten, 'relationships')
+      && previous !== null;
+    let dismissed = normaliseDismissedRelationships(
+      merged.dex_dismissed_relationships,
+    ) || [];
+    const suppliedDismissed = normaliseDismissedRelationships(
+      fields.dex_dismissed_relationships,
+      Object.hasOwn(fields, 'dex_dismissed_relationships'),
+    );
+    if (suppliedDismissed !== null) dismissed = suppliedDismissed;
+    const dismissedByKey = new Map(dismissed.map(entry => [entry.key, entry]));
+    const explainedRemovals = new Set(relationshipRemovedKeys);
+    const currentByKey = new Map(
+      current.map(relationship => [relationshipEdgeKey(relationship), relationship]),
+    );
+    const incomingByKey = new Map();
+    for (const relationship of incoming) {
+      const key = relationshipEdgeKey(relationship);
+      if (!incomingByKey.has(key)) incomingByKey.set(key, relationship);
+    }
+
+    if (reliableSnapshot) {
+      for (const relationship of previous) {
+        const key = relationshipEdgeKey(relationship);
+        if (!currentByKey.has(key) && !explainedRemovals.has(key)
+            && !dismissedByKey.has(key)) {
+          dismissedByKey.set(key, {
+            key,
+            date: localIsoDate(),
+          });
+        }
+      }
+    }
+
+    const proposed = [];
+    const proposedKeys = new Set();
+    const append = (relationship) => {
+      const key = relationshipEdgeKey(relationship);
+      if (proposedKeys.has(key)) return;
+      proposedKeys.add(key);
+      proposed.push(relationship);
+    };
+
+    if (!reliableSnapshot) {
+      for (const relationship of current) {
+        const key = relationshipEdgeKey(relationship);
+        if (relationship.status === 'confirmed' || !dismissedByKey.has(key)) {
+          append(relationship);
+        }
+      }
+    } else {
+      for (const relationship of current) {
+        const key = relationshipEdgeKey(relationship);
+        if (relationship.status === 'confirmed'
+            && !(explainedRemovals.has(key) && !incomingByKey.has(key))) {
+          append(relationship);
+        } else if (incomingByKey.has(key) && !dismissedByKey.has(key)) {
+          append(incomingByKey.get(key));
+        }
+      }
+    }
+    for (const relationship of incoming) {
+      const key = relationshipEdgeKey(relationship);
+      if (!dismissedByKey.has(key) && !proposedKeys.has(key)) append(relationship);
+    }
+
+    merged.relationships = proposed;
+    lastWritten.relationships = proposed;
+    if (dismissedByKey.size > 0) {
+      merged.dex_dismissed_relationships = [...dismissedByKey.values()];
+    } else {
+      delete merged.dex_dismissed_relationships;
+    }
+  }
+
+  for (const [key, candidate] of Object.entries(fields)) {
+    if (key === 'relationships' || key === 'dex_dismissed_relationships') continue;
+    if (!OWNED_FIELDS.has(key) || Object.hasOwn(pinned, key)) continue;
+    if (candidate === null && !LIST_FIELDS.has(key)) {
+      merged[key] = null;
+      if (ownershipEnabled) lastWritten[key] = null;
+      continue;
+    }
+    const value = key === 'relationships'
+      ? normaliseRelationships(candidate, true)
+      : normaliseField(key, candidate);
+    if (value !== null) {
+      merged[key] = value;
+      if (ownershipEnabled) lastWritten[key] = value;
+    }
+  }
+  for (const key of ['last_touched', 'touches']) {
+    if (!Object.hasOwn(fields, key)) continue;
+    const value = normaliseV2Field(key, fields[key]);
+    if (value !== null) merged[key] = value;
+  }
+  if (ownershipEnabled) {
+    merged.dex_pinned = pinned;
+    merged.dex_last_written = lastWritten;
+  }
+  const dumped = yaml.dump(merged, {
+    noRefs: true, noCompatMode: true, noArrayIndent: true, lineWidth: -1, sortKeys: false,
+  }).trimEnd();
+  const updated = `${bom}---\n${dumped}\n---\n${split.body}`;
+  return updated;
+}
+
+function upsertFrontmatter(filePath, fields) {
+  const original = fs.readFileSync(filePath, 'utf8');
+  const updated = mergeFrontmatterText(filePath, original, fields);
+  if (updated === null || updated === original) return false;
+  atomicWrite(filePath, updated);
+  return true;
+}
+
+const quoted = value => JSON.stringify(value);
+function stringList(values, lowercase = false) {
+  return `[${(normaliseList(values || [], lowercase) || []).map(quoted).join(', ')}]`;
+}
+
+function renderPersonPage(name, role = null, company = null, emails = null, aliases = null, location = 'unknown', notes = null) {
+  if (!['internal', 'external', 'unknown'].includes(location)) location = 'unknown';
+  const cleanEmails = stringList(emails, true);
+  const cleanAliases = stringList(aliases);
+  const lines = [
+    '---', 'type: person', `name: ${quoted(name)}`, `role: ${role ? quoted(role) : 'null'}`,
+    `company: ${company ? quoted(company) : 'null'}`, 'company_page: null',
+    `emails: ${cleanEmails}`, `aliases: ${cleanAliases}`,
+    `location: ${location}`, 'last_interaction: null', 'dex_pinned: {}', 'dex_last_written:',
+    '  type: person', `  name: ${quoted(name)}`, `  role: ${role ? quoted(role) : 'null'}`,
+    `  company: ${company ? quoted(company) : 'null'}`, '  company_page: null',
+    `  emails: ${cleanEmails}`, `  aliases: ${cleanAliases}`, `  location: ${location}`,
+    '  last_interaction: null', '---', `# ${name}`, '', '## Notes', '',
+  ];
+  if (notes) lines.push(notes, '');
+  lines.push('## Recent Interactions', '', '<!-- dex:auto:recent-interactions -->',
+    '<!-- /dex:auto -->', '', '## Key Context', '', '## Relationships', '',
+    '<!-- dex:auto:relationships -->', '<!-- /dex:auto -->', '', '## Update Log', '',
+    '<!-- dex:auto:update-log -->', '<!-- /dex:auto -->',
+  );
+  return lines.join('\n') + '\n';
+}
+
+function renderCompanyPage(name, domains = null, website = null, status = 'Prospect') {
+  const cleanDomains = stringList(domains, true);
+  return [
+    '---', 'type: company', `name: ${quoted(name)}`, `domains: ${cleanDomains}`,
+    `website: ${website ? quoted(website) : 'null'}`, `status: ${quoted(status)}`,
+    'dex_pinned: {}', 'dex_last_written:', '  type: company', `  name: ${quoted(name)}`,
+    `  domains: ${cleanDomains}`, `  website: ${website ? quoted(website) : 'null'}`,
+    `  status: ${quoted(status)}`, '---', `# ${name}`, '',
+    '## Key Contacts', '', '<!-- dex:auto:key-contacts -->', '<!-- /dex:auto -->', '',
+    '## Meeting History', '', '<!-- dex:auto:meeting-history -->', '<!-- /dex:auto -->', '',
+    '## Notes', '', '## Relationships', '', '<!-- dex:auto:relationships -->',
+    '<!-- /dex:auto -->', '', '## Update Log', '', '<!-- dex:auto:update-log -->',
+    '<!-- /dex:auto -->', '',
+  ].join('\n');
+}
+
+function replaceMachineRegion(text, slug, newContent) {
+  const start = `<!-- dex:auto:${slug} -->`;
+  const end = '<!-- /dex:auto -->';
+  const startIndex = text.indexOf(start);
+  if (startIndex < 0) throw new Error(`machine region not found: ${slug}`);
+  const contentStart = startIndex + start.length;
+  const endIndex = text.indexOf(end, contentStart);
+  if (endIndex < 0) throw new Error(`malformed machine region: ${slug} (missing end marker)`);
+  const inner = text.slice(contentStart, endIndex);
+  if (inner.includes('<!-- dex:auto:')) {
+    throw new Error(`malformed machine region: ${slug} (nested start marker)`);
+  }
+  const content = newContent.replace(/^[\r\n]+|[\r\n]+$/g, '');
+  const replacement = content ? `${start}\n${content}\n${end}` : `${start}\n${end}`;
+  return `${text.slice(0, startIndex)}${replacement}${text.slice(endIndex + end.length)}`;
+}
+
+function replaceMachineRegionInFile(filePath, slug, newContent) {
+  const original = fs.readFileSync(filePath, 'utf8');
+  const updated = replaceMachineRegion(original, slug, newContent);
+  if (updated === original) return false;
+  atomicWrite(filePath, updated);
+  return true;
+}
+
+module.exports = {
+  RELATIONSHIP_TYPES,
+  atomicWrite,
+  fold,
+  mergeFrontmatterText, parseEntityPage, readFrontmatterField, renderUpdateLog,
+  relationshipEdgeKey,
+  renderRelationships,
+  upsertFrontmatter, renderPersonPage, renderCompanyPage,
+  replaceMachineRegion, replaceMachineRegionInFile,
+};

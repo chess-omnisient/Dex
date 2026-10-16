@@ -1,12 +1,99 @@
 ---
 name: week-review
-description: Review week's progress with concrete accomplishments (not fake percentages), pattern detection, and goal tracking.
-context: fork
+description: "Review the week with concrete accomplishments (not fake percentages), pattern detection and goal tracking. Use when the user says 'how was my week', 'week review', or it's their last working day. Also use proactively when a week's priorities are largely resolved. Not for planning the coming week; use `week-plan`."
 ---
+
+## Execution mode
+
+Run inline in the current conversation by default, so this work can see what the
+user has already discussed, decided, or settled this session. Do not fork merely
+because this skill was selected. Only run in the background when the user
+explicitly asks for a background run or the host has already obtained a specific
+background-work approval for this run.
+
+### Delegated gathering (large-vault scaling)
+
+This skill stays inline as described above: it keeps session awareness, it asks
+the user the questions, and it owns every interactive step. What it does NOT do
+inline is the bulk read-gathering, which on a mature vault (hundreds of notes,
+thousands of indexed messages, a live calendar and multiple integrations) can be
+large enough to exhaust the main conversation before the useful work starts.
+
+So the gathering phase is delegated to one `general-purpose` subagent via the
+Agent tool, using the self-contained prompt in this skill's
+`AGENT_INSTRUCTIONS.md`:
+
+1. Read `.claude/skills/week-review/AGENT_INSTRUCTIONS.md`.
+2. Substitute its placeholders (`{{TARGET_DATE}}`, `{{WEEK_START_DATE}}`,
+   `{{TARGET_DATE_PLUS_1}}`, `{{DAY_NAME}}`, `{{MONTH}}`, `{{DD}}`, `{{YYYY}}`).
+3. Call the Agent tool with `subagent_type: "general-purpose"`, that prompt, and
+   a short description.
+4. Verify it wrote the synthesis to `00-Inbox/Weekly_Synthesis_YYYY-MM-DD.md`,
+   then run the interactive review from its structured findings.
+
+The subagent inherits MCP connections, runs in its own context, and that context
+is freed when it completes, so only its findings reach this conversation.
+
+**Use `AGENT_INSTRUCTIONS.md` verbatim.** Read the file and pass its content as
+the subagent prompt, substituting only the placeholders. Do NOT hand-write a
+replacement brief from what you already know about the week: that is how steps
+get silently dropped, and the omission looks complete because nothing errors. If
+context from this conversation is worth adding, APPEND it to the file's content;
+never substitute for it.
+
+**Two caveats that are load-bearing:**
+
+- **Do not count on hooks for the subagent's writes.** The hooks declared in
+  this skill's own frontmatter belong to this skill's run, not the subagent's,
+  and whether the repository-wide hooks in `.claude/settings.json` reach a
+  subagent's tool calls is not something a skill should assume either way.
+  Nothing in this skill's gathering depends on a hook; the subagent's writes
+  must stand on their own.
+- **Always fall back.** If the subagent fails, times out, or returns nothing
+  usable, say so plainly and run the gathering inline from the same
+  `AGENT_INSTRUCTIONS.md`. A missing subagent must never mean a missing result.
+
+**Stays inline:** the whole interactive review, priority-by-priority assessment,
+pattern discussion, goal updates, career evidence capture, next week's priority
+confirmation, the Dex Inbox check (Step 0.5), clearing completed tasks from
+`03-Tasks/Tasks.md` after confirm (the delegated summary names this step), and
+the `/identity-snapshot` run that follows the synthesis. The subagent gathers
+evidence; it does not make judgements.
 
 ## Purpose
 
 Create a synthesis of the week reviewing activity, progress, and what was accomplished. **Uses concrete metrics, not vague percentages.**
+
+Read `working_week.days` in `System/user-profile.yaml` and treat its last working day as the natural review point.
+
+---
+
+## Step 0: Process Unprocessed Meetings
+
+Before gathering data, ensure all meetings from this week are in the vault by running `/process-meetings`. This pulls any unprocessed meetings from the meeting source (Otter.ai, Granola, etc.), creates meeting notes, updates person/company pages, and extracts tasks — so the weekly synthesis has complete data.
+
+- If no new meetings are found, continue silently
+- If meetings are processed, note the count for the synthesis
+- Do NOT ask for a skill rating after this sub-step — save that for the end of the full review
+
+---
+
+## Step 0.5: Dex Inbox Check (Phone Captures)
+
+After processing meetings, check for tasks captured from phone that haven't been triaged:
+
+```
+Use: reminders_list_items(list_name="Dex Inbox")
+```
+
+**If the tool is unavailable or errors** (Apple Reminders phone-capture is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled.
+
+If items found:
+- Surface them: "📱 **Phone captures not yet triaged** (X items in Dex Inbox)"
+- Run triage flow: infer pillar, confirm with user, create task, mark Reminder complete
+- If user wants to defer: leave in Dex Inbox
+
+**If empty:** Skip silently.
 
 ---
 
@@ -27,7 +114,8 @@ Create a synthesis of the week reviewing activity, progress, and what was accomp
 - `06-Resources/Learnings/**/*.md` — Explicit learnings
 - `System/Session_Learnings/*.md` — Auto-captured session learnings
 
-### 5. Daily Reviews
+### 5. Daily Plans & Reviews
+- `00-Inbox/Daily_Plans/YYYY-MM-DD.md` — This week's daily plans (primary record of planning ritual)
 - `07-Archives/Reviews/Daily_Review_YYYY-MM-DD.md` — This week's reviews
 
 ### 6. Journals (If Enabled)
@@ -119,8 +207,18 @@ Scan `03-Tasks/Tasks.md` for completion timestamps from this week:
 
 ```
 Use: get_quarterly_goals()
-Use: get_goal_status(goal_id) for each goal
+Use: get_goal_status(goal_id) for each goal that has a goal_id
 ```
+
+Skip `get_goal_status` for any goal whose `goal_id` is null, or that is marked
+`provisional` — there is no ID to look up, and the call will say so rather than
+return a status.
+
+**Check `activity_known` before judging any goal.** When it is `false`,
+`linked_priorities` and `linked_priorities_count` are `null`, meaning *not
+known*, never *none*. Never report such a goal as stalled or as having no
+linked work; say its links cannot be read yet and pass on the recommendation
+about giving it an ID.
 
 For each goal:
 - Milestones completed this week
@@ -139,9 +237,10 @@ For each goal:
 > **Goal 1** advanced because you completed Priority 1.
 > **Goal 2** needs attention — no linked work completed this week."
 
-### 4. Daily Completion Rate Trend (NEW)
+### 4. Daily Completion Rate Trend
 
-If daily reviews exist, calculate completion trends:
+**First check `00-Inbox/Daily_Plans/` for this week's daily plans.** Count how many days had a `/daily-plan` generated. If daily reviews also exist, cross-reference plan focus items against review completion. If only plans exist (no corresponding review), still count the plan as evidence of the planning ritual and note which focus items were checked off in the plan file itself.
+Calculate completion trends:
 
 > "**Daily plan completion this week:**
 > 
@@ -164,45 +263,14 @@ Review meeting notes from the week:
 - Action items created
 - Follow-ups that might have slipped
 
-### 5.5 Commitment Health Analysis (NEW)
+### 5.5 Email Communication Stats (if connected)
 
-If ScreenPipe and Commitment Detection are available, show aggregate stats:
+Check `System/integrations/config.yaml` for `google-workspace.enabled: true`. Also treat a
+registered `apple-mail-mcp` server as connected. Before querying a connected email source,
+run `python3 core/utils/doctor.py --deep`; Apple Mail search is usable only when the
+`mail.apple-search` check reports `OK` / `feature_status: ok`.
 
-```
-Use: get_commitment_stats(
-    start_date="YYYY-MM-DD",  # Monday of this week
-    end_date="YYYY-MM-DD"     # Today
-)
-```
-
-**Surface to user:**
-
-> "📊 **Commitment Health This Week**
->
-> **Detected across apps:** 12 potential commitments
-> **Already had tasks:** 7 (58%)
-> **Created from prompts:** 3
-> **Dismissed as handled:** 2
->
-> **Apps with most uncaptured asks:**
-> 1. Slack - 5 items
-> 2. Email - 4 items
-> 3. Notion - 3 items
->
-> **People who asked most of you:**
-> 1. Sarah Chen - 4 asks
-> 2. Product team - 3 asks
->
-> 💡 *Consider: Check Slack more frequently for asks, or run `/commitment-scan` mid-week*"
-
-**If no commitment data:**
-Skip this section silently (user may not have ScreenPipe or commitment detection enabled).
-
-### 5.8 Email Communication Stats (if Gmail connected)
-
-Check `System/integrations/config.yaml` for `google-workspace.enabled: true`.
-
-If enabled and Google Workspace MCP is healthy:
+If connected and healthy:
 - **Emails sent this week** — count of sent messages in the review period
 - **Average response time** — how quickly you replied to incoming emails
 - **Threads still open** — conversations with no resolution (back-and-forth still active)
@@ -221,7 +289,10 @@ Surface in the review:
 >
 > **Observation:** You have 3 emails waiting for replies longer than 48 hours. Consider clearing those early next week."
 
-If unhealthy or not enabled: skip this section silently.
+For Apple Mail, never interpret an empty search as "no matching mail" unless that check is OK.
+If a connected source is broken or could not be checked, **do not silently skip**: include one
+calm "Email review omitted" line with Doctor's `user_message` or fix path. If the source is not
+connected (`OFF`), omit the section without noise.
 
 ### 6. Learning Compilation & Pattern Detection
 
@@ -463,9 +534,22 @@ Add a section to the review:
 
 ## Follow-up Actions
 
+The delegated gatherer's structured summary names the Tasks.md clear-down
+as required interactive input. Do not skip it after a delegated run.
+
 After synthesis:
 1. Update Tasks.md with new priorities
-2. Archive completed items
+2. Clear completed tasks out of `03-Tasks/Tasks.md` — **remove whole task blocks, never
+   individual lines.** Tasks.md entries can span multiple lines: the `- [x]` checkbox
+   line plus its indented sub-lines (priority, due date, notes) and any continuation
+   paragraphs. A task's block runs from its checkbox line down to (but not including)
+   the next non-indented line — the next task's checkbox, a heading, or a blank line
+   followed by unindented content. When removing a completed task, remove that entire
+   block together so no orphaned sub-lines are left behind. Never do a per-line sweep
+   of `[x]` lines: that strands sub-lines, and it also removes completed sub-checkboxes
+   out from under tasks that are still open (only remove a block whose own top-level
+   checkbox is `[x]`). Before deleting anything, tell the user how many completed tasks
+   you're clearing and confirm.
 3. Update project pages with status changes
 4. Offer to run `/week-plan` for next week
 
@@ -475,8 +559,8 @@ After synthesis:
 
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
-| Work | dex-work-mcp | `list_tasks`, `get_week_progress`, `get_quarterly_goals`, `get_goal_status` |
-| Calendar | dex-calendar-mcp | `calendar_get_events_with_attendees` |
+| Work | work-mcp | `list_tasks`, `get_week_progress`, `get_quarterly_goals`, `get_goal_status` |
+| Calendar | calendar-mcp, or google-workspace-mcp when `calendar.provider` is `google` | Apple: `calendar_get_events_with_attendees`. Google: `list_calendars`, `get_events` |
 | Improvements | dex-improvements-mcp | `list_ideas` |
 | Analytics | dex-analytics | `track_event` |
 

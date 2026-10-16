@@ -4,6 +4,12 @@
 
 set -e
 
+# Quiet Node's noisy upstream deprecation warnings (e.g. DEP0040 "punycode is
+# deprecated") so first-run install output stays clean. These originate from
+# transitive dependencies / npm internals on newer Node versions, not from Dex,
+# and are harmless. Preserves any NODE_OPTIONS the user already set.
+export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--no-deprecation"
+
 echo "🚀 Setting up Dex..."
 echo ""
 
@@ -105,6 +111,15 @@ if [ -n "$PYTHON_CMD" ]; then
     fi
     
     echo "✅ Python $PYTHON_VERSION"
+
+    # Determine venv paths for this platform
+    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+        VENV_PYTHON=".venv/Scripts/python.exe"
+        VENV_PIP=".venv/Scripts/pip.exe"
+    else
+        VENV_PYTHON=".venv/bin/python"
+        VENV_PIP=".venv/bin/pip"
+    fi
 else
     echo "❌ Python 3 not found"
     echo ""
@@ -128,6 +143,13 @@ else
     exit 1
 fi
 
+# Check npx (required for MCP servers)
+if ! command -v npx &> /dev/null; then
+    echo "⚠️  npx not found (usually bundled with Node.js)"
+    echo "   Some MCP servers may not work without npx."
+    echo "   Try reinstalling Node.js from https://nodejs.org/"
+fi
+
 # Install Node dependencies
 echo ""
 echo "📦 Installing dependencies..."
@@ -140,110 +162,175 @@ else
     exit 1
 fi
 
-# Skip .env creation - it's created during /setup if needed
-# (Most users don't need API keys - everything works through Cursor)
+# Skip .env creation - it is created during /setup if needed.
+# Most Dex workflows use the local vault and MCP services without API keys.
 
-# Create .mcp.json with current path and correct Python command
-if [ ! -f .mcp.json ]; then
-    echo ""
-    echo "📝 Creating .mcp.json with workspace path..."
-    CURRENT_PATH="$(pwd)"
-    
-    # Use the Python command we detected earlier (python3 or python)
-    sed "s|{{VAULT_PATH}}|$CURRENT_PATH|g; s|\"python\"|\"$PYTHON_CMD\"|g" System/.mcp.json.example > .mcp.json
-    echo "   MCP servers configured for: $CURRENT_PATH"
-    echo "   Python command: $PYTHON_CMD"
-fi
-
-# Sync MCP servers to Cursor and Claude Desktop
+# Bootstrap-only configuration is owned by the sanctioned provision contract.
+# This is the one legitimate pre-lifecycle write window: a fresh bundle does
+# not yet have an activated lifecycle engine. Post-install adoption below uses
+# the frozen lifecycle service.
 echo ""
-echo "🔄 Syncing MCP servers to AI clients..."
-if [ -f "core/scripts/sync-mcp-configs.sh" ]; then
-    bash core/scripts/sync-mcp-configs.sh --quiet
-    echo "✅ Dex MCP servers synced to Cursor and Claude Desktop"
-else
-    echo "⚠️  Sync script not found - MCP servers may not be available in Cursor/Claude"
-    echo "   You can manually copy .mcp.json entries to your AI client configs"
+echo "📝 Converging bootstrap configuration through the provision contract..."
+PROVISION_ARGS=(--path "$(pwd)" --install-config-only --json)
+if command -v qmd &> /dev/null; then
+    PROVISION_ARGS+=(--enable-qmd)
 fi
-
-# Check for Granola (optional)
-echo ""
-if ls "$HOME/Library/Application Support/Granola/cache-v"*.json 1>/dev/null 2>&1; then
-    echo "✅ Granola detected - meeting intelligence available"
+node core/provision.cjs "${PROVISION_ARGS[@]}" >/dev/null
+if command -v qmd &> /dev/null; then
+    echo "   qmd MCP server added when configuration was absent"
 else
-    echo "ℹ️  Granola not detected - meeting intelligence won't work"
+    echo "   semantic search not installed — run /enable-semantic-search to add it later"
+fi
+echo "   MCP servers configured for: $(pwd)"
+
+# Check for the optional Granola app. API access is connected separately.
+echo ""
+if [ -d "/Applications/Granola.app" ]; then
+    echo "✅ Granola app detected — run /granola-setup to connect it (needs a Granola Business API key)"
+else
+    echo "ℹ️  Granola app not detected"
     echo "   Install Granola from https://granola.ai for meeting transcription"
+    echo "   Then run /granola-setup to connect it (needs a Granola Business API key)"
 fi
 
-# Install Python dependencies for Work MCP (CRITICAL for task sync)
+# Install Python dependencies for Work MCP in a virtual environment
 echo ""
-echo "📦 Installing Python dependencies for Work MCP..."
+echo "📦 Setting up Python environment for Work MCP..."
 
-# Determine pip command (pip3 or pip)
-PIP_CMD=""
-if command -v pip3 &> /dev/null; then
-    PIP_CMD="pip3"
-elif command -v pip &> /dev/null; then
-    PIP_CMD="pip"
-fi
-
-if [ -n "$PIP_CMD" ]; then
-    # First, try to upgrade pip (silently, many users have old pip versions)
-    echo "   Upgrading pip..."
-    $PYTHON_CMD -m pip install --upgrade pip --quiet 2>/dev/null || true
-    
-    # Try standard install first
-    if $PIP_CMD install mcp pyyaml --quiet 2>/dev/null; then
-        echo "✅ Work MCP dependencies installed"
-    else
-        # Try with --user flag (works around permission issues)
-        echo "   Trying with --user flag..."
-        if $PIP_CMD install --user mcp pyyaml --quiet 2>/dev/null; then
-            echo "✅ Work MCP dependencies installed (user mode)"
-        else
-            echo "❌ Could not install Python dependencies"
+if [ -n "$PYTHON_CMD" ]; then
+    # Create venv if it doesn't exist
+    if [ ! -d ".venv" ]; then
+        echo "   Creating virtual environment..."
+        if ! $PYTHON_CMD -m venv .venv 2>/dev/null; then
+            echo "❌ Could not create virtual environment"
             echo ""
-            echo "Work MCP is critical - it syncs tasks across all your files."
-            echo "Without it, checking off a task in one place won't update others."
-            echo ""
-            echo "Try manually (upgrade pip first):"
-            echo "  $PYTHON_CMD -m pip install --upgrade pip"
-            echo "  $PIP_CMD install --user mcp pyyaml"
+            echo "Try manually:"
+            echo "  $PYTHON_CMD -m venv .venv"
+            echo "  $VENV_PIP install -r core/mcp/requirements.txt"
             echo ""
             read -p "Press Enter to continue setup (you can fix this later)..."
         fi
     fi
-else
-    echo "❌ pip not found (usually comes with Python)"
-    echo ""
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-        echo "This usually means Python wasn't added to PATH during installation."
-        echo ""
-        echo "Fix:"
-        echo "  1. Reinstall Python from https://www.python.org/downloads/"
-        echo "  2. Check 'Add Python to PATH' during installation"
-        echo "  3. Restart your terminal and run ./install.sh again"
+
+    # Install dependencies into venv
+    if [ -f "$VENV_PIP" ] && "$VENV_PIP" install -r core/mcp/requirements.txt --quiet 2>/dev/null; then
+        echo "✅ Work MCP dependencies installed"
     else
-        echo "This is unusual - Python is installed but pip is missing."
-        echo "Try reinstalling Python from https://www.python.org/downloads/"
+        echo "❌ Could not install Python dependencies"
+        echo ""
+        echo "Work MCP is critical - it syncs tasks across all your files."
+        echo "Without it, checking off a task in one place won't update others."
+        echo ""
+        echo "Try manually:"
+        echo "  $PYTHON_CMD -m venv .venv"
+        echo "  $VENV_PIP install -r core/mcp/requirements.txt"
+        echo ""
+        read -p "Press Enter to continue setup (you can fix this later)..."
     fi
-    echo ""
-    read -p "Press Enter to continue setup (Work MCP won't work until fixed)..."
 fi
 
 # Verify Work MCP setup
 echo ""
 echo "🔍 Verifying Work MCP setup..."
-if [ -n "$PYTHON_CMD" ]; then
-    if $PYTHON_CMD -c "import mcp, yaml" 2>/dev/null; then
+if [ -n "$PYTHON_CMD" ] && [ -f "$VENV_PYTHON" ]; then
+    if "$VENV_PYTHON" -c "import mcp, yaml" 2>/dev/null; then
         echo "✅ Work MCP verified - task sync will work"
         WORK_MCP_STATUS="✅ Working"
+
+        # Path constants were generated by the sanctioned provision contract.
+        echo "Path constants generated"
     else
         echo "⚠️  Work MCP not working - task sync won't function"
         WORK_MCP_STATUS="⚠️  Needs attention"
     fi
 else
     WORK_MCP_STATUS="⚠️  Needs attention"
+fi
+
+# Converge Git clones to the split Brain/Vault topology through the migration
+# engine that also handles existing installs. A bounded migration may ask to
+# resume, so keep routing back to that engine until it reaches a terminal state.
+echo ""
+echo "🔀 Separating the Dex brain from your vault..."
+MIGRATOR="core/migrations/v1-to-v2-brain-vault-split.cjs"
+if [ ! -f "$MIGRATOR" ]; then
+    echo "❌ Dex cannot finish the brain/vault setup because the migrator is missing."
+    echo "   Get a complete Dex release and run ./install.sh again."
+    exit 1
+fi
+
+MIGRATION_SYNC_FOLDER_ARGUMENT=""
+for INSTALL_ARGUMENT in "$@"; do
+    if [ "$INSTALL_ARGUMENT" = "--allow-synced-folder" ]; then
+        MIGRATION_SYNC_FOLDER_ARGUMENT="--allow-synced-folder"
+    fi
+done
+
+MIGRATION_MODE="--auto"
+while true; do
+    if [ -n "$MIGRATION_SYNC_FOLDER_ARGUMENT" ]; then
+        if node "$MIGRATOR" "$MIGRATION_MODE" "$MIGRATION_SYNC_FOLDER_ARGUMENT"; then
+            MIGRATION_STATUS=0
+        else
+            MIGRATION_STATUS=$?
+        fi
+    elif node "$MIGRATOR" "$MIGRATION_MODE"; then
+        MIGRATION_STATUS=0
+    else
+        MIGRATION_STATUS=$?
+    fi
+
+    if [ "$MIGRATION_STATUS" -eq 75 ]; then
+        MIGRATION_MODE="--resume"
+        continue
+    fi
+    if [ "$MIGRATION_STATUS" -ne 0 ]; then
+        echo "❌ Dex could not finish the brain/vault split."
+        echo "   Read System/migration-report-v2.md, fix the reported issue, then run ./install.sh again."
+        exit "$MIGRATION_STATUS"
+    fi
+    break
+done
+
+if [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ] && [ -d ".git" ]; then
+    echo "✅ Your vault and the Dex brain now have separate Git histories"
+elif [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ]; then
+    echo "❌ Dex could not finish the brain/vault split."
+    echo "   The notes folder has no working Git history. Your files are still here."
+    echo "   Run: node core/migrations/v1-to-v2-brain-vault-split.cjs --resume"
+    echo "   Then run ./install.sh again."
+    exit 1
+else
+    echo "⚠️  This folder has no Git clone history, so the brain/vault split was not started."
+    echo "   Your files are unchanged, and Dex will keep using the combined layout."
+    echo "   Read System/migration-report-v2.md for the safe manual-update choices."
+fi
+
+# Any catalog adoption after bootstrap crosses the frozen lifecycle service;
+# the provisioner only collects the vault path and renders its receipt.
+DEX_ADOPTION_PYTHON="$PYTHON_CMD"
+if [ -n "$VENV_PYTHON" ] && [ -f "$VENV_PYTHON" ]; then
+    DEX_ADOPTION_PYTHON="$VENV_PYTHON"
+fi
+DEX_LIFECYCLE_PYTHON="$DEX_ADOPTION_PYTHON" node core/provision.cjs --path "$(pwd)" --adopt --lifecycle-only
+
+# Detect likely agent harnesses through the same capability registry onboarding and
+# Doctor use. This is a suggestion only: /setup shows the capability preview and lets
+# the user confirm one or several harnesses before anything is recorded.
+DEX_HARNESSES_JSON="$($PYTHON_CMD -m core.harnesses.registry detect --format json 2>/dev/null || echo '[]')"
+DEX_CHAT_APPS="$(node -e '
+  try {
+    const profiles = JSON.parse(process.argv[1]);
+    const names = profiles.map(profile => (
+      typeof profile === "string" ? profile : (profile.display_name || profile.name || profile.id)
+    )).filter(Boolean);
+    process.stdout.write(names.join(", "));
+  } catch (_) {
+    process.stdout.write("");
+  }
+' "$DEX_HARNESSES_JSON")"
+if [ -z "$DEX_CHAT_APPS" ]; then
+    DEX_CHAT_APPS="a supported AI app"
 fi
 
 # Success
@@ -261,8 +348,13 @@ if [[ "$WORK_MCP_STATUS" == *"Needs"* ]]; then
     echo "   See troubleshooting above to fix."
 fi
 echo ""
+echo "Dex detected: $DEX_CHAT_APPS"
+echo "Setup will let you confirm one or several harnesses and show exactly what each supports."
+echo ""
 echo "Next steps:"
-echo "  1. In Cursor chat, type: /setup"
-echo "  2. Answer the setup questions (~5 minutes)"
-echo "  3. Start using Dex!"
+echo "  1. Open one of these apps in this folder: $DEX_CHAT_APPS"
+echo "     (the folder you just installed into — not somewhere else)"
+echo "  2. In that app's chat, type: /setup"
+echo "  3. Answer the setup questions (~5 minutes)"
+echo "  4. Start using Dex!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

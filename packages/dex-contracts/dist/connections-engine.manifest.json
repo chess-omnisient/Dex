@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "engineVersion": "1.0.0",
+  "contractVersion": "1.0.0",
+  "trees": {
+    "connectionsEngine": {
+      "sourcePath": "core/integrations/connection-manager",
+      "vendorPath": "vendor/dex-core-connections-engine",
+      "entryCount": 1,
+      "entries": [
+        "connection-manager"
+      ],
+      "fileCount": 21,
+      "totalBytes": 240227,
+      "treeHash": "e8283181e7c3a74e5b79fe540208ace69a31f76b0f653b4ca25d58011bbbb12f",
+      "files": [
+        {
+          "path": "auth-context.cjs",
+          "bytes": 7937,
+          "sha256": "6ac769de82c12600998e2f5df51ca37a27249c5517509ef33c94b832f8ded764"
+        },
+        {
+          "path": "broker-client.cjs",
+          "bytes": 8229,
+          "sha256": "b5ebd0628032afc925f450fab6e4b2fa8386ce0bd1324fdbbf42baccf4712a26"
+        },
+        {
+          "path": "broker.cjs",
+          "bytes": 15837,
+          "sha256": "5091879810d16354e1bb3fbaa25debe726804e87f715a357a75a5b46e2fdc6a6"
+        },
+        {
+          "path": "catalog.cjs",
+          "bytes": 20775,
+          "sha256": "84fa245ddff6108fd461f7d2015c39e258bc5fa2633ce5bc8ff22e9657f6b9d8"
+        },
+        {
+          "path": "connect.cjs",
+          "bytes": 29599,
+          "sha256": "ca86c82c154122392ec9cbd0c607edc2230f4b4ef8b4989cef6e04ed567a3284"
+        },
+        {
+          "path": "contract.cjs",
+          "bytes": 9429,
+          "sha256": "8a313c5e817f723dd2e98e6eb76ba615fb64903f8769a847cd35c85dd75e51c3"
+        },
+        {
+          "path": "dex-call.cjs",
+          "bytes": 8954,
+          "sha256": "992971812078e9777844cc5c663f22fe0f6b449e78933ccd045e9618e3649e1f"
+        },
+        {
+          "path": "fs-safe.cjs",
+          "bytes": 7285,
+          "sha256": "7db548d0eea98768c53553ea80abf0280940aba0247a0e3a221a19e1103f5570"
+        },
+        {
+          "path": "get-token.cjs",
+          "bytes": 2646,
+          "sha256": "2e784b64bb3a722b183b8c92770dd555ae70d24598158d4da1b706abe5bb04c2"
+        },
+        {
+          "path": "health.cjs",
+          "bytes": 17202,
+          "sha256": "b4c7701d648b50bef28845e62110ee0f7d87175e464900d90ee585ff3f70aac4"
+        },
+        {
+          "path": "index.cjs",
+          "bytes": 976,
+          "sha256": "405e863f45d3ef8815bda7ed25369a1960639858e40f261df3c861007b740497"
+        },
+        {
+          "path": "lib/connector-ledger.js",
+          "bytes": 5846,
+          "sha256": "2c3f0a58e909c46e5a3d92bdcdd4b29cde25d883519585b8ed6dc963bea69f6c"
+        },
+        {
+          "path": "lib/connector-model.js",
+          "bytes": 1645,
+          "sha256": "29fcf20f3eab1f3ba65a6bcad33e7e0c9cd0aab2df6d377ad11bd785f58b4ac8"
+        },
+        {
+          "path": "lib/connector-verify.js",
+          "bytes": 6609,
+          "sha256": "8b3e01ad8dd313b39cea7b785d885f25f0ab1eb0472f49b23f6a158b1333fbc2"
+        },
+        {
+          "path": "lib/oauth-refresh.js",
+          "bytes": 11222,
+          "sha256": "6bd5c2093e659868834d74bbdde4ae22d5214573cbe25c2d008f603037d7170b"
+        },
+        {
+          "path": "lib/rate-limit.js",
+          "bytes": 5651,
+          "sha256": "a53b67ad5ea4a02e95d60684b9a6196e0a51652120d5a7c1566f2a4de3e8eff2"
+        },
+        {
+          "path": "oauth-flow.cjs",
+          "bytes": 10679,
+          "sha256": "9e54745bbf65646de65b6942906436d068fda1f51c3e3b768f4b86ce9c90ee56"
+        },
+        {
+          "path": "pinned-providers.cjs",
+          "bytes": 3077,
+          "sha256": "e65ec1e95671fd31061b55fd957d34397176c89c257143522e056a8d8c578113"
+        },
+        {
+          "path": "presence.cjs",
+          "bytes": 8349,
+          "sha256": "9f2e701d16657169611d2f52d54a4a20c9014f2da13d99ec3b0be1bdaaff54d2"
+        },
+        {
+          "path": "README.md",
+          "bytes": 11274,
+          "sha256": "b0816fe9989123cf90e3539e7eef4f829980422f3fbc639c9980a8b38dd16143"
+        },
+        {
+          "path": "token-store.cjs",
+          "bytes": 47006,
+          "sha256": "30877cdcb1f7b16124974b88af7c170402eb07cc2cfd784e3b45a33af351764f"
+        }
+      ]
+    }
+  }
+}

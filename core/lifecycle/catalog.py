@@ -1,0 +1,561 @@
+"""Schema-backed loading and identity verification for release catalogs."""
+
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import posixpath
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Mapping
+
+from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read
+from core.lifecycle.model import CatalogError, CatalogModelError, HashTableBinding, ReleaseCatalog
+
+SCHEMA_DIRECTORY = Path(__file__).with_name("schemas")
+SCHEMA_PATHS = {
+    1: SCHEMA_DIRECTORY / "release-catalog-v1.schema.json",
+    2: SCHEMA_DIRECTORY / "release-catalog-v2.schema.json",
+}
+SCHEMA_PATH = SCHEMA_PATHS[1]
+SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
+SCHEMA_IDS = {
+    1: "https://dex/contracts/release-catalog-v1.schema.json",
+    2: "https://dex/contracts/release-catalog-v2.schema.json",
+}
+SCHEMA_ID = SCHEMA_IDS[1]
+CATALOG_SOURCE_DIR = Path("core/lifecycle/catalog")
+BRIDGE_SOURCE_NAME = "bridge-release.json"
+# The whole-tree per-file hash table is a sibling artifact the catalog binds
+# by exact hash (release.hash_table). It lives beside the publisher fragments
+# but is generated, not publisher-declared, so the fragment loaders skip it.
+HASH_TABLE_SOURCE_NAME = "release-hashes.json"
+HASH_TABLE_PATH = (CATALOG_SOURCE_DIR / HASH_TABLE_SOURCE_NAME).as_posix()
+HASH_TABLE_VERSION = 1
+MAX_CATALOG_SOURCE_BYTES = 4 * 1024 * 1024
+MAX_HASH_TABLE_BYTES = 16 * 1024 * 1024
+HEX_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+_SUPPORTED_SCHEMA_KEYWORDS = {
+    "$id",
+    "$schema",
+    "additionalProperties",
+    "const",
+    "enum",
+    "items",
+    "maxItems",
+    "minItems",
+    "minLength",
+    "pattern",
+    "properties",
+    "required",
+    "title",
+    "type",
+    "uniqueItems",
+}
+
+
+class CatalogSchemaError(CatalogError):
+    """The document does not satisfy the committed schema."""
+
+
+class CatalogParseError(CatalogError):
+    """The document is not valid JSON or cannot be modeled."""
+
+
+class CatalogIdentityError(CatalogError):
+    """A hash or release identity cannot be proved."""
+
+
+@dataclass(frozen=True)
+class CatalogPayloadSource:
+    """Publisher-only mapping from an active catalog target to shipped bytes."""
+
+    source_path: str
+    sha256: str
+    byte_size: int
+
+
+def _fail(error_type: type[CatalogError], message: str) -> None:
+    raise error_type(f"catalog state is UNKNOWN: {message}")
+
+
+def _strict_json_loads(
+    text: str, *, error_type: type[CatalogError], context: str
+) -> object:
+    def closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for field, value in pairs:
+            if field in result:
+                _fail(error_type, f"{context} repeats JSON field {field!r}")
+            result[field] = value
+        return result
+
+    def reject_nonfinite(value: str) -> None:
+        _fail(error_type, f"{context} contains non-finite JSON number {value}")
+
+    try:
+        return json.loads(
+            text,
+            object_pairs_hook=closed_object,
+            parse_constant=reject_nonfinite,
+        )
+    except (TypeError, json.JSONDecodeError) as error:
+        _fail(error_type, f"{context} JSON cannot be parsed: {error}")
+
+
+def _type_matches(value: object, expected: str) -> bool:
+    return {
+        "object": isinstance(value, Mapping),
+        "array": isinstance(value, list),
+        "string": isinstance(value, str),
+        "integer": type(value) is int,
+        "boolean": type(value) is bool,
+        "null": value is None,
+    }.get(expected, False)
+
+
+def _validate_schema_node(value: object, schema: object, location: str) -> None:
+    if not isinstance(schema, Mapping):
+        _fail(CatalogSchemaError, f"schema node at {location} is not an object")
+    unknown_keywords = set(schema) - _SUPPORTED_SCHEMA_KEYWORDS
+    if unknown_keywords:
+        _fail(
+            CatalogSchemaError,
+            f"schema node at {location} uses unsupported keywords: "
+            + ", ".join(sorted(unknown_keywords)),
+        )
+    expected_type = schema.get("type")
+    if expected_type is not None:
+        if not isinstance(expected_type, str) or not _type_matches(value, expected_type):
+            _fail(CatalogSchemaError, f"{location} must have JSON type {expected_type}")
+    if "const" in schema and value != schema["const"]:
+        _fail(CatalogSchemaError, f"{location} must equal {schema['const']!r}")
+    if "enum" in schema:
+        choices = schema["enum"]
+        if not isinstance(choices, list) or value not in choices:
+            _fail(CatalogSchemaError, f"{location} has an unknown value")
+
+    if isinstance(value, str):
+        if "minLength" in schema and len(value) < schema["minLength"]:
+            _fail(CatalogSchemaError, f"{location} is too short")
+        if "pattern" in schema:
+            pattern = schema["pattern"]
+            if not isinstance(pattern, str) or re.search(pattern, value) is None:
+                _fail(CatalogSchemaError, f"{location} does not match its closed pattern")
+
+    if isinstance(value, list):
+        if "minItems" in schema and len(value) < schema["minItems"]:
+            _fail(CatalogSchemaError, f"{location} has too few items")
+        if "maxItems" in schema and len(value) > schema["maxItems"]:
+            _fail(CatalogSchemaError, f"{location} has too many items")
+        if schema.get("uniqueItems") is True:
+            encoded = [json.dumps(item, sort_keys=True, separators=(",", ":")) for item in value]
+            if len(set(encoded)) != len(encoded):
+                _fail(CatalogSchemaError, f"{location} contains duplicate items")
+        item_schema = schema.get("items")
+        if item_schema is not None:
+            for index, item in enumerate(value):
+                _validate_schema_node(item, item_schema, f"{location}[{index}]")
+
+    if isinstance(value, Mapping):
+        required = schema.get("required", [])
+        if not isinstance(required, list) or not all(isinstance(field, str) for field in required):
+            _fail(CatalogSchemaError, f"schema required list at {location} is malformed")
+        for field in required:
+            if field not in value:
+                _fail(CatalogSchemaError, f"{location} is missing required field {field!r}")
+        properties = schema.get("properties", {})
+        if not isinstance(properties, Mapping):
+            _fail(CatalogSchemaError, f"schema properties at {location} is malformed")
+        additional = schema.get("additionalProperties", True)
+        for field, child in value.items():
+            if field in properties:
+                _validate_schema_node(child, properties[field], f"{location}.{field}")
+            elif additional is False:
+                _fail(CatalogSchemaError, f"{location} has unknown field {field!r}")
+            elif isinstance(additional, Mapping):
+                _validate_schema_node(child, additional, f"{location}.{field}")
+
+
+def load_catalog_schema(
+    schema_path: Path = SCHEMA_PATH, *, expected_id: str = SCHEMA_ID
+) -> dict[str, object]:
+    try:
+        text = Path(schema_path).read_text(encoding="utf-8")
+    except OSError as error:
+        _fail(CatalogSchemaError, f"cannot load the catalog schema: {error}")
+    raw = _strict_json_loads(text, error_type=CatalogSchemaError, context="catalog schema")
+    if not isinstance(raw, dict):
+        _fail(CatalogSchemaError, "catalog schema root is not an object")
+    if raw.get("$schema") != SCHEMA_DRAFT or raw.get("$id") != expected_id:
+        _fail(CatalogSchemaError, "catalog schema identity or draft is unknown")
+    return raw
+
+
+def validate_catalog_document(document: object, *, schema_path: Path | None = None) -> None:
+    """Validate a JSON-like value against the committed schema using stdlib."""
+    if not isinstance(document, Mapping):
+        _fail(CatalogSchemaError, "catalog must be an object")
+    catalog_version = document.get("catalog_version")
+    if type(catalog_version) is not int or catalog_version not in SCHEMA_PATHS:
+        _fail(CatalogSchemaError, "catalog_version is unsupported")
+    selected = schema_path or SCHEMA_PATHS[catalog_version]
+    _validate_schema_node(
+        document,
+        load_catalog_schema(selected, expected_id=SCHEMA_IDS[catalog_version]),
+        "catalog",
+    )
+
+
+def _canonical_bytes(value: object) -> bytes:
+    try:
+        return (
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        _fail(CatalogParseError, f"catalog cannot be serialized canonically: {error}")
+
+
+def _catalog_source_relative_path(value: object, context: str) -> str:
+    if not isinstance(value, str) or not value or "\\" in value:
+        _fail(CatalogParseError, f"{context} is not a canonical release-relative path")
+    normalized = posixpath.normpath(value)
+    if (
+        normalized != value
+        or normalized in ("", ".", "..")
+        or normalized.startswith("/")
+        or normalized.startswith("../")
+    ):
+        _fail(CatalogParseError, f"{context} is not a canonical release-relative path")
+    return value
+
+
+def load_catalog_payload_sources(release_root: Path) -> dict[str, CatalogPayloadSource]:
+    """Load every publisher fragment using the same source/target rules as generation."""
+    root = Path(release_root).resolve()
+    source_dir = root / CATALOG_SOURCE_DIR
+    if not source_dir.exists():
+        return {}
+    if source_dir.is_symlink() or not source_dir.is_dir():
+        _fail(CatalogParseError, "publisher catalog source directory is missing or unsafe")
+    sources: dict[str, CatalogPayloadSource] = {}
+    for source_file in sorted(source_dir.glob("*.json")):
+        if source_file.name in (BRIDGE_SOURCE_NAME, HASH_TABLE_SOURCE_NAME):
+            continue
+        if source_file.is_symlink() or not source_file.is_file():
+            _fail(CatalogParseError, f"catalog source {source_file.name} is unsafe")
+        relative_source = source_file.relative_to(root).as_posix()
+        try:
+            raw_bytes = bounded_read(
+                root,
+                relative_source,
+                max_bytes=MAX_CATALOG_SOURCE_BYTES,
+            )
+        except FilesystemInspectionError as error:
+            _fail(CatalogParseError, f"cannot read catalog source {source_file.name}: {error}")
+        try:
+            raw_text = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError as error:
+            _fail(CatalogParseError, f"catalog source {source_file.name} is not UTF-8: {error}")
+        raw = _strict_json_loads(
+            raw_text,
+            error_type=CatalogParseError,
+            context=f"catalog source {source_file.name}",
+        )
+        if (
+            not isinstance(raw, Mapping)
+            or set(raw) != {"catalog_source_version", "items"}
+            or raw.get("catalog_source_version") != 1
+            or not isinstance(raw.get("items"), list)
+        ):
+            _fail(CatalogParseError, f"catalog source {source_file.name} has an unsupported shape")
+        for item in raw["items"]:
+            if not isinstance(item, Mapping) or not isinstance(item.get("files"), list):
+                _fail(CatalogParseError, f"catalog source {source_file.name} has a malformed item")
+            for declared_file in item["files"]:
+                if not isinstance(declared_file, Mapping):
+                    _fail(
+                        CatalogParseError,
+                        f"catalog source {source_file.name} has a malformed file",
+                    )
+                file_fields = set(declared_file)
+                if file_fields not in (
+                    {"path", "sha256", "byte_size"},
+                    {"path", "source_path", "sha256", "byte_size"},
+                ):
+                    _fail(
+                        CatalogParseError,
+                        f"catalog source {source_file.name} has non-closed file fields",
+                    )
+                target = _catalog_source_relative_path(
+                    declared_file.get("path"),
+                    f"catalog source {source_file.name} target",
+                )
+                source = _catalog_source_relative_path(
+                    declared_file.get("source_path", target),
+                    f"catalog source {source_file.name} payload",
+                )
+                expected_hash = declared_file.get("sha256")
+                byte_size = declared_file.get("byte_size")
+                if not isinstance(expected_hash, str) or re.fullmatch(
+                    r"[0-9a-f]{64}", expected_hash
+                ) is None:
+                    _fail(
+                        CatalogParseError,
+                        f"catalog source {source_file.name} has an invalid payload hash",
+                    )
+                if type(byte_size) is not int or byte_size < 0:
+                    _fail(
+                        CatalogParseError,
+                        f"catalog source {source_file.name} has an invalid payload size",
+                    )
+                mapping = CatalogPayloadSource(source, expected_hash, byte_size)
+                previous = sources.setdefault(target, mapping)
+                if previous != mapping:
+                    _fail(
+                        CatalogParseError,
+                        f"catalog target has conflicting payload sources: {target}",
+                    )
+    return sources
+
+
+def canonical_identity_bytes(document: Mapping[str, object]) -> bytes:
+    """Canonical bytes covered by catalog_sha256 (integrity envelope excluded)."""
+    payload = {key: value for key, value in document.items() if key != "integrity"}
+    return _canonical_bytes(payload)
+
+
+def compute_catalog_sha256(document: Mapping[str, object]) -> str:
+    return hashlib.sha256(canonical_identity_bytes(document)).hexdigest()
+
+
+def with_catalog_identity(document: Mapping[str, object]) -> dict[str, object]:
+    """Return a copy with catalog_sha256 bound to its canonical payload."""
+    result = copy.deepcopy(dict(document))
+    integrity = result.get("integrity")
+    if not isinstance(integrity, dict):
+        _fail(CatalogParseError, "catalog integrity envelope is missing")
+    integrity["catalog_sha256"] = compute_catalog_sha256(result)
+    signatures = integrity.get("signatures")
+    if isinstance(signatures, list):
+        for signature in signatures:
+            if isinstance(signature, dict):
+                signature["signed_sha256"] = integrity["catalog_sha256"]
+    return result
+
+
+def canonical_catalog_bytes(catalog: ReleaseCatalog | Mapping[str, object]) -> bytes:
+    document = catalog.to_dict() if isinstance(catalog, ReleaseCatalog) else dict(catalog)
+    return _canonical_bytes(document)
+
+
+def crlf_normalized_sha256(raw: bytes) -> str | None:
+    """Digest of the CRLF→LF form of *raw*, or None when it contains no CRLF.
+
+    This is the ONE normalization Dex applies when release-owned bytes are
+    compared against release hashes. Git's recommended ``core.autocrlf=true``
+    on Windows rewrites every tracked text file to CRLF at checkout time
+    (issue #256), while release hashes are always computed over the LF
+    blob bytes. The normalization is deterministic — it cannot create a
+    false pass, because it only maps a file to the digest of its LF form,
+    which must still be byte-identical to the released content.
+    """
+    normalized = raw.replace(b"\r\n", b"\n")
+    if normalized == raw:
+        return None
+    return hashlib.sha256(normalized).hexdigest()
+
+
+def build_release_hash_table_document(
+    *, release_version: str, source_commit: str, files: Mapping[str, str]
+) -> dict[str, object]:
+    """Build the canonical sibling whole-tree hash-table document.
+
+    ``files`` maps each release-relative path to the sha256 of its exact
+    release bytes. The table never contains a row for itself — the catalog's
+    ``release.hash_table`` binding is the proof for the table's own bytes.
+    """
+    if HEX_COMMIT.fullmatch(source_commit) is None:
+        _fail(CatalogParseError, "hash table source_commit must be a full lowercase commit")
+    if not isinstance(release_version, str) or not release_version:
+        _fail(CatalogParseError, "hash table release version must be a non-empty string")
+    rows: dict[str, str] = {}
+    for raw_path, raw_hash in files.items():
+        path = _catalog_source_relative_path(raw_path, "hash table row path")
+        if not isinstance(raw_hash, str) or re.fullmatch(r"[0-9a-f]{64}", raw_hash) is None:
+            _fail(CatalogParseError, f"hash table row for {path} has an invalid sha256")
+        rows[path] = raw_hash
+    return {
+        "hash_table_version": HASH_TABLE_VERSION,
+        "release": {"version": release_version, "source_commit": source_commit},
+        "files": dict(sorted(rows.items())),
+    }
+
+
+def canonical_hash_table_bytes(document: Mapping[str, object]) -> bytes:
+    """Exact bytes of one hash-table document; these are what the catalog binds."""
+    return _canonical_bytes(document)
+
+
+def parse_release_hash_table(
+    raw: bytes,
+    *,
+    binding: HashTableBinding,
+    release_version: str | None = None,
+) -> dict[str, str]:
+    """Parse a sibling hash table only after its bytes prove the binding.
+
+    Fail closed: any mismatch, malformed row, or shape surprise raises a
+    :class:`CatalogError`; callers must then behave exactly as if the catalog
+    carried no hash-table binding at all. A verified table contributes one
+    ``path -> sha256`` row per release-shipped file.
+    """
+    if not isinstance(raw, bytes):
+        _fail(CatalogIdentityError, "release hash table bytes were not supplied as bytes")
+    if not release_bytes_match(binding.sha256, raw):
+        _fail(CatalogIdentityError, "release hash table bytes do not match the catalog binding")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        _fail(CatalogParseError, f"release hash table is not UTF-8: {error}")
+    document = _strict_json_loads(
+        text, error_type=CatalogParseError, context="release hash table"
+    )
+    if not isinstance(document, Mapping) or set(document) != {
+        "hash_table_version",
+        "release",
+        "files",
+    }:
+        _fail(CatalogParseError, "release hash table has an unsupported shape")
+    if document["hash_table_version"] != HASH_TABLE_VERSION:
+        _fail(CatalogParseError, "release hash table version is unsupported")
+    release = document["release"]
+    if not isinstance(release, Mapping) or set(release) != {"version", "source_commit"}:
+        _fail(CatalogParseError, "release hash table identity is malformed")
+    version = release["version"]
+    commit = release["source_commit"]
+    if not isinstance(version, str) or not version:
+        _fail(CatalogParseError, "release hash table version is malformed")
+    if not isinstance(commit, str) or HEX_COMMIT.fullmatch(commit) is None:
+        _fail(CatalogParseError, "release hash table source commit is malformed")
+    if release_version is not None and version != release_version:
+        _fail(
+            CatalogIdentityError,
+            "release hash table declares a different release version than the catalog",
+        )
+    files = document["files"]
+    if not isinstance(files, Mapping):
+        _fail(CatalogParseError, "release hash table files must be an object")
+    rows: dict[str, str] = {}
+    for raw_path, raw_hash in files.items():
+        path = _catalog_source_relative_path(raw_path, "release hash table row")
+        if path == binding.path:
+            _fail(CatalogParseError, "release hash table must not contain a row for itself")
+        if not isinstance(raw_hash, str) or re.fullmatch(r"[0-9a-f]{64}", raw_hash) is None:
+            _fail(CatalogParseError, f"release hash table row for {path} has an invalid sha256")
+        rows[path] = raw_hash
+    return rows
+
+
+def release_bytes_match(expected_sha256: str, raw: bytes) -> bool:
+    """True when *raw* proves a release hash; the exact bytes stay primary.
+
+    Every comparison of on-disk bytes against a release-declared sha256
+    (manifest binding, dormant payload sources, per-file release-state
+    classification) must go through this one policy: strict byte hash
+    first, then — only when the bytes contain CRLF — the digest of their
+    CRLF→LF form. See :func:`crlf_normalized_sha256` for why this is sound.
+    """
+    if hashlib.sha256(raw).hexdigest() == expected_sha256:
+        return True
+    normalized = crlf_normalized_sha256(raw)
+    return normalized is not None and normalized == expected_sha256
+
+
+def _verify_identity(catalog: ReleaseCatalog, document: Mapping[str, object], manifest_bytes: bytes) -> None:
+    expected = compute_catalog_sha256(document)
+    if catalog.integrity.catalog_sha256 != expected:
+        _fail(
+            CatalogIdentityError,
+            "catalog_sha256 does not match the exact canonical catalog payload",
+        )
+    if not isinstance(manifest_bytes, bytes):
+        _fail(CatalogIdentityError, "release manifest bytes were not supplied as bytes")
+    if not release_bytes_match(catalog.release.manifest.sha256, manifest_bytes):
+        _fail(CatalogIdentityError, "release manifest bytes do not match the catalog binding")
+
+
+def loads_catalog(text: str, *, manifest_bytes: bytes) -> ReleaseCatalog:
+    """Parse, schema-check, model, and identity-check one catalog document."""
+    document = _strict_json_loads(text, error_type=CatalogParseError, context="catalog")
+    validate_catalog_document(document)
+    try:
+        catalog = ReleaseCatalog.from_dict(document)
+    except CatalogModelError:
+        raise
+    from core.lifecycle.handlers import DEFAULT_REGISTRY
+
+    for item in catalog.items:
+        DEFAULT_REGISTRY.resolve(item.kind)
+    assert isinstance(document, Mapping)
+    _verify_identity(catalog, document, manifest_bytes)
+    return catalog
+
+
+def load_catalog(path: Path, *, release_root: Path) -> ReleaseCatalog:
+    """Load a catalog and verify its bound manifest from one release tree."""
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError as error:
+        _fail(CatalogParseError, f"cannot read catalog document: {error}")
+    try:
+        document = _strict_json_loads(text, error_type=CatalogParseError, context="catalog")
+        validate_catalog_document(document)
+        modeled = ReleaseCatalog.from_dict(document)
+    except CatalogModelError:
+        raise
+    root = Path(release_root).resolve()
+    manifest_path = (root / modeled.release.manifest.path).resolve()
+    if not manifest_path.is_relative_to(root):
+        _fail(CatalogIdentityError, "manifest binding escapes the release root")
+    try:
+        manifest_bytes = manifest_path.read_bytes()
+    except OSError as error:
+        _fail(CatalogIdentityError, f"cannot verify the bound release manifest: {error}")
+    return loads_catalog(text, manifest_bytes=manifest_bytes)
+
+
+__all__ = [
+    "CatalogError",
+    "CatalogIdentityError",
+    "CatalogPayloadSource",
+    "CatalogParseError",
+    "CatalogSchemaError",
+    "HASH_TABLE_PATH",
+    "HASH_TABLE_SOURCE_NAME",
+    "HASH_TABLE_VERSION",
+    "MAX_HASH_TABLE_BYTES",
+    "build_release_hash_table_document",
+    "canonical_catalog_bytes",
+    "canonical_hash_table_bytes",
+    "canonical_identity_bytes",
+    "compute_catalog_sha256",
+    "crlf_normalized_sha256",
+    "load_catalog",
+    "load_catalog_payload_sources",
+    "load_catalog_schema",
+    "loads_catalog",
+    "parse_release_hash_table",
+    "release_bytes_match",
+    "validate_catalog_document",
+    "with_catalog_identity",
+]

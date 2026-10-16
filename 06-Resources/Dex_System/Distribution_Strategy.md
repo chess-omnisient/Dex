@@ -1,5 +1,13 @@
 # Dex Distribution Strategy
 
+**Status: HISTORICAL (January 2026) — mechanisms superseded.** The philosophy below
+("Dex is yours, not ours"; updates enhance without disrupting) still holds, but the
+git-upstream merge mechanics this document describes were replaced in mid-2026 by
+the receipt-backed lifecycle engine (preview → backup → apply → verify → receipt →
+rewind) and the customization-migration system. For current truth read:
+`Updating_Dex.md` (user-facing), `Distribution_Checklist.md` (maintainer),
+`docs/architecture/DEX-CORE-MAP.md` §§1–4, 12 (technical). Kept as a design record.
+
 **Last Updated:** January 29, 2026
 
 This document explains how Dex handles updates, customizations, and distribution to users.
@@ -39,7 +47,7 @@ git remote add origin <their-repo>   # Optional: their backup
 
 ```bash
 git fetch upstream                   # Download updates
-git merge upstream/main              # Merge safely
+git merge upstream/release              # Merge safely
 ```
 
 **What happens:**
@@ -60,7 +68,7 @@ These files/folders are in `.gitignore` so updates never touch them:
 # User configuration
 System/user-profile.yaml
 System/pillars.yaml
-System/.last-update-check
+System/.last-update-check                # Legacy checker state; new evidence state is outside the worktree
 
 # Custom extensions
 CLAUDE-custom.md                     # User prompt overrides
@@ -213,7 +221,7 @@ When major updates require structural changes (folder renames, schema updates), 
 ```bash
 ./core/migrations/v1-to-v2.sh    # Transforms user data
 git fetch upstream                # Then pull updates
-git merge upstream/main
+git merge upstream/release
 ```
 
 ### CHANGELOG Format for Breaking Changes
@@ -229,7 +237,7 @@ git merge upstream/main
 1. Back up your vault
 2. Run: ./core/migrations/v1-to-v2.sh
 3. Review changes: git diff
-4. Update Dex: git fetch upstream && git merge upstream/main
+4. Update Dex: git fetch upstream && git merge upstream/release
 
 **Why this change:** [Explanation]
 ```
@@ -244,7 +252,7 @@ Conflicts occur when both the user AND the main repo modified the same file.
 
 **Example:**
 ```bash
-$ git merge upstream/main
+$ git merge upstream/release
 CONFLICT (content): Merge conflict in CLAUDE.md
 ```
 
@@ -291,7 +299,7 @@ git commit -m "My changes before update"
 **Step 3:** Merge updates
 ```bash
 git fetch upstream
-git merge upstream/main
+git merge upstream/release
 ```
 
 **Step 4:** Reinstall dependencies (if needed)
@@ -326,7 +334,7 @@ git diff
 **Step 5:** Merge updates
 ```bash
 git fetch upstream
-git merge upstream/main
+git merge upstream/release
 ```
 
 **Step 6:** Test
@@ -345,26 +353,29 @@ git merge upstream/main
 **File:** `core/mcp/update_checker.py`
 
 **Tools:**
-- `check_for_updates(force=bool)` - Main update check
-- `get_changelog_from_github(version=str)` - Fetch CHANGELOG
-- `get_update_status()` - Current version status
+- `check_for_updates(force=bool, doctor_redisplay=bool)` - bounded immutable release-evidence check
+- `get_update_status()` - local attempt status without a network request or currentness claim
 
-**API Calls:**
-- GitHub API: `https://api.github.com/repos/davekilleen/dex/releases/latest`
-- Rate limit friendly: 7-day interval, respects 304 Not Modified
+**Evidence transport:**
+- Pinned canonical HTTPS Git URL only
+- Isolated bare cache; sanitized absolute Git; bounded timeout and cancellation
+- Immutable annotated `dist/release/v<semver>-<short-sha>` tags
+- Closed candidate profile from tagged `System/.release-evidence-profile.json`
+- Exact tag/package/full-commit/tree/installed-files-manifest agreement
+- No GitHub latest-release API and no separate changelog fetch
 
 **State:**
-- Last check time: `System/.last-update-check`
-- Current version: `package.json` → `version` field
+- Atomic daily-attempt and once-per-exact-release dedup outside the vault worktree
+- Current version and installed profile: `package.json` plus `System/.release-evidence-profile.json`
 
 ### Integration with `/daily-plan`
 
 **Step 1** in daily-plan skill:
 ```yaml
-1. Call check_for_updates(force=False)
-2. If update_available: store notification
-3. Continue silently (don't wait for user)
-4. At Step 7 (output): prepend notification if present
+1. Reuse SessionStart's bounded daily result; do not start another request
+2. Surface only the complete `release-appears-available-unverified` notice
+3. Keep `no-newer-release-observed-unverified`, `offline`, `UNKNOWN`, and `skipped` silent
+4. Never claim publisher authentication, verification, safety, or currentness
 ```
 
 **Silent operation:** No "Checking for updates..." message, no blocking.

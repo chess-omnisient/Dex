@@ -23,6 +23,19 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Find Node.js path
+find_node() {
+  if command -v node >/dev/null 2>&1; then
+    command -v node
+  elif [[ -f "/opt/homebrew/bin/node" ]]; then
+    echo "/opt/homebrew/bin/node"
+  elif [[ -f "/usr/local/bin/node" ]]; then
+    echo "/usr/local/bin/node"
+  else
+    echo ""
+  fi
+}
+
 echo "=== Dex Learning Automation Installer ==="
 echo ""
 
@@ -66,34 +79,78 @@ VAULT_ROOT="$(dirname "$SCRIPT_DIR")"
 echo "Vault path: $VAULT_ROOT"
 echo ""
 
+LEARNING_REVIEW_SUPPORTED=true
+case "$VAULT_ROOT" in
+  "$HOME/Documents"|"$HOME/Documents/"*)
+    LEARNING_REVIEW_SUPPORTED=false
+    ;;
+esac
+
+# Never point machine-wide background jobs at a temporary checkout. A git
+# worktree marks .git as a file; a real clone or plain vault does not.
+if [[ -f "$VAULT_ROOT/.git" || "$VAULT_ROOT" == */worktrees/* ]]; then
+  echo -e "${RED}✗${NC} $VAULT_ROOT looks like a temporary working copy (a git worktree), not your real Dex vault." >&2
+  echo "  Run this installer from your real vault." >&2
+  exit 1
+fi
+
+NODE_PATH="$(find_node)"
+
 # Create LaunchAgents directory if it doesn't exist
 mkdir -p "$LAUNCH_AGENTS_DIR"
 
 # Copy plist files WITH path substitution
-sed "s|{{VAULT_PATH}}|$VAULT_ROOT|g" "$SCRIPT_DIR/$CHANGELOG_PLIST" > "$LAUNCH_AGENTS_DIR/$CHANGELOG_PLIST"
-sed "s|{{VAULT_PATH}}|$VAULT_ROOT|g" "$SCRIPT_DIR/$LEARNING_PLIST" > "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
-echo -e "${GREEN}✓${NC} Installed plist files to $LAUNCH_AGENTS_DIR (with your vault path)"
+if [[ -n "$NODE_PATH" ]]; then
+  sed -e "s|{{VAULT_PATH}}|$VAULT_ROOT|g" -e "s|{{NODE_PATH}}|$NODE_PATH|g" \
+    "$SCRIPT_DIR/$CHANGELOG_PLIST" > "$LAUNCH_AGENTS_DIR/$CHANGELOG_PLIST"
+  echo -e "${GREEN}✓${NC} Installed changelog checker plist (Node.js: $NODE_PATH)"
+else
+  echo -e "${RED}✗${NC} Node.js not found; skipping changelog checker installation" >&2
+fi
+if [[ "$LEARNING_REVIEW_SUPPORTED" == true ]]; then
+  sed "s|{{VAULT_PATH}}|$VAULT_ROOT|g" "$SCRIPT_DIR/$LEARNING_PLIST" > "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
+  echo -e "${GREEN}✓${NC} Installed learning review plist to $LAUNCH_AGENTS_DIR (with your vault path)"
+else
+  if launchctl list | grep -q "com.dex.learning-review"; then
+    launchctl unload "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST" 2>/dev/null || true
+  fi
+  rm -f "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
+  echo -e "${YELLOW}!${NC} Learning Review: Not installed — macOS privacy blocks background shell jobs from reading vaults inside Documents."
+  echo "  Move your Dex vault outside Documents, then run this installer again."
+fi
 
 # Load changelog checker
-if launchctl list | grep -q "com.dex.changelog-checker"; then
-  launchctl unload "$LAUNCH_AGENTS_DIR/$CHANGELOG_PLIST"
+if [[ -n "$NODE_PATH" ]]; then
+  if launchctl list | grep -q "com.dex.changelog-checker"; then
+    launchctl unload "$LAUNCH_AGENTS_DIR/$CHANGELOG_PLIST"
+  fi
+  launchctl load "$LAUNCH_AGENTS_DIR/$CHANGELOG_PLIST"
+  echo -e "${GREEN}✓${NC} Loaded changelog checker (runs every 6 hours)"
 fi
-launchctl load "$LAUNCH_AGENTS_DIR/$CHANGELOG_PLIST"
-echo -e "${GREEN}✓${NC} Loaded changelog checker (runs every 6 hours)"
 
-# Load learning review
-if launchctl list | grep -q "com.dex.learning-review"; then
-  launchctl unload "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
+# Load learning review when macOS can give it access to the vault
+if [[ "$LEARNING_REVIEW_SUPPORTED" == true ]]; then
+  if launchctl list | grep -q "com.dex.learning-review"; then
+    launchctl unload "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
+  fi
+  launchctl load "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
+  echo -e "${GREEN}✓${NC} Loaded learning review (runs daily at 5pm)"
 fi
-launchctl load "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
-echo -e "${GREEN}✓${NC} Loaded learning review (runs daily at 5pm)"
 
 echo ""
 echo -e "${GREEN}Installation complete!${NC}"
 echo ""
 echo "The following background jobs are now active:"
-echo "  • Changelog Checker: Checks for Claude Code updates every 6 hours"
-echo "  • Learning Review: Prompts for learning review daily at 5pm"
+if [[ -n "$NODE_PATH" ]]; then
+  echo "  • Changelog Checker: Checks for Claude Code updates every 6 hours"
+else
+  echo "  • Changelog Checker: Not installed (Node.js not found)"
+fi
+if [[ "$LEARNING_REVIEW_SUPPORTED" == true ]]; then
+  echo "  • Learning Review: Prompts for learning review daily at 5pm"
+else
+  echo "  • Learning Review: Not installed (vault is inside Documents)"
+fi
 echo ""
 echo "Logs will be written to:"
 echo "  • .scripts/logs/changelog-checker.log"

@@ -1,22 +1,77 @@
 ---
 name: daily-review
-description: End of day review with learning capture, daily plan completion tracking, and meeting follow-up surfacing.
-context: fork
+description: "Close out the day: what got done vs planned, meeting follow-ups, learnings, and tomorrow's focus. Use when the user says 'review my day', 'wrap up', 'end of day', or it's evening. Also use proactively when the day's work is clearly done. Not for setting up the morning; use `daily-plan`."
 ---
 
 ## Purpose
 
 Conduct an end-of-day review to capture progress, track what you actually accomplished vs. planned, surface meeting follow-ups, and set up tomorrow.
 
+## Execution mode
+
+Run inline in the current conversation by default. Do not fork merely because this
+skill was selected. Only run in the background when the user explicitly asks for a
+background review or the host has already obtained a specific background-work
+approval for this review.
+
+Before authoring anything, check for existing day state: today's archived plan,
+today's completion metrics, and any review or closeout already written for today. If
+existing day state is present, enter **verifier mode**. Read it, compare it with the
+current tasks and meeting evidence, and surface omissions or proposed corrections.
+Do not create a competing review or overwrite the existing author. Any proposed
+write still follows the confirmation and write-guard rules below.
+
+### Delegated gathering (large-vault scaling)
+
+This skill stays inline as described above: it keeps session awareness, it asks
+the user the questions, and it owns every interactive step. What it does NOT do
+inline is the bulk read-gathering, which on a mature vault (hundreds of notes,
+thousands of indexed messages, a live calendar and multiple integrations) can be
+large enough to exhaust the main conversation before the useful work starts.
+
+So the gathering phase is delegated to one `general-purpose` subagent via the
+Agent tool, using the self-contained prompt in this skill's
+`AGENT_INSTRUCTIONS.md`:
+
+1. Read `.claude/skills/daily-review/AGENT_INSTRUCTIONS.md`.
+2. Substitute its placeholders (`{{TARGET_DATE}}`, `{{TOMORROW_DATE}}`,
+   `{{TOMORROW_DATE_PLUS_1}}`, `{{DAY_NAME}}`, `{{MONTH}}`, `{{DD}}`, `{{YYYY}}`).
+3. Call the Agent tool with `subagent_type: "general-purpose"`, that prompt, and
+   a short description.
+4. Verify it wrote the draft to `07-Archives/Reviews/Daily_Review_YYYY-MM-DD.md`,
+   then run the interactive steps from its findings and complete the placeholder
+   sections.
+
+The subagent inherits MCP connections, runs in its own context, and that context
+is freed when it completes, so only its findings reach this conversation.
+
+**Use `AGENT_INSTRUCTIONS.md` verbatim.** Read the file and pass its content as
+the subagent prompt, substituting only the placeholders. Do NOT hand-write a
+replacement brief from what you already know about the day: that is how steps get
+silently dropped, and the omission looks complete because nothing errors. If
+context from this conversation is worth adding, APPEND it to the file's content;
+never substitute for it.
+
+**Two caveats that are load-bearing:**
+
+- **Do not count on hooks for the subagent's writes.** The hooks declared in
+  this skill's own frontmatter belong to this skill's run, not the subagent's,
+  and whether the repository-wide hooks in `.claude/settings.json` reach a
+  subagent's tool calls is not something a skill should assume either way.
+  Nothing in this skill's gathering depends on a hook; the subagent's writes
+  must stand on their own.
+- **Always fall back.** If the subagent fails, times out, or returns nothing
+  usable, say so plainly and run the gathering inline from the same
+  `AGENT_INSTRUCTIONS.md`. A missing subagent must never mean a missing result.
+
+**Stays inline:** verifier mode, meeting follow-up surfacing, learning capture
+and categorisation, tomorrow's focus confirmation, the Dex Inbox check
+(Step 2.55), the retrospective insight (Step 9.5), the evening journal, and the
+rating prompt. These need the user, so they must not be delegated.
+
 ## Tone Calibration
 
 Read `System/user-profile.yaml` → `communication` section and adapt accordingly.
-
----
-
-## Step 0: Demo Mode Check
-
-Check `System/user-profile.yaml` for `demo_mode`. If true, use demo paths.
 
 ---
 
@@ -36,6 +91,16 @@ find . -type f -name "*.md" -newermt "$TODAY 00:00:00" ! -newermt "$TODAY 23:59:
 
 ---
 
+## Step 1.5: Process Today's Meetings
+
+Before gathering context, ensure today's meetings are in the vault by running `/process-meetings today`. This pulls any unprocessed meetings from the meeting source (Otter.ai, Granola, etc.), creates meeting notes, updates person/company pages, and extracts tasks — so the rest of the review has complete data.
+
+- If no new meetings are found, continue silently
+- If meetings are processed, note the count for the review summary
+- Do NOT ask for a skill rating after this sub-step — save that for the end of the full review
+
+---
+
 ## Step 2: Gather Context
 
 ### From 03-Tasks/Tasks.md
@@ -48,112 +113,7 @@ Read `02-Week_Priorities/Week_Priorities.md` for:
 - How today's work connects to weekly priorities
 
 ### From Recent Meetings
-Check `00-Inbox/Meetings/` for meeting notes from today.
-
-### From ScreenPipe (If Running)
-
-**Check if ScreenPipe is available:**
-```bash
-curl -s http://localhost:3030/health | jq -r '.status' 2>/dev/null
-```
-
-If ScreenPipe is running, gather automatic activity context:
-
-1. **Time Audit** — Query app usage for today:
-   ```
-   Use: screenpipe_time_audit(start_time="YYYY-MM-DDT09:00:00", end_time="YYYY-MM-DDT18:00:00")
-   ```
-
-2. **Activity Summary** — Get narrative of what happened:
-   ```
-   Use: screenpipe_summarize(start_time="YYYY-MM-DDT09:00:00", end_time="YYYY-MM-DDT18:00:00")
-   ```
-
-3. **Surface to User:**
-   > "📺 **Screen Activity Summary** (auto-captured):
-   > 
-   > **Time breakdown:**
-   > - VS Code: 3.2 hours (41%)
-   > - Slack: 1.5 hours (19%)
-   > - Chrome: 2.1 hours (27%)
-   > - Zoom: 1.0 hour (13%)
-   > 
-   > **Activity narrative:**
-   > [Generated summary of the day]
-   > 
-   > **Context switches:** 34 (moderate)
-   > **Longest focus session:** 48 minutes
-   > 
-   > Does this match your sense of the day?"
-
-This provides ground truth for what actually happened vs. what was remembered.
-
-### Commitment Scan (If ScreenPipe Beta Activated & Enabled & Running)
-
-**First, check beta activation:**
-```
-Use: check_beta_enabled(feature="screenpipe")
-```
-
-If beta NOT activated, skip this section entirely.
-
-**Then check if user has opted in:**
-
-Read `System/user-profile.yaml` → `screenpipe.enabled`. If false, skip this section entirely.
-
-**If beta activated AND enabled**, scan for uncommitted asks and promises:
-
-```
-Use: scan_for_commitments(
-    start_time="YYYY-MM-DDT09:00:00",
-    end_time="YYYY-MM-DDT18:00:00",
-    apps=["Slack", "Gmail", "Teams", "Notion"]
-)
-```
-
-Then get pending items:
-```
-Use: get_uncommitted_items(include_dismissed=false)
-```
-
-**Surface to user if items found:**
-
-> "🔔 **Uncommitted Items Detected**
->
-> ScreenPipe noticed these potential commitments today that don't have matching tasks:
->
-> ### Inbound Asks
->
-> **1. Sarah Chen** (Slack, 2:34 PM)
-> > "Can you review the pricing proposal by Friday?"
->
-> 📎 Matches: **Q1 Pricing Project**
-> ⏰ Deadline: Friday
->
-> → [Create task] [Already handled] [Ignore]
->
-> ### Outbound Promises
->
-> **2. You → Tom Baker** (Slack, 4:20 PM)
-> > "I'll send over the competitive analysis tomorrow"
->
-> 📎 Matches: **Acme Deal**
-> ⏰ Deadline: Tomorrow
->
-> → [Create task] [Already handled] [Ignore]
->
-> *2 potential commitments detected. 0 have matching tasks.*"
-
-For each item the user wants to create as a task:
-```
-Use: process_commitment(commitment_id="comm-XXXXXX-XXX", action="create_task")
-Use: create_task(title="...", priority="P2", pillar="...", context="From Slack commitment")
-```
-
-For dismissals:
-```
-Use: process_commitment(commitment_id="comm-XXXXXX-XXX", action="dismiss")
-```
+Check `00-Inbox/Meetings/` for meeting notes from today (should now include anything just pulled from the meeting source).
 
 ---
 
@@ -190,6 +150,27 @@ Use: process_commitment(commitment_id="comm-XXXXXX-XXX", action="dismiss")
 
 ---
 
+## Step 2.55: Dex Inbox Check (Phone Captures)
+
+Check for tasks added from phone during the day that weren't triaged in the morning plan:
+
+```
+Use: reminders_list_items(list_name="Dex Inbox")
+```
+
+**If the tool is unavailable or errors** (Apple Reminders phone-capture is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled. Note: Reminders access never works when Claude Code runs inside the VS Code extension (macOS never shows the permission dialog to that process) — see the known limitation in `06-Resources/Dex_System/Calendar_Setup.md`. Do not advise reinstalling or reconfiguring; skip silently.
+
+If items found:
+- Surface them: "📱 **Phone captures not yet triaged** (X items in Dex Inbox)"
+- Run the same triage flow as daily-plan Step 5.10a: infer pillar, confirm with user, create task, mark Reminder complete
+- If user wants to defer: leave in Dex Inbox for tomorrow's daily-plan
+
+**If empty:** Skip silently.
+
+**Setup:** If the user hasn't created a "Dex Inbox" Reminders list yet, mention it: "You can capture tasks from your phone by adding them to a 'Dex Inbox' list in Apple Reminders. They'll show up here automatically."
+
+---
+
 ## Step 2.6: Reminders Completion Sync (Dex Today → Dex)
 
 Check if tasks were completed on phone since the morning plan:
@@ -197,6 +178,8 @@ Check if tasks were completed on phone since the morning plan:
 ```
 Use: reminders_list_completed(list_name="Dex Today")
 ```
+
+**If the tool is unavailable or errors** (Apple Reminders sync is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled. Note: Reminders access never works when Claude Code runs inside the VS Code extension (macOS never shows the permission dialog to that process) — see the known limitation in `06-Resources/Dex_System/Calendar_Setup.md`. Do not advise reinstalling or reconfiguring; skip silently.
 
 For each completed item:
 - Match to a Dex task by title
@@ -228,7 +211,7 @@ Use: reminders_clear_completed(list_name="Dex Today")
 
 ### 3.1 Find Today's Plan
 
-Look for `07-Archives/Plans/YYYY-MM-DD.md` (today's date).
+Look for `00-Inbox/Daily_Plans/YYYY-MM-DD.md` (today's date).
 
 ### 3.2 Extract Planned Focus
 
@@ -290,10 +273,15 @@ Then prompt:
 
 ### 4.3 Create Follow-Up Tasks
 
-For any follow-ups mentioned:
-- Add to Tasks.md with appropriate priority
-- Link to the person page
-- Add due date if mentioned
+For any follow-ups mentioned, create each one via Work MCP `create_task` — never by
+writing checkboxes into Tasks.md directly (hand-written tasks get no task ID, so
+completion sync, dedup, and goal rollups can't track them). Pass:
+- `pillar` (inferred per the Task Creation flow, confirmed with the user) and `priority`
+- `people`: the page path(s) of who you met (e.g. `05-Areas/People/External/Sarah_Chen.md`)
+  — this keeps the person page's Related Tasks table in sync automatically
+- `account` if the meeting was with a company you track
+- `due` (YYYY-MM-DD) if a date was mentioned
+- `weekly_priority_id` / `goal` if the follow-up clearly serves one
 
 ---
 
@@ -411,7 +399,25 @@ This only fires if the user has opted into analytics. No action needed if it ret
 
 ## Step 11: Evening Journal (If Enabled)
 
-If `journaling.evening: true`, prompt for evening reflection.
+Check `System/user-profile.yaml` → `journaling.evening`.
+
+**If `journaling.evening: true`, run the actual `/journal evening` flow** from
+`.claude/skills/journal/SKILL.md` — do not just mention reflection and move on, and do
+not substitute a single ad-hoc question. The real flow:
+
+1. Check if today's evening journal exists in `00-Inbox/Journals/`
+   - If yes: acknowledge it ("You already journaled this evening") and skip to Step 12
+   - If no: create it from the template
+2. Pull in this morning's journal intention (if one exists) for reflection
+3. Guide the user through the evening prompts conversationally — one question at a
+   time, per the journal skill's Prompting Style
+4. Save the entry, then continue the review
+
+Offer it plainly: "You have evening journaling enabled — want to do a quick reflection
+before we close the day?" If the user declines, skip without pushing back and continue
+to Step 12.
+
+**If `journaling.evening` is false or missing:** Skip this step silently.
 
 ---
 
@@ -473,24 +479,6 @@ After today:
 ### From [Meeting Name]
 - [ ] [Follow-up action] — due [date]
 - [ ] [Follow-up action]
-
----
-
-## 📺 Screen Activity (Auto-Captured)
-
-**Time by App:**
-| App | Time | % |
-|-----|------|---|
-| [App 1] | Xh Xm | X% |
-| [App 2] | Xh Xm | X% |
-
-**Metrics:**
-- Context switches: [X]
-- Longest focus: [X] minutes
-- Deep work ratio: [X]%
-
-**Activity Summary:**
-[Narrative summary from ScreenPipe]
 
 ---
 
@@ -561,17 +549,7 @@ Add one line at the end of the review output:
 
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
-| Work | dex-work-mcp | `list_tasks`, `get_week_progress`, `get_commitments_due`, `analyze_calendar_capacity` |
-| Calendar | dex-calendar-mcp | `calendar_get_today` |
-| Reminders | dex-calendar-mcp | `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed` |
-| Screen Activity | screenpipe-mcp | `screenpipe_time_audit`, `screenpipe_summarize`, `screenpipe_query` |
-
-### ScreenPipe Integration Notes
-
-ScreenPipe provides automatic activity capture. When available:
-- Pre-fills "what you actually did" with ground truth data
-- Surfaces time allocation across apps
-- Identifies communication overhead vs. deep work
-- Detects context-switching patterns
-
-If ScreenPipe is not running, skip the screen activity section gracefully.
+| Meetings | Meeting source MCP (via `/process-meetings today`) | Fetches and processes unprocessed meetings |
+| Work | work-mcp | `list_tasks`, `get_week_progress`, `get_commitments_due`, `analyze_calendar_capacity` |
+| Calendar | calendar-mcp | `calendar_get_today` |
+| Reminders | calendar-mcp | `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed`, `reminders_list_items` |

@@ -4,13 +4,13 @@ Process meetings from Granola to extract structured insights, action items, and 
 
 ## How It Works
 
-Meetings sync **automatically in the background** every 30 minutes via Granola's API.
+Meetings sync **automatically in the background** every 30 minutes via the official Granola public API.
 
 ```
-Granola App (desktop + mobile) → Granola Cloud → API → Background Sync (every 30 min) → Synced Files → /process-meetings → Person Pages, Tasks
+Granola App (desktop + mobile) → Granola Cloud → Official Granola API → Background Sync (every 30 min) → Meeting notes with attendees → Entity creation + verification → /process-meetings → Context updates, Tasks
 ```
 
-**Key features:** Mobile phone recordings are captured alongside desktop meetings. No separate OAuth setup needed — uses the token Granola's desktop app already stores on your machine.
+**Key features:** Mobile phone recordings are captured alongside desktop meetings — the official API returns both. Connect once with `/granola-setup` to add your Granola API key; there's no separate per-device setup.
 
 ## Setup (One-Time)
 
@@ -21,23 +21,25 @@ cd .scripts/meeting-intel && ./install-automation.sh
 ```
 
 This will:
-- Check prerequisites (Node.js, Granola, LLM API key)
+- Check prerequisites (Node.js, Granola API key, LLM API key)
 - Install the 30-minute background sync via macOS Launch Agent
 
-### 2. Authentication
+### 2. Connect Granola
 
-Dex uses the same credentials Granola's desktop app stores locally. As long as you're signed into Granola on your computer, meeting sync works automatically. No separate sign-in step needed.
+Dex talks to the official Granola public API using your own API key. Run `/granola-setup` to add it — Dex stores it as `GRANOLA_API_KEY` for you. Once connected, sync works automatically with no per-device or sign-in step.
 
 **Requirements:**
-- Granola app installed ([granola.ai](https://granola.ai)) with a paid plan
+- A Granola Business plan (the official API key, format `grn_...`, is created there)
+- Your Granola API key connected via `/granola-setup`
 - An LLM API key in `.env` (GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)
 
 ## Data Sources
 
 | Source | What it captures | When used |
 |--------|-----------------|-----------|
-| **Granola API** (primary) | Desktop + mobile recordings, notes, transcripts | When Granola is signed in |
-| **Local cache** (fallback) | Desktop recordings only | When API unavailable |
+| **Official Granola API** (only source) | Desktop + mobile recordings, notes, transcripts | When your Granola API key is connected via `/granola-setup` |
+
+There is no local-file fallback — the official Granola API is the single source of truth.
 
 ## Using /process-meetings
 
@@ -56,9 +58,41 @@ After setup, `/process-meetings` reads synced files and updates your vault:
 - `--days-back=N` — Override default 7-day lookback
 
 **What gets updated:**
-- Person pages (05-Areas/People/) — meeting references, last interaction dates
-- Company pages (05-Areas/Companies/) — key contacts, meeting history
+- Meeting notes (00-Inbox/Meetings/) — attendee names, emails when available, and Internal/External location in frontmatter
+- Person and company pages (05-Areas/) — deterministically created in `auto` mode or queued in `suggest` mode after qualifying evidence
+- Existing person and company pages — meeting references, last interaction dates, key contacts, and meeting history
+- Entity verification (System/.dex/) — coverage checked after every sync; `/dex-doctor` reports the same engine health
 - Tasks (03-Tasks/Tasks.md) — action items extracted from meetings
+
+People qualify after 2+ meetings across 2+ weeks, or after 2+ meetings where at least one has a transcript. An attendee without an email is tracked but never auto-created. In Obsidian mode, auto-linking points names at the person pages' actual vault paths.
+
+## Session-Start Detection
+
+`00-Inbox/Meetings/` is the meeting landing zone. Anything that drops a meeting
+note there — Granola sync, a pasted note, a hand-dropped file, or a future
+service integration — is detected at session start and processed by
+`/process-meetings`. New fetchers should write to this folder rather than add
+their own detection path.
+
+A meeting-shaped note is waiting when its date is within seven days, it has no
+`<!-- tasks-extracted: -->` marker, it has no `<!-- dex:skip-processing -->`
+opt-out, and it either has `ai_analyzed: false` or an unchecked item under
+`### For Me`. This applies to Granola-synced notes in day directories and flat,
+manually captured `YYYY-MM-DD - Topic.md` notes in the landing-zone root, with
+or without frontmatter. A user can add `<!-- dex:skip-processing -->` to any
+meeting note to permanently exclude it from processing and from the sweep.
+
+Manual-mode JSON files in `00-Inbox/Meetings/queue/` also count as waiting.
+`/process-meetings` consumes each queue file by writing its meeting note into
+the landing zone before deleting the JSON, then processes the note normally.
+No Granola credentials are required for landing-zone detection, queued meetings,
+or manually captured notes.
+
+A notice is limited to once every 30 minutes through
+`System/.last-meeting-queue-notice`, and the check stays silent when nothing is
+waiting.
+
+The detector never processes or edits a meeting. `/process-meetings` still owns that work and continues to respect the vault's `entity_creation` setting.
 
 ## What Gets Extracted
 
@@ -83,9 +117,11 @@ meeting_intelligence:
   extract_competitive_intel: true # Competitor mentions
   extract_action_items: true      # Always recommended
   extract_decisions: true         # Always recommended
+entity_creation:
+  mode: auto                      # auto, suggest, or off
 ```
 
-Internal vs external classification uses your `email_domain` setting.
+Internal vs external classification uses your `email_domain` setting. Onboarding writes `auto`; an existing vault with no `entity_creation` setting defaults to `suggest`, whose suggestions appear in `/daily-plan` and `/process-meetings`.
 
 ## Manual Sync (Optional)
 
@@ -112,14 +148,14 @@ node .scripts/meeting-intel/sync-from-granola.cjs --force   # Reprocess today
 ## Troubleshooting
 
 **No meetings showing up?**
-1. Check if Granola is installed and you're signed in
+1. Check your Granola API key is connected — run `/granola-setup` if you haven't, or to re-add it
 2. Check if background sync is set up: `./install-automation.sh --status`
 3. Check logs for errors: `tail -50 .scripts/logs/meeting-intel.stderr.log`
 
 **Mobile recordings not syncing?**
-1. Ensure you have a paid Granola plan
+1. Ensure you have a Granola Business plan (required for the API key)
 2. Check that the Granola iOS app is syncing to cloud
-3. Sign out and back in to the Granola desktop app to refresh credentials
+3. Re-run `/granola-setup` to confirm your API key is still valid
 
 **Background sync not running?**
 ```bash
@@ -137,13 +173,15 @@ node .scripts/meeting-intel/sync-from-granola.cjs --force
 ┌─────────────────────────────────────────────────────┐
 │ Granola Cloud (desktop + mobile recordings)          │
 └──────────────────────┬──────────────────────────────┘
-                       │ API (api.granola.ai, structured JSON)
+                       │ Official API (public-api.granola.ai, structured JSON)
                        ▼
 ┌─────────────────────────────────────────────────────┐
 │ Background Sync (launchd, every 30 min)              │
 │  - sync-from-granola.cjs → API fetch + LLM analysis │
-│  - Auth: reads Granola's local supabase.json         │
-│  - Fallback: local cache-v*.json (desktop only)      │
+│  - Auth: Bearer GRANOLA_API_KEY (via /granola-setup) │
+│  - Writes attendee frontmatter                       │
+│  - Runs entity creation and verification             │
+│  - No local-file fallback                            │
 └──────────────────────┬──────────────────────────────┘
                        │ LLM extraction (Gemini/Claude/GPT)
                        ▼
@@ -151,6 +189,8 @@ node .scripts/meeting-intel/sync-from-granola.cjs --force
 │ Vault Files                                          │
 │  - 00-Inbox/Meetings/YYYY-MM-DD/slug.md             │
 │  - processed-meetings.json (state)                  │
+│  - System/.dex/contacts.json + verification         │
+│  - Person/company pages or suggestions              │
 └──────────────────────┬──────────────────────────────┘
                        │ /process-meetings
                        ▼

@@ -5,11 +5,53 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/session-start.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.sh"
           },
           {
             "type": "command",
-            "command": "git pull --quiet 2>/dev/null && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"\\n✅ Synced with GitHub (pulled latest changes)\\n\"}}' || echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"\\n⚠️  Could not sync with GitHub (check your connection)\\n\"}}'"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/update_verifier.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/dex-core-orientation.sh"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/connection-health-checker.cjs"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/feedback_sweep.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/release_notes_sweep.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/skill-freshness.py\" --session-start"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/skill-freshness.py\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/soft-promise-detector.py\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/health-pulse.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/claude-composition-refresh.sh"
           }
         ]
       }
@@ -20,11 +62,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/person-context-injector.cjs"
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/person-context-injector.cjs"
           },
           {
             "type": "command",
-            "command": "node .claude/hooks/company-context-injector.cjs"
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/company-context-injector.cjs"
           }
         ]
       },
@@ -33,7 +75,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/ensure-mcp-user-scope.cjs"
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/dex-safety-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ensure-mcp-user-scope.cjs"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/dex-safety-guard.sh"
           }
         ]
       }
@@ -43,7 +98,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "afplay /System/Library/Sounds/Ping.aiff"
+            "command": "sh -c 'command -v afplay >/dev/null 2>&1 || exit 0; exec afplay /System/Library/Sounds/Ping.aiff'"
           }
         ]
       }
@@ -54,7 +109,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "afplay /System/Library/Sounds/Ping.aiff"
+            "command": "sh -c 'command -v afplay >/dev/null 2>&1 || exit 0; exec afplay /System/Library/Sounds/Ping.aiff'"
           }
         ]
       }
@@ -65,6 +120,10 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-end.sh \"$transcript_path\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/vault-autocommit.cjs"
           }
         ]
       }

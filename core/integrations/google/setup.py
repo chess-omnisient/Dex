@@ -8,7 +8,6 @@ Uses mcp-google package with OAuth flow.
 
 import json
 import os
-import webbrowser
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -232,4 +231,4 @@ def test_connection() -> Tuple[bool, str]:
     """Test if Google connection is working."""
     if is_installed():
         return True, "Google MCP is configured. Restart Claude Desktop if you haven't already."
-    return False, "Google MCP is not configured. Run /integrate-google to set up."
+    return False, "Google MCP is not configured. Run /integrate-mcp to set up."

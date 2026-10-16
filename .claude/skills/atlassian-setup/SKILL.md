@@ -1,6 +1,6 @@
 ---
 name: atlassian-setup
-description: Connect Jira and Confluence to Dex for project tracking and knowledge search
+description: "Connect Jira and Confluence for project tracking and knowledge search. Use when the user says 'connect Jira', 'hook up Confluence', 'my tickets/board'. Not for a personal task app like Todoist/Things/Trello; use `todoist-setup`/`things-setup`/`trello-setup`."
 manifest:
   id: atlassian
   auth: oauth2
@@ -90,10 +90,9 @@ authentication and provides secure access to your Jira and Confluence data.
 
 ```json
 {
-  "atlassian-mcp": {
+  "atlassian": {
     "command": "npx",
-    "args": ["-y", "@anthropic/atlassian-mcp"],
-    "env": {}
+    "args": ["-y", "mcp-remote@latest", "https://mcp.atlassian.com/v1/sse"]
   }
 }
 ```

@@ -1,6 +1,6 @@
 ---
 name: google-workspace-setup
-description: Connect Google Workspace (Gmail, Calendar, Docs) to Dex for email-aware planning and meeting prep
+description: "Connect Google Workspace (Gmail, Calendar, Docs) for email-aware planning and meeting prep. Use when the user says 'connect Gmail/Google', 'hook up my work email'. Not for local macOS calendar speed only; use `calendar-setup`. Not for Microsoft; use `ms-teams-setup`."
 integration:
   id: google-workspace
   name: Google Workspace
@@ -41,7 +41,9 @@ Once connected, Dex can:
 
 ## Privacy
 
-Dex reads your email **on demand** -- nothing is stored permanently. Emails are fetched, summarized, and discarded after the session. Only YOUR account is accessible (scoped to your OAuth login). The OAuth token stays local on your machine and is gitignored.
+Dex reads your email **on demand** -- nothing is stored permanently. Emails are fetched, summarized, and discarded after the session. Only accounts you explicitly connect are accessible. OAuth credentials stay local in `~/.google-mcp/credentials.json`, and account tokens stay local under `~/.google-mcp/tokens/`; never paste either into chat or commit them to Git.
+
+**Permission truth:** this connector requests a fixed set of nine OAuth scopes covering Docs, Drive, Sheets, Gmail, Calendar, Slides, and Forms. Changing selections on Google's consent screen does not narrow the permissions the connector requests. Its `--read-only` server mode blocks write tools after authorization, but does not reduce the underlying OAuth grant. Explain this before setup and let the user stop if that access is broader than they want.
 
 ## When to Run
 
@@ -56,10 +58,13 @@ Dex reads your email **on demand** -- nothing is stored permanently. Emails are 
 
 ### Step 1: Check if Already Connected
 
-1. Check `System/integrations/config.yaml` for `google-workspace.enabled: true`
-2. If enabled, try a test query via Google Workspace MCP (e.g., search for a recent email)
-3. If healthy and responding, skip to **Step 5** (Configure Labels)
-4. If the tool is not available or errors, continue to Step 2
+Do not treat `System/integrations/config.yaml` as the only connectedness signal. Google Workspace email may already be usable through a **Gmail session connector** already available in this session, even when that file does not say `google-workspace.enabled: true`.
+
+1. **Session connectors already available.** Inspect the tools already present in this session for Gmail, Google Calendar, and Google Drive.
+   - A **Calendar-only** or **Drive-only** connector is not a full Google Workspace connection. Do not skip setup in those cases — this skill's job includes email, and those connectors do not provide Gmail.
+   - If a **Gmail** session connector is available, try a test query (search a recent email) **without** requiring Dex config to be enabled first. If Gmail responds, treat email as already connected: do not add a second MCP server, and skip to **Step 6** (Configure Labels). Note missing Calendar or Drive tools, but do not install a duplicate Gmail server when Gmail already works.
+2. **Dex config.** Check `System/integrations/config.yaml` for `google-workspace.enabled: true`. If enabled, try a **Gmail** test query via `google-workspace-mcp` (search a recent email). Calendar or Drive responding is not enough to skip. If Gmail responds, skip to **Step 6**. If Gmail fails, continue to Step 2 even when Calendar looks healthy — do not bypass re-auth.
+3. If Gmail is not healthy on either path, continue to Step 2.
 
 ### Step 2: Explain What We're Setting Up
 
@@ -73,19 +78,51 @@ You'll authorize Dex once, and it remembers your login locally.
 
 **What you'll need:**
 - A Google account (Gmail, Workspace, or personal)
-- About 3 minutes for the OAuth flow
+- Node.js 20 or newer
+- Access to create an OAuth client in Google Cloud
+- About 15-20 minutes for the one-time Google Cloud and OAuth setup
 
 **What Dex will be able to do:**
 - Read your emails (search, unread, threads)
 - Read Google Calendar, Docs, and Sheets
 - Send emails and create events (always with your confirmation first)
 
+**Important permission detail:**
+The connector requests a fixed set of nine OAuth scopes across Docs, Drive, Sheets,
+Gmail, Calendar, Slides, and Forms. Choosing fewer items on Google's consent screen
+does not narrow the permissions the connector requests. If that is broader than you
+want, stop here rather than authorizing it.
+
 **Ready to go?**
 ```
 
 Wait for confirmation.
 
-### Step 3: Add the Google Workspace MCP Server
+### Step 3: Create the Google Cloud App
+
+The installed connector is the npm package `google-workspace-mcp`, maintained at
+`github.com/pm990320/google-workspace-mcp`. Keep every setup and troubleshooting
+instruction aligned to that package and its CLI.
+
+Walk the user through the following browser steps. This is the substantial part of setup:
+
+1. **Create or select a Google Cloud project.**
+2. **Enable the required Google APIs:** Google Docs, Drive, Sheets, Gmail, Calendar,
+   Slides, and Forms.
+3. **Configure the OAuth consent screen.** Use the audience appropriate to the user's
+   account or organization. If the app is in testing mode, continue to the next step.
+4. **Add the Google account as a test user** when the consent screen is in testing mode.
+5. Create a **Desktop app** OAuth client. Download its JSON credentials file.
+6. Put that file at `~/.google-mcp/credentials.json`. Create `~/.google-mcp/` first if
+   needed and restrict the file to the current user. Ask for the downloaded file's local
+   path; never ask the user to paste its contents into chat.
+
+Confirm that the credentials file exists before continuing, but never print or read its
+secret values into the conversation.
+
+### Step 4: Add the Google Workspace MCP Server
+
+If Step 1 already found a healthy **Gmail** session connector, skip this step — do not register a second Gmail/Workspace server. A healthy Calendar or Drive connector alone is not a reason to skip.
 
 Check the user's MCP configuration. If `google-workspace-mcp` is not listed:
 
@@ -94,7 +131,7 @@ Check the user's MCP configuration. If `google-workspace-mcp` is not listed:
 ```
 I need to add the Google Workspace connector to your Dex configuration.
 
-This is an open-source bridge (github.com/taylorwilsdon/google_workspace_mcp)
+This is an open-source bridge (github.com/pm990320/google-workspace-mcp)
 that connects to Google's APIs via OAuth. Your credentials stay on your machine.
 ```
 
@@ -104,20 +141,25 @@ that connects to Google's APIs via OAuth. Your credentials stay on your machine.
 {
   "google-workspace-mcp": {
     "command": "npx",
-    "args": ["-y", "google-workspace-mcp"],
+    "args": ["-y", "google-workspace-mcp", "serve"],
     "env": {}
   }
 }
 ```
 
+The config key, the `npx` package, and the name in the explanation must all be `google-workspace-mcp`. Do not substitute a different repository or package name.
+
 3. Tell the user the MCP server needs to restart for changes to take effect.
 
-### Step 4: Authenticate via OAuth
+### Step 5: Authenticate via OAuth
 
-1. Run `npx google-workspace-mcp` -- this starts the OAuth flow
-2. A browser window opens for Google sign-in
-3. The user authorizes the requested scopes (Gmail read/send, Calendar, Docs)
-4. The token is saved locally to `System/.gmail-oauth-token.json`
+1. Run `npx -y google-workspace-mcp setup` to verify the local credentials file.
+2. Run `npx -y google-workspace-mcp accounts add main` to start the OAuth flow.
+3. A browser window opens for Google sign-in. If it does not, use the authorization URL
+   printed by the connector.
+4. The user reviews and authorizes the connector's fixed permission set.
+5. The account token is saved locally under `~/.google-mcp/tokens/`.
+6. Run `npx -y google-workspace-mcp status` and require a ready result before continuing.
 
 **If OAuth succeeds:**
 ```
@@ -135,9 +177,10 @@ The OAuth flow didn't complete. A few things to check:
 Want to retry?
 ```
 
-Retry up to 2 times, then offer to skip and come back later.
+Retry up to 2 times, then offer to skip and come back later. Do not mark the integration
+enabled unless the status command and the live tool checks both succeed.
 
-### Step 5: Configure Labels and Write Preferences
+### Step 6: Configure Labels and Write Preferences
 
 Once connected, ask:
 
@@ -169,12 +212,12 @@ Would you prefer:
 
 Save their preference. Map choice 1 to `draft_and_send: true`, choice 2 to `draft_and_send: false`.
 
-### Step 6: Test the Connection
+### Step 7: Test the Connection
 
-Run a quick test to confirm everything works:
+Run a quick test to confirm everything works. **Email is the connectedness bar.** Calendar is extra.
 
-1. Search for a recent email (e.g., from the last 24 hours)
-2. Verify calendar access (list today's events)
+1. **Email (required).** Search for a recent email (e.g., from the last 24 hours). If this fails, troubleshoot before proceeding — do not write `google-workspace.enabled: true` until Gmail responds.
+2. **Calendar (optional).** If a Calendar connector is available, list today's events. If Calendar is missing — including a Gmail-only session connector — note it and continue. Do not block saving config on a missing calendar.
 
 Show a brief summary:
 
@@ -182,13 +225,12 @@ Show a brief summary:
 **Quick test results:**
 - Email search: Working (found [N] recent emails)
 - Calendar: Working (found [N] events today)
-
-Everything looks good!
+  # or: Not available in this session — email still counts as connected
 ```
 
-If either fails, troubleshoot before proceeding.
+If email works, proceed to Step 8 even when Calendar is missing. Only email failure blocks saving configuration.
 
-### Step 7: Save Configuration
+### Step 8: Save Configuration
 
 Write to `System/integrations/config.yaml` -- update the google-workspace section:
 
@@ -210,7 +252,26 @@ google-workspace:
 
 If the file already exists, only update the `google-workspace:` section. Preserve other integration configs.
 
-### Step 8: Confirm with Capability Cascade
+Read and write `calendar.provider` in `System/user-profile.yaml`, not in `System/integrations/config.yaml`.
+
+If `calendar.provider` is already `apple`, leave it — Apple Calendar remains the calendar source.
+
+If `calendar.provider` is missing and `work_calendar` is set, leave it — that is still Apple Calendar.
+
+If `calendar.provider` is `none`, or the field is missing and no `work_calendar` is set, set `provider: google` only when Google Calendar is actually available in this session.
+That means `google-workspace-mcp` is registered, or a Google Calendar session connector is present.
+A Gmail-only connection must not change the calendar source.
+
+When those conditions hold, write this in `System/user-profile.yaml`:
+
+```yaml
+calendar:
+  provider: google
+```
+
+Keep any existing `work_calendar` value. Do not invent new privacy or consent language; this only records which calendar daily planning should read.
+
+### Step 9: Confirm with Capability Cascade
 
 ```
 **Google Workspace is connected!**
@@ -269,21 +330,25 @@ During `/daily-plan`, Dex checks for stale email threads:
 
 Google OAuth tokens typically last 1 hour, but refresh tokens are longer-lived. If you see auth errors:
 
-1. Run `/google-workspace-setup` to trigger a token refresh
-2. If the refresh token is also expired, you'll need to re-authorize through the browser
-3. This is rare -- usually happens after 6+ months or if you revoked access in Google settings
+1. Run `npx -y google-workspace-mcp status` to identify the affected account.
+2. If re-authorization is required, remove and re-add that named account through the
+   connector's account commands, then complete the browser flow again.
+3. Re-run the live email and calendar checks before marking the setup healthy.
 
 ### "Google Workspace MCP not found"
 
-The server might not be in your configuration. Re-run `/google-workspace-setup` and it will detect and fix this.
+First check whether a **Gmail** session connector is already available in this session. If Gmail is healthy, Dex can use it and does not need a second server. A Calendar-only or Drive-only connector is not enough — continue and add `google-workspace-mcp` so email works. If Gmail is missing or unhealthy, re-run `/google-workspace-setup` and it will detect and add `google-workspace-mcp`.
 
 ### Permission Errors
 
 If certain features don't work (e.g., can't send emails):
 
-1. The OAuth scopes might be incomplete
-2. Run `/google-workspace-setup` to re-authorize with full scopes
-3. Make sure you approved ALL permissions in the Google consent screen
+1. Run `npx -y google-workspace-mcp accounts test-permissions main` (replace `main` if
+   the user chose another account name).
+2. Confirm that all seven required Google APIs are enabled in the selected Cloud project.
+3. Confirm that the account is an allowed test user when the consent screen is in testing.
+4. Do not tell the user to narrow or expand individual scopes: this connector requests a
+   fixed set, so the remedy is to fix the project/API/test-user setup or stop using it.
 
 ### Rate Limiting
 
@@ -307,8 +372,8 @@ Some organizations restrict OAuth access for third-party apps:
 
 If the user runs `/google-workspace-setup` when already configured:
 
-1. Check current status via a test query
-2. Show current config from `System/integrations/config.yaml`
+1. Check current status via a test query — including a Gmail session connector already available in this session, not only `System/integrations/config.yaml`. Calendar-only or Drive-only is not enough to treat Gmail as connected.
+2. Show current config from `System/integrations/config.yaml` if present
 3. Offer options:
    - Update watched labels
    - Change write preferences (auto-draft vs ask each time)

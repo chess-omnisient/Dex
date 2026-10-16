@@ -1,0 +1,41 @@
+"""Backward-compatible re-exports from the canonical Python entity engine."""
+
+from core.entity_engine import (
+    CANONICAL_FIELD_ORDER,
+    CANONICAL_FIELDS,
+    COMPANY_FIELDS,
+    PERSON_FIELDS,
+    V2_FIELDS,
+    Result,
+    create_page_if_absent,
+    ensure_region,
+    fingerprint_page,
+    mutate_page,
+    parse_entity_page,
+    render_company_page,
+    render_person_page,
+    render_update_log,
+    replace_machine_region,
+    replace_machine_region_in_file,
+    upsert_frontmatter,
+)
+
+__all__ = [
+    "CANONICAL_FIELD_ORDER",
+    "CANONICAL_FIELDS",
+    "COMPANY_FIELDS",
+    "PERSON_FIELDS",
+    "V2_FIELDS",
+    "Result",
+    "create_page_if_absent",
+    "ensure_region",
+    "fingerprint_page",
+    "mutate_page",
+    "parse_entity_page",
+    "render_company_page",
+    "render_person_page",
+    "render_update_log",
+    "replace_machine_region",
+    "replace_machine_region_in_file",
+    "upsert_frontmatter",
+]

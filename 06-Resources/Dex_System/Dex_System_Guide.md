@@ -101,75 +101,7 @@ All skills are documented in detail in the **Skills System** section below. Here
 - `/career-coach` — Career reflections and assessments
 - `/dex-level-up` — Discover unused features
 
-See the **Skills System** section below for complete documentation of all 42 core skills + 27 role-specific skills.
-
----
-
-
-## Demo Mode
-
-Demo mode lets you explore Dex with pre-populated sample content without affecting your real vault.
-
-### Commands
-
-| Command | Effect |
-|---------|--------|
-| `/dex-demo on` | Enable demo mode and launch interactive demo selector |
-| `/dex-demo off` | Disable demo mode - use real vault |
-| `/dex-demo menu` | Show demo scenario menu (when demo mode is on) |
-| `/dex-demo status` | Check if demo mode is active |
-| `/dex-demo reset` | Restore demo content to original state |
-
-### Interactive Demo Selector
-
-When you run `/dex-demo on`, you'll see a menu of **12 validated demo scenarios** that showcase different aspects of Dex:
-
-**How it works:**
-1. Run `/dex-demo on` to see Alex Chen persona intro and scenario menu
-2. Enter a number (1-12) to launch that scenario
-3. Follow the guided walkthrough
-4. Return to menu anytime with `/dex-demo menu`
-
-**Scenario categories:**
-- **Daily Workflow (1-4):** Morning journal, daily planning, daily review, inbox triage
-- **People & Context (5-6):** Person lookup, company intelligence
-- **Planning & Review (7-9):** Weekly planning, weekly review, task management
-- **Career Development (10-11):** Career system, career coach
-- **System Evolution (12):** Learning & backlog
-
-See `.claude/reference/demo-scenarios.md` for detailed scenario descriptions.
-
-### Demo Content
-
-Located in `System/Demo/`, includes:
-
-**Demo Persona:** Alex Chen, Senior Product Manager (L4) at TechCorp, working toward L5 promotion
-
-**Sample content:**
-- 3 active projects in various stages (Mobile App Launch, Customer Portal Redesign, API Partner Program)
-- 5 person pages (Jordan Lee, Maya Patel, Sarah Chen, Tom Wilson, Lisa Park)
-- Company page for Acme Corp aggregating contacts, meetings, and tasks
-- Week of meeting notes (Jan 20-24, 2026) with scattered tasks for `/triage`
-- Full week of daily plans, weekly plan, journal entries
-- Pre-populated tasks across P0-P3 priorities with pillar tags
-- Career development system (role, ladder, reviews, goals, evidence)
-- Learning system examples (Working Preferences, Mistake Patterns, Session Learnings)
-- Dex Backlog with 10 ranked improvement ideas
-
-### How Demo Mode Works
-
-When `demo_mode: true` in `System/user-profile.yaml`:
-
-1. **Commands read from `System/Demo/`** instead of root folders
-2. **Writes are sandboxed** to the demo folder
-3. **Work MCP uses demo data** (`System/Demo/03-Tasks/Tasks.md`, `System/Demo/pillars.yaml`)
-4. **Your real vault is untouched**
-
-### Use Cases
-
-1. **Onboarding** - Explore commands before adding your own data
-2. **Demoing to colleagues** - Show the PKM system with realistic data
-3. **Testing** - Try new workflows without risk
+See the **Skills System** section below for complete documentation of all 41 bundled skills + 27 role-specific skills.
 
 ---
 
@@ -569,6 +501,8 @@ When you're reading any file that mentions people or companies, Dex quietly:
 - Loads recent meeting history, action items, and relationship notes
 - Makes that information available to Claude in the background
 
+This context comes from the real person and company pages in your vault. In Obsidian mode, names in meeting notes are linked to those pages using their actual paths, so a link always opens the page Dex found.
+
 You don't see any headers or popups - it just works. When you ask "What did Sarah and I discuss last week?", Claude already knows because it loaded her context automatically.
 
 **Example:** You open a meeting note from a customer call. The note mentions "Acme Corp." Dex automatically loads the Acme Corp company page, sees you've had 5 meetings with them in the past month, notices there are 3 open action items, and uses that context to help you prepare better.
@@ -621,50 +555,36 @@ Without memory, every planning session starts from zero. The same blind spots pe
 
 ---
 
-## Context Isolation
+## Skills See Your Conversation
 
-**The Problem:** Long conversations slow down. You start a planning session in the morning, then by afternoon your chat is sluggish because it's carrying the full weight of every skill you ran.
+**The Problem:** Earlier versions ran the planning, review, and meeting skills in an isolated workspace to keep long chats fast. That isolation had a hidden cost: an isolated skill couldn't see what you had already discussed and settled in the conversation, so a plan could resurface items you'd resolved minutes earlier. It looked like Dex was forgetting — it never had the information.
 
-**What Dex Does:** Heavy skills now run in isolated context. Your main conversation stays clean all day.
-
-### Which Skills Are Isolated
-
-These skills run in their own context, separate from your main conversation:
-
-- `/daily-plan`
-- `/daily-review`
-- `/week-plan`
-- `/week-review`
-- `/meeting-prep`
-- `/process-meetings`
-- `/career-coach`
+**What Dex Does now:** Planning, review, and meeting skills run inside your current conversation by default, so they always know what you've already covered. Dex only moves work to the background when you explicitly ask for a background run.
 
 ### What This Means for You
 
-- **No more starting fresh chats.** You can run `/daily-plan` in the morning, work all day, run `/daily-review` at night, and the conversation stays responsive.
-- **Results still flow back.** The output of each skill (your plan, review, meeting prep) is available in your conversation — only the heavy processing happens in isolation.
-- **Lighter skills stay inline.** Quick things like `/triage` or task creation happen in your current conversation as before.
-
-### Why This Matters
-
-Before context isolation, running three or four skills in one session could noticeably slow things down. Now each heavy skill gets a clean workspace, does its work, and returns the result without cluttering your main thread.
+- **Plans and reviews respect the conversation.** If you settled something earlier in the chat, `/daily-plan` and `/daily-review` won't bring it back as an open item.
+- **Background runs are opt-in.** Say "run this in the background" if you want the old behavior for a heavy run; Dex will ask before doing that on its own.
+- **Long sessions can still be split.** If a day-long chat gets sluggish, starting a fresh session is always safe — plans, reviews, and notes live in your files, not in the chat.
 
 **Reference:** See `06-Resources/Dex_System/Named_Sessions_Guide.md` for details on how named sessions work.
 
 ---
 
-## Skill Hooks
+## Automated Follow-Up
 
 Some skills now automate follow-up actions that previously required manual steps.
 
-### `/process-meetings` — Auto Person Page Updates
+### `/process-meetings` — People and Company Pages
 
-After processing meetings, Dex automatically updates person pages with meeting references. You no longer need to manually link meetings to the people who attended.
+The background sync keeps a reliable local record of meeting attendees, then uses the same rules every time to decide when a person is worth adding to your vault. Someone becomes eligible after they appear in at least two meetings across at least two weeks, or in at least two meetings where one has a transcript. Attendees without an email are still tracked, but Dex never creates a page for them automatically.
 
-**What happens:**
-- Each attendee's person page gets a reference to the meeting
-- New attendees get person pages created automatically
-- Company pages update when external contacts are involved
+You control what happens next with `entity_creation` in `System/user-profile.yaml`:
+- **`auto`** — create eligible person pages and external company pages automatically. Onboarding selects this for new vaults.
+- **`suggest`** — show eligible pages for your approval in `/daily-plan` and `/process-meetings`. This is the safe default when an existing vault has no setting.
+- **`off`** — keep tracking attendees without creating or suggesting pages.
+
+After every sync, Dex checks that each eligible attendee and company has the expected page or suggestion. `/dex-doctor` includes the same entity-engine check when you want to inspect it yourself. In Obsidian mode, meeting notes also link names to their person pages.
 
 ### `/career-coach` — Auto Evidence Capture
 
@@ -688,9 +608,9 @@ After creating your daily plan, Dex generates a condensed quickref — a one-gla
 
 ---
 
-## Vault Maintenance
+## Vault Health (`/dex-doctor`)
 
-Ask Dex to "run vault maintenance" at any time for a health check on your vault.
+Run `/dex-doctor` at any time for a plain-English health check of your vault.
 
 ### What It Scans
 
@@ -699,16 +619,23 @@ Ask Dex to "run vault maintenance" at any time for a health check on your vault.
 | **Stale inbox files** | Files sitting in `00-Inbox/` for more than 7 days without being routed |
 | **Broken WikiLinks** | `[[Links]]` that point to pages that don't exist |
 | **Orphaned person pages** | Person pages with no meeting references or recent activity |
+| **Entity engine** | Whether attendee tracking, page creation or suggestions, verification, and indexes are working |
 
 ### How to Use It
 
-Just say "run vault maintenance" in any conversation. Dex will scan and report what it finds, then suggest actions for each issue:
+Run `/dex-doctor` or say "check my vault." Dex will report what it finds and suggest actions for each issue. The entity-engine result also tells you whether creation is automatic, suggestion-only, or off, and flags eligible people or companies that have no page or suggestion.
 
 - Stale inbox files → Route them or archive them
 - Broken links → Fix the link or create the missing page
 - Orphaned person pages → Update them or move to archives
 
-No configuration required. Run it whenever your vault feels messy.
+No configuration is required. Run it whenever your vault feels messy or meeting contacts do not look right.
+
+### Troubleshooting: When Something Seems Broken
+
+`/dex-doctor` is also your first stop when Dex itself misbehaves — a command that errors out, meetings that stop coming through, a feature that used to work. It checks the whole system and tells you honestly what's working, what's switched off, what's broken and what it couldn't check, repairs what it can on its own without touching your notes, and guides you through the rest. How it works: https://heydex.ai/help/updating-troubleshooting.html#health-dex-doctor
+
+If the problem turns out to be a bug in Dex itself rather than your setup, just say what went wrong in your own words — "the meeting sync is doing something weird" is enough, and you don't need a special command (`/feedback` works too if you prefer to be explicit). Dex investigates on your machine, writes the bug report for you, and by default every report waits for your yes before anything leaves. Nothing from your notes, meetings, or conversations ever goes into a report; the full list of what a report can contain is at https://heydex.ai/help/feedback.html. When the fix ships, Dex tells you.
 
 ---
 
@@ -787,7 +714,7 @@ Skills in `_available/` are not loaded by default. To install:
 
 Skills are reusable AI workflows invoked with `/skill-name`. All skills follow the [Agent Skills standard](https://agentskills.io) format.
 
-### Core Dex Skills (25)
+### Core Dex Skills (24)
 
 **Daily Workflow:**
 - `/daily-plan` — Context-aware daily planning (integrates calendar, tasks, meetings)
@@ -823,7 +750,6 @@ Skills are reusable AI workflows invoked with `/skill-name`. All skills follow t
 - `/dex-improve` — Workshop an idea into implementation plan
 - `/dex-whats-new` — Check for system improvements (learnings + Claude updates)
 - `/create-mcp` — Create new MCP integration with guided wizard
-- `/dex-demo` — Toggle demo mode on/off/reset
 - `/setup` — Initial onboarding (one-time)
 - `/reset` — Restructure Dex based on role change
 - `/save-insight` — Capture learnings from completed work
@@ -996,7 +922,7 @@ Dex includes seven custom MCP servers in `core/mcp/`:
 |------------|------|--------------|
 | **Work** | `work_server.py` | Task/priority management with deduplication, priority limits, pillar alignment |
 | **Calendar** | `calendar_server.py` | Apple Calendar integration via AppleScript (Google, Exchange, iCloud) |
-| **Granola** | `granola_server.py` | Meeting transcripts from Granola's local cache |
+| **Granola** | `granola_server.py` | Meeting transcripts via the official Granola API (requires a Granola Business plan; connect with `/granola-setup`) |
 | **Career** | `career_server.py` | Career development tracking, evidence aggregation, competency analysis |
 | **Resume** | `resume_server.py` | Resume building with sessions, metric validation, LinkedIn generation |
 | **Dex Improvements** | `dex_improvements_server.py` | Improvement idea capture, duplicate detection, backlog management |
@@ -1004,9 +930,11 @@ Dex includes seven custom MCP servers in `core/mcp/`:
 
 ### Optional External Integrations
 
-| MCP Server | What It Does | Setup |
-|------------|--------------|-------|
-| **Pendo** (hosted) | Product analytics for Pendo customers - guide performance, feature adoption, engagement tracking | OAuth via Pendo. Enable in onboarding or add to AI client config. Details: https://support.pendo.io/hc/en-us/articles/41102236924955 |
+Dex also works with any external hosted or local MCP server your AI client supports.
+These are optional, are not shipped with Dex, and are added in your AI client's own MCP
+config and authenticated per the vendor. Product-analytics servers such as Pendo (for
+teams that use it) are one example; follow the vendor's MCP documentation for setup and
+regional endpoints.
 
 ### Calendar MCP Tools
 
@@ -1022,7 +950,7 @@ Dex includes seven custom MCP servers in `core/mcp/`:
 
 | Tool | Purpose |
 |------|---------|
-| `granola_check_available` | Check if Granola is installed |
+| `granola_check_available` | Check if your Granola API key is connected |
 | `granola_get_recent_meetings` | Get recent meeting notes |
 | `granola_get_today_meetings` | Get today's meetings with notes |
 | `granola_search_meetings` | Search by title, notes, or attendee |
@@ -1030,7 +958,7 @@ Dex includes seven custom MCP servers in `core/mcp/`:
 
 ### Meeting Intelligence
 
-Dex processes meetings from Granola to extract structured insights, action items, and update person pages. Choose between manual and automatic processing.
+Dex processes meetings from Granola to extract structured insights, action items, and update person pages. It connects through the official Granola public API, which requires a Granola Business plan and an API key — run `/granola-setup` to connect it once (no file editing needed). After that, choose between manual and automatic processing.
 
 #### Manual Processing (Recommended to Start)
 
@@ -1078,13 +1006,15 @@ Run `/process-meetings` whenever you want to pull in new meetings. Uses Claude d
 
 **Output:**
 - Meeting notes: `00-Inbox/Meetings/YYYY-MM-DD/meeting-slug.md`
-- Person pages updated with meeting references (Internal/ or External/ based on email domain)
-- Company pages created for external organizations
+- Attendees recorded with names, emails when available, and Internal/External location
+- Eligible person and company pages created in `auto` mode, or offered in `/daily-plan` and `/process-meetings` in `suggest` mode
+- Existing person pages updated with meeting references; Obsidian mode links names to their actual page paths
+- Entity coverage verified after the sync and available in `/dex-doctor`
 - Action items added to `03-Tasks/Tasks.md` (unless `--no-todos` flag used)
 
 #### Historical Data Processing
 
-When you first connect Granola (via `/getting-started` or during onboarding), the system analyzes your meeting history:
+When you first connect Granola (via `/granola-setup`, then `/getting-started` or onboarding), the system analyzes your meeting history:
 
 **Discovery phase (fast):**
 - Fetches last 6 months by default for quick initial analysis
