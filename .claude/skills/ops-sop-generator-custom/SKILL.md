@@ -53,6 +53,41 @@ If nothing relevant turns up in ClickUp, say so briefly and move straight to Ste
 
 ---
 
+## Step 2.5: Check Whether an SOP Already Exists
+
+Often the source isn't raw training notes — it's an SOP someone already wrote, in a different format. Handle that explicitly rather than treating it as fresh material.
+
+**A source is an existing SOP if** it has its own numbered sections, a Purpose or Overview heading, or a subtitle describing its own contents. The giveaway shape from `/sop-generator-custom` is product-feature sections: personas / target users, a sprint or delivery roadmap, and a referenced-stories table.
+
+**When you find one, don't just start rewriting.** Map it first, then ask. Show the user every section with what you'd do to it, and let them correct you:
+
+```
+"{Source title}" is already an SOP — it's in the product-feature format, not the ops format.
+Here's how its sections map:
+
+  §1 Purpose                  → Purpose (keep as-is)
+  §2 What is X?               → Background (keep)
+  §3 Product Offering         → Reference section (keep — has the tables)
+  §4 Target Users / Personas  → no ops equivalent (drop?)
+  §5 Parties & Responsibility → Reference section (keep)
+  §6 Action Steps             → Process steps (keep — this is the procedure)
+  §7 Troubleshooting          → Troubleshooting (keep)
+  §8 Sprint Roadmap           → no ops equivalent (drop?)
+  §9 Referenced Stories       → no ops equivalent (drop?)
+  §10 Operating Principles    → What NOT to Worry About + principles (keep)
+
+Which do you want to keep, drop, or convert? Default is to keep anything
+operational and drop the product-planning sections (4, 8, 9).
+```
+
+Then do exactly what they say. If they keep sections that have no slot in the ops template (a roadmap, a story table), keep them — the result is a hybrid, which is fine. The user's structure beats the template.
+
+**Renumber after dropping.** If sections are numbered and you remove one, renumber the rest and fix every cross-reference ("see Section 7" becomes "see Section 6"). Check for these explicitly — a stale cross-reference is the most common breakage in a converted SOP.
+
+**When the source contradicts itself,** go with the majority reading, state the resolution in the document, and log it as an open item. Don't silently pick a side. For example: a story listed as "To Do" in one table but described as shipped in two other sections — set it to shipped, and note in Open Items that it was inconsistent and needs verifying.
+
+---
+
 ## Step 3: Fill Gaps by Interview
 
 Compare what ClickUp gave you against the sections in the template below. Ask the user directly for whatever's missing — don't guess or pad. Ask as a short batch, not one question at a time, e.g.:
@@ -211,7 +246,9 @@ it's been reviewed].
 
 ## Step 5: Save to the Vault
 
-Save the SOP to `06-Resources/SOPs/{Topic}.md` (create the `SOPs/` folder if it doesn't exist yet).
+**Always save to `Omnisient.CenterofExcellence/SOPs/{Topic}.md`.** This is the house SOP folder — not `06-Resources/SOPs/`, and not inferred from context. Create the folder only if it genuinely doesn't exist.
+
+**Before writing, check whether the SOP is already there.** List the folder and look for an existing file on this topic. If one exists, do not overwrite it blindly — read it, compare it against your draft, and tell the user what differs before writing. An existing file may be *newer* than your source (someone may have corrected it against production after it was last exported), in which case overwriting destroys work. Merge into it rather than replacing it, and say what you kept from each side.
 
 Use frontmatter:
 
@@ -227,7 +264,7 @@ created: {YYYY-MM-DD}
 After writing the file, run the auto-link script since SOPs typically name people (owners, escalation contacts, trainees):
 
 ```bash
-node .scripts/auto-link-people.cjs "06-Resources/SOPs/{Topic}.md"
+node .scripts/auto-link-people.cjs "Omnisient.CenterofExcellence/SOPs/{Topic}.md"
 ```
 
 ---
@@ -235,7 +272,7 @@ node .scripts/auto-link-people.cjs "06-Resources/SOPs/{Topic}.md"
 ## Step 6: Confirm to User
 
 ```
-✅ SOP saved: [06-Resources/SOPs/{Topic}.md](06-Resources/SOPs/{Topic}.md)
+✅ SOP saved: [Omnisient.CenterofExcellence/SOPs/{Topic}.md](Omnisient.CenterofExcellence/SOPs/{Topic}.md)
 
 **Covers:** [1-sentence summary of what the tool/process does]
 
@@ -257,6 +294,8 @@ Let me know if any step needs more detail or if I missed part of the process.
 - This is a custom skill, protected from Dex updates
 - Edit `.claude/skills/ops-sop-generator-custom/SKILL.md` to modify
 - Never publish to ClickUp Docs — vault file only, always
+- SOPs always save to `Omnisient.CenterofExcellence/SOPs/` — this is fixed, not a default to vary from
+- A source that's already an SOP goes through Step 2.5 (map sections, ask keep/drop/convert) — never silently rewritten
 - Distinct from `/sop-generator-custom` (product-feature SOPs from user stories) — use this one for tools, access procedures, review queues, and recurring operational processes instead
 - Ground every step in what the source task or user interview actually said — mark genuine gaps as "To confirm," don't invent process detail
 - Golden-standard reference lives at `reference/golden-standard-cnl-sop.md` (the CNL Approval Process SOP: Purpose → Background → Workflow Overview → Back Office reference → Review Process → Approval/Decline → Escalation). Read it at Step 4. If the house SOP style changes, update that file rather than rewriting the template here.
