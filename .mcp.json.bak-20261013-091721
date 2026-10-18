@@ -1,0 +1,175 @@
+{
+  "mcpServers": {
+    "work-mcp": {
+      "type": "stdio",
+      "command": "/Users/chess/dex/.venv/bin/python3",
+      "args": [
+        "/Users/chess/dex/core/mcp/work_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "/Users/chess/dex"
+      }
+    },
+    "calendar-mcp": {
+      "type": "stdio",
+      "command": "/Users/chess/dex/.venv/bin/python3",
+      "args": [
+        "/Users/chess/dex/core/mcp/calendar_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "/Users/chess/dex"
+      }
+    },
+    "granola-mcp": {
+      "type": "stdio",
+      "command": "/Users/chess/dex/.venv/bin/python3",
+      "args": [
+        "/Users/chess/dex/core/mcp/granola_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "/Users/chess/dex"
+      }
+    },
+    "career-mcp": {
+      "type": "stdio",
+      "command": "/Users/chess/dex/.venv/bin/python3",
+      "args": [
+        "/Users/chess/dex/core/mcp/career_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "/Users/chess/dex"
+      }
+    },
+    "dex-improvements-mcp": {
+      "type": "stdio",
+      "command": "/Users/chess/dex/.venv/bin/python3",
+      "args": [
+        "/Users/chess/dex/core/mcp/dex_improvements_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "/Users/chess/dex"
+      }
+    },
+    "resume-mcp": {
+      "type": "stdio",
+      "command": "/Users/chess/dex/.venv/bin/python3",
+      "args": [
+        "/Users/chess/dex/core/mcp/resume_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "/Users/chess/dex"
+      }
+    },
+    "update-checker": {
+      "type": "stdio",
+      "command": "/Users/chess/dex/.venv/bin/python3",
+      "args": [
+        "/Users/chess/dex/core/mcp/update_checker.py"
+      ],
+      "env": {
+        "VAULT_PATH": "/Users/chess/dex"
+      }
+    },
+    "onboarding-mcp": {
+      "type": "stdio",
+      "command": "/Users/chess/dex/.venv/bin/python3",
+      "args": [
+        "/Users/chess/dex/core/mcp/onboarding_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "/Users/chess/dex"
+      }
+    },
+    "dex-analytics": {
+      "type": "stdio",
+      "command": "/Users/chess/dex/.venv/bin/python3",
+      "args": [
+        "/Users/chess/dex/core/mcp/analytics_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "/Users/chess/dex"
+      }
+    },
+    "session-memory": {
+      "type": "stdio",
+      "command": "/Users/chess/dex/.venv/bin/python3",
+      "args": [
+        "/Users/chess/dex/core/mcp/session_memory_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "/Users/chess/dex"
+      }
+    },
+    "slack-mcp": {
+      "command": "npx",
+      "args": ["-y", "slack-mcp"],
+      "env": {}
+    },
+
+    "clickup-mcp": {
+      "type": "stdio",
+      "command": "/Users/chess/dex/.venv/bin/python3",
+      "args": [
+        "/Users/chess/dex/core/mcp/clickup_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "/Users/chess/dex"
+      }
+    },
+
+    "_comment_integrations": "--- Optional Integrations (add via /[tool]-setup) ---",
+
+    "google-workspace-mcp": {
+      "command": "npx",
+      "args": ["-y", "google-workspace-mcp"],
+      "env": {
+        "GOOGLE_CLIENT_ID": "{{GOOGLE_CLIENT_ID}}",
+        "GOOGLE_CLIENT_SECRET": "{{GOOGLE_CLIENT_SECRET}}"
+      }
+    },
+    "teams-mcp": {
+      "command": "npx",
+      "args": ["-y", "teams-mcp"],
+      "env": {
+        "TEAMS_TENANT_ID": "{{TEAMS_TENANT_ID}}",
+        "TEAMS_CLIENT_ID": "{{TEAMS_CLIENT_ID}}"
+      }
+    },
+    "todoist-mcp": {
+      "command": "npx",
+      "args": ["-y", "todoist-mcp-server"],
+      "env": {
+        "TODOIST_API_KEY": "{{TODOIST_API_KEY}}"
+      }
+    },
+    "things3-mcp": {
+      "command": "npx",
+      "args": ["-y", "things3-mcp"],
+      "env": {}
+    },
+    "trello-mcp": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-trello"],
+      "env": {
+        "TRELLO_API_KEY": "{{TRELLO_API_KEY}}",
+        "TRELLO_TOKEN": "{{TRELLO_TOKEN}}"
+      }
+    },
+    "zoom-mcp": {
+      "command": "npx",
+      "args": ["-y", "zoom-mcp"],
+      "env": {
+        "ZOOM_CLIENT_ID": "{{ZOOM_CLIENT_ID}}",
+        "ZOOM_CLIENT_SECRET": "{{ZOOM_CLIENT_SECRET}}"
+      }
+    },
+    "atlassian-mcp": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/atlassian-remote-mcp"],
+      "env": {
+        "ATLASSIAN_SITE": "{{ATLASSIAN_SITE}}",
+        "ATLASSIAN_TOKEN": "{{ATLASSIAN_TOKEN}}"
+      }
+    }
+  }
+}

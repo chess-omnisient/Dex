@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "built_at": "2026-10-13T10:12:06.708384",
+  "total": 7,
+  "companies": [
+    {
+      "domains": [],
+      "name": "ABSA",
+      "path": "05-Areas/Companies/ABSA/ABSA.md",
+      "status": "\ud83d\udd04 In progress",
+      "website": null
+    },
+    {
+      "domains": [],
+      "name": "African Bank",
+      "path": "05-Areas/Companies/African_Bank/African_Bank.md",
+      "status": "\ud83d\udd04 In progress",
+      "website": null
+    },
+    {
+      "domains": [],
+      "name": "Lisa",
+      "path": "05-Areas/Companies/Lisa/Lisa.md",
+      "status": "\ud83d\udd34 Blocking timelines",
+      "website": null
+    },
+    {
+      "domains": [],
+      "name": "MTN",
+      "path": "05-Areas/Companies/MTN/MTN.md",
+      "status": "\ud83d\udd04 Project setup in progress \u2014 hard deadline the 11th",
+      "website": null
+    },
+    {
+      "domains": [],
+      "name": "Shoprite",
+      "path": "05-Areas/Companies/Shoprite/Shoprite.md",
+      "status": "\ud83d\udd04 Data + contract not yet ready",
+      "website": null
+    },
+    {
+      "domains": [],
+      "name": "Standard Bank",
+      "path": "05-Areas/Companies/Standard_Bank/Standard_Bank.md",
+      "status": "\ud83d\udd34 Blocked",
+      "website": null
+    },
+    {
+      "domains": [],
+      "name": "TransUnion",
+      "path": "05-Areas/Companies/TransUnion/TransUnion.md",
+      "status": "\ud83d\udd04 Awaiting BRS clarifications",
+      "website": null
+    }
+  ]
+}

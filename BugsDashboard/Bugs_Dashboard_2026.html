@@ -1,0 +1,942 @@
+
+<!--
+  CLIENT COLOR ASSIGNMENT (running note – keep in sync every month, do not let colors drift)
+  Shoprite:            #0f9d58 (green)    Strive:        #16a3a3 (teal)
+  ABSA:                #c2185b (magenta)  Standard Bank: #8a6d3b (bronze)
+  LegalWise:           #9c27b0 (purple)   Scorpion Legal Protection: #795548 (brown)
+  Property24:          #00838f (cyan)     N/A (client unconfirmed): var(--unknown) grey
+  First assigned: September 2026 report. LegalWise, Scorpion and Property24 added Sept 2026
+  when the automated PROD monitoring tier was introduced.
+
+  DATA SOURCE: ClickUp list 901211098087 (Omnisient > Bugs > Bugs Board) for tiers 1-2;
+  list 901216071368 (Notice board) for tier 3.
+-->
+<title>SLA Dashboard – All Clients</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --navy:#0d1b4b; --navy-ink:#333333; --accent:#3a6fd8; --accent-light:#7eb3f5;
+    --paper:#ffffff; --surface:#f6f8fc; --card:#ffffff; --border:#dfe4f0;
+    --text:#333333; --text-muted:#5b6178; --text-faint:#8890a6;
+    --good:#1f9e6d; --good-bg:#e6f6ef; --warn:#e0902e; --warn-bg:#fdf1e2;
+    --bad:#d64545; --bad-bg:#fdecec;
+    --sev1:#d64545; --sev2:#e0902e; --sev3:#3a6fd8; --sev4:#8b7cf0; --unknown:#b7bccb;
+    --client-shoprite:#0f9d58; --client-strive:#16a3a3; --client-absa:#c2185b;
+    --client-standardbank:#8a6d3b; --client-legalwise:#9c27b0; --client-scorpion:#795548;
+    --client-property24:#00838f;
+    --support:#5d2d79;
+    --shadow: 0 1px 2px rgba(20,20,60,0.04), 0 8px 24px -12px rgba(20,20,60,0.12);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0; background:var(--paper); color:var(--text);
+    font-family: 'Poppins', "Segoe UI", ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding:32px 28px 64px;}
+  .top{display:flex; align-items:flex-end; justify-content:space-between; gap:24px; padding-bottom:20px; margin-bottom:24px; border-bottom:1px solid var(--border);}
+  .top-logo{height:26px; width:auto; display:block; margin-bottom:10px;}
+  .top h1{margin:0 0 4px; font-size:1.7rem; font-weight:700; letter-spacing:-0.01em; color:var(--navy-ink); text-wrap:balance;}
+  .top .sub{color:var(--text-muted); font-size:0.94rem;}
+  .top .period{text-align:right; font-size:0.82rem; color:var(--accent-light); text-transform:uppercase; letter-spacing:0.06em; font-weight:600;}
+  .top .period strong{display:block; font-size:1rem; color:var(--navy); text-transform:none; letter-spacing:0; margin-top:2px;}
+
+  .callout{display:flex; gap:12px; align-items:flex-start; background:var(--warn-bg); border:1px solid color-mix(in srgb, var(--warn) 35%, transparent); border-radius:10px; padding:14px 16px; margin-bottom:14px; font-size:0.86rem; color:var(--text);}
+  .callout .dot{flex:none; width:8px; height:8px; border-radius:50%; background:var(--warn); margin-top:6px;}
+  .callout b{color:var(--navy-ink);}
+
+  .section-nav{position:sticky; top:0; z-index:50; display:flex; gap:6px; flex-wrap:wrap;
+    padding:10px 0; margin-bottom:4px; background:color-mix(in srgb, var(--paper) 92%, transparent);
+    backdrop-filter:blur(8px); border-bottom:1px solid var(--border);}
+  .section-nav a{font-size:0.72rem; font-weight:600; color:var(--text-muted); text-decoration:none;
+    padding:5px 12px; border-radius:999px; border:1px solid transparent; letter-spacing:0.01em;
+    transition:color .15s, background .15s, border-color .15s;}
+  .section-nav a:hover{color:var(--accent); border-color:var(--border); background:var(--surface);}
+  .section-nav a.current{color:#fff; background:var(--accent); border-color:var(--accent);}
+  .tier-head{scroll-margin-top:62px;}
+  @media print{ .section-nav{display:none;} }
+  .tier-head{display:flex; align-items:baseline; gap:10px; margin:38px 0 0; padding-bottom:8px; border-bottom:2px solid var(--navy-ink);}
+  .tier-head h2{margin:0; font-size:1.12rem; font-weight:700; color:var(--navy-ink);}
+  .tier-head .tier-num{font-size:0.66rem; font-weight:700; color:#fff; background:var(--navy-ink); border-radius:4px; padding:3px 8px; letter-spacing:0.06em;}
+  .tier-sub{font-size:0.83rem; color:var(--text-muted); margin:10px 0 20px; line-height:1.55; max-width:860px;}
+
+  .kpi-section{margin-bottom:28px;}
+  .kpi-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:14px;}
+  .kpi-grid.cols-3{grid-template-columns:repeat(3,1fr);}
+  .kpi{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow);}
+  .kpi .label{font-size:0.74rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;}
+  .kpi .value{font-size:1.9rem; font-weight:700; color:var(--navy-ink); margin-top:6px; font-variant-numeric:tabular-nums;}
+  .kpi .value.warn{color:var(--warn);}
+  .kpi .note{font-size:0.76rem; color:var(--text-faint); margin-top:4px; line-height:1.45;}
+  .kpi .delta{font-size:0.72rem; margin-top:7px; font-weight:600;}
+  .kpi .delta.up{color:var(--bad);} .kpi .delta.down{color:var(--accent);}
+
+  .section-title{font-size:0.95rem; font-weight:700; color:var(--navy-ink); margin:0 0 14px; display:flex; align-items:baseline; gap:8px;}
+
+  .grid-2{display:grid; grid-template-columns:1.5fr 1fr; gap:20px; margin-bottom:28px; align-items:start;}
+  .panel{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:20px; box-shadow:var(--shadow); overflow:hidden;}
+
+  .chart{display:flex; align-items:flex-end; gap:16px; height:180px; padding:0 4px; margin-top:8px;}
+  .chart .col{display:flex; flex-direction:column; align-items:center; flex:1; height:100%; justify-content:flex-end;}
+  .chart .bar-stack{width:100%; max-width:60px; display:flex; flex-direction:column-reverse; border-radius:4px 4px 2px 2px; overflow:hidden;}
+  .chart .seg{width:100%;}
+  .chart .col-label{margin-top:8px; font-size:0.72rem; color:var(--text-muted); font-weight:600; text-align:center; line-height:1.3;}
+  .chart .col-total{font-size:0.8rem; color:var(--navy-ink); font-weight:700; margin-bottom:4px; font-variant-numeric:tabular-nums;}
+
+  .legend{display:flex; gap:14px; margin-top:16px; flex-wrap:wrap; justify-content:center; font-size:0.78rem; color:var(--text-muted);}
+  .legend .item{display:flex; align-items:center; gap:6px;}
+  .legend .swatch{width:10px; height:10px; border-radius:2px; flex:none;}
+
+  .stat-list{display:flex; flex-direction:column; gap:10px;}
+  .stat-row{display:flex; justify-content:space-between; align-items:baseline; padding:9px 0; border-bottom:1px solid var(--border);}
+  .stat-row:last-child{border-bottom:none;}
+  .stat-row .k{font-size:0.85rem; color:var(--text-muted);}
+  .stat-row .v{font-size:1rem; font-weight:700; color:var(--navy-ink); font-variant-numeric:tabular-nums;}
+  .stat-row .v.small{font-size:0.82rem; font-weight:600; color:var(--text-faint);}
+
+  .bridge{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:20px 24px; box-shadow:var(--shadow); margin-bottom:28px;}
+  .bridge-row{display:flex; justify-content:space-between; align-items:baseline; padding:7px 0; font-size:0.85rem; border-bottom:1px solid var(--border);}
+  .bridge-row:last-child{border-bottom:none;}
+  .bridge-row.start{font-weight:700; color:var(--navy-ink); font-size:0.95rem;}
+  .bridge-row.sub{font-weight:600; color:var(--navy-ink);}
+  .bridge-row.total{font-weight:700; color:var(--navy-ink); font-size:0.95rem; border-top:2px solid var(--navy-ink); border-bottom:none; margin-top:6px; padding-top:11px;}
+  .bridge-row .n{font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap; margin-left:18px;}
+  .bridge-row .minus{color:var(--text-muted);}
+  .bridge-row .plus{color:var(--accent);}
+
+  table{width:100%; border-collapse:collapse; font-size:0.83rem;}
+  .table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:12px;}
+  th{text-align:left; padding:10px 14px; background:var(--surface); color:var(--text-muted); font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; font-weight:700; border-bottom:1px solid var(--border); white-space:nowrap; vertical-align:top;}
+  td{padding:11px 14px; border-bottom:1px solid var(--border); vertical-align:top; color:var(--text);}
+  tr:last-child td{border-bottom:none;}
+  table.detail-table{table-layout:fixed;}
+  .detail-table th, .detail-table td{padding:8px 10px; font-size:0.76rem; white-space:normal; overflow-wrap:break-word; word-break:break-word;}
+  .detail-table td.title{font-weight:700; color:var(--navy-ink);}
+  .detail-table td.title + td.title{font-weight:400; color:var(--text-muted); font-size:0.8rem;}
+  .detail-table td.mono{font-variant-numeric:tabular-nums; white-space:nowrap; color:var(--text-muted); font-size:0.74rem;}
+  .detail-table .chip{font-size:0.66rem; padding:2px 6px; white-space:nowrap; line-height:1.3; text-align:center;}
+  .detail-table .pill{font-size:0.66rem; padding:2px 7px;}
+  .pill{display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:100px; font-size:0.72rem; font-weight:700; white-space:nowrap;}
+  .pill.open{background:var(--warn-bg); color:var(--warn);}
+  .pill.closed{background:var(--good-bg); color:var(--good);}
+  .chip{display:inline-flex; padding:2px 8px; border-radius:6px; font-size:0.72rem; font-weight:600; color:#fff; white-space:nowrap;}
+
+  .sla-panel{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:20px; margin-bottom:28px; box-shadow:var(--shadow); overflow:hidden;}
+  .sla-title{font-size:0.78rem; font-weight:700; color:var(--navy-ink); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:14px;}
+  .sla-table{width:100%; border-collapse:collapse; font-size:0.85rem;}
+  .sla-table th{background:var(--surface); color:var(--text-muted); text-align:left; padding:10px 16px; font-size:0.68rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; border-bottom:1px solid var(--border); white-space:nowrap; vertical-align:top;}
+  .sla-table td{padding:12px 16px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:top;}
+  .sla-table tr:last-child td{border-bottom:none;}
+  .sla-table td.desc{color:var(--text-muted);}
+  .sla-table tr.linked{cursor:pointer; transition:background 0.12s ease;}
+  .sla-table tr.linked:hover{background:var(--surface);}
+  .sla-table tr.linked:hover .jump{text-decoration:underline;}
+  .sla-table .jump{color:var(--accent); font-weight:700; text-decoration:none; white-space:nowrap;}
+  .sla-table td.none{color:var(--text-faint);}
+  .detail-table tr[id]{scroll-margin-top:24px;}
+  @keyframes flashrow{0%,100%{background:transparent;} 18%,60%{background:color-mix(in srgb, var(--accent) 13%, transparent);}}
+  .detail-table tr:target{animation:flashrow 2.2s ease 1;}
+
+  footer{margin-top:36px; padding-top:18px; border-top:1px solid var(--border); font-size:0.76rem; color:var(--text-faint); line-height:1.65;}
+  footer b{color:var(--text-muted);}
+  footer p{margin:0 0 9px;}
+  footer p:last-child{margin-bottom:0;}
+
+  @media (max-width:820px){
+    .kpi-grid, .kpi-grid.cols-3{grid-template-columns:repeat(2,1fr);}
+    .grid-2{grid-template-columns:1fr;}
+  }
+</style>
+
+<div class="wrap">
+
+  <div class="top">
+    <div>
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNTIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAxNTIgMzIiIGZpbGw9Im5vbmUiPjxwYXRoIGQ9Ik03My44NjE3IDIxLjc3MzdWMTMuOTg5M0M3My44NjE3IDEzLjYzMTkgNzMuMzg0NSAxMi42Mjc5IDczLjExNTkgMTIuMzU1MUM3Mi4yNjA2IDExLjQ4NTQgNzAuNTkzNCAxMS41MDYxIDY5LjcwNSAxMi4zMTM4QzY5LjM4MDcgMTIuNjA5MyA2OC43MDMxIDEzLjc3NDQgNjguNzAzMSAxNC4xODc2VjIxLjYyNUM2OC43MDMxIDIxLjYzNTMgNjguNTY0NiAyMS43NzM3IDY4LjU1NDMgMjEuNzczN0g2Ni4xMjQ4VjE0LjY4MzVDNjYuMTI0OCAxNC4wNjk5IDY1LjgyMzIgMTMuMDE0MiA2NS40MzA2IDEyLjUwMThDNjQuNjE4NyAxMS40NDIgNjIuNzExOSAxMS40NzMgNjEuNzk2NyAxMi4zODgyQzYxLjMyNTYgMTIuODU5MiA2MC43Njk5IDE0LjIzMzEgNjAuNzY5OSAxNC44ODE4VjIxLjc3MzdINTguMjkwOFY5LjQ3NzMxSDYwLjc2OTlMNjAuODE5NSAxMC41NjgxQzYyLjc3NTkgOC41MzczMSA2Ni4zNDE3IDguOTA5MTggNjcuNzYxIDExLjM1OTRDNjkuNTI5NCA4Ljg0MzA3IDczLjI0NCA4LjQ3NTMzIDc1LjMzMDYgMTAuODMyNkM3NS45MzE4IDExLjUxMDIgNzYuNTM3MSAxMi45OTk3IDc2LjUzNzEgMTMuODkwMVYyMS42MjVDNzYuNTM3MSAyMS42MzUzIDc2LjM5ODcgMjEuNzczNyA3Ni4zODgzIDIxLjc3MzdINzMuODU5Nkg3My44NjE3WiIgZmlsbD0iIzMxMzA4RCI+PC9wYXRoPjxwYXRoIGQ9Ik01Ni4zMzgzIDE1LjU4NjNDNTYuMzM4MyAxOS4wODE4IDUzLjUwMzggMjEuOTE2MyA1MC4wMDgyIDIxLjkxNjNDNDYuNTEyNyAyMS45MTYzIDQzLjY3ODIgMTkuMDgxOCA0My42NzgyIDE1LjU4NjNDNDMuNjc4MiAxMi4wOTA3IDQ2LjUxMjcgOS4yNTYyNCA1MC4wMDgyIDkuMjU2MjRDNTMuNTAzOCA5LjI1NjI0IDU2LjMzODMgMTIuMDkwNyA1Ni4zMzgzIDE1LjU4NjNaTTUzLjg4MTkgMTUuNTg2M0M1My44ODE5IDEzLjQ0OCA1Mi4xNDg1IDExLjcxNjggNTAuMDEyNCAxMS43MTY4QzQ3Ljg3NjIgMTEuNzE2OCA0Ni4xNDI5IDEzLjQ1MDEgNDYuMTQyOSAxNS41ODYzQzQ2LjE0MjkgMTcuNzIyNCA0Ny44NzYyIDE5LjQ1NTcgNTAuMDEyNCAxOS40NTU3QzUyLjE0ODUgMTkuNDU1NyA1My44ODE5IDE3LjcyMjQgNTMuODgxOSAxNS41ODYzWiIgZmlsbD0iIzMyMzE4RCI+PC9wYXRoPjxwYXRoIGQ9Ik04MS4zOTgxIDkuNDc3MzFWMTAuNjY3M0M4My40MzUxIDguNzE3MDQgODYuODkxNCA4LjgxMDAxIDg4Ljg4NSAxMC43NjY0Qzg5LjY0NzQgMTEuNTE0MyA5MC4zMjI5IDEzLjAxIDkwLjMyMjkgMTQuMDg4NVYyMS42MjVDOTAuMzIyOSAyMS42MzUzIDkwLjE4NDUgMjEuNzczNyA5MC4xNzQyIDIxLjc3MzdIODcuNzk0MkM4Ny43ODM5IDIxLjc3MzcgODcuNjQ1NSAyMS42MzUzIDg3LjY0NTUgMjEuNjI1VjE0LjA4ODVDODcuNjQ1NSAxMy45MTkxIDg3LjIyMiAxMy4wMzA3IDg3LjA5MzkgMTIuODU1MUM4Ni4wNDQ0IDExLjQxOTMgODMuNzIyMyAxMS4zNzE4IDgyLjQ4NDggMTIuNTk2OUM4Mi4xNTIyIDEyLjkyNTMgODEuMzk4MSAxNC4yNTc5IDgxLjM5ODEgMTQuNjgzNVYyMS43NzM3SDc4LjgxOThWOS40NzczMUg4MS4zOTgxWiIgZmlsbD0iIzMyMzE4RSI+PC9wYXRoPjxwYXRoIGQ9Ik0xMDcuNTc4IDEwLjY2NzNWMTMuMzQ0N0MxMDYuMjQzIDEyLjcxNDYgMTA0Ljk4MSAxMS43ODQ5IDEwMy40NiAxMS42NjFDMTAyLjY1OSAxMS41OTQ5IDEwMS4yNzYgMTEuNjMyMSAxMDAuNjk0IDEyLjI2NDJDOTkuNzc2NiAxMy4yNiAxMDAuODk4IDEzLjcxNjYgMTAxLjcyNSAxMy45OTE0QzEwMy40MjMgMTQuNTU1NCAxMDUuODk2IDE0LjU4MDEgMTA3LjE4MSAxNi4wMDE1QzEwOC40NjYgMTcuNDIyOSAxMDguMTgxIDE5Ljg3MzEgMTA2LjYxOSAyMC45NjM5QzEwNC4xMTkgMjIuNzA5NiAxMDAuMTgyIDIxLjg1MjIgOTcuODU5NCAyMC4xMzc1VjE3LjExM0M5OC4wMzI5IDE3LjA2OTYgOTguMDU3NyAxNy4xODUzIDk4LjE1NjkgMTcuMjYxN0M5OS44NTUxIDE4LjU2MTIgMTAwLjkzMSAxOS43MjY0IDEwMy4zNjcgMTkuNTk2MkMxMDQuNTAzIDE5LjUzNjMgMTA2LjQyNyAxOC41Mzg1IDEwNC45OTMgMTcuNDY4M0MxMDMuMTgxIDE2LjExNTEgOTguMjE2OCAxNi42OTc3IDk3Ljg3MTggMTMuNDgzMUM5Ny42NjczIDExLjU2MTggOTguNjQ0NSAxMC4zNDI5IDEwMC4zODQgOS42NzM1NkMxMDIuNzkzIDguNzQ4MDIgMTA1LjQxNyA5LjQ3MTA5IDEwNy41NzggMTAuNjY5M1YxMC42NzczWiIgZmlsbD0iIzMxMzE4RCI+PC9wYXRoPjxwYXRoIGQ9Ik0xMTMuMTMxIDkuNDc3MzFIMTEwLjU1MlYyMS43NzM3SDExMy4xMzFWOS40NzczMVoiIGZpbGw9IiMzMzMyOEUiPjwvcGF0aD48cGF0aCBkPSJNMTExLjg1MiA4LjAyOTFDMTEyLjc1MiA4LjAyOTEgMTEzLjQ4MiA3LjI5OTMxIDExMy40ODIgNi4zOTkwOEMxMTMuNDgyIDUuNDk4ODQgMTEyLjc1MiA0Ljc2OTA2IDExMS44NTIgNC43NjkwNkMxMTAuOTUyIDQuNzY5MDYgMTEwLjIyMiA1LjQ5ODg0IDExMC4yMjIgNi4zOTkwOEMxMTAuMjIyIDcuMjk5MzEgMTEwLjk1MiA4LjAyOTEgMTExLjg1MiA4LjAyOTFaIiBmaWxsPSIjMzMzMjhFIj48L3BhdGg+PHBhdGggZD0iTTk1LjM4MDIgOS40NzczMUg5Mi45MDExVjIxLjc3MzdIOTUuMzgwMlY5LjQ3NzMxWiIgZmlsbD0iIzJGMkU4QyI+PC9wYXRoPjxwYXRoIGQ9Ik05NC4xMzY2IDguMDI3Qzk1LjAzNDYgOC4wMjcgOTUuNzYyNSA3LjI5OTA2IDk1Ljc2MjUgNi40MDExMUM5NS43NjI1IDUuNTAzMTYgOTUuMDM0NiA0Ljc3NTIyIDk0LjEzNjYgNC43NzUyMkM5My4yMzg3IDQuNzc1MjIgOTIuNTEwNyA1LjUwMzE2IDkyLjUxMDcgNi40MDExMUM5Mi41MTA3IDcuMjk5MDYgOTMuMjM4NyA4LjAyNyA5NC4xMzY2IDguMDI3WiIgZmlsbD0iIzMzMzI4RSI+PC9wYXRoPjxwYXRoIGQ9Ik0xMjguMDA1IDE2LjYxNzJIMTE4LjE4OEMxMTguNTk1IDE5LjQxNjUgMTIyLjA5MSAyMC4yOTY2IDEyNC4yMzEgMTguNzQzQzEyNC41MzUgMTguNTIyIDEyNS4xNzUgMTcuNjUyMiAxMjUuMzk2IDE3LjYzMTVDMTI1Ljg5NCAxNy41ODQgMTI3LjAyMiAxOC4xMjMyIDEyNy42MDkgMTguMTA2N0MxMjYuMzM0IDIxLjk3NDEgMTIwLjkwOSAyMy4wNjQ5IDExNy44NDMgMjAuNTgxN0MxMTIuNzExIDE2LjQyMyAxMTYuNTE3IDcuOTY3MTEgMTIzLjE2NyA5LjQwNzA2QzEyNS4zNjcgOS44ODQzIDEyOC4wMDUgMTIuMzMwNCAxMjguMDA1IDE0LjY4MzVWMTYuNjE3MlpNMTE4LjE4OCAxNC40MzU1SDEyNS4zMjhDMTI0LjQ3OSAxMC43MzU1IDExOS4wMjEgMTAuNzM3NSAxMTguMTg4IDE0LjQzNTVaIiBmaWxsPSIjMzIzMThEIj48L3BhdGg+PHBhdGggZD0iTTE0MS4zOTMgMjEuNzczN0gxMzguODE0VjE0LjI4NjhDMTM4LjgxNCAxMy43MTI1IDEzNy45OTggMTIuNTYxNyAxMzcuNTAxIDEyLjIyOTFDMTM1LjM0NCAxMC43OTc0IDEzMi40NjggMTIuNTc0MSAxMzIuNDY4IDE1LjA4MDFWMjEuNzczN0gxMjkuODlWOS40NzcyOUgxMzIuNDY4VjEwLjY2NzNDMTM0LjA3MyA5LjIxNDkyIDEzNi4zNDIgOC44NTMzOCAxMzguMzU2IDkuNjg4MDJDMTQwLjAzNSAxMC4zODQyIDE0MS4zOTMgMTIuMTE3NiAxNDEuMzkzIDEzLjk4OTNWMjEuNzczN1oiIGZpbGw9IiMzMTMxOEQiPjwvcGF0aD48cGF0aCBkPSJNMTQ2LjQ1IDkuNDc3MjhIMTQ5LjYyM1YxMS43NTgxSDE0Ni40NVYxNy4wNjM0QzE0Ni40NSAxNy45NTc5IDE0OC4wOSAxOS4zOTM4IDE0OC45NzkgMTkuMzkzOEgxNTEuMDEyVjIxLjg3MjlIMTQ4LjE4NUMxNDcuODUzIDIxLjg3MjkgMTQ2LjQ0MiAyMS4xOTczIDE0Ni4xMjIgMjAuOTYxOEMxNDUuMjc5IDIwLjM0NjEgMTQzLjg3MiAxOC41MTM3IDE0My44NzIgMTcuNDZWNi4yMDQ4NUgxNDYuMzAxQzE0Ni4zMTIgNi4yMDQ4NSAxNDYuNDUgNi4zNDMyNyAxNDYuNDUgNi4zNTM2VjkuNDc3MjhaIiBmaWxsPSIjMzEzMDhEIj48L3BhdGg+PHBhdGggZD0iTTI0LjAxODkgMjMuNjIwN0MyNC4wOTMyIDIzLjczNDMgMjQuOTk4MSAyNC42NjE5IDI1LjA3NDYgMjQuNjk0OUMyNS41Nzg2IDI0LjkyNDMgMjYuMzg2NCAyNC40NTEyIDI2Ljc5OTYgMjUuMTUxNUMyNy42NTI4IDI2LjU4OTQgMjUuNjc5OSAyNy42NjM3IDI0Ljg3NDIgMjYuNDgyQzI0LjQ1MDYgMjUuODYyMiAyNC44NjM4IDI1LjQ1MzEgMjQuNzI5NSAyNS4xNDc0QzI0LjY5NjUgMjUuMDczIDIzLjY1NzMgMjQuMDM4IDIzLjU4MyAyNC4wMDI5QzIzLjIwOSAyMy44MjkzIDIzLjA0MTcgMjQuMDk1OCAyMi43MzU5IDI0LjE0NTRDMjEuOTc3NyAyNC4yNjUyIDIxLjM0MzUgMjMuODk3NSAyMC44NDM1IDIzLjM3MjdDMjAuMjgxNiAyMy43NTkxIDE3Ljc1MjkgMjQuNDM0NiAxNy40MzQ3IDI0Ljc5NDFDMTcuMjM2NCAyNS4wMTkzIDE3LjQwMzggMjUuNTI1NCAxNy4yNTkxIDI1LjkwNzZDMTYuNzg2IDI3LjE2NzkgMTQuNzggMjcuMzYyMSAxNC4xMTg5IDI2LjEyODdDMTMuMzIzNSAyNC42NDMzIDE0LjU1MjggMjMuMDczMiAxNi4xOTExIDIzLjU2MDdDMTYuNzMwMyAyMy43MjE5IDE2LjgyMzIgMjQuMDk1OCAxNy4yNjk1IDI0LjIyMThMMjAuNTEwOSAyMi45MTJDMjAuNjc0MSAyMS45NTM0IDIwLjkwNTUgMjAuODM5OSAyMi4wNTQyIDIwLjY4N0MyMy40MjE4IDIwLjUwNzMgMjQuMzk5IDIxLjQ5NDggMjQuMTE2IDIyLjg0NTlDMjQuMDQxNiAyMy4yMDU0IDIzLjc4MzMgMjMuMjU3MSAyNC4wMTY4IDIzLjYxNjVMMjQuMDE4OSAyMy42MjA3WiIgZmlsbD0iIzFCN0JEMiI+PC9wYXRoPjxwYXRoIGQ9Ik0xMC4zODggMzAuOTgxNkMxMS43NTk1IDMwLjk4MTYgMTIuODcxMyAyOS44Njk4IDEyLjg3MTMgMjguNDk4M0MxMi44NzEzIDI3LjEyNjkgMTEuNzU5NSAyNi4wMTUxIDEwLjM4OCAyNi4wMTUxQzkuMDE2NTcgMjYuMDE1MSA3LjkwNDc5IDI3LjEyNjkgNy45MDQ3OSAyOC40OTgzQzcuOTA0NzkgMjkuODY5OCA5LjAxNjU3IDMwLjk4MTYgMTAuMzg4IDMwLjk4MTZaIiBmaWxsPSIjMTk3QUQxIj48L3BhdGg+PHBhdGggZD0iTTYuMjc4NzcgNC42Njk4NUM2Ljc5NzMyIDUuMjc5MyA2LjMzMDQyIDUuNzczMDYgNi40NzUwNCA2LjEwMTU0QzYuNTA4MDkgNi4xNzU5MSA3LjU0OTMyIDcuMjE1MDggNy42MjE2MyA3LjI0ODEzQzcuOTE0OTkgNy4zODI0MiA4LjMyNjExIDcuMTE1OTEgOC42NjI4NiA3LjA5NTI1QzExLjA2OTcgNi45NDY1MSAxMC45NzY3IDEwLjI5OTUgOS4yNDc1MiAxMC41NjE5QzkuMDA3ODcgMTAuNTk3IDguNTcxOTYgMTAuNDk5OSA4LjQwNjY4IDEwLjYxMzVDOC4zMTk5MSAxMC42NzM0IDcuNjcxMjEgMTIuMjkzMSA3LjU2OTk4IDEyLjU1MzRDNy40NTg0MiAxMi44Mzg1IDYuOTk5NzggMTMuODkyMiA3LjAxODM4IDE0LjA5MDVDNy4wMzY5NyAxNC4yODg4IDcuMjUxODMgMTQuMzA1NCA3LjM1NTEyIDE0LjQ2MDNDOC4yMTQ1NSAxNS43NDMyIDcuNTc0MTEgMTcuMzUyNiA1Ljk4MTI4IDE3LjQxODdDNS43NzA1NiAxNy40MjcgNS41MDQwNSAxNy4yNTE0IDUuMzM4NzggMTcuMzU2N0M1LjI2ODUzIDE3LjQwMDEgNC41MDYyMSAxOC42NTQxIDQuNDY5MDIgMTguNzc2QzQuMzM0NzMgMTkuMjE4MSA0Ljc1NjE4IDE5LjMzMTggNC45NjA3MSAxOS43MjIyQzYuMDM0OTkgMjEuNzg2MSA0LjUzNTEzIDIzLjc3NTYgMi4yMzk4OCAyMy40MzQ3Qy0wLjQxNDg0NCAyMy4wNDAxIC0wLjI0NzUwMyAxOC40NzIzIDIuODkwNjUgMTguNTQwNUMzLjE0NDc2IDE4LjU0NjcgMy42NjMzMSAxOC43NTEyIDMuODQ3MTcgMTguNjU2MkMzLjkxNzQxIDE4LjYxOSA0LjY1NzAyIDE3LjQ0MTQgNC42OTYyNyAxNy4zMTU0QzQuODYxNTUgMTYuODA1MSA0LjU5MDkxIDE2LjgxNzUgNC40MTk0NCAxNi40OTExQzQuMzQ3MTMgMTYuMzUyNyA0LjM2Nzc5IDE2LjExNzIgNC4yOTU0OCAxNi4wMjAxQzQuMjA4NzEgMTUuOTAwMyAyLjU0MzU3IDE1Ljg2NzIgMi4zMjY2NSAxNS45MTg4QzIuMjU0MzQgMTUuOTM3NCAxLjk5ODE2IDE2Ljc4NDUgMS4yMTcyNCAxNi44MjE3Qy0wLjMyNjAwOSAxNi44OTQgLTAuNDQ5OTY0IDE0LjQ5NzUgMS4xMjIyMSAxNC40MjcyQzEuOTcxMzEgMTQuMzkwMSAyLjI1MDIxIDE1LjMxMzUgMi4zMjY2NSAxNS4zMzIxQzIuNDY1MDYgMTUuMzY1MiA0LjA3MDI5IDE1LjM1MjggNC4xODE4NSAxNS4zMTM1QzQuMjU2MjMgMTUuMjg2NyA0Ljc0NzkyIDE0LjMxMzYgNC43NDE3MiAxNC4xOTM4QzQuNzM3NTkgMTQuMDk2NyA0LjA0MzQ0IDEyLjg4MTkgMy45NzkzOSAxMi44Mzg1QzMuNzUwMDcgMTIuNjg3NyAyLjcwNDcxIDEyLjkwMjYgMi4yMzU3NSAxMi44MjJDLTAuMzcxNDU5IDEyLjM3NzggLTAuMzk4MzE2IDcuNzM1NjkgMy4xMDc1NyA3Ljk4MzZDNC45MTkzOSA4LjExMTY5IDUuODM0NiAxMC4wODg4IDQuOTc3MjQgMTEuNjQ0NEM0LjgyMDIzIDExLjkyOTUgNC4zNjE1OSAxMi4yMjcgNC40NTg2OSAxMi41NzYyQzQuNDc5MzUgMTIuNjUyNiA1LjI2NjQ3IDEzLjg1NyA1LjMzNjcxIDEzLjg5MjJDNS40NTAzNCAxMy45NDc5IDYuMzU1MjEgMTMuODQyNiA2LjQzMTY1IDEzLjc5M0M2LjU5NjkzIDEzLjY4NTYgNy41ODQ0NCAxMC44OTQ1IDcuNzk5MyAxMC40ODk2QzcuODI2MTYgMTAuMjIzMSA3LjA4MjQyIDkuNjU3MDEgNy4wMjY2NCA5LjAxNjU3QzYuOTg3MzkgOC41NzQ0NiA3LjM1MDk5IDcuOTM0MDIgNy4zMDc2MSA3Ljc2MDQ4QzcuMjgwNzUgNy42NTcxOSA2LjI0MzY1IDYuNjMyNDggNi4xMDMxNyA2LjU3MjU3QzUuNjMwMDcgNi4zNzAxMSA1LjE5MjA5IDYuODc2MjYgNC41NDc1MiA2LjI0NjE2QzMuNDc3MzcgNS4xOTg3MyA1LjE2MzE3IDMuMzU1OTIgNi4yNzQ2NCA0LjY2Nzc4TDYuMjc4NzcgNC42Njk4NVoiIGZpbGw9IiMxQTdBRDIiPjwvcGF0aD48cGF0aCBkPSJNMTUuNjEyNyAxOC45MzFDMTcuNDM5NCAxOC45MzEgMTguOTIwMyAxNy40NTAxIDE4LjkyMDMgMTUuNjIzNEMxOC45MjAzIDEzLjc5NjcgMTcuNDM5NCAxMi4zMTU5IDE1LjYxMjcgMTIuMzE1OUMxMy43ODYgMTIuMzE1OSAxMi4zMDUyIDEzLjc5NjcgMTIuMzA1MiAxNS42MjM0QzEyLjMwNTIgMTcuNDUwMSAxMy43ODYgMTguOTMxIDE1LjYxMjcgMTguOTMxWiIgZmlsbD0iIzE4NzlEMSI+PC9wYXRoPjxwYXRoIGQ9Ik0xNi4zMTcyIDAuMTg0NzQyQzE2LjY2ODQgMC40NjU3MDkgMTYuODA2OSAxLjA0ODMgMTYuNzM2NiAxLjQ4ODM1QzE2LjY0MTYgMi4wNzA5NCAxNi4wMTM1IDIuMTY1OTcgMTUuODkzNyAyLjUyOTU3QzE1Ljc5NDUgMi44MjcwNyAxNS43ODIyIDQuMDE5MTEgMTUuOTkyOSA0LjIyNzc3QzE2LjAyOCA0LjI2Mjg5IDE2Ljc5ODYgNC43NDgzOSAxNi44NDYxIDQuNzY5MDRDMTcuMTQzNiA0LjkwMTI2IDE4LjU5OCAzLjk3NTczIDE4LjYwMjEgMy42OTg4OUMxOC42MTI1IDMuMDg1MzEgMTguMzAwNSAyLjg3ODcyIDE4LjU3NzQgMi4wNDIwMUMxOS40NTMzIC0wLjYwNDQ0NCAyMy42NjE2IC0wLjA4MTc2MyAyMy4zNzI0IDMuMTcwMDFDMjMuMjI1NyA0LjgyMjc2IDIxLjQ1NzMgNS42OTQ1OCAxOS45NTk1IDUuMTIwMjVDMTkuNjM5MiA0Ljk5ODM2IDE5LjA1MDUgNC40MDU0NCAxOC44MjMyIDQuNDU5MTZDMTguNzI2MSA0LjQ4MTg4IDE3LjQyNjYgNS4yNDAwOCAxNy4zODMyIDUuMzEyMzhDMTcuMTAyMyA1Ljc2ODk2IDE3LjcxNTkgNi43MDg5NSAxNi43MzQ1IDcuNDQwMjlDMTUuMjY1NyA4LjUzNzMgMTMuMjg4NiA3LjA1NjAzIDE0LjA0MjYgNS4yNDQyMUMxNC4zNTY3IDQuNDkyMjEgMTUuMTI5MyA0LjUwMjU0IDE1LjMwMDggNC4xMjI0MUMxNS40MDQxIDMuODkxMDIgMTUuNCAyLjU3Mjk2IDE1LjI1OTUgMi4zODA4M0MxNC45Mjg5IDEuOTI4MzkgMTQuMjg2NCAxLjk0OTA1IDE0LjQ3ODUgMC45MjQzNDZDMTQuNjI1MiAwLjE1MTY4NyAxNS43NDcgLTAuMjY1NjMxIDE2LjMxMzEgMC4xODY4MDhMMTYuMzE3MiAwLjE4NDc0MloiIGZpbGw9IiMxQTdBRDIiPjwvcGF0aD48cGF0aCBkPSJNMTAuMzkgNS4zNTM3M0MxMS43NTkyIDUuMzUzNzMgMTIuODY5MSA0LjI0Mzc5IDEyLjg2OTEgMi44NzQ2MUMxMi44NjkxIDEuNTA1NDMgMTEuNzU5MiAwLjM5NTQ5MyAxMC4zOSAwLjM5NTQ5M0M5LjAyMDgzIDAuMzk1NDkzIDcuOTEwODkgMS41MDU0MyA3LjkxMDg5IDIuODc0NjFDNy45MTA4OSA0LjI0Mzc5IDkuMDIwODMgNS4zNTM3MyAxMC4zOSA1LjM1MzczWiIgZmlsbD0iIzE5N0FEMSI+PC9wYXRoPjxwYXRoIGQ9Ik0yOS41NjQgMTIuNTgwM0MyOS4zODg0IDEyLjc4MjggMjkuNzUyIDE0LjAwMTcgMjkuODg2MyAxNC4yMzUxQzMwLjA1MTUgMTQuNTIyMyAzMC45NzcxIDE0LjU4NDMgMzEuMTc3NSAxNS4yMjQ3QzMxLjc3MjUgMTcuMTI5NSAyOC41MzUyIDE3LjQ2ODMgMjguOTQ2MyAxNS4yODQ2QzI5LjAwNDEgMTQuOTgzIDI5LjQzNTkgMTQuNjc3MiAyOS40MjE0IDE0LjUwNTdDMjkuNDE1MiAxNC40MzM0IDI5LjA0OTYgMTMuNDAyNSAyOC45ODc2IDEzLjI0NzZDMjguOTI5NyAxMy4xMDMgMjguODc4MSAxMi44Nzk5IDI4LjcyMTEgMTIuODE1OEMyOC41NDM0IDEyLjc0MTQgMjcuNTEyNSAxMi42Mjk5IDI3LjM1NzYgMTIuNzAwMUMyNy4yMDI2IDEyLjc3MDQgMjYuNTA2NCAxMy45MzU1IDI2LjQ3OTYgMTQuMTEzMkMyNi40MTk2IDE0LjQ4MyAyNi43ODMyIDE0LjY0MjEgMjYuODkwNyAxNS4wNDkxQzI3LjMzNDggMTYuNzI2NiAyNS43MTMxIDE4LjAzMjMgMjQuMjQ4MyAxNy4wOTY0QzIyLjkyIDE2LjI0OTQgMjMuMzY4MyAxNC4xODE0IDI0Ljg3MjMgMTMuODgzOUMyNS4yMjk3IDEzLjgxMzcgMjUuNzA2OSAxMy45OTU1IDI1Ljg2OCAxMy44OTIyQzI1Ljk0NjUgMTMuODQyNiAyNi43MTUxIDEyLjU4NDQgMjYuNzQxOSAxMi40NzQ5QzI2Ljg2MTggMTEuOTg3NCAyNi4yODk1IDExLjYyNTggMjYuMTUxMSAxMS4xMjc5QzI1LjY0OSA5LjMzNDcyIDI2Ljc4MTIgNy42ODQwNCAyOC42ODE4IDcuNzk5NzNDMzAuNzQxNiA3LjkyNTc1IDMxLjY4OTggMTAuMzIyMiAzMC40Mjk2IDExLjkwMjdDMzAuMTYxIDEyLjIzOTQgMjkuNzM1NSAxMi4zODYxIDI5LjU2ODEgMTIuNTc4MkwyOS41NjQgMTIuNTgwM1oiIGZpbGw9IiMxQTdBRDIiPjwvcGF0aD48cGF0aCBkPSJNMjguNTEwMSAyMy40MTYyQzI5Ljg3NyAyMy40MTYyIDMwLjk4NTEgMjIuMzA4MSAzMC45ODUxIDIwLjk0MTJDMzAuOTg1MSAxOS41NzQzIDI5Ljg3NyAxOC40NjYyIDI4LjUxMDEgMTguNDY2MkMyNy4xNDMyIDE4LjQ2NjIgMjYuMDM1MiAxOS41NzQzIDI2LjAzNTIgMjAuOTQxMkMyNi4wMzUyIDIyLjMwODEgMjcuMTQzMiAyMy40MTYyIDI4LjUxMDEgMjMuNDE2MloiIGZpbGw9IiMxOTdBRDEiPjwvcGF0aD48cGF0aCBkPSJNMjAuODY4MyAzMC45NzEzQzIyLjIzNTIgMzAuOTcxMyAyMy4zNDMzIDI5Ljg2MzIgMjMuMzQzMyAyOC40OTYzQzIzLjM0MzMgMjcuMTI5NCAyMi4yMzUyIDI2LjAyMTMgMjAuODY4MyAyNi4wMjEzQzE5LjUwMTQgMjYuMDIxMyAxOC4zOTMzIDI3LjEyOTQgMTguMzkzMyAyOC40OTYzQzE4LjM5MzMgMjkuODYzMiAxOS41MDE0IDMwLjk3MTMgMjAuODY4MyAzMC45NzEzWiIgZmlsbD0iIzE5N0FEMSI+PC9wYXRoPjxwYXRoIGQ9Ik05Ljk2ODQyIDIxLjAxMTRDMTEuMDkyMyAyMS45NyAxMC41Njk2IDI0LjAwOTEgOS4wNTczNCAyNC4xNTM3QzcuNTQ1MDggMjQuMjk4MyA2LjQxNzA4IDIyLjYxNDYgNy40MjExMyAyMS4zMjc1QzcuOTg1MTMgMjAuNjA0NCA5LjI3MjIgMjAuNDE4NSA5Ljk2ODQyIDIxLjAxMTRaIiBmaWxsPSIjMUE3QUQyIj48L3BhdGg+PHBhdGggZD0iTTE1LjYyMDkgMzEuMjIzM0MxNi4yNjU1IDMxLjIyMzMgMTYuNzg4MSAzMC43MDA3IDE2Ljc4ODEgMzAuMDU2QzE2Ljc4ODEgMjkuNDExNCAxNi4yNjU1IDI4Ljg4ODggMTUuNjIwOSAyOC44ODg4QzE0Ljk3NjIgMjguODg4OCAxNC40NTM2IDI5LjQxMTQgMTQuNDUzNiAzMC4wNTZDMTQuNDUzNiAzMC43MDA3IDE0Ljk3NjIgMzEuMjIzMyAxNS42MjA5IDMxLjIyMzNaIiBmaWxsPSIjMUI3QkQyIj48L3BhdGg+PHBhdGggZD0iTTUuNDA0ODQgMjQuNjg0NkM1LjkyNTQ2IDI0LjY4MjUgNi4zOTY0OSAyNC45ODgzIDYuNTA1OTggMjUuNTEzMUM2LjcyNzA0IDI2LjU3MjkgNS45MTMwNiAyNy4xMzA3IDQuOTEzMTUgMjYuOTA3NkM0LjAwMjA3IDI2LjcwMyAzLjg1OTUyIDI0LjY5MjkgNS40MDQ4NCAyNC42ODQ2WiIgZmlsbD0iIzFBN0FEMiI+PC9wYXRoPjwvc3ZnPg==" alt="Omnisient" class="top-logo" />
+      <h1>SLA Dashboard</h1>
+      <div class="sub">Board activity, customer-impacting bugs and support requests, all clients</div>
+    </div>
+    <div class="period">Reporting period<strong>September 2026</strong><span style="display:block; font-size:0.7rem; color:var(--text-faint); text-transform:none; letter-spacing:0; font-weight:500; margin-top:3px;">Data as at 29 September</span></div>
+  </div>
+
+  <nav class="section-nav"><a href="#tier-1">Bugs Board</a><a href="#bridge">Bridge</a><a href="#tier-2">Customer bugs</a><a href="#tier-3">Alerts</a><a href="#tier-4">Support</a><a href="#by-client">By client</a></nav>
+
+  <div class="callout">
+    <div class="dot"></div>
+    <div>
+      <b>The month's only Sev 1 missed its window, though as an internally-discovered issue it carries no client-facing SLA obligation. SLA is being missed across every other category too.</b> 9 of 13 customer-impacting bugs are outside SLA, 8 of them client-facing, as are 13 of 32 automated platform alerts. 5 of 6 support requests in the quarter breach even the most lenient target in the table, three of them untouched since early July. On the Notice board not one of 333 alerts raised since July has ever been closed.
+    </div>
+  </div>
+
+  <!-- ===================== TIER 1 ===================== -->
+  <div class="tier-head" id="tier-1"><span class="tier-num">TIER 1</span><h2>Bugs Board totals</h2></div>
+  <div class="tier-sub">
+    Every task created on the Bugs Board during September, regardless of type: customer tickets, automated platform alerts, and internal QA and development work. Covers the full month to 29 September, so it is broader than the month-to-date board report taken on the 22nd.
+  </div>
+
+  <div class="kpi-section">
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="label">Tasks Created</div><div class="value">81</div>
+        <div class="note">1–29 September, SAST. 21 open + 59 closed or done + 1 triaged out. A further task was created and has since been moved to the Bug Duplicate list</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Open</div><div class="value warn">21</div>
+        <div class="note">of 81 created this period</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Closed + Done</div><div class="value">59</div>
+        <div class="note">54 Closed, 5 done</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Average Time to Close</div>
+        <div class="value">3.5<span style="font-size:0.95rem; font-weight:600; color:var(--text-faint);"> calendar days</span></div>
+        <div class="note">2.4 business days (19.4 hrs), n = 54 with confirmed close dates</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="grid-template-columns:1.35fr 1fr;">
+    <div class="panel">
+      <div class="section-title">Open tasks by status</div>
+      <div class="chart" style="height:170px;">
+        <div class="col"><div class="col-total">6</div><div class="bar-stack" style="height:170px;"><div class="seg" style="height:100%; background:var(--sev4);"></div></div><div class="col-label">In review</div></div>
+        <div class="col"><div class="col-total">5</div><div class="bar-stack" style="height:142px;"><div class="seg" style="height:100%; background:var(--accent);"></div></div><div class="col-label">Awaiting<br>approval</div></div>
+        <div class="col"><div class="col-total">3</div><div class="bar-stack" style="height:85px;"><div class="seg" style="height:100%; background:var(--client-strive);"></div></div><div class="col-label">Awaiting<br>feedback</div></div>
+        <div class="col"><div class="col-total">3</div><div class="bar-stack" style="height:85px;"><div class="seg" style="height:100%; background:var(--unknown);"></div></div><div class="col-label">To do</div></div>
+        <div class="col"><div class="col-total">2</div><div class="bar-stack" style="height:57px;"><div class="seg" style="height:100%; background:var(--sev2);"></div></div><div class="col-label">Investigating</div></div>
+        <div class="col"><div class="col-total">1</div><div class="bar-stack" style="height:28px;"><div class="seg" style="height:100%; background:var(--client-scorpion);"></div></div><div class="col-label">On hold</div></div>
+        <div class="col"><div class="col-total">1</div><div class="bar-stack" style="height:28px;"><div class="seg" style="height:100%; background:var(--client-absa);"></div></div><div class="col-label">In progress</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="section-title">Movement in the final week</div>
+      <div class="stat-list">
+        <div class="stat-row"><span class="k">New tasks, 23–29 Sept</span><span class="v">11</span></div>
+        <div class="stat-row"><span class="k">Previously-open tasks closed</span><span class="v" style="color:var(--bad);">1</span></div>
+        <div class="stat-row"><span class="k">Still open from before 23 Sept</span><span class="v">12</span></div>
+        <div class="stat-row" style="flex-direction:column; align-items:flex-start; gap:5px; border-bottom:none; padding-top:10px;">
+          <span class="v small" style="line-height:1.55; font-weight:400;">
+            Twelve of the thirteen tasks open a week ago are still open. Of the eleven new arrivals, four are
+            internal review subtasks and five are automated failures, leaving one internally-raised production
+            issue and one customer-reported bug. This dashboard counts the Bugs Board only; Bug-type tasks also
+            sit in <b>Intake Console</b> and the <b>Platform Development</b> sprints and are not included.
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== BRIDGE ===================== -->
+  <div class="tier-head" id="bridge"><span class="tier-num">BRIDGE</span><h2>From board activity to customer-impacting bugs</h2></div>
+  <div class="tier-sub">
+    Why the two headline numbers differ. Each line is a category of genuine board work that is not a customer-reported product fault. Removed here does not mean unmeasured: the 32 automated alerts are Sev 3 under the classification guide and are scored against the same target in Tier 3.
+  </div>
+
+  <div class="bridge">
+    <div class="bridge-row start"><span>Tasks created on the Bugs Board in September</span><span class="n">81</span></div>
+    <div class="bridge-row"><span class="minus">Internal QA, development, review and test tasks, including subtasks</span><span class="n minus">−21</span></div>
+    <div class="bridge-row"><span class="minus">Automated upload, connect and dataset failures</span><span class="n minus">−13</span></div>
+    <div class="bridge-row"><span class="minus">Internally-raised platform bugs, not customer-reported</span><span class="n minus">−12</span></div>
+    <div class="bridge-row"><span class="minus">Automated OmniCheck PROD alerts</span><span class="n minus">−10</span></div>
+    <div class="bridge-row"><span class="minus">Automated project-generation failures</span><span class="n minus">−8</span></div>
+    <div class="bridge-row"><span class="minus">Intercom integration test tickets</span><span class="n minus">−3</span></div>
+    <div class="bridge-row"><span class="minus">Automated data-validation failures</span><span class="n minus">−2</span></div>
+    <div class="bridge-row"><span class="minus">Intercom requests that are not faults (access, deletion)</span><span class="n minus">−2</span></div>
+    <div class="bridge-row sub"><span>Customer-reported bugs created in September</span><span class="n">10</span></div>
+    <div class="bridge-row"><span class="plus">Internally-raised Sev 1 security issue, client-impacting under the guide</span><span class="n plus">+1</span></div>
+    <div class="bridge-row"><span class="plus">Carried over from earlier months, closed in September</span><span class="n plus">+2</span></div>
+    <div class="bridge-row total"><span>Customer-impacting bugs tracked this period</span><span class="n">13</span></div>
+  </div>
+
+  <!-- ===================== TIER 2 ===================== -->
+  <div class="tier-head" id="tier-2"><span class="tier-num">TIER 2</span><h2>Customer-impacting bugs</h2></div>
+    <div class="tier-sub">
+    Faults that affect clients: those reported by a named client through Intercom, plus any internally-raised issue the Severity Classification Guide places in a client-impacting severity band. This is the client-facing bug-health view, with severity and SLA tracking.
+  </div>
+
+  <div class="kpi-section">
+    <div class="kpi-grid cols-3">
+      <div class="kpi"><div class="label">Total Tickets</div><div class="value">13</div></div>
+      <div class="kpi"><div class="label">Created This Month</div><div class="value">11</div></div>
+      <div class="kpi"><div class="label">Carried Over</div><div class="value">2</div><div class="note">Both closed in September</div></div>
+      <div class="kpi"><div class="label">Open Tickets</div><div class="value warn">5</div><div class="note">of 13 tracked this period, including 1 reopened after a workaround-only closure</div></div>
+      <div class="kpi"><div class="label">Closed Tickets</div><div class="value">8</div><div class="note">of 13 tracked this period</div></div>
+      <div class="kpi"><div class="label">Clients Affected</div><div class="value">4</div><div class="note">Shoprite, Strive, ABSA, Standard Bank, plus 2 unconfirmed and 1 platform-wide security issue affecting all</div></div>
+      <div class="kpi">
+        <div class="label">Average Time to Resolve</div>
+        <div class="value">3.7<span style="font-size:0.95rem; font-weight:600; color:var(--text-faint);"> business days</span></div>
+        <div class="note">29.5 hrs, n = 8 closed tickets – includes 1 resting on a “done” status-change timestamp rather than a confirmed fix time; excludes 1 flagged for a likely bulk-close timestamp</div>
+      </div>
+      <div class="kpi"><div class="label">Sev 1 Security</div><div class="value" style="color:var(--sev1);">1</div><div class="note">11.1 business hours against an 8 hour target. Internally discovered, so no client-facing SLA obligation</div></div>
+      <div class="kpi"><div class="label">Severity Actively Set</div><div class="value warn">1 of 13</div><div class="note">The other 12 sit at Sev 3, the Intercom default – treat with caution, see below</div></div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="grid-template-columns:1fr 1fr;">
+    <div class="panel">
+      <div class="section-title">New bugs by client</div>
+      <div class="chart">
+        <div class="col"><div class="col-total">2</div><div class="bar-stack" style="height:90px;"><div class="seg" style="height:100%; background:var(--client-shoprite);"></div></div><div class="col-label">Shoprite</div></div>
+        <div class="col"><div class="col-total">2</div><div class="bar-stack" style="height:90px;"><div class="seg" style="height:100%; background:var(--client-strive);"></div></div><div class="col-label">Strive</div></div>
+        <div class="col"><div class="col-total">4</div><div class="bar-stack" style="height:180px;"><div class="seg" style="height:100%; background:var(--client-absa);"></div></div><div class="col-label">ABSA</div></div>
+        <div class="col"><div class="col-total">2</div><div class="bar-stack" style="height:90px;"><div class="seg" style="height:100%; background:var(--unknown);"></div></div><div class="col-label">N/A</div></div>
+        <div class="col"><div class="col-total">1</div><div class="bar-stack" style="height:45px;"><div class="seg" style="height:100%; background:var(--navy-ink);"></div></div><div class="col-label">Platform-<br>wide</div></div>
+      </div>
+      <div class="legend">
+        <div class="item"><span class="swatch" style="background:var(--navy-ink);"></span>Platform-wide = the Sev 1 security issue, affecting all clients</div>
+        <div class="item"><span class="swatch" style="background:var(--unknown);"></span>N/A = client not confirmed, needs AM follow-up</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="section-title">Bugs by severity level</div>
+      <div class="chart">
+        <div class="col"><div class="col-total">1</div><div class="bar-stack" style="height:16px;"><div class="seg" style="height:100%; background:var(--sev1);"></div></div><div class="col-label">Sev 1</div></div>
+        <div class="col"><div class="col-total">0</div><div class="bar-stack" style="height:3px;"><div class="seg" style="height:100%; background:var(--border);"></div></div><div class="col-label">Sev 2</div></div>
+        <div class="col"><div class="col-total">12</div><div class="bar-stack" style="height:180px;"><div class="seg" style="height:100%; background:var(--sev3);"></div></div><div class="col-label">Sev 3</div></div>
+        <div class="col"><div class="col-total">0</div><div class="bar-stack" style="height:3px;"><div class="seg" style="height:100%; background:var(--border);"></div></div><div class="col-label">Sev 4</div></div>
+      </div>
+      <div class="legend"><div class="item" style="color:var(--warn); font-weight:600;">Sev 3 is the value Intercom applies automatically. A 100% Sev 3 distribution indicates severity was not actively assessed, not that no severe issues occurred.</div></div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="grid-template-columns:1.5fr 1fr; margin-bottom:28px; align-items:stretch;">
+    <div class="panel">
+      <div class="section-title">New bugs by week &amp; client</div>
+      <div class="chart">
+        <div class="col"><div class="col-total">1</div><div class="bar-stack" style="height:38px;"><div class="seg" style="height:100%; background:var(--client-shoprite);"></div></div><div class="col-label">Jun 29</div></div>
+        <div class="col"><div class="col-total">1</div><div class="bar-stack" style="height:38px;"><div class="seg" style="height:100%; background:var(--client-standardbank);"></div></div><div class="col-label">Aug 17</div></div>
+        <div class="col">
+          <div class="col-total">4</div>
+          <div class="bar-stack" style="height:150px;">
+            <div class="seg" style="height:25%; background:var(--client-shoprite);"></div>
+            <div class="seg" style="height:2px; background:var(--paper);"></div>
+            <div class="seg" style="height:48%; background:var(--client-strive);"></div>
+            <div class="seg" style="height:2px; background:var(--paper);"></div>
+            <div class="seg" style="height:25%; background:var(--client-absa);"></div>
+          </div>
+          <div class="col-label">Aug 31</div>
+        </div>
+        <div class="col">
+          <div class="col-total">3</div>
+          <div class="bar-stack" style="height:113px;">
+            <div class="seg" style="height:32%; background:var(--client-shoprite);"></div>
+            <div class="seg" style="height:2px; background:var(--paper);"></div>
+            <div class="seg" style="height:32%; background:var(--client-absa);"></div>
+            <div class="seg" style="height:2px; background:var(--paper);"></div>
+            <div class="seg" style="height:32%; background:var(--navy-ink);"></div>
+          </div>
+          <div class="col-label">Sep 7</div>
+        </div>
+        <div class="col">
+          <div class="col-total">3</div>
+          <div class="bar-stack" style="height:113px;">
+            <div class="seg" style="height:65%; background:var(--client-absa);"></div>
+            <div class="seg" style="height:2px; background:var(--paper);"></div>
+            <div class="seg" style="height:31%; background:var(--unknown);"></div>
+          </div>
+          <div class="col-label">Sep 14</div>
+        </div>
+        <div class="col">
+          <div class="col-total">1</div>
+          <div class="bar-stack" style="height:38px;"><div class="seg" style="height:100%; background:var(--unknown);"></div></div>
+          <div class="col-label">Sep 21</div>
+        </div>
+      </div>
+      <div class="legend">
+        <div class="item"><span class="swatch" style="background:var(--client-shoprite);"></span>Shoprite</div>
+        <div class="item"><span class="swatch" style="background:var(--client-strive);"></span>Strive</div>
+        <div class="item"><span class="swatch" style="background:var(--client-absa);"></span>ABSA</div>
+        <div class="item"><span class="swatch" style="background:var(--client-standardbank);"></span>Standard Bank</div>
+        <div class="item"><span class="swatch" style="background:var(--navy-ink);"></span>Platform-wide</div>
+        <div class="item"><span class="swatch" style="background:var(--unknown);"></span>N/A</div>
+      </div>
+    </div>
+
+    <div class="panel" style="display:flex; flex-direction:column;">
+      <div class="section-title">Bugs outside of SLA</div>
+      <div class="stat-list" style="flex:1;">
+        <div class="stat-row" style="flex-direction:column; align-items:flex-start; gap:4px;">
+          <span class="k" style="color:var(--sev1);">Jupyter notebook + SQLPad security issue (platform-wide)</span>
+          <span class="v small"><span class="pill closed">Closed</span> 11.1 business hours (Sev 1 target: 8 hours) – internally discovered, no client-facing obligation</span>
+        </div>
+        <div class="stat-row" style="flex-direction:column; align-items:flex-start; gap:4px;">
+          <span class="k">Users can't open SQLPad in Own Data Prep (ABSA)</span>
+          <span class="v small"><span class="pill closed">Closed</span> 5.2 business days (Sev 3 target: 3)</span>
+        </div>
+        <div class="stat-row" style="flex-direction:column; align-items:flex-start; gap:4px;">
+          <span class="k">Auto logout issue during active use (Standard Bank)</span>
+          <span class="v small"><span class="pill closed">Closed</span> 15.4 business days (Sev 3 target: 3)</span>
+        </div>
+        <div class="stat-row" style="flex-direction:column; align-items:flex-start; gap:4px;">
+          <span class="k">Error saving notebook on SBSASRX profile (Shoprite)</span>
+          <span class="v small"><span class="pill closed">Closed</span> 50.0 business days* – unconfirmed resolution date</span>
+        </div>
+        <div class="stat-row" style="flex-direction:column; align-items:flex-start; gap:4px;">
+          <span class="k">Missing Email Alert for SRX Download Request (Shoprite)</span>
+          <span class="v small"><span class="pill open">Awaiting approval</span> 16.6 business days open (Sev 3 target: 3)</span>
+        </div>
+        <div class="stat-row" style="flex-direction:column; align-items:flex-start; gap:4px;">
+          <span class="k">Custom project ABSA_PRJ_00038 Failed (ABSA)</span>
+          <span class="v small"><span class="pill open">On hold</span> 11.7 business days open (Sev 3 target: 3)</span>
+        </div>
+        <div class="stat-row" style="flex-direction:column; align-items:flex-start; gap:4px;">
+          <span class="k">ABSA Installing Packages Conflict (ABSA)</span>
+          <span class="v small"><span class="pill open">Awaiting feedback</span> 9.0 business days open (Sev 3 target: 3)</span>
+        </div>
+        <div class="stat-row" style="flex-direction:column; align-items:flex-start; gap:4px;">
+          <span class="k">Can't reject a notebook promotion (N/A)</span>
+          <span class="v small"><span class="pill open">Reopened</span> 8.5 business days open – workaround only, no permanent fix</span>
+        </div>
+        <div class="stat-row" style="flex-direction:column; align-items:flex-start; gap:4px;">
+          <span class="k">New Intercom bug, subject line empty (N/A)</span>
+          <span class="v small"><span class="pill open">Awaiting feedback</span> 5.0 business days open (Sev 3 target: 3)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sla-panel">
+    <div class="sla-title">SLA response and resolution targets</div>
+    <table class="sla-table">
+      <thead><tr><th>Severity</th><th>Description</th><th>Response</th><th>Resolution</th><th>Tracked this period</th></tr></thead>
+      <tbody>
+        <tr class="linked" data-jump="#sev-1"><td><span class="chip" style="background:var(--sev1);">Sev 1</span></td><td class="desc">System unavailable</td><td>1 hour</td><td>8 hours</td><td><a class="jump" href="#sev-1">1 ticket &rarr;</a></td></tr>
+        <tr><td><span class="chip" style="background:var(--sev2);">Sev 2</span></td><td class="desc">Business critical calls</td><td>4 hours</td><td>24 hours</td><td class="none">None this period</td></tr>
+        <tr class="linked" data-jump="#sev-3"><td><span class="chip" style="background:var(--sev3);">Sev 3</span></td><td class="desc">Non-business critical calls</td><td>24 hours</td><td>3 working days</td><td><a class="jump" href="#sev-3">12 tickets &rarr;</a></td></tr>
+        <tr><td><span class="chip" style="background:var(--sev4);">Sev 4</span></td><td class="desc">Low business impact calls</td><td>48 hours</td><td>5 working days</td><td class="none">None this period</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:0.78rem; color:var(--text-faint); margin:14px 0 0; line-height:1.6;">
+      <b>Support hours are 09:00 to 17:00 CAT, Monday to Friday</b>, which is the window every business-hours figure on
+      this page is calculated against. Cover outside those hours, for Severity 1 and Severity 2 resolution only, is
+      contracted separately at additional cost. <b>Resolution attainment is measured throughout this report. Response
+      attainment is not</b>, because no first-response timestamp is captured in ClickUp; the targets are shown here for
+      completeness.
+    </p>
+  </div>
+
+  <div class="sla-panel">
+    <div class="sla-title">Contracted SLA clients, Platform / API split and credit exposure</div>
+    <p style="font-size:0.82rem; color:var(--text-muted); margin:0 0 14px; line-height:1.6; max-width:920px;">
+      <b>Airvantage</b> and <b>FNB</b> hold the contracted support SLA set out in the targets table above, with defined
+      response and resolution windows and optional paid after-hours cover. <b>FNB</b> additionally holds the separate
+      API SLA, which carries stricter resolution times and service credits payable on breach at Sev 1 or Sev 2. The
+      Severity Classification Guide separates <b>Platform</b> issues (the web application: UI, projects, uploads via
+      Desktop or Server Connect, reports, user management) from <b>API</b> issues (online scoring APIs, batch data APIs,
+      or any programmatic interface a client's systems call directly). Every tracked item this period is classified
+      against that rule.
+    </p>
+    <table class="sla-table">
+      <thead>
+        <tr><th>Category</th><th>Items</th><th>Platform</th><th>API</th><th>Airvantage</th><th>FNB</th><th>Credit exposure</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Customer-impacting bugs</td><td>13</td><td>13</td><td>0</td><td>0</td><td>0</td><td class="desc">None</td></tr>
+        <tr><td>Automated platform alerts, Bugs Board</td><td>32</td><td>32</td><td>0</td><td>0</td><td>0</td><td class="desc">None</td></tr>
+        <tr><td>Support requests, July to September</td><td>6</td><td>6</td><td>0</td><td>0</td><td>0</td><td class="desc">None</td></tr>
+        <tr style="font-weight:700;"><td>Total tracked</td><td>51</td><td>51</td><td>0</td><td>0</td><td>0</td><td class="desc" style="font-weight:700; color:var(--good);">No exposure this period</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:0.78rem; color:var(--text-faint); margin:14px 0 0; line-height:1.6;">
+      <b>Read this as a result, not a control.</b> Neither contracted-SLA client raised anything in the window and
+      nothing classified as API, so exposure is nil by circumstance rather than by safeguard. Three things would change
+      that: an Airvantage or FNB ticket in a future month, an FNB API issue specifically, or a ticket left at the Sev 3
+      default when it was contractually Sev 1 or Sev 2. <b>One open question affects how a Sev 1 or Sev 2 would be
+      scored for these two clients:</b> if either has purchased the after-hours cover, their Sev 1 and Sev 2 resolution
+      clocks run continuously rather than pausing outside 09:00 to 17:00, which would make a breach materially worse
+      than the business-hours figures used here. That needs confirming per client.
+    </p>
+  </div>
+
+  <div class="section-title">Ticket detail</div>
+  <div class="table-wrap" style="margin-bottom:28px;">
+    <table class="detail-table">
+      <colgroup>
+        <col style="width:13%"><col style="width:24%"><col style="width:11%"><col style="width:11%"><col style="width:11%"><col style="width:9%"><col style="width:8%"><col style="width:9%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Ticket</th><th>What happened</th><th>Client</th><th>Created</th><th>Resolved</th>
+          <th>Time to Resolve<br><span style="text-transform:none; font-weight:600; font-size:0.9em;">(Business Days)</span></th>
+          <th>Severity</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr id="sev-1" style="background:color-mix(in srgb, var(--sev1) 6%, transparent);">
+          <td class="title">Jupyter notebook + SQLPad security issue</td>
+          <td class="title">Security issue affecting the shared Jupyter notebook and SQLPad environment. Raised internally rather than by a client, and classified Sev 1 under the guide's rule that an identified vulnerability capable of compromising client infrastructure, systems or data qualifies whether or not it was exploited. Five senior engineers assigned, urgent priority.</td>
+          <td><span class="chip" style="background:var(--navy-ink);">Platform-wide</span></td>
+          <td class="mono">2026-09-10<br>11:54 UTC</td><td class="mono">2026-09-13<br>14:13 UTC</td><td class="mono">1.4<br><span style="font-size:0.9em;">11.1 hrs</span></td>
+          <td><span class="chip" style="background:var(--sev1);">Sev 1</span></td><td><span class="pill closed">Closed</span></td>
+        </tr>
+        <tr id="sev-3">
+          <td class="title">Export Failure for Shoprite_PRJ_00146 Selections</td>
+          <td class="title">Export of selections failed for Shoprite_PRJ_00146. Root cause: a null reference exception on the selection's source tables; a code change was required to resolve it.</td>
+          <td><span class="chip" style="background:var(--client-shoprite);">Shoprite</span></td>
+          <td class="mono">2026-09-02<br>12:51 UTC</td><td class="mono">2026-09-02<br>16:58 UTC</td><td class="mono">0.3</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td><td><span class="pill closed">Closed</span></td>
+        </tr>
+        <tr>
+          <td class="title">Data Preparation Process Failed for Wilhelm du Toit</td>
+          <td class="title">Data preparation process failed for a Strive user. No specific error or root cause recorded in the ticket.</td>
+          <td><span class="chip" style="background:var(--client-strive);">Strive</span></td>
+          <td class="mono">2026-09-03<br>06:39 UTC</td><td class="mono">2026-09-07<br>13:02 UTC</td><td class="mono">2.8</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td><td><span class="pill closed">Closed</span></td>
+        </tr>
+        <tr>
+          <td class="title">Overlap Picture Rendering Issue in Omnisient Profile ACE Report</td>
+          <td class="title">Overlap picture failed to render in the Omnisient Profile ACE report, caused by a permissions issue on the In_Client and In_Strive fields. Resolved with Power BI model changes to match the report, deployed as a hotfix.</td>
+          <td><span class="chip" style="background:var(--client-strive);">Strive</span></td>
+          <td class="mono">2026-09-03<br>07:48 UTC</td><td class="mono">2026-09-07<br>04:26 UTC</td><td class="mono">1.9</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td><td><span class="pill closed">Closed</span></td>
+        </tr>
+        <tr>
+          <td class="title">Unable to View Team's Projects and Datasets</td>
+          <td class="title">ABSA user could not view their team's projects and datasets. ClickUp stamps no close date for the board's "done" status, so the resolution time here is the status-change timestamp – administrative, not a confirmed fix time. No severity was recorded on the ticket.</td>
+          <td><span class="chip" style="background:var(--client-absa);">ABSA</span></td>
+          <td class="mono">2026-09-04<br>12:04 UTC</td><td class="mono">2026-09-04<br>12:38 UTC</td><td class="mono">0.1&dagger;<br><span style="font-size:0.9em;">0.6 hrs</span></td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td><td><span class="pill closed">Closed</span></td>
+        </tr>
+        <tr>
+          <td class="title">Missing Email Alert for SRX Download Request on SHOPRITE_PRJ_00461</td>
+          <td class="title">Download-request notification email failed to send for SHOPRITE_PRJ_00461.</td>
+          <td><span class="chip" style="background:var(--client-shoprite);">Shoprite</span></td>
+          <td class="mono">2026-09-07<br>10:01 UTC</td><td class="mono">–</td><td class="mono">–</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td><td><span class="pill open">In progress</span></td>
+        </tr>
+        <tr>
+          <td class="title">Users can't open SQLPad in Own Data Prep</td>
+          <td class="title">Multiple ABSA users unable to open SQLPad within Own Data Prep.</td>
+          <td><span class="chip" style="background:var(--client-absa);">ABSA</span></td>
+          <td class="mono">2026-09-08<br>13:03 UTC</td><td class="mono">2026-09-15<br>21:09 UTC</td><td class="mono">5.2</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td><td><span class="pill closed">Closed</span></td>
+        </tr>
+        <tr>
+          <td class="title">Custom project ABSA_PRJ_00038 Failed when adding dataset</td>
+          <td class="title">Custom project ABSA_PRJ_00038 failed when adding a dataset shared by Shoprite. Under investigation.</td>
+          <td><span class="chip" style="background:var(--client-absa);">ABSA</span></td>
+          <td class="mono">2026-09-14<br>09:20 UTC</td><td class="mono">–</td><td class="mono">–</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td><td><span class="pill open">In progress</span></td>
+        </tr>
+        <tr>
+          <td class="title">ABSA Installing Packages Conflict</td>
+          <td class="title">NumPy 2.x / scikit-learn dependency conflict in the shared Jupyter image blocks package installs. Description notes it affects all customers using that package, not only ABSA.</td>
+          <td><span class="chip" style="background:var(--client-absa);">ABSA</span></td>
+          <td class="mono">2026-09-17<br>05:56 UTC</td><td class="mono">–</td><td class="mono">–</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td><td><span class="pill open">In progress</span></td>
+        </tr>
+        <tr>
+          <td class="title">Bug: Can't reject a request to promote a notebook</td>
+          <td class="title">Rejection fails when the user attempting it has no active project; the workaround is to open Jupyter in project context first. A workaround was confirmed with the requester on 21 September, but the ticket was reopened on 28 September because no permanent fix was implemented. This is a back-office function used by Omnisient staff, so there is no single external client.</td>
+          <td><span class="chip" style="background:var(--unknown);">N/A</span></td>
+          <td class="mono">2026-09-17<br>11:07 UTC</td><td class="mono">–</td><td class="mono">8.5<br><span style="font-size:0.9em;">open</span></td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td><td><span class="pill open">Reopened</span></td>
+        </tr>
+        <tr>
+          <td class="title">Intercom Ticket #215475979340460</td>
+          <td class="title">Raised 23 September with an <b>empty subject line</b>, so the ticket carries no description of the fault. Logged from an internal address, leaving no client attribution. Tagged Technical issue / bug, Sev 3, customer.</td>
+          <td><span class="chip" style="background:var(--unknown);">N/A</span></td>
+          <td class="mono">2026-09-23<br>06:52 UTC</td><td class="mono">–</td><td class="mono">5.0<br><span style="font-size:0.9em;">open</span></td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td><td><span class="pill open">Awaiting feedback</span></td>
+        </tr>
+        <tr>
+          <td class="title">Error saving notebook on SBSASRX profile with 24.1M file size</td>
+          <td class="title">Notebook save failed on the joint Standard Bank / Shoprite SBSASRX profile for a 24.1MB file. Requester is on the Shoprite domain, so classified under Shoprite. The 70-calendar-day gap to close has no explanation in the ticket – see footer.</td>
+          <td><span class="chip" style="background:var(--client-shoprite);">Shoprite</span></td>
+          <td class="mono">2026-06-29<br>09:21 UTC</td><td class="mono">2026-09-07<br>09:41 UTC</td><td class="mono">50.0*</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td><td><span class="pill closed">Closed</span></td>
+        </tr>
+        <tr>
+          <td class="title">Auto logout issue during active use across all notebooks</td>
+          <td class="title">Users were logged out mid-session across all notebooks after a 10-minute idle timeout, even during active use.</td>
+          <td><span class="chip" style="background:var(--client-standardbank);">Standard Bank</span></td>
+          <td class="mono">2026-08-18<br>08:16 UTC</td><td class="mono">2026-09-08<br>11:33 UTC</td><td class="mono">15.4</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td><td><span class="pill closed">Closed</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ===================== TIER 3 ===================== -->
+  <div class="tier-head" id="tier-3"><span class="tier-num">TIER 3</span><h2>Automated platform alerts</h2></div>
+  <div class="tier-sub">
+    The Severity Classification Guide names OmniCheck, upload hydration failures, project-generation failures and datalake/warehouse mismatches as Sev 3 examples, so these carry the same 3 business day resolution target as a customer-reported bug. They are scored against it here. Two populations exist and they are handled very differently.
+  </div>
+
+  <div class="kpi-section">
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="label">Bugs Board Alerts</div><div class="value">32</div>
+        <div class="note">Owned, worked and closed like any other ticket</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Outside SLA</div><div class="value warn">13</div>
+        <div class="note">41% of 32, against the 3 business day Sev 3 target</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Average Time to Close</div>
+        <div class="value">1.9<span style="font-size:0.95rem; font-weight:600; color:var(--text-faint);"> business days</span></div>
+        <div class="note">n = 23 closed. Faster than customer-reported bugs at 4.5</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Notice Board Alerts</div><div class="value">47</div>
+        <div class="note">September. A separate list where alerts are never worked</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="grid-template-columns:1.35fr 1fr; align-items:stretch;">
+    <div class="panel">
+      <div class="section-title">Bugs Board alerts against the Sev 3 target</div>
+      <div class="chart" style="height:170px;">
+        <div class="col"><div class="col-total">17</div><div class="bar-stack" style="height:170px;"><div class="seg" style="height:100%; background:var(--good);"></div></div><div class="col-label">Closed<br>within target</div></div>
+        <div class="col"><div class="col-total">6</div><div class="bar-stack" style="height:60px;"><div class="seg" style="height:100%; background:var(--warn);"></div></div><div class="col-label">Closed<br>over target</div></div>
+        <div class="col"><div class="col-total">7</div><div class="bar-stack" style="height:70px;"><div class="seg" style="height:100%; background:var(--sev1);"></div></div><div class="col-label">Open<br>past target</div></div>
+        <div class="col"><div class="col-total">2</div><div class="bar-stack" style="height:20px;"><div class="seg" style="height:100%; background:var(--accent);"></div></div><div class="col-label">Open<br>within target</div></div>
+      </div>
+      <div class="legend"><div class="item">Longest breach 11.5 business days closed, 21.0 business days still open</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="section-title">Two populations, one severity</div>
+      <div class="stat-list">
+        <div class="stat-row"><span class="k">Bugs Board – worked</span><span class="v">59% within SLA</span></div>
+        <div class="stat-row"><span class="k">Notice board – never worked</span><span class="v">0% within SLA</span></div>
+        <div class="stat-row" style="flex-direction:column; align-items:flex-start; gap:5px; border-bottom:none; padding-top:10px;">
+          <span class="v small" style="line-height:1.55; font-weight:400;">
+            The same class of alert lands in two places. On the Bugs Board it gets an owner, a priority and
+            usually a same-week fix. On the Notice board it gets nothing: not one of the 333 alerts raised
+            since July carries a close date, so against a 3 business day target every one is in breach.
+            The Notice board also auto-applies Sev 4, which contradicts the guide's Sev 3 classification.
+            <b>The emitter is also misfiring:</b> 27 of the 47 September alerts arrived in the final week,
+            all for just two Shoprite tables, 11 of them inside 42 minutes on 27 September.
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="grid-template-columns:1fr 1fr;">
+    <div class="panel">
+      <div class="section-title">September alerts by client</div>
+      <div class="chart">
+        <div class="col"><div class="col-total">11</div><div class="bar-stack" style="height:180px;"><div class="seg" style="height:100%; background:var(--client-shoprite);"></div></div><div class="col-label">Shoprite</div></div>
+        <div class="col"><div class="col-total">6</div><div class="bar-stack" style="height:98px;"><div class="seg" style="height:100%; background:var(--client-legalwise);"></div></div><div class="col-label">LegalWise</div></div>
+        <div class="col"><div class="col-total">2</div><div class="bar-stack" style="height:33px;"><div class="seg" style="height:100%; background:var(--client-scorpion);"></div></div><div class="col-label">Scorpion</div></div>
+        <div class="col"><div class="col-total">1</div><div class="bar-stack" style="height:16px;"><div class="seg" style="height:100%; background:var(--client-strive);"></div></div><div class="col-label">Strive</div></div>
+      </div>
+      <div class="legend"><div class="item">No ABSA or Standard Bank alerts appear in this feed</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="section-title">September alerts by trigger</div>
+      <div class="chart">
+        <div class="col"><div class="col-total">15</div><div class="bar-stack" style="height:180px;"><div class="seg" style="height:100%; background:var(--warn);"></div></div><div class="col-label">Table age<br>threshold breached</div></div>
+        <div class="col"><div class="col-total">5</div><div class="bar-stack" style="height:60px;"><div class="seg" style="height:100%; background:var(--accent);"></div></div><div class="col-label">Datalake and DW<br>mismatch</div></div>
+      </div>
+      <div class="legend"><div class="item">All carry an auto-applied Sev 4, so severity carries no triage signal</div></div>
+    </div>
+  </div>
+
+  <!-- ===================== TIER 4 ===================== -->
+  <div class="tier-head" id="tier-4"><span class="tier-num">TIER 4</span><h2>Support requests &nbsp;<span style="font-size:0.78rem; font-weight:600; color:var(--accent);">JULY – SEPTEMBER 2026</span></h2></div>
+  <div class="tier-sub">
+    Non-bug customer requests from the Platform Support list and the Bugs Board. Reported across a full quarter, not a single month: September alone contained one genuine request, too few to say anything meaningful. Note this window differs from every other tier on this page.
+  </div>
+
+  <div class="callout" style="margin-bottom:22px;">
+    <div class="dot"></div>
+    <div>
+      <b>5 of 6 support requests in the quarter are outside SLA, on any severity.</b> The most lenient window in the table is Sev 4 at 5 business days. One request was resolved inside a day; of the rest, the fastest took 16.6 business days and the slowest has been open for 63 and counting. <b>Three Standard Bank requests remain unassigned and untouched since early July</b>, one of them never updated once since the day it was raised. Assigning severities would change which target each one missed, not whether it missed.
+    </div>
+  </div>
+
+  <div class="kpi-section">
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="label">Distinct Requests</div><div class="value">6</div>
+        <div class="note">From 11 raw tasks, after removing 2 test tickets, 2 duplicates and 1 already counted as a bug</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Still Open</div><div class="value warn">3</div>
+        <div class="note">All Standard Bank, all in "to do", all unassigned</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Oldest Open Request</div><div class="value warn">89<span style="font-size:0.95rem; font-weight:600; color:var(--text-faint);"> days</span></div>
+        <div class="note">Standard Bank, raised 2 July, never once updated since</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Severity Recorded</div><div class="value">1<span style="font-size:0.95rem; font-weight:600; color:var(--text-faint);"> of 6</span></div>
+        <div class="note">SLA attainment cannot be measured per severity band</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="grid-template-columns:1.35fr 1fr;">
+    <div class="panel">
+      <div class="section-title">Open support requests by age (business days)</div>
+      <div class="chart">
+        <div class="col"><div class="col-total">64</div><div class="bar-stack" style="height:180px;"><div class="seg" style="height:100%; background:var(--client-standardbank);"></div></div><div class="col-label">Jupyter<br>notebook</div></div>
+        <div class="col"><div class="col-total">61</div><div class="bar-stack" style="height:172px;"><div class="seg" style="height:100%; background:var(--client-standardbank);"></div></div><div class="col-label">Dataset<br>disappears</div></div>
+        <div class="col"><div class="col-total">61</div><div class="bar-stack" style="height:171px;"><div class="seg" style="height:100%; background:var(--client-standardbank);"></div></div><div class="col-label">SQLPad<br>data</div></div>
+      </div>
+      <div class="legend">
+        <div class="item"><span class="swatch" style="background:var(--client-standardbank);"></span>Standard Bank – all three, all unassigned</div>
+        <div class="item">Sev 4, the most lenient target, is 5 business days</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="section-title">Why SLA cannot be scored</div>
+      <div class="stat-list">
+        <div class="stat-row"><span class="k">Requests with a severity set</span><span class="v">1 of 6</span></div>
+        <div class="stat-row"><span class="k">Resolution field available</span><span class="v">No</span></div>
+        <div class="stat-row"><span class="k">First-response captured</span><span class="v">No</span></div>
+        <div class="stat-row" style="flex-direction:column; align-items:flex-start; gap:5px; border-bottom:none; padding-top:10px;">
+          <span class="v small" style="line-height:1.55; font-weight:400;">
+            The Platform Support list does not carry the Resolution or Resolution Date fields at all, so resolution
+            detail is structurally unavailable rather than merely blank. First-response time is not recorded anywhere;
+            a ClickUp task to build it exists but has not started. Until severity is captured at intake, support
+            requests can be aged but not scored against a target.
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Support request detail</div>
+  <div class="table-wrap" style="margin-bottom:28px;">
+    <table class="detail-table">
+      <colgroup>
+        <col style="width:17%"><col style="width:31%"><col style="width:15%"><col style="width:11%"><col style="width:12%"><col style="width:14%">
+      </colgroup>
+      <thead>
+        <tr><th>Ticket</th><th>What was asked</th><th>Client</th><th>Raised</th><th>Status</th><th>Age / time to close</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="title">Jupyter notebook issues</td>
+          <td class="title">User cannot open the Jupyter notebook under STANDARDBANK_PRJ_00092; the progress bar stays in a processing state.</td>
+          <td><span class="chip" style="background:var(--client-standardbank);">Standard Bank</span></td>
+          <td class="mono">2026-07-02</td><td><span class="pill open">To do</span></td>
+          <td class="mono">89 days<br>63.5 business</td>
+        </tr>
+        <tr>
+          <td class="title">Data processing and upload to project</td>
+          <td class="title">Dataset SBSAOD01072026p1 disappears after import into the project with no generated output; status update requested on a second dataset.</td>
+          <td><span class="chip" style="background:var(--client-standardbank);">Standard Bank</span></td>
+          <td class="mono">2026-07-07</td><td><span class="pill open">To do</span></td>
+          <td class="mono">84 days<br>60.9 business</td>
+        </tr>
+        <tr>
+          <td class="title">Data not appearing in SQLPad</td>
+          <td class="title">Datasets visible under My Datasets but not in SQLPad under Own Data Preparation, blocking SQL queries.</td>
+          <td><span class="chip" style="background:var(--client-standardbank);">Standard Bank</span></td>
+          <td class="mono">2026-07-07</td><td><span class="pill open">To do</span></td>
+          <td class="mono">84 days<br>60.5 business</td>
+        </tr>
+        <tr>
+          <td class="title">STRIVE vehicle records missing detail</td>
+          <td class="title">A large share of STRIVE vehicle records carry no make or model detail (3.57M with detail against 3.66M without); investigation of the coverage drop-off requested.</td>
+          <td><span class="chip" style="background:var(--unknown);">N/A</span></td>
+          <td class="mono">2026-07-13</td><td><span class="pill closed">Closed</span></td>
+          <td class="mono">77 days<br>55.3 business</td>
+        </tr>
+        <tr>
+          <td class="title">Broken ACE report</td>
+          <td class="title">Broken ACE report, retro-fixed for recent reports with a hotfix to follow. Raised internally rather than by a client; the only request in the set carrying a severity, Sev 5. Raised after hours, so the clock starts the following morning. ClickUp holds no close date; the 4 September close was confirmed manually.</td>
+          <td><span class="chip" style="background:var(--unknown);">N/A</span></td>
+          <td class="mono">2026-09-03</td><td><span class="pill closed">Closed</span></td>
+          <td class="mono">1 day<br>&le;1.0 business†</td>
+        </tr>
+        <tr>
+          <td class="title">Auto logout while actively coding</td>
+          <td class="title">Platform logs the user out for inactivity during active notebook work; App Insights showed a correlating token expiry. Same underlying issue as the auto-logout bug in Tier 2, raised as a separate Intercom conversation.</td>
+          <td><span class="chip" style="background:var(--client-standardbank);">Standard Bank</span></td>
+          <td class="mono">2026-08-17</td><td><span class="pill closed">Closed</span></td>
+          <td class="mono">22 days<br>16.6 business</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ===================== BY CLIENT ===================== -->
+  <div class="tier-head" id="by-client"><span class="tier-num">BY CLIENT</span><h2>Bugs and support requests per client</h2></div>
+  <div class="tier-sub">
+    Tier 2 and Tier 4 combined, so each client's full picture sits in one place. Bugs cover September; support requests cover July to September, so a client's support count draws on a longer window than its bug count.
+  </div>
+
+  <div class="callout" style="margin-bottom:22px;">
+    <div class="dot"></div>
+    <div>
+      <b>Standard Bank is the most affected client, and every single item is outside SLA.</b> 5 tracked items, 5 breaches, 3 of them still open. Four are support requests, and the three still open have sat unassigned since early July, one never updated since the day it was raised. Standard Bank does not hold a contracted SLA, so none of this carries service credits, but it is the clearest concentration of unresolved client work in the period.
+    </div>
+  </div>
+
+  <div class="grid-2" style="grid-template-columns:1.25fr 1fr; align-items:stretch;">
+    <div class="panel">
+      <div class="section-title">Tracked items by client</div>
+      <div class="chart">
+        <div class="col">
+          <div class="col-total">5</div>
+          <div class="bar-stack" style="height:180px;">
+            <div class="seg" style="height:20%; background:var(--accent);"></div>
+            <div class="seg" style="height:2px; background:var(--paper);"></div>
+            <div class="seg" style="height:78%; background:var(--support);"></div>
+          </div>
+          <div class="col-label">Standard<br>Bank</div>
+        </div>
+        <div class="col">
+          <div class="col-total">4</div>
+          <div class="bar-stack" style="height:144px;"><div class="seg" style="height:100%; background:var(--accent);"></div></div>
+          <div class="col-label">ABSA</div>
+        </div>
+        <div class="col">
+          <div class="col-total">3</div>
+          <div class="bar-stack" style="height:108px;"><div class="seg" style="height:100%; background:var(--accent);"></div></div>
+          <div class="col-label">Shoprite</div>
+        </div>
+        <div class="col">
+          <div class="col-total">4</div>
+          <div class="bar-stack" style="height:144px;">
+            <div class="seg" style="height:49%; background:var(--accent);"></div>
+            <div class="seg" style="height:2px; background:var(--paper);"></div>
+            <div class="seg" style="height:49%; background:var(--support);"></div>
+          </div>
+          <div class="col-label">N/A</div>
+        </div>
+        <div class="col">
+          <div class="col-total">2</div>
+          <div class="bar-stack" style="height:72px;"><div class="seg" style="height:100%; background:var(--accent);"></div></div>
+          <div class="col-label">Strive</div>
+        </div>
+        <div class="col">
+          <div class="col-total">1</div>
+          <div class="bar-stack" style="height:36px;"><div class="seg" style="height:100%; background:var(--accent);"></div></div>
+          <div class="col-label">Platform-<br>wide</div>
+        </div>
+      </div>
+      <div class="legend">
+        <div class="item"><span class="swatch" style="background:var(--accent);"></span>Bugs (September)</div>
+        <div class="item"><span class="swatch" style="background:var(--support);"></span>Support requests (July to September)</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="section-title">SLA attainment by client</div>
+      <div class="stat-list">
+        <div class="stat-row"><span class="k">Standard Bank</span><span class="v" style="color:var(--bad);">0 of 5 met</span></div>
+        <div class="stat-row"><span class="k">ABSA</span><span class="v" style="color:var(--bad);">0 of 3 met</span></div>
+        <div class="stat-row"><span class="k">N/A</span><span class="v" style="color:var(--bad);">1 of 4 met</span></div>
+        <div class="stat-row"><span class="k">Shoprite</span><span class="v" style="color:var(--warn);">1 of 3 met</span></div>
+        <div class="stat-row"><span class="k">Strive</span><span class="v" style="color:var(--good);">2 of 2 met</span></div>
+        <div class="stat-row" style="flex-direction:column; align-items:flex-start; gap:5px; border-bottom:none; padding-top:10px;">
+          <span class="v small" style="line-height:1.55; font-weight:400;">
+            Counted against items where attainment can be assessed. Two are excluded: one ticket closed with
+            no recorded close date, and the platform-wide Sev 1, which carries no client-facing obligation.
+            Strive is the only client whose every item was resolved inside target.
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-wrap" style="margin-bottom:28px;">
+    <table class="detail-table">
+      <colgroup><col style="width:17%"><col style="width:10%"><col style="width:11%"><col style="width:9%"><col style="width:11%"><col style="width:12%"><col style="width:30%"></colgroup>
+      <thead>
+        <tr><th>Client</th><th>Bugs</th><th>Support</th><th>Total</th><th>Still open</th><th>Outside SLA</th><th>Longest breach</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="title"><span class="chip" style="background:var(--client-standardbank);">Standard Bank</span></td>
+          <td class="mono">1</td><td class="mono">4</td><td class="mono">5</td><td class="mono">3</td>
+          <td class="mono" style="color:var(--bad); font-weight:700;">5</td>
+          <td class="title">58.5 business days, a Jupyter notebook support request open since 2 July</td>
+        </tr>
+        <tr>
+          <td class="title"><span class="chip" style="background:var(--client-absa);">ABSA</span></td>
+          <td class="mono">4</td><td class="mono">0</td><td class="mono">4</td><td class="mono">2</td>
+          <td class="mono" style="color:var(--warn); font-weight:700;">3</td>
+          <td class="title">6.7 business days, custom project ABSA_PRJ_00038 still under investigation</td>
+        </tr>
+        <tr>
+          <td class="title"><span class="chip" style="background:var(--client-shoprite);">Shoprite</span></td>
+          <td class="mono">3</td><td class="mono">0</td><td class="mono">3</td><td class="mono">1</td>
+          <td class="mono" style="color:var(--warn); font-weight:700;">2</td>
+          <td class="title">50.0 business days on the SBSASRX notebook save, though that close date is unconfirmed; the next longest is 11.6 days and still open</td>
+        </tr>
+        <tr>
+          <td class="title"><span class="chip" style="background:var(--client-strive);">Strive</span></td>
+          <td class="mono">2</td><td class="mono">0</td><td class="mono">2</td><td class="mono">0</td>
+          <td class="mono" style="color:var(--good); font-weight:700;">0</td>
+          <td class="title">None. Both bugs resolved inside target, at 2.8 and 1.9 business days</td>
+        </tr>
+        <tr>
+          <td class="title"><span class="chip" style="background:var(--navy-ink);">Platform-wide</span></td>
+          <td class="mono">1</td><td class="mono">0</td><td class="mono">1</td><td class="mono">0</td>
+          <td class="mono">1*</td>
+          <td class="title">11.1 business hours against an 8 hour Sev 1 target. Internally discovered, so no client-facing obligation</td>
+        </tr>
+        <tr>
+          <td class="title"><span class="chip" style="background:var(--unknown);">N/A</span></td>
+          <td class="mono">2</td><td class="mono">2</td><td class="mono">4</td><td class="mono">2</td>
+          <td class="mono" style="color:var(--bad); font-weight:700;">3</td>
+          <td class="title">55.3 business days on the STRIVE vehicle records query, closed 28 September after 77 days. Two bugs are open, one reopened after a workaround-only closure and one raised with an empty subject line</td>
+        </tr>
+        <tr style="font-weight:700; background:var(--surface);">
+          <td class="title">Total</td>
+          <td class="mono">13</td><td class="mono">6</td><td class="mono">19</td><td class="mono">8</td><td class="mono">14</td>
+          <td class="title">Four clients confirmed affected, plus one platform-wide issue and four items whose client is unconfirmed</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    <p><b>Data source and scope</b> – Tiers 1 and 2 come from ClickUp list 901211098087 (Omnisient &gt; Bugs &gt; Bugs Board). Tier 3 comes from list 901216071368 (Notice board). Tier 4 comes from list 901218011842 (Platform Support) plus non-bug tagged tickets on the Bugs Board. Tiers 1 to 3 cover 1–29 September 2026 in SAST, data pulled on 29 September; <b>Tier 4 covers 1 July to 29 September</b>, because September alone held one genuine support request. This dashboard deliberately counts the Bugs Board only; Bug-type tasks also exist in Intake Console and the Platform Development sprints and are not included here.</p>
+    <p><b>Support request exclusions</b> – 11 tasks fell inside the quarterly window. Removed: 2 test tickets raised from an internal address with bodies reading "test" and "chess"; 2 duplicates, being the second of two pairs created under a minute apart from the same Intercom conversation; and 1 internal coordination task already counted in the Tier 1 and Tier 2 figures, which would otherwise be double counted. Two of the remaining six were raised from internal addresses rather than by a client, so their end client is shown as N/A. The closed auto-logout request shares its underlying cause with the auto-logout bug in Tier 2 but is a separate Intercom conversation, so it is counted in both tiers.</p>
+    <p><b>* Resolution time</b> – Business-days figures apply Omnisient support hours (09:00–17:00 SAST, weekdays). The <b>Error saving notebook on SBSASRX profile</b> ticket shows a 70-calendar-day gap between creation and its recorded close with no explanation in the thread, which likely reflects a bulk status update rather than active work. It is counted in ticket totals but excluded from Average Time to Resolve, pending confirmation from the assignee.</p>
+    <p><b>† Close dates are partly administrative, and resolution times are upper bounds</b> – Two support tickets were closed in ClickUp within 21 minutes of each other on the morning of 28 September, which is a board-clearing sweep rather than two resolutions. One of them is the broken ACE report, confirmed as actually resolved on 4 September; its title records the fix as already applied when it was logged. This dashboard uses the real resolution date where it is known and ClickUp's timestamp otherwise, so any figure resting on a ClickUp close date should be read as an upper bound. The notebook-promotion bug shows the same pattern in reverse: a workaround confirmed with the requester on 21 September, then reopened on 28 September because no permanent fix had been implemented.</p>
+    <p><b>Why some closed tickets show no resolution date</b> – ClickUp only stamps a close date for statuses of type "closed". The board's "done" status is not one, so tickets sitting in "done" never receive a close timestamp, and the Resolution Date field is unset on all of them. One customer ticket sits in that position here – the ABSA "Unable to View Team's Projects and Datasets" ticket. Its resolution time is taken from the ClickUp status-change event that moved it to "done" (4 September, 34 minutes after creation) and is marked † in the table, because a status change is an administrative timestamp rather than a confirmed fix time. On that basis it is counted in totals and included in Average Time to Resolve. A further 12 bug tickets created between June and August sit in "done" with no close date and are excluded from this month's figures entirely, pending a data-hygiene pass.</p>
+    <p><b>Severity is unreliable, and this undermines every SLA figure on this page</b> – The Severity Classification Guide states that every Intercom ticket defaults to Sev 3 and instructs the support team to actively set severity before converting a conversation, warning that leaving the default "may underclassify urgent issues and breach SLA windows". All 11 customer tickets here sit at Sev 3, which is consistent with the default never being changed rather than with deliberate triage. Because severity determines which resolution window applies, any ticket that should have been Sev 1 or Sev 2 is being measured against a 3-business-day target instead of 8 or 24 hours, so the breaches reported here are a floor, not a full count. The guide also notes that an automated Bug Severity Classifier will not override a severity already set by a person, so an unset severity stays at the default permanently.</p>
+    <p><b>Platform versus API, and service-credit exposure</b> – The guide distinguishes Platform issues from API issues. The separate API SLA, with stricter resolution times and service credits payable on breach, applies to <b>FNB</b>; API issues at Sev 1 or Sev 2 carry that credit exposure. <b>No FNB ticket falls inside this reporting window</b>, so no breach reported here carries service-credit exposure. That is a property of this particular month rather than a structural safeguard: FNB tickets do exist immediately outside the window, including an OmniCheck alert titled "FNB Features API Has Failed" that closed in late August, which is precisely the category that would be exposed. This dashboard does not yet capture the Platform/API split as a field, so in a month where FNB does raise a ticket it could not currently distinguish an exposed breach from an unexposed one.</p>
+    <p><b>Recorded root causes</b> – The Resolution field is populated on only 2 of the 11 customer tickets. Four others are fully closed with a confirmed close date but no recorded root cause (the data preparation failure, the SQLPad access issue, the SBSASRX notebook save and the auto-logout issue), so what went wrong on those is not captured anywhere in the ticket.</p>
+    <p><b>Client attribution</b> – ClickUp's "Client" custom field holds the first name of whoever opened the Intercom conversation, which is frequently an Omnisient staff member logging on a customer's behalf rather than the customer. Verified example: the Shoprite_PRJ_00146 export failure carries Client "Sharon" with User Email sharon@omnisient.com. Clients shown here were therefore derived from ticket titles, embedded project codes (ABSA_PRJ_00038, SHOPRITE_PRJ_00461) and requester email domains instead. One ticket's client could not be confirmed and is shown as N/A pending AM follow-up.</p>
+    <p><b>Tier 1 average time to close</b> – Calculated per task from ClickUp creation and close timestamps across the 51 tasks that carry both. The 6 tasks in "done" status are excluded because all 6 have a null close date, as are the 13 still open and the 1 triaged out. Business-days figures apply Omnisient support hours (09:00–17:00 SAST, weekdays); the calendar-day figure is shown alongside because the monthly board report uses that basis. Nine tasks share two bulk-close timestamps, which are likely batch closures rather than individual resolutions; excluding them moves the average only from 2.27 to 2.31 business days, so they are left in.</p>
+    <p><b>SLA targets are verified against the contractual schedule</b> – The resolution windows used throughout (8 hours, 24 hours, 3 working days, 5 working days) match the Call Priority and Response Times table exactly, so every resolution figure on this page is measured against the contractual target. Support hours of 09:00 to 17:00 CAT, Monday to Friday, also match the business-hours basis used in every calculation here; CAT is UTC+2, the same offset as SAST. Response targets (1, 4, 24 and 48 hours by severity) are now documented and shown in the targets table, but <b>response attainment is still not measured</b> because ClickUp captures no first-response timestamp. A task to build that measurement exists and has not started, so the response half of the SLA remains unreportable rather than unmet.</p>
+    <p><b>Known gap</b> – The Bug Duplicate and Non-bug lists also hold September PROD alerts that have not been exhaustively counted, so the true cross-list PROD alert total exceeds 306.</p>
+  </footer>
+
+</div>
+
+<script>
+  // Whole-row click on the SLA table. The anchor in the last cell is the
+  // accessible fallback and works with JS disabled.
+  document.querySelectorAll('.sla-table tr.linked').forEach(function (row) {
+    row.addEventListener('click', function (e) {
+      if (e.target.closest('a')) return;
+      window.location.hash = row.dataset.jump;
+    });
+  });
+  // Section menu: highlight whichever section is currently in view.
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('.section-nav a'));
+    var targets = links.map(function (a) { return document.querySelector(a.getAttribute('href')); });
+    function sync() {
+      var best = 0;
+      for (var i = 0; i < targets.length; i++) {
+        if (targets[i] && targets[i].getBoundingClientRect().top <= 80) best = i;
+      }
+      links.forEach(function (a, i) { a.classList.toggle('current', i === best); });
+    }
+    window.addEventListener('scroll', sync, { passive: true });
+    sync();
+  })();
+</script>

@@ -1,0 +1,588 @@
+[0.00s -> 8.20s]  Obviously, if you think about that, you obviously will work in your project and using that
+[8.20s -> 14.00s]  project information and then you'll use that within the Jupyter environment.
+[14.00s -> 18.00s]  So let me just share this side.
+[18.00s -> 25.00s]  Cool, guys, can you just look at if you can see it?
+[25.00s -> 27.00s]  Yeah, you can see.
+[27.00s -> 28.00s]  Cool.
+[28.00s -> 29.00s]  So this is how you would see.
+[29.00s -> 32.00s]  Obviously, you guys are looking at apps or profiles.
+[32.00s -> 35.00s]  So I'm just in our demo environment.
+[35.00s -> 41.00s]  So obviously, you will be able to go into your project and obviously view all your data.
+[41.00s -> 47.00s]  See stats within the project and then obviously have your option to choose.
+[47.00s -> 53.00s]  I will see go back which you obviously noted previously in your Jupyter notebook.
+[53.00s -> 60.00s]  So if we click on the Jupyter notebook, bet and you'll see there's a pop up that comes up.
+[60.00s -> 68.00s]  So this is essentially just a window that advises how big of an of an instance you need.
+[68.00s -> 70.00s]  So in terms of processing.
+[70.00s -> 75.00s]  So obviously you have your standard workspace that just uses, for example, in this case to CPUs.
+[75.00s -> 79.00s]  And that's most of the time a smaller data set.
+[79.00s -> 85.00s]  It can be long, meaning this not as much columns within your data set.
+[85.00s -> 90.00s]  So let's say for example, you have a data system that's quite long, meaning that you let's say for example, you have 100 features.
+[90.00s -> 99.00s]  Then it's more beneficial to use a large workspace because it obviously uses more processing power to process a large data set.
+[99.00s -> 104.00s]  Well, why data set compared to a data set that's just like five columns.
+[104.00s -> 110.00s]  So you see obviously see this window you just confirm this my case.
+[110.00s -> 118.00s]  I'm just choosing a standard instance and we call it like a pod size in our environment.
+[118.00s -> 129.00s]  And you'll see it will start creating the pod and it takes a few seconds just to start up.
+[129.00s -> 140.00s]  And then once this has learned and you can start cutting up all your all information in terms of getting the data in and then working from there.
+[140.00s -> 144.00s]  Any questions on that piece before I proceed.
+[144.00s -> 146.00s]  Oh, all good for now.
+[146.00s -> 151.00s]  I'm not sure if you're going to cover it as you go now, but I think one thing for me is like I wanted.
+[151.00s -> 155.00s]  When I was looking at the SQL view, I could see the data sets that I wanted to work with.
+[155.00s -> 163.00s]  I think we are struggled here was where do we find to import the data or you know how to view the data for example.
+[163.00s -> 175.00s]  Yeah, so as far as I understand within the Jupyter instance, you should have obviously either I don't think the data set names appear within the actual view here.
+[175.00s -> 185.00s]  So you need to know what's your data set name essentially can just copy and paste it in a notebook somewhere or in a text pad and then.
+[185.00s -> 186.00s]  Just use that according.
+[186.00s -> 190.00s]  I don't think we have that view with in Jupyter. I know in SQL better do have that.
+[190.00s -> 197.00s]  But just in terms of advice in terms of how to use that just copy and paste the actual names within a project.
+[197.00s -> 202.00s]  And then you can just paste it in here. I'm not sure why there's no view of that.
+[202.00s -> 209.00s]  But as far as note, that's just because always you we have a Jupyter instance for every user.
+[209.00s -> 212.00s]  And I don't think they can view that accordingly.
+[212.00s -> 213.00s]  Okay.
+[213.00s -> 214.00s]  Okay.
+[214.00s -> 215.00s]  Cool.
+[215.00s -> 221.00s]  So from my start, I will take after just some basics out to use it.
+[221.00s -> 236.00s]  Obviously a Jupyter notebook is essentially used to just for your more complex type of processes like from creating a model to predict a certain target and so forth.
+[236.00s -> 245.00s]  And using obviously collaborating with a partner, you can obviously use that insights or those specific information and use that in your modeling.
+[245.00s -> 248.00s]  And then you can use the output at the end.
+[248.00s -> 257.00s]  So I've talked about essentially your your pod size your pod computer size. You have a small medium and large and just make sure.
+[257.00s -> 266.00s]  Whenever you choose a specific pod size, it's according to what you need it to do. So if you need to do a lot of processing and you need to have a quite a big data set.
+[266.00s -> 268.00s]  It's quite beneficial to use a large one.
+[268.00s -> 277.00s]  I know in production, we have what we call an extra large pod size. So that is for your really big process and those shop rights.
+[277.00s -> 288.00s]  Or is using that on our end or one of our clients, and they do a lot of processing rights for the modeling process they use.
+[288.00s -> 298.00s]  So if we were natural, that's in terms of the pod sizes. I'm going to go to next pieces where we talk about the Python libraries.
+[298.00s -> 309.00s]  So if you go into your Jupyter notebook and you run this exclamation mark populist, this will just show you the actual Python packages that's available.
+[309.00s -> 318.00s]  So because this is not connected to the internet, right. This is connected to a repository, which is managed by engineering team.
+[318.00s -> 336.00s]  So we have most packages which are approved because you can't just install any package you want because obviously you need to investigate if there's any risks in terms of data that can be exposed or anything funky like that.
+[336.00s -> 342.00s]  So just have a curated list of packages that's available.
+[342.00s -> 352.00s]  If you need a specific package to be installed, that's not part of this list. You can just let us know and we can advise our engineering team.
+[352.00s -> 357.00s]  We'll do the initial investigation and from there, we'll be able to add it in.
+[357.00s -> 371.00s]  So I'm not sure we are familiar with all with Python packages. So you're from your data prep packages that manipulate manipulation and, for example, your model building type of packages you use.
+[371.00s -> 375.00s]  And you're essentially there's just a way to.
+[375.00s -> 389.00s]  There's just a security measure to make sure we don't do anything forward specific packages do things we don't want to introduce, for example, exposing data to outside the platform environment.
+[389.00s -> 398.00s]  Do you have any specific questions on this piece?
+[398.00s -> 400.00s]  No, all good, my side.
+[400.00s -> 407.00s]  I think maybe just I don't think that we're looking to do intense modeling at this point in time.
+[407.00s -> 411.00s]  I think very high level. We just want to look at testing the scores.
+[411.00s -> 421.00s]  I think the most we want to go for now is just looking at like what the genie is out of like the different scores that we have compared against our website data.
+[421.00s -> 424.00s]  So I think high level for now. That's what we're looking to do.
+[424.00s -> 429.00s]  So in terms of packages, I'm sure I don't think we'll add any new package on.
+[429.00s -> 432.00s]  We'll probably test what we have available.
+[432.00s -> 440.00s]  Okay, so just to understand so you guys would most likely get data shared to your profile and you will view the.
+[440.00s -> 448.00s]  Genie results in in from there applied accordingly into on to your your base or whatever, right?
+[448.00s -> 451.00s]  Yes, 100%. So it's more than the public in the data that we have available.
+[451.00s -> 455.00s]  Yeah, okay, so you'll use that scores for whatever.
+[455.00s -> 460.00s]  And if it's a very small cutting into for just out of your out of interest.
+[460.00s -> 468.00s]  Yeah, yeah, for now, I think for now it's also just determining if we can find value also out of some of these scores that we do have on our base.
+[468.00s -> 473.00s]  And also most importantly, in the specific segments that you want to look at.
+[473.00s -> 476.00s]  Yeah, okay, okay, awesome. That makes a lot of sense.
+[476.00s -> 481.00s]  So there's also portion we need to chat about when we talk about the copy and paste limit.
+[481.00s -> 485.00s]  So within our Jupyter environment.
+[485.00s -> 489.00s]  There's a limit of 250 characters you can copy and paste.
+[489.00s -> 496.00s]  For example, if you copy this entire bit here, which is obviously more than 250 characters you'll get.
+[496.00s -> 507.00s]  Edit it is this more than 250 characters, right? So out to overcome that, you just need to copy the cell.
+[507.00s -> 514.00s]  So how you basically do it, how I do it currently is I just edit copy cell and then you edit it.
+[514.00s -> 517.00s]  Paste cell below and then we'll just paste it below.
+[517.00s -> 525.00s]  So that's how you copy, since you were thinking of notebook without manually going here choosing or selecting on copy and pasting.
+[525.00s -> 530.00s]  Rather just copy cell and paste cell within the actual notebook itself.
+[530.00s -> 535.00s]  Right, so I'm just going to delete this piece here.
+[535.00s -> 541.00s]  And obviously, when you work with this notebook, you can obviously paste.
+[541.00s -> 546.00s]  Notebooks from outside into our platform, right?
+[546.00s -> 552.00s]  There's no real limit on that, but the limit comes in and where you copy from the platform to outside.
+[552.00s -> 557.00s]  So again, there's a 250 character limit and that's again a security measure.
+[557.00s -> 561.00s]  We don't really want data to go outside of our platform environment.
+[561.00s -> 571.00s]  There's just to protect us as a business and obviously as a client, we don't want to expose any unnecessary information to add outside.
+[571.00s -> 575.00s]  Cool, does that make sense?
+[575.00s -> 577.00s]  Yeah, comfortable.
+[577.00s -> 587.00s]  So with regards to working within a project, so you will obviously work inside a project or open a Jupyter instance.
+[587.00s -> 594.00s]  And now we want to essentially use those datasets within the Jupyter notebook.
+[594.00s -> 598.00s]  So there's a package we've created called OmniHub.
+[598.00s -> 606.00s]  So that's just a package that enable us to connect to our data wearers and extract that specific data set within the notebook itself.
+[606.00s -> 622.00s]  So you'll see we have a piece of code here that essentially it's just a SQL string that or a Jupyter string, but it has obviously SQL code that chooses that extract the data from data wearers.
+[622.00s -> 628.00s]  You can see the specific data set that that will be a data set that's within your project.
+[628.00s -> 633.00s]  And then it will just save it as a specific object using the OmniHub function.
+[633.00s -> 639.00s]  And then it will just save it as a specific data frame within the Jupyter environment.
+[639.00s -> 657.00s]  And then you'll be able to view the data set use the data set. So for example, if you have a data set you received from a certain partner, you'll be able to view this data set as as I've shown here and just save it as a data frame in order for you to view it within the Jupyter instance.
+[657.00s -> 663.00s]  Does that make sense?
+[663.00s -> 666.00s]  Yeah, sorry, that makes sense.
+[666.00s -> 669.00s]  So I just want to confirm one thing.
+[669.00s -> 676.00s]  One thing, so I can use this script to pull and view a data set in the projects that we have already, right?
+[676.00s -> 685.00s]  But I just want to understand when I was doing a select function, for example, on the SQL base, I got a limit of 200.
+[685.00s -> 688.00s]  I couldn't view further than that.
+[688.00s -> 697.00s]  You also remember within your SQL pad, we only have a limit which you can use 200 rows, I think.
+[697.00s -> 702.00s]  So that's the limit. So you can't view all of them. So if you decide.
+[702.00s -> 708.00s]  So let's say for example in SQL, you use a specific table and you create a new table from that.
+[708.00s -> 714.00s]  Then I think what you should do is just export or write that information back to your data warehouse.
+[714.00s -> 721.00s]  But in terms of viewing that in SQL pad itself, you can only view 200 rows.
+[721.00s -> 729.00s]  But if you want to see the exact IDs that's associated with that, let's say, for example, it's a thousand rows, I think that's where you are.
+[729.00s -> 733.00s]  You are thinking down there, that information via your.
+[733.00s -> 739.00s]  Now within the platform, you can get all the information back to your in your environment using.
+[739.00s -> 744.00s]  I think the ID sense of all of the specific keys.
+[744.00s -> 753.00s]  OK, I think maybe also just a question is, let's assume, for example, I do a few calculations on the data set.
+[753.00s -> 761.00s]  Now I want to create a visualization, but let's assume I want to create this visualization in like a Excel view, for example.
+[761.00s -> 767.00s]  You can't you can't export data from the platform into an Excel view, right? You can't do that. What can you?
+[767.00s -> 770.00s]  No, no, not from where so.
+[770.00s -> 782.00s]  Not within SQL pad or are you can share and I understand that if you have, for example, a certain data set within your project.
+[782.00s -> 792.00s]  And if you want that back in your environment to download that via your, I think that's this function to have the URLs, I think you can download.
+[792.00s -> 803.00s]  You can you can create a dataset and request a download in your project from SQL, from SQL pad, which we then receive and we approve.
+[803.00s -> 819.00s]  Yes, yeah, so we call that the SQL bad exports. So for example, let's say, for example, you have created transformations in the data set, you save it as a table, and then you just create an export request, and then we can be accordingly.
+[819.00s -> 828.00s]  I actually forgot about that functionality. So I think you can you should be able to view that the without doing the URL that we chat about just now.
+[828.00s -> 835.00s]  Okay, the reason I ask is because sometimes when we want to create some views, we have specific formats that we have to put it in.
+[835.00s -> 845.00s]  So that's why I asked that it's easier. We have that format and layout, for example, in Excel. So if you want to create those, you know, simple things are colors and things like that, it's a lot easier for us.
+[845.00s -> 858.00s]  I think what we don't allow is individual, we allow aggregated downloads. So you don't download your entire dataset. It's basically the aggregation that you can download.
+[858.00s -> 862.00s]  Yeah, like a summary, right? Yeah. And then analysis. Yeah.
+[862.00s -> 865.00s]  Okay, okay, that helps at least. Okay.
+[865.00s -> 877.00s]  So what I can advise is if you have the data within, for example, the Jupiter environment, it's not that easy within SQL.
+[877.00s -> 886.00s]  But you can visualize certain views, but you can also create nice reports, HTML reports within the Jupiter environment.
+[886.00s -> 897.00s]  You have that script available and then view your reports accordingly. But I argue you've referred to Excel. So I assume that's the way you guys work is within the Excel.
+[897.00s -> 904.00s]  Yeah, as I said, just sometimes more for formatting purposes and putting them into presentations and things like that.
+[904.00s -> 913.00s]  There's just a format to follow. Yeah, but I think I get I get the idea you can't download full datasets, but more aggregated summary levels you can.
+[913.00s -> 922.00s]  And the summer, sorry, turn around time for if we want like a summary. And we put it in a request. What's the turnaround time for that?
+[922.00s -> 932.00s]  We don't want to commit it to tight a turnaround time. So if we say to you three days, it will be done.
+[932.00s -> 940.00s]  So bad, but very often it's an assorted time period and that I just based it a picture there.
+[940.00s -> 947.00s]  It's a it's a sample inside a SQL bad project.
+[947.00s -> 955.00s]  And you've run a query and if right at the bottom here, you can request the CSV download right there.
+[955.00s -> 965.00s]  Here we receive it. Henry or one of his team members goes and has a look. Does it does it download road level data?
+[965.00s -> 970.00s]  If it does, then we say no, sorry, but if it's a if it's an aggregation, then we download it for you.
+[970.00s -> 983.00s]  Okay. All right, you know, that's almost like just a validation from our end because obviously we don't want to get a customer role or customer level information out of the platform.
+[983.00s -> 986.00s]  Just to protect us into particular yourself.
+[986.00s -> 989.00s]  Thank you. Cool.
+[989.00s -> 996.00s]  Yeah. So commission on the help desk, you know how to get to the help functionality.
+[996.00s -> 1000.00s]  I know that on the platform looking at it now, there's like a chat.
+[1000.00s -> 1010.00s]  So now they on the lift on the left hand side, it is helping getting started. You can do the chat, but to get to the dictionary to the repository.
+[1010.00s -> 1016.00s]  I'm helping getting started. If you if you hit that one, it takes you to the repository.
+[1016.00s -> 1026.00s]  So that link that I've put into the chat right now goes to the repository and that is for how to create a SQL bad export for instance.
+[1026.00s -> 1032.00s]  But you have to be logged in before you can see the stuff.
+[1032.00s -> 1033.00s]  Okay.
+[1033.00s -> 1038.00s]  Okay. So if you click it now, you're not logged in. It's going to say, who are you?
+[1038.00s -> 1040.00s]  Okay. Now happy.
+[1040.00s -> 1042.00s]  Makes sense.
+[1042.00s -> 1046.00s]  Awesome. So cool. So we talked about the only hub.
+[1046.00s -> 1051.00s]  But so that's essentially just to get your data with in your Jupyter environment.
+[1051.00s -> 1055.00s]  We also have a package where we are what we call only lab.
+[1055.00s -> 1061.00s]  So that's also a package that we create announced just to essentially write back.
+[1061.00s -> 1064.00s]  Data sets to the data warehouse within your project.
+[1064.00s -> 1070.00s]  So for example, in this instance, let's say you have.
+[1070.00s -> 1074.00s]  Incorporated. That's it. That's it within your Jupyter instance.
+[1074.00s -> 1080.00s]  You make transformation. You run some modeling processes and you added a scoring column at end.
+[1080.00s -> 1083.00s]  And then you save that as a specific table.
+[1083.00s -> 1091.00s]  This only lab gives you the ability to write data back to the data warehouse so that you can view that as a table within your project.
+[1091.00s -> 1093.00s]  And then you can.
+[1093.00s -> 1096.00s]  For example, write a summary of an SQL pad.
+[1096.00s -> 1100.00s]  See what's the distributions of.
+[1100.00s -> 1103.00s]  Of that specific results it.
+[1103.00s -> 1106.00s]  You can do it via a SQL pad export.
+[1106.00s -> 1115.00s]  And if you want a scores per client, then obviously you'll go the route of the downer in the irons net instance.
+[1115.00s -> 1118.00s]  Okay. So sorry. Yeah. So sorry. Just for clarification.
+[1118.00s -> 1121.00s]  So I can create a table.
+[1121.00s -> 1125.00s]  And I can write that table as to save it back into my projects.
+[1125.00s -> 1128.00s]  For example, so I can really get it later. Yeah.
+[1128.00s -> 1131.00s]  Awesome. And and and with I do it here.
+[1131.00s -> 1136.00s]  Or SQL pad. If I write it, I can write it back into any one of the platforms.
+[1136.00s -> 1141.00s]  I'm not like restricted way. If it's like a export from Jupyter, I must write it back into Jupyter.
+[1141.00s -> 1144.00s]  I can essentially view it in any one of them.
+[1144.00s -> 1149.00s]  Yeah. So within Jupyter, you can write back within a project as far as know for SQL pad.
+[1149.00s -> 1154.00s]  You can also create a table with transformations back into your project,
+[1154.00s -> 1156.00s]  which you can view later as well.
+[1156.00s -> 1159.00s]  But in terms of viewing the data again, we are SQL pad.
+[1159.00s -> 1161.00s]  You need. It's just aggregate data.
+[1161.00s -> 1165.00s]  We don't we won't approve any record or customer mail information.
+[1165.00s -> 1168.00s]  Cool.
+[1168.00s -> 1172.00s]  Awesome. So that in terms of the omnipackage.
+[1172.00s -> 1175.00s]  We also have the omnipackage analysis.
+[1175.00s -> 1179.00s]  That's essentially you load the specific script.
+[1179.00s -> 1187.00s]  And then what that enable will yet you to do is this is essentially where you collaborate with your project users.
+[1187.00s -> 1193.00s]  So for example, you have a project in yourself and your free team members.
+[1193.00s -> 1198.00s]  Does give you the ability, for example, to view them within your project.
+[1198.00s -> 1202.00s]  There's obviously a dress sign assigned to each email address.
+[1202.00s -> 1210.00s]  And then you're able to also share, for example, certain notebook, certain files to them using this functionality.
+[1210.00s -> 1213.00s]  We'll just in this instance omnip helper.
+[1213.00s -> 1215.00s]  Then you need to say same file.
+[1215.00s -> 1218.00s]  So that is just that triggers the copy command.
+[1218.00s -> 1223.00s]  And then the actual file you want to actually share.
+[1223.00s -> 1228.00s]  And then you perceive it will be one of your one of your project users.
+[1228.00s -> 1233.00s]  Then you're adding their address and that will be these ones, these user addresses here.
+[1233.00s -> 1239.00s]  And then you'll be able to say that to them and they can view it from their side.
+[1239.00s -> 1244.00s]  And just to finish off, you can also just see the trance or history.
+[1244.00s -> 1252.00s]  So for example, if you want to know if you've seen this already, you can just go to this function where it says omnip helper trance or history.
+[1252.00s -> 1257.00s]  Then you'll be able to see which was sent to yourself or what was sent to others.
+[1257.00s -> 1263.00s]  Just to track what was been happening from this project.
+[1263.00s -> 1268.00s]  Also that promotes a hot to library option entry.
+[1268.00s -> 1270.00s]  That is yes.
+[1270.00s -> 1272.00s]  That's the last piece.
+[1272.00s -> 1276.00s]  But any questions are not only an helper bit than you guys have questions.
+[1276.00s -> 1281.00s]  You see and suggest functionality for you guys to interact or collaborate with as.
+[1281.00s -> 1286.00s]  As obviously on your profile, I'm not so powerful in your project, but just to.
+[1286.00s -> 1294.00s]  If you want your what the one user to see a notebook or let him view that you can do that.
+[1294.00s -> 1297.00s]  Yeah, I think this is the one we're probably going to look to use.
+[1297.00s -> 1299.00s]  Especially when we're collaborating now.
+[1299.00s -> 1302.00s]  So we're going to I think what's that we will definitely take this away.
+[1302.00s -> 1306.00s]  I'll say next week when we have this our collaboration session.
+[1306.00s -> 1311.00s]  We're going to work to make use of this so that we can create this notebook or shape one slice.
+[1311.00s -> 1312.00s]  Awesome.
+[1312.00s -> 1315.00s]  But yeah, if there's any specific questions we have ever.
+[1315.00s -> 1320.00s]  And I think we're usually saying to clients just as a reference guide.
+[1320.00s -> 1326.00s]  It will include all of these coding bits, which will just guide you in how to use it and what.
+[1326.00s -> 1329.00s]  What to do for your end.
+[1329.00s -> 1330.00s]  Cool.
+[1330.00s -> 1335.00s]  And then the last bit I want to go through is essentially just what we call the notebook promotion workflow.
+[1335.00s -> 1342.00s]  So that's a way to essentially share notebooks, but it's more generic notebooks.
+[1342.00s -> 1347.00s]  So for example, if you go on your left hand side, you'll have a toggle here, which is called.
+[1347.00s -> 1350.00s]  Essentially your company notebooks.
+[1350.00s -> 1355.00s]  So let's say for example, you have a generic notebook like a data analysis or a.
+[1355.00s -> 1361.00s]  We export analysis script you want to share amongst all your users within the profile.
+[1361.00s -> 1364.00s]  You can just upload that.
+[1364.00s -> 1373.00s]  So what you do is you go file with that again, let me just see here.
+[1373.00s -> 1377.00s]  You go right click on your notebook right and you go promote to library.
+[1377.00s -> 1385.00s]  So that essentially then shares that well, this is obviously first that request because we need to review it.
+[1385.00s -> 1391.00s]  And again, within your notebook, it can't have customer level outputs, right?
+[1391.00s -> 1395.00s]  So it can't have customer level information.
+[1395.00s -> 1403.00s]  So essentially your promoters to library and once it's approved, it will be available for all those users within that profile.
+[1403.00s -> 1409.00s]  So you so then for example, your all free users can have the profile ready.
+[1409.00s -> 1415.00s]  And if any one of the ones to run a data analysis notebook, they can do it from their end.
+[1415.00s -> 1420.00s]  Cool. I think what might be a good idea from our ideas as we go about it.
+[1420.00s -> 1425.00s]  Well, probably like we'll draw a code and we'll have all our summaries that we want to export.
+[1425.00s -> 1428.00s]  And then we will be technically done or be happy.
+[1428.00s -> 1433.00s]  We'll write them, you'll put a request for all of them one time instead of doing one by one and one by one.
+[1433.00s -> 1436.00s]  Yeah, so maybe it's just something I'm thinking about, but yeah.
+[1436.00s -> 1444.00s]  Yeah, so remember there is a distinction between promoting this notebook library and what we normally do with the Omni helper.
+[1444.00s -> 1451.00s]  So Omni helper says is essentially ad hoc, but it's it's I see it as ad hoc note.
+[1451.00s -> 1454.00s]  You send to your teammates or project users.
+[1454.00s -> 1461.00s]  This promote the notebook is more like generic notebooks that's frequently used if that makes sense.
+[1461.00s -> 1462.00s]  Okay.
+[1462.00s -> 1471.00s]  Because the other is definitely a distinction between sharing it on the library and sending files ad hoc files or notebooks to your team members.
+[1471.00s -> 1474.00s]  But yeah, that's just a distinction you need to make as well.
+[1474.00s -> 1475.00s]  Okay.
+[1475.00s -> 1476.00s]  Notice.
+[1476.00s -> 1477.00s]  Cool.
+[1477.00s -> 1479.00s]  So that's high level.
+[1479.00s -> 1486.00s]  You see how you should use the Jupyter environment within an omniscient platform.
+[1486.00s -> 1492.00s]  And yeah, what's important is to understand the limitations and how you should be using it.
+[1492.00s -> 1501.00s]  How to get data in how to work within and Jupyter how to get data back written back to your project and so forth.
+[1501.00s -> 1515.00s]  So this gives you a start half hard to how to use the platform and how you need to go about building whatever processes you need to build or viewing data and viewing it viewing aggregate information.
+[1515.00s -> 1524.00s]  So yeah, if there's any questions you're please let me know so open the floor here.
+[1524.00s -> 1528.00s]  No, I think I think for my side I'm comfortable.
+[1528.00s -> 1531.00s]  We probably need to just really get busy with it.
+[1531.00s -> 1536.00s]  We may have some questions, so then we'll also make use of that help and then we'll reach out.
+[1536.00s -> 1543.00s]  I'm actually for Angelica, how much are you guys have any questions?
+[1543.00s -> 1547.00s]  I think this was really clear.
+[1547.00s -> 1551.00s]  The help package just have to get comfortable using it.
+[1551.00s -> 1560.00s]  And then maybe I missed it in the beginning, but if we primarily want to use SQL.
+[1560.00s -> 1562.00s]  Yeah, so I can go back.
+[1562.00s -> 1565.00s]  That's the second half we're going through or.
+[1565.00s -> 1571.00s]  Yeah, so the other session was primarily just for the Jupyter side of it.
+[1571.00s -> 1574.00s]  So if you, for example, I'll just go back here.
+[1574.00s -> 1580.00s]  You're going to your essentially project views.
+[1580.00s -> 1582.00s]  So you can either choose Jupyter, maybe go SQL.
+[1582.00s -> 1589.00s]  So if you're more comfortable working in SQL environment, you can go and SQL pad.
+[1589.00s -> 1595.00s]  And then you'll be able to view all the obviously all the tables will be viewed accordingly.
+[1595.00s -> 1600.00s]  So let's just see how it looks like here.
+[1600.00s -> 1604.00s]  And then you're from here, you can create information.
+[1604.00s -> 1607.00s]  I'm pretty sure you guys had a how to on SQL pads.
+[1607.00s -> 1611.00s]  If you right click on a certain table, it will just copy that.
+[1611.00s -> 1617.00s]  And you can just say select from and it will automatically copy your schema,
+[1617.00s -> 1620.00s]  which is your project in this instance and your table name.
+[1620.00s -> 1626.00s]  And then and as far as I know, we need one to save a table within SQL pad.
+[1626.00s -> 1628.00s]  I think there's a command create table.
+[1628.00s -> 1633.00s]  And then you select whatever table and then you create it.
+[1633.00s -> 1638.00s]  What do you want to see this question?
+[1638.00s -> 1641.00s]  No, go ahead, Angelica, you can finish.
+[1641.00s -> 1648.00s]  I was going to say over here, we don't run into privacy issues, errors, nothing like that.
+[1648.00s -> 1655.00s]  Because maybe on SQL is where we'd want to see or maybe we're pulling like a sample of the data.
+[1655.00s -> 1661.00s]  And then with Python is maybe where you want to aggregate and visualize some things.
+[1661.00s -> 1666.00s]  Yeah, so within SQL pad, you can view whatever information you have in a certain table,
+[1666.00s -> 1668.00s]  even if it's on customer level.
+[1668.00s -> 1673.00s]  But if you want, and remember if you view this, for example, you're not,
+[1673.00s -> 1676.00s]  you'll see there's a limit of top 200, right?
+[1676.00s -> 1678.00s]  So you don't see more than that.
+[1678.00s -> 1681.00s]  But if you want to see a aggregated view of that,
+[1681.00s -> 1686.00s]  for example, a count of customers by created score or something like that,
+[1686.00s -> 1690.00s]  then you can build that aggregation and then you can create an expo.
+[1690.00s -> 1694.00s]  So, for example, let me just see if I can do it here.
+[1694.00s -> 1697.00s]  Just want to do it on top.
+[1697.00s -> 1701.00s]  See if this works.
+[1701.00s -> 1705.00s]  So, for example, if you have this information,
+[1705.00s -> 1710.00s]  there's a button at the bottom that says, I think this is a quiz CSV.
+[1710.00s -> 1711.00s]  Right?
+[1711.00s -> 1714.00s]  Obviously, you need to aggregate this first,
+[1714.00s -> 1717.00s]  because obviously if you request CSV and is on customer level,
+[1717.00s -> 1719.00s]  we will not approve it at all.
+[1719.00s -> 1722.00s]  So, firstly to aggregate it, then you request a CSV,
+[1722.00s -> 1725.00s]  we'll get a request, and then we'll approve it accordingly,
+[1725.00s -> 1728.00s]  and then you can view it on your end.
+[1728.00s -> 1730.00s]  Does that make sense?
+[1730.00s -> 1733.00s]  And it makes perfect sense.
+[1733.00s -> 1734.00s]  Awesome.
+[1734.00s -> 1737.00s]  Great stuff.
+[1737.00s -> 1740.00s]  And yeah, that's on the SQL product side of things,
+[1740.00s -> 1743.00s]  and then obviously the functionality,
+[1743.00s -> 1747.00s]  and within Jupyter, obviously it can also create table,
+[1747.00s -> 1749.00s]  write it back, and so forth.
+[1749.00s -> 1754.00s]  So, and if you share again my books can't be on customer level,
+[1754.00s -> 1761.00s]  or we need to, we just make sure everyone's protected on that side.
+[1761.00s -> 1762.00s]  Cool.
+[1762.00s -> 1764.00s]  Yeah, I think if I can add,
+[1764.00s -> 1766.00s]  I think we've definitely captured it all.
+[1766.00s -> 1769.00s]  I think do mind us if we do make a mistake,
+[1769.00s -> 1773.00s]  and we request something that maybe is something that's on a different level,
+[1773.00s -> 1774.00s]  just let us know.
+[1774.00s -> 1775.00s]  You got it.
+[1775.00s -> 1776.00s]  You got it for it?
+[1776.00s -> 1778.00s]  If we're not happy with it, we'll say,
+[1778.00s -> 1779.00s]  you know what?
+[1779.00s -> 1781.00s]  This reason is why we can't approve it.
+[1781.00s -> 1783.00s]  We can't do it.
+[1783.00s -> 1787.00s]  So, don't feel restricted.
+[1787.00s -> 1790.00s]  And we will catch.
+[1790.00s -> 1791.00s]  Thank you.
+[1791.00s -> 1792.00s]  Thank you.
+[1792.00s -> 1797.00s]  So, you can remember, we will explain why that is.
+[1797.00s -> 1800.00s]  So, if we won't just say no,
+[1800.00s -> 1804.00s]  we'll obviously explain the logic behind that.
+[1804.00s -> 1807.00s]  And if you do your aggregations,
+[1807.00s -> 1810.00s]  your guide is essentially not to do that,
+[1810.00s -> 1812.00s]  we don't want to see anything by customer.
+[1812.00s -> 1814.00s]  That's the red flag.
+[1814.00s -> 1817.00s]  So, then if that all checks out,
+[1817.00s -> 1819.00s]  we approve, and then you can read on your end.
+[1819.00s -> 1820.00s]  Okay.
+[1820.00s -> 1821.00s]  No, cool.
+[1821.00s -> 1823.00s]  I have one last question.
+[1823.00s -> 1826.00s]  But it's more specific to our data.
+[1826.00s -> 1829.00s]  So, would you mind if I quickly steal the share?
+[1829.00s -> 1831.00s]  I won't share any sensitive information.
+[1831.00s -> 1834.00s]  No, I just want to quickly share.
+[1834.00s -> 1835.00s]  Cool.
+[1835.00s -> 1836.00s]  Yeah.
+[1836.00s -> 1839.00s]  So, I've been playing around a bit on my end as well,
+[1839.00s -> 1842.00s]  just to get a bit familiar with what the data is and what we've got back.
+[1842.00s -> 1844.00s]  And I had a look and I saw that Sharon,
+[1844.00s -> 1846.00s]  please let me know if I'm wrong.
+[1846.00s -> 1849.00s]  But I know that this is our upset data.
+[1849.00s -> 1854.00s]  And that's the all the other different datasets that were added on to our data that were matched.
+[1854.00s -> 1859.00s]  Now, and I did a few appropriate frequencies on some of these datasets.
+[1859.00s -> 1862.00s]  And of course, there is a number of troubles.
+[1862.00s -> 1864.00s]  We understandably so.
+[1864.00s -> 1866.00s]  But part of our analysis,
+[1866.00s -> 1871.00s]  what we'd like to do is we'd also like to get a coverage of sets and scores
+[1871.00s -> 1874.00s]  that we've received compared to what we've uploaded, right?
+[1875.00s -> 1881.00s]  We've done it in a few other analysis and it's something that we know that our stakeholders they like to view.
+[1881.00s -> 1886.00s]  I think the challenge that I just want to understand is in this project.
+[1886.00s -> 1889.00s]  Of course, I'm only limited like if I were to open this dataset,
+[1889.00s -> 1891.00s]  it's all if everything is matched here.
+[1891.00s -> 1893.00s]  So, I wouldn't have a record of what's not matched.
+[1893.00s -> 1897.00s]  Of course, that will be on our full dataset.
+[1897.00s -> 1900.00s]  That full dataset I know is not here for us to view.
+[1900.00s -> 1906.00s]  So, in my head, I'm thinking that let's just assume I want to look at some of the pit information.
+[1906.00s -> 1909.00s]  And I want to compare that against what the coverage is and our total file.
+[1909.00s -> 1911.00s]  What do we get back?
+[1911.00s -> 1916.00s]  Do I have to look at my own total file on Excel and what I viewed in terms of number of records?
+[1916.00s -> 1918.00s]  And then come here and say, okay, cool.
+[1918.00s -> 1920.00s]  This is how much we got back and do a coverage.
+[1920.00s -> 1927.00s]  Or is there a way to view and compare my full dataset that was uploaded?
+[1927.00s -> 1930.00s]  Yes, so are you going to take it in there?
+[1930.00s -> 1931.00s]  Do you want me to?
+[1931.00s -> 1933.00s]  I can have a stab to that.
+[1933.00s -> 1939.00s]  So, yeah, so if you I'm not sure what the context is for this project,
+[1939.00s -> 1944.00s]  but if you've uploaded your full dataset in year,
+[1944.00s -> 1950.00s]  you can basically view those applications.
+[1950.00s -> 1954.00s]  And then you can just compare it to the overlap.
+[1955.00s -> 1959.00s]  Well, if you show your own dataset and it's all,
+[1959.00s -> 1964.00s]  it's just in a different dataset that's been used on your site or a subset.
+[1964.00s -> 1970.00s]  Or is it just have you used your full dataset within this overlap?
+[1970.00s -> 1972.00s]  So it's okay.
+[1972.00s -> 1976.00s]  So it's a full dataset that we've uploaded.
+[1976.00s -> 1982.00s]  But my understanding is, of course, I know that what came back is obviously what was matched with the score.
+[1982.00s -> 1985.00s]  You see, for me, I know that we,
+[1985.00s -> 1990.00s]  I didn't expect that, you know, the analysis would come back such that the score really be onto the dataset.
+[1990.00s -> 1991.00s]  Which is still great.
+[1991.00s -> 1992.00s]  This is saved us a bit of work.
+[1992.00s -> 1993.00s]  So thank you for that.
+[1993.00s -> 1996.00s]  But I think to understand how can we compare the coverage?
+[1996.00s -> 2001.00s]  Because from our perspective, coverage is also quite an important factor in our analysis.
+[2001.00s -> 2003.00s]  So that's why we just want to compare that.
+[2003.00s -> 2007.00s]  It makes it a little challenging just if I don't have the full dataset.
+[2007.00s -> 2010.00s]  Yeah, yeah, just ways around that.
+[2010.00s -> 2016.00s]  So if you have that dataset in a certain project already loaded,
+[2016.00s -> 2019.00s]  so it's if it's not loaded in a specific project already,
+[2019.00s -> 2023.00s]  that makes it difficult because in this specific instance,
+[2023.00s -> 2026.00s]  I believe it's an overlap and obviously only see matched.
+[2026.00s -> 2028.00s]  So.
+[2028.00s -> 2030.00s]  So I'm not sure what's usually done,
+[2030.00s -> 2036.00s]  but what I would do is just if that specific dataset is in a.
+[2037.00s -> 2041.00s]  It should be able to go to own data preparation, right?
+[2041.00s -> 2046.00s]  So then you can do that specific aggregation in your own data preparation.
+[2046.00s -> 2048.00s]  So if you go to SQL pad.
+[2048.00s -> 2052.00s]  So you should be able to view your full dataset in there.
+[2052.00s -> 2056.00s]  So what you'll do is do the aggregation on your full dataset.
+[2056.00s -> 2059.00s]  I'm not sure how you can save it just.
+[2059.00s -> 2061.00s]  Copy a snippet of it.
+[2061.00s -> 2065.00s]  And then you can compare it to your project overlap.
+[2065.00s -> 2067.00s]  Does that make sense?
+[2067.00s -> 2068.00s]  Yeah, I think it does.
+[2068.00s -> 2070.00s]  Yeah, I think because I, for example,
+[2070.00s -> 2071.00s]  I see the table here,
+[2071.00s -> 2075.00s]  I'll of course have to just do a bit of a summary and see if the records match.
+[2075.00s -> 2078.00s]  But so then that makes it a lot easier.
+[2078.00s -> 2081.00s]  Yeah, so what you can do is because you have own data prep,
+[2081.00s -> 2085.00s]  you can do a nice analysis on each or every table,
+[2085.00s -> 2089.00s]  have your views and save.
+[2089.00s -> 2090.00s]  You can save you.
+[2090.00s -> 2092.00s]  I'm not sure how you guys got trained on SQL pad,
+[2092.00s -> 2095.00s]  but you can save certain queries or views.
+[2095.00s -> 2097.00s]  And you can save that view and say,
+[2097.00s -> 2100.00s]  this is my analysis on my full dataset.
+[2100.00s -> 2104.00s]  Then once you have done your overlap in that specific project,
+[2104.00s -> 2106.00s]  and you can just run the same logic to compare it.
+[2106.00s -> 2110.00s]  Okay, this is my baseline looks like which is my full dataset.
+[2110.00s -> 2117.00s]  And I'm comparing that to my overlap with a certain line of partner.
+[2117.00s -> 2119.00s]  Then that's that's how I'll do the comparison.
+[2119.00s -> 2122.00s]  Unfortunately, I'm doing the same project with that dataset.
+[2122.00s -> 2123.00s]  It's not in there, right?
+[2123.00s -> 2131.00s]  So I would do that in the under data prep and compare that to the actual project itself.
+[2131.00s -> 2132.00s]  No, that's fair.
+[2132.00s -> 2133.00s]  That that makes sense.
+[2133.00s -> 2134.00s]  Thanks for that.
+[2134.00s -> 2136.00s]  Does that make sense, Sharon?
+[2136.00s -> 2137.00s]  For myself?
+[2137.00s -> 2138.00s]  Yes, perfect.
+[2138.00s -> 2139.00s]  Yeah.
+[2139.00s -> 2145.00s]  Okay, maybe one last question is.
+[2145.00s -> 2147.00s]  So the SQL pad.
+[2147.00s -> 2151.00s]  We can't save like this.
+[2151.00s -> 2156.00s]  Assuming I'm working on a few things and I like to save what I've worked on.
+[2156.00s -> 2159.00s]  And then Angelica wants to come in and then you know,
+[2159.00s -> 2161.00s]  do some work on that as well.
+[2161.00s -> 2166.00s]  Is that saved somewhere as in like a sheet project that we can both look at?
+[2166.00s -> 2168.00s]  Because I know what you see for me.
+[2168.00s -> 2172.00s]  I think what I'm looking at is when I come to here and let's assume.
+[2172.00s -> 2176.00s]  I work with my dataset and I open it in SQL pad.
+[2176.00s -> 2179.00s]  I have this view.
+[2179.00s -> 2181.00s]  And apologies.
+[2181.00s -> 2184.00s]  I know we had some training on this, but it's just been a while.
+[2184.00s -> 2185.00s]  So it's a refresher.
+[2185.00s -> 2186.00s]  Yeah.
+[2186.00s -> 2190.00s]  I want to come in on the right a few steps here and get some summaries.
+[2190.00s -> 2191.00s]  Oh, it's a necessary human again.
+[2191.00s -> 2194.00s]  Angelica wants to come in and view the same thing and then do amendments on it.
+[2194.00s -> 2195.00s]  Like a sheet thing.
+[2195.00s -> 2197.00s]  We can we plan to do that, right?
+[2197.00s -> 2198.00s]  Okay.
+[2198.00s -> 2202.00s]  So as far as I know, remember each user has his own instance.
+[2202.00s -> 2205.00s]  So you won't be able to view her scripts and your rescue.
+[2205.00s -> 2210.00s]  Obviously, you will see all your all your own views and queries and so forth.
+[2210.00s -> 2212.00s]  She'll be able to view her script.
+[2212.00s -> 2216.00s]  So as far as I know, we forgot to SQL pad.
+[2216.00s -> 2220.00s]  Obviously with Jupyter, you can save certain files.
+[2220.00s -> 2223.00s]  So SQL pad, I think.
+[2223.00s -> 2228.00s]  If it's not a big script, you got this copy and paste that into your environment.
+[2228.00s -> 2231.00s]  If it's not a big script.
+[2231.00s -> 2234.00s]  But I'm pretty sure you can maybe.
+[2234.00s -> 2239.00s]  You know, you won't be able to do that via on the app because that's just for Jupyter.
+[2239.00s -> 2248.00s]  In terms of the code, I'm not sure Sharon, have you guys shared specific SQL code before on your end?
+[2248.00s -> 2250.00s]  I'm going to have to check.
+[2250.00s -> 2252.00s]  Because I can't remember.
+[2252.00s -> 2258.00s]  Do you want to do you want to share scripts between people in a project or across projects?
+[2258.00s -> 2260.00s]  It will only be within a project.
+[2260.00s -> 2266.00s]  So for example, like I know in all in all of these projects, everyone here.
+[2266.00s -> 2269.00s]  We'll be who'd want to what want to work with it.
+[2269.00s -> 2272.00s]  I think the only person that we can't give access to our suppose is Lisa.
+[2272.00s -> 2275.00s]  We can't give access to this data from here, right?
+[2275.00s -> 2276.00s]  Yeah.
+[2276.00s -> 2279.00s]  So that might make it a little challenging.
+[2279.00s -> 2282.00s]  But yeah, that's probably what we want to do.
+[2282.00s -> 2285.00s]  Everybody who is in here can can work with it.
+[2285.00s -> 2290.00s]  So Sharon, the question to be out.
+[2290.00s -> 2293.00s]  I'm not sure how do you know it's usually done.
+[2293.00s -> 2298.00s]  We are SQL bad, specifically code wise, but I know.
+[2298.00s -> 2303.00s]  In that instance, you know, you'll have to export.
+[2303.00s -> 2308.00s]  The query and then imported again, but let me just check for you.
+[2308.00s -> 2309.00s]  Okay.
+[2309.00s -> 2313.00s]  I'll just make you all just make sure about that one because that's not.
+[2313.00s -> 2316.00s]  That a quiz we normally get because that's a SQL player.
+[2316.00s -> 2318.00s]  And obviously running an aggregation sensor for.
+[2318.00s -> 2322.00s]  But if it's not a big code, you can just copy and paste that out or.
+[2322.00s -> 2323.00s]  Yeah.
+[2323.00s -> 2330.00s]  We'll just find out the way if there's a streamlined way just to collaborate within the actual project via SQL bad instead of Jupiter.
+[2330.00s -> 2331.00s]  Okay.
+[2331.00s -> 2332.00s]  Okay.
+[2332.00s -> 2335.00s]  I guess the more I unpack this and the more we chat is that it.
+[2335.00s -> 2338.00s]  For me, I guess then what makes sense is that.
+[2338.00s -> 2341.00s]  Shopping won't be actually a, even if I work in Jupiter.
+[2341.00s -> 2344.00s]  They won't be able to work with some of the data sets that we have on our end.
+[2344.00s -> 2347.00s]  Because they are they they're not allowed to write.
+[2347.00s -> 2348.00s]  Yeah.
+[2348.00s -> 2352.00s]  Only what they have on day end, but what they have on day end.
+[2352.00s -> 2357.00s]  It would technically would have not be a similar view just with hashed information.
+[2357.00s -> 2360.00s]  Because they would need similar records to work with.
+[2360.00s -> 2361.00s]  Is it does it work like that?
+[2361.00s -> 2362.00s]  Yeah.
+[2362.00s -> 2365.00s]  So, so you have your data sets.
+[2365.00s -> 2367.00s]  If you share it with shop right.
+[2367.00s -> 2372.00s]  On this side, I can put it into a project and work with it the same way that you can.
+[2372.00s -> 2375.00s]  So that is that is basically the way.
+[2375.00s -> 2378.00s]  If I've got it as a data set, they want to share with you.
+[2378.00s -> 2384.00s]  They share it with you and you work on you know, you put it into project on your site that shade data set of this.
+[2384.00s -> 2386.00s]  And then you can examine that.
+[2386.00s -> 2387.00s]  Yeah.
+[2387.00s -> 2388.00s]  Yeah.
+[2388.00s -> 2389.00s]  Yeah.
+[2389.00s -> 2390.00s]  Yeah.
+[2390.00s -> 2401.00s]  I'm assuming then like for like if what we've got from them onto our data first, what we give them onto their data might be similar in a in a way in terms of like records match 10 things like that.
+[2401.00s -> 2403.00s]  So if whatever they were to do on day end.
+[2403.00s -> 2407.00s]  Similarly, we might be able to do on our end is what I'm trying to get at.
+[2407.00s -> 2408.00s]  Yeah.
+[2408.00s -> 2409.00s]  Yeah.
+[2409.00s -> 2413.00s]  So, so basically remember you share data for example with shop right.
+[2413.00s -> 2417.00s]  They can they can use that information in their project the same.
+[2417.00s -> 2421.00s]  They can use their information or project, but they can view your project.
+[2421.00s -> 2423.00s]  They can only view their own project.
+[2423.00s -> 2425.00s]  That's that's basically it.
+[2425.00s -> 2426.00s]  Cool.
+[2426.00s -> 2427.00s]  Yeah.
+[2427.00s -> 2428.00s]  Sorry.
+[2428.00s -> 2429.00s]  A lot of clarifying questions.
+[2429.00s -> 2430.00s]  But.
+[2430.00s -> 2431.00s]  That's good.
+[2431.00s -> 2434.00s]  I think I'm I think I'm comfortable on my end.
+[2434.00s -> 2436.00s]  Let's take it away and start with this.
+[2436.00s -> 2437.00s]  Yeah.
+[2437.00s -> 2438.00s]  Angelica.
+[2438.00s -> 2443.00s]  What's your any questions from your end?
+[2443.00s -> 2445.00s]  No, no questions.
+[2445.00s -> 2447.00s]  I think the mission is just.
+[2447.00s -> 2452.00s]  For this use case, as you said, like how do you measure coverage and then.
+[2452.00s -> 2456.00s]  If they do have better genius, then we do customers.
+[2456.00s -> 2457.00s]  We've rejected.
+[2457.00s -> 2459.00s]  How would we pull that?
+[2459.00s -> 2464.00s]  So maybe some use case specific things we need to see.
+[2464.00s -> 2465.00s]  Yeah.
+[2466.00s -> 2472.00s]  And if there's any specific aspects you guys need up or not, we're glad to assist you.
+[2472.00s -> 2474.00s]  If you have any questions, you do.
+[2474.00s -> 2480.00s]  If you guys email us for myself and Sharon, then we can just see if we can get that answered for you.
+[2480.00s -> 2483.00s]  But most of this is quite intuitive within a platform.
+[2483.00s -> 2484.00s]  So it's not.
+[2484.00s -> 2486.00s]  It's very easy just to navigate.
+[2486.00s -> 2490.00s]  Obviously, you don't understand all the steps involved specifically interpreter, but.
+[2490.00s -> 2493.00s]  If you have any questions, you'll please.
+[2493.00s -> 2495.00s]  Thank you so much for setting up.
+[2495.00s -> 2497.00s]  Thank you for the time.
+[2497.00s -> 2498.00s]  We really do appreciate it.
+[2498.00s -> 2499.00s]  Awesome.
+[2499.00s -> 2500.00s]  It's pleasure.
+[2500.00s -> 2501.00s]  Right.
+[2501.00s -> 2502.00s]  Thanks very much.
+[2502.00s -> 2503.00s]  Thank you.
+[2503.00s -> 2504.00s]  Another fabulous weekend.
+[2504.00s -> 2505.00s]  Thank you.
+[2505.00s -> 2506.00s]  You as well.
+[2506.00s -> 2507.00s]  Thank you.
+[2507.00s -> 2508.00s]  Thank you.
+[2508.00s -> 2509.00s]  Thank you.
+[2509.00s -> 2510.00s]  Thank you.
+[2510.00s -> 2511.00s]  Thank you.
+[2511.00s -> 2512.00s]  Thank you.
+[2512.00s -> 2513.00s]  Thank you.
+[2513.00s -> 2514.00s]  Thank you.
+[2514.00s -> 2515.00s]  Thank you.
+[2515.00s -> 2516.00s]  Thank you.
+[2516.00s -> 2517.00s]  Thank you.
+[2517.00s -> 2518.00s]  Thank you.

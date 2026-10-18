@@ -1,0 +1,3887 @@
+{
+ "output": "Omnisient_Platform_Guide_for_Analysts.pdf",
+ "images_dir": "images",
+ "cover_pdf": "cover.pdf",
+ "title": "Omnisient Platform Guide for Analysts",
+ "header_title": "Omnisient Platform Guide for Analysts",
+ "breadcrumb": "Platform Guide for Analysts",
+ "copyright": "© 2014-2026. Omnisient (Pty) Ltd. All rights reserved.",
+ "website": "www.omnisient.com",
+ "legal_url": "https://omnisient.com/privacy-center",
+ "author": "Omnisient",
+ "chapters": [
+  {
+   "key": "a13513032",
+   "title": "Supported Personally Identifiable Information (PII) Types",
+   "part": "PII",
+   "blocks": [
+    {
+     "type": "p",
+     "text": "When you mark a column as PII, Omnisient ensures it is anonymized and tokenized before upload, so your sensitive data is protected from the start. We use SMPC (Secure Multi-Party Computation) to keep these fields private while still enabling secure linking and collaboration across datasets. This approach helps support compliance with regulations such as POPIA, GDPR, and UAE data protection laws."
+    },
+    {
+     "type": "h2",
+     "text": "Summary of Supported Fields"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "PII Type",
+      "Display Name",
+      "What it’s for",
+      "Important things to note"
+     ],
+     "rows": [
+      [
+       "iAPI",
+       "Anonymous PI",
+       "Used to hide source data that doesn’t need to be treated as regulated PII (according to POPIA, GDPR, and UAE data protection laws), but should still be hashed before upload for privacy or internal policy reasons.",
+       ""
+      ],
+      [
+       "iCCARDFIRST6",
+       "Credit Card First 6 Digits",
+       "Useful for identifying the issuing bank / card type without exposing the full card number.",
+       ""
+      ],
+      [
+       "iCCARDLAST4",
+       "Credit Card Last 4 Digits",
+       "Helps verify payments or reconcile transactions while keeping the full card number protected.",
+       ""
+      ],
+      [
+       "iCARDNO",
+       "Credit Card Number",
+       "A full payment card number used for secure matching or transaction linking when required.",
+       ""
+      ],
+      [
+       "iDOB",
+       "Date Of Birth",
+       "Used for identity matching, segmentation, or age-based insights where allowed.",
+       ""
+      ],
+      [
+       "iEMAIL",
+       "Email Address",
+       "Supports person-level matching across datasets using a commonly available identifier.",
+       "Must follow standard email formats (e.g., name@domain.com)."
+      ],
+      [
+       "iFNAME",
+       "First Name",
+       "Helps support name-based matching for use cases where names are needed (often alongside surname).",
+       ""
+      ],
+      [
+       "iMEDAIDNO",
+       "Medical Aid No",
+       "Used for healthcare / insurance matching and analysis while protecting member identity.",
+       ""
+      ],
+      [
+       "iMERCHANTID",
+       "Merchant ID",
+       "Enables secure transaction analysis and matching for retailers, payment providers, and financial institutions.",
+       ""
+      ],
+      [
+       "iPASSPORTNO",
+       "Passport Number",
+       "Used when matching individuals who do not have a national ID in the dataset.",
+       ""
+      ],
+      [
+       "iPAYMENTACCREF",
+       "Payment Account Reference",
+       "Allows tokenized tracking of payment accounts (e.g., customer account references) across datasets.",
+       ""
+      ],
+      [
+       "iPHONE",
+       "Phone No",
+       "Common identifier for matching customer records when email/ID is unavailable.",
+       ""
+      ],
+      [
+       "iSNAME",
+       "Last Name",
+       "Used for name-based matching and identity resolution when combined with other signals.",
+       "More effective when combined with first name and DOB/ID. Surnames alone are not unique."
+      ],
+      [
+       "VIN",
+       "Vehicle Identification Number",
+       "Identifies a specific vehicle using a globally standardized identifier.",
+       ""
+      ]
+     ]
+    },
+    {
+     "type": "h2",
+     "text": "South Africa Only"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "PII Type",
+      "Display Name",
+      "What it’s for",
+      "Important things to note"
+     ],
+     "rows": [
+      [
+       "iADDITIONALID",
+       "Additional ID Number",
+       "Supports clients who need to upload multiple ID columns in a single dataset (e.g., dependents, spouses, multiple household members).",
+       "Designed for “extra” ID fields beyond the primary ID number.\nAll values must be valid South African ID formats."
+      ],
+      [
+       "iIDNO",
+       "ID Number",
+       "Primary national ID field for strong, high-confidence person matching.",
+       "Only one ID Number field can be selected per dataset.\nMust be a valid South African ID format."
+      ],
+      [
+       "iSACOMPANYREGONO",
+       "SA Company Business Registration Number",
+       "Improves local compliance and supports matching and configuration for South African businesses.",
+       ""
+      ]
+     ]
+    },
+    {
+     "type": "h2",
+     "text": "United States Only"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "PII Type",
+      "Display Name",
+      "What it’s for",
+      "Important things to note"
+     ],
+     "rows": [
+      [
+       "iSSN",
+       "Social Security Number",
+       "Strong identity field used in regions where SSNs are standard identifiers.",
+       ""
+      ]
+     ]
+    },
+    {
+     "type": "h2",
+     "text": "Formatting Guidelines"
+    },
+    {
+     "type": "h2",
+     "text": "Quick formatting guide"
+    },
+    {
+     "type": "p",
+     "text": "Omnisient automatically applies formatting adjustments (such as trimming spaces, standardizing case, or removing special characters where relevant) to every dataset before validation."
+    },
+    {
+     "type": "note",
+     "text": "Tip: To ensure a smoother upload, we encourage formatting your source data close to the expected shape where feasible."
+    },
+    {
+     "type": "table",
+     "headers": [
+      "PII Type",
+      "Automated formatting we apply",
+      "What we check"
+     ],
+     "rows": [
+      [
+       "Credit Card Number",
+       "- Trim spaces\n- Remove spaces & special characters",
+       "- Numeric only\n- 13–16 digits"
+      ],
+      [
+       "Date of Birth",
+       "- Trim spaces\n- Use YYYYMMDD format",
+       "- Represents a valid date"
+      ],
+      [
+       "Email",
+       "- Trim spaces\n- Use lowercase",
+       "- Contains @\n- Valid domain after @"
+      ],
+      [
+       "First Name / Last Name",
+       "- Trim spaces\n- Use Title Case",
+       "- Letters, accents, spaces, hyphens, apostrophes supported"
+      ],
+      [
+       "ID Number (SA)",
+       "- Trim spaces\n- Remove spaces",
+       "- 13 digits\n- Numeric only\n- First 6 digits represent a valid date"
+      ],
+      [
+       "Passport Number",
+       "- Trim spaces",
+       "- No enforced format\n- Avoid mixed identifiers in one column"
+      ],
+      [
+       "Phone Number",
+       "- Trim spaces\n- Use a consistent format",
+       "- International numbers start with +\n- Local numbers may start with 0 or without"
+      ],
+      [
+       "Vehicle Identification Number",
+       "- Trim spaces\n- Remove Spaces",
+       "- Should be a length of 17 characters"
+      ]
+     ],
+     "col_widths": [
+      28,
+      40,
+      32
+     ]
+    },
+    {
+     "type": "h2",
+     "text": "Social Security Number"
+    },
+    {
+     "type": "p",
+     "text": "An SSN consists of 9 digits, commonly displayed in the following format:"
+    },
+    {
+     "type": "p",
+     "text": "Example: 123-45-6789",
+     "bold_lead": "AAA-GG-SSSS "
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Section",
+      "Description"
+     ],
+     "rows": [
+      [
+       "AAA",
+       "Area Number (first 3 digits). Historically linked to geography, but no longer reflects location."
+      ],
+      [
+       "GG",
+       "Group Number (next 2 digits). Used for administrative sequencing."
+      ],
+      [
+       "SSSS",
+       "Serial Number (last 4 digits). Sequential within each group."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "h3",
+     "text": "Your validation checks"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Validation area",
+      "What we check",
+      "Examples of invalid and valid formats"
+     ],
+     "rows": [
+      [
+       "Total length",
+       "SSN must contain exactly 9 digits (excluding optional dashes).",
+       "123-45-6789 and 123456789 are valid formats"
+      ],
+      [
+       "Allowed characters",
+       "Only numeric characters are allowed (dashes are optional).",
+       "Letters or special characters are invalid"
+      ],
+      [
+       "Area number (AAA)",
+       "Must be between 001–899, excluding 666.",
+       "000, 666, 900–999 is invalid"
+      ],
+      [
+       "Group number (GG)",
+       "Must be between 01–99.",
+       "00 is always invalid"
+      ],
+      [
+       "Serial number (SSSS)",
+       "Must be between 0001–9999.",
+       "0000 is always invalid"
+      ],
+      [
+       "Zeroed sections",
+       "No section may be entirely zero.",
+       "All the following is invalid:\n000-12-3456\n123-00-4567\n123-45-0000"
+      ],
+      [
+       "All zeros",
+       "SSN cannot be all zeros.",
+       "000-00-0000"
+      ],
+      [
+       "Restricted / example ranges",
+       "Known placeholder or example values are rejected.",
+       "Repeating or sequential digits is invalid:\n123-45-6789\n111-11-1111"
+      ],
+      [
+       "Structural validity",
+       "SSN must follow the AAA-GG-SSSS structure.",
+       "Incorrect length or malformed values are invalid"
+      ]
+     ],
+     "col_widths": [
+      28,
+      40,
+      32
+     ]
+    },
+    {
+     "type": "h2",
+     "text": "South African Company Business Registration Number"
+    },
+    {
+     "type": "p",
+     "text": "The platform automatically validates two formats for South African company registration numbers:"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Format Type",
+      "Structure",
+      "Example"
+     ],
+     "rows": [
+      [
+       "Post-2002",
+       "YYYY/NNNNNN/NN",
+       "2021/123456/07"
+      ],
+      [
+       "Pre-2002",
+       "XYYYY/NNNNNN",
+       "X1999/654321"
+      ]
+     ],
+     "col_widths": [
+      28,
+      40,
+      32
+     ]
+    },
+    {
+     "type": "h3",
+     "text": "Post-2002 CIPC Format Validation"
+    },
+    {
+     "type": "h3",
+     "text": "Expected Pattern"
+    },
+    {
+     "type": "p",
+     "text": "YYYY/NNNNNN/NN"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "YYYY = year (2008 → current year)",
+      "NNNNNN = exactly 6 digits",
+      "NN = 2-digit entity type (e.g., 07 = Private Company)"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h3",
+     "text": "Your validation checks"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Regex must match the pattern",
+      "First 4 characters must be numeric (year)",
+      "Year must be no later than the current year",
+      "Input must contain exactly two slashes",
+      "All other characters must be digits"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h3",
+     "text": "Old / Regional Format Validation"
+    },
+    {
+     "type": "h3",
+     "text": "Expected Pattern"
+    },
+    {
+     "type": "p",
+     "text": "XYYYY/NNNNNN"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "X = a single alphabetic region code",
+      "YYYY = year (no later than the current year)",
+      "NNNNNN = 6 digits"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h3",
+     "text": "Your validation checks"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Regex must match the old/regional pattern",
+      "First character must be a letter",
+      "Next 4 must form a valid year",
+      "Input must contain one slash",
+      "All remaining characters (after the first letter) must be digits or a slash"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "p",
+     "text": "If a record does not conform to either format, it will be flagged during the transformation step for further review."
+    }
+   ]
+  },
+  {
+   "key": "a8057225",
+   "title": "Jupyter Notebook",
+   "part": "Analytics tools: SQLPad, Jupyter and Power BI",
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Python, a widely used programming language for data scientists, offers a wide selection of libraries that you can install with the pip command, simplifying complex calculations and data analysis tasks. It also facilitates the automation of tasks and processes, streamlining workflows for enhanced productivity and efficiency."
+    },
+    {
+     "type": "p",
+     "text": "is an open-source web application that's become one of the go-to tools for data scientists, analysts, and even educators in recent years. It provides an environment where you can write live code, equations, visualizations, and narrative text - all in a single document, making it a versatile choice for a variety of data projects.",
+     "bold_lead": "Jupyter Notebook "
+    },
+    {
+     "type": "p",
+     "text": "What sets Jupyter Notebook apart is its ability to combine code execution with data visualization and rich text, facilitating a more interactive and insightful data exploration process. You can jot down your thought process while simultaneously running code snippets, making it an excellent tool for both the development and sharing of data analyses."
+    },
+    {
+     "type": "image",
+     "file": "8057225_01.png"
+    },
+    {
+     "type": "h2",
+     "text": "Getting started"
+    },
+    {
+     "type": "p",
+     "text": "Two things must be in place before you can access Jupyter Notebook in Omnisient:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "An active Jupyter Notebook subscription - your organization must have Jupyter Notebook enabled as part of your plan.",
+      "A compatible project type - the project you are working in must have analytical tools enabled."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "note",
+     "text": "If Jupyter Notebook is not showing in your project, it is likely one of these two reasons."
+    },
+    {
+     "type": "p",
+     "text": "You can access Jupyter Notebook from two places:"
+    },
+    {
+     "type": "table",
+     "headers": [],
+     "rows": [
+      [
+       "From a project",
+       "Open your project and select Open With > Jupyter Notebook."
+      ],
+      [
+       "Own Data Preparation",
+       "Available via the Datasets and the project sections in the side navigation."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Each user has their own isolated Jupyter environment, you won't see other users' notebooks or files, and your workspace can be configured to suit your needs."
+    },
+    {
+     "type": "note",
+     "text": "Having trouble loading Jupyter?\n- Refresh the page and try again.\n- Check your project status - Jupyter will not load if the project is in a Processing or Failed state.\n- Log out and log back in to refresh your session.\n- Check with your IT team that all required URLs and IP ranges are whitelisted. See Firewall Access Required for details."
+    },
+    {
+     "type": "h2",
+     "text": "Workspace size options"
+    },
+    {
+     "type": "p",
+     "text": "Three workspace sizes are available, allowing you to match compute resources to the demands of your work:"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Workspace Type",
+      "CPU",
+      "Memory (RAM)"
+     ],
+     "rows": [
+      [
+       "Standard",
+       "2",
+       "8GB"
+      ],
+      [
+       "Medium",
+       "3",
+       "25GB"
+      ],
+      [
+       "Large",
+       "4",
+       "50GB"
+      ],
+      [
+       "Extra Large",
+       "12",
+       "108GB"
+      ]
+     ],
+     "col_widths": [
+      28,
+      40,
+      32
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Resources in Omnisient's AKS environment are allocated dynamically and managed by Kubernetes, which ensures efficient utilization of available resources while maintaining performance and scalability."
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Resource limits and requests - each project is allocated resources based on predefined minimum and maximum limits. The minimum (resource request) ensures each Jupyter instance has enough resources to start and run. The maximum (resource limit) prevents any single instance from consuming excessive resources, ensuring fair distribution across all users.",
+      "Pod initialization - when a user opens a Jupyter instance, Kubernetes uses the defined resource requests and limits to create a new instance, known as a pod. A pod is a virtual environment that encapsulates the Jupyter application and its dependencies.",
+      "Scaling mechanism -the AKS setup includes a single server and two scale set instances to handle varying workloads. When resource usage reaches a threshold, Kubernetes automatically provisions additional instances. When demand decreases, it scales down and frees up resources.",
+      "Virtual server fit - each pod fits within the size constraints of the virtual server in use. Kubernetes continuously monitors resource usage and adjusts allocation to optimize performance.",
+      "Resource monitoring and management - Kubernetes provides built-in mechanisms for monitoring usage and managing pod lifecycle, ensuring each Jupyter instance operates within defined resource limits without impacting overall system performance."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "h2",
+     "text": "File browser"
+    },
+    {
+     "type": "p",
+     "text": "When you launch Jupyter in a project, the left panel opens by default to the File Browser. This displays your persisted storage - files, notebooks, and code saved here are maintained between Jupyter sessions, so your work is preserved each time you return to the project."
+    },
+    {
+     "type": "p",
+     "text": "From the file browser you can:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Create a new launcher - add a new .ipynb notebook, text file, .py file, and more",
+      "Upload a file from your local computer to your project",
+      "Create a folder within your file browser space"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "p",
+     "text": "You can also write files out from your notebook directly to the file browser. Files are written to the project rather than to your local disk. For example, a dataframe can be written out as a .csv using standard Pandas functionality:"
+    },
+    {
+     "type": "p",
+     "text": "In a later session, you can read the file back into memory:"
+    },
+    {
+     "type": "image",
+     "file": "8057225_02.png"
+    },
+    {
+     "type": "p",
+     "text": "Any file that can be created using Python scripting can be written and stored in persisted storage."
+    },
+    {
+     "type": "p",
+     "text": "Right-click context menu"
+    },
+    {
+     "type": "p",
+     "text": "Right-clicking a file in the file browser reveals additional options. Most of these are standard Jupyter actions - Open, Rename, Delete, Cut, Copy, and so on. One option is specific to Omnisient:"
+    },
+    {
+     "type": "p",
+     "text": "- submits a notebook for review and inclusion in your organization's Company Notebook Library. See Company Notebook Library below.",
+     "bold_lead": "Promote to Library "
+    },
+    {
+     "type": "h2",
+     "text": "Working with your data in Jupyter"
+    },
+    {
+     "type": "p",
+     "text": "reads data from the data warehouse into a Jupyter notebook, either from your own Data Preparation area or a project's shared tables. Queries are written as SQL strings and submitted through the omni_hub magic command; the result is a ResultSet object you convert to a pandas DataFrame with .DataFrame().",
+     "bold_lead": "OmniHub "
+    },
+    {
+     "type": "h2",
+     "text": "Viewing available tables"
+    },
+    {
+     "type": "p",
+     "text": "Before querying, load the extension and list the tables available to you:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Load the extension:"
+     ],
+     "ordered": true
+    },
+    {
+     "type": "code",
+     "text": "%load_ext omni_hub"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Return every table in a project:"
+     ],
+     "ordered": true,
+     "start": 2
+    },
+    {
+     "type": "code",
+     "text": "%omni_hub --list-tables"
+    },
+    {
+     "type": "image",
+     "file": "8057225_03.png"
+    },
+    {
+     "type": "h2",
+     "text": "Querying data"
+    },
+    {
+     "type": "p",
+     "text": "Define the query as a SQL string, submit it through omni_hub, then convert the result to a DataFrame:"
+    },
+    {
+     "type": "code",
+     "text": "%load_ext omni_hub\ndata = %omni_hub {'select top 100 * from [project_code].[table_name]'}\ndf = data.DataFrame()\nprint(df)"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Replace [project_code] with the project code, for example ClientName_Prj_00001. For Own Data Preparation, use ClientName_a.",
+      "Replace [table_name] with the table to query.",
+      "top 100 limits the extract to the first 100 rows. Remove it to pull the full table."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "p",
+     "text": "Queries use Microsoft SQL Server syntax, and can join a table against a partner's table within the same query – join on DW_ID_KEY or BestMatchID."
+    },
+    {
+     "type": "image",
+     "file": "8057225_04.png"
+    },
+    {
+     "type": "p",
+     "text": "To identify a username for support queries or table-creation permission requests:"
+    },
+    {
+     "type": "code",
+     "text": "%omni_hub {'select current_user'}"
+    },
+    {
+     "type": "image",
+     "file": "8057225_05.png"
+    },
+    {
+     "type": "p",
+     "text": "The username is the long alphanumeric string ending in the project name."
+    },
+    {
+     "type": "note",
+     "text": "Tips for managing memory:\n- For large datasets, do as much data preparation, cleaning, joining, and sampling in SQL as possible before loading into the notebook – Python compute may run out of memory on very large datasets.\n- Load only the data needed – a filtered query over a full table pull.\n- Clear unused variables with Python's del, or restart the kernel to free memory between tasks."
+    },
+    {
+     "type": "h2",
+     "text": "Choosing a workspace size for a query"
+    },
+    {
+     "type": "p",
+     "text": "Query performance and processing time depend on the shape of the table being pulled, and the notebook's workspace size needs to match it."
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "A wide table (many columns, e.g. 500 columns across 3 million rows) is compute- and memory-intensive to process column-by-column, and typically needs the Extra Large workspace size.",
+      "A long table (few columns, e.g. 10 columns across 50 million rows) processes differently – the Large workspace size is typically sufficient."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "p",
+     "text": "See Workspace size options above for the full CPU/memory breakdown of each workspace size."
+    },
+    {
+     "type": "note",
+     "text": "Pulling more data than a query actually needs increases the risk of the query timing out, independent of workspace size. Scope a query to the columns and rows actually needed rather than sizing up to compensate."
+    },
+    {
+     "type": "h2",
+     "text": "Optimizing memory for large tables"
+    },
+    {
+     "type": "p",
+     "text": "omni_hub returns a ResultSet object. Converting it directly to a DataFrame holds the data twice in memory – once as the ResultSet, once as the DataFrame – which can cause out-of-memory errors on large tables."
+    },
+    {
+     "type": "p",
+     "text": "Export the ResultSet to CSV, delete it, then load the CSV into pandas instead. This holds only one copy at a time:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Run the query with omni_hub.",
+      "Save the result to CSV with .csv(\"path\").",
+      "Delete the original object with del.",
+      "Load the CSV into pandas with pd.read_csv."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "code",
+     "text": "# 1) Run query via omni_hub\nsql_query = \"select top 10 * from [project_code].[table_name]\"\nrs = %omni_hub {sql_query}\ndf = rs.DataFrame()\nprint(df)\ndf.to_csv(\"my_table.csv\", index=False)\n# 2) Save to CSV\nrs.csv(\"my_table.csv\")\n# 3) Delete the ResultSet to free memory\ndel rs\n# 4) Read the CSV into pandas\nimport pandas as pd\ndf = pd.read_csv(\"my_table.csv\", low_memory=False)"
+    },
+    {
+     "type": "h2",
+     "text": "Writing a DataFrame back to a project"
+    },
+    {
+     "type": "p",
+     "text": "To write the results of an analysis back to the project tables, use omni_lab."
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Import the package:"
+     ],
+     "ordered": true
+    },
+    {
+     "type": "code",
+     "text": "import omni_lab"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Copy the DataFrame back to the project:"
+     ],
+     "ordered": true,
+     "start": 2
+    },
+    {
+     "type": "code",
+     "text": "omni_lab.copy_to_project_tables(df, \"PROJECT_CODE\", \"table_name\")"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Replace PROJECT_CODE with your project code, for example QACOMPANYA_PRJ_00023, and table_name with a name of your choosing. Table names can't contain spaces."
+     ],
+     "ordered": true,
+     "start": 3
+    },
+    {
+     "type": "p",
+     "text": "The write runs asynchronously."
+    },
+    {
+     "type": "image",
+     "file": "8057225_06.png"
+    },
+    {
+     "type": "h2",
+     "text": "Libraries"
+    },
+    {
+     "type": "p",
+     "text": "Import a library using standard Python syntax:"
+    },
+    {
+     "type": "code",
+     "text": "import pandas as pd\nimport numpy as np"
+    },
+    {
+     "type": "p",
+     "text": "To view all libraries installed on the platform, run:"
+    },
+    {
+     "type": "code",
+     "text": "!pip list"
+    },
+    {
+     "type": "p",
+     "text": "This returns an alphabetized list of all available libraries."
+    },
+    {
+     "type": "image",
+     "file": "8057225_07.png"
+    },
+    {
+     "type": "p",
+     "text": "For the full list of packages and libraries available in Omnisient's Jupyter environment, see Available Packages & Libraries for Jupyter Notebook."
+    },
+    {
+     "type": "h2",
+     "text": "Virtual environments"
+    },
+    {
+     "type": "p",
+     "text": "A virtual environment (venv) is a persistent, isolated Python environment within a Jupyter project, separate from the project's shared Python installation. Packages installed inside a venv persist across sessions in the project's storage, avoiding the session-only installs and version drift that come with installing packages directly in the shared environment."
+    },
+    {
+     "type": "p",
+     "text": "A venv is useful whenever a specific analysis or model needs a particular library version - for example, testing a newer release of a package without changing the version every other notebook in the project relies on. It also makes an analysis reproducible: recreating the same venv gives the same package versions, rather than whatever happens to be installed in the shared environment at the time."
+    },
+    {
+     "type": "p",
+     "text": "Jupyter Notebook creates and activates project-specific venvs through the omni_helper extension."
+    },
+    {
+     "type": "h2",
+     "text": "Creating and activating a Venv"
+    },
+    {
+     "type": "p",
+     "text": "Run these two cells at the top of the notebook, every session:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Load the omni_helper extension:"
+     ],
+     "ordered": true
+    },
+    {
+     "type": "code",
+     "text": "%load_ext omni_helper"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Create and activate the venv: Replace <env_name> with any name you choose. The first time, this creates the venv and activates it; every time after, it just activates it."
+     ],
+     "ordered": true,
+     "start": 2
+    },
+    {
+     "type": "code",
+     "text": "%omni_helper venv-activate <env_name>"
+    },
+    {
+     "type": "image",
+     "file": "8057225_08.png"
+    },
+    {
+     "type": "p",
+     "text": "Initial creation takes 15 to 30 minutes. The venv itself persists in the project's storage, but a new session still needs to run both cells (%load_ext omni_helper and %omni_helper venv-activate venv) to reactivate it - reactivating an existing venv takes seconds.",
+     "bold_lead": "Note: "
+    },
+    {
+     "type": "note",
+     "text": "Use the same venv name across every notebook in the project, so each one activates the same persisted venv and the packages already installed in it."
+    },
+    {
+     "type": "h2",
+     "text": "Installing packages inside a Venv"
+    },
+    {
+     "type": "p",
+     "text": "Once a venv is active, install a package the same way as outside one:"
+    },
+    {
+     "type": "code",
+     "text": "!pip install <package_name>"
+    },
+    {
+     "type": "p",
+     "text": "Packages install from Omnisient's vetted package library. A package installed inside an active venv persists across sessions in the project's storage - install it once, and it's available every time that venv is reactivated, without installing it again."
+    },
+    {
+     "type": "p",
+     "text": "See Using Jupyter Notebook for Packages/Libraries Management for how package installs behave outside a venv."
+    },
+    {
+     "type": "note",
+     "text": "If a package isn't part of the vetted library, it isn't available to install this way. Contact support@omnisient.com to request it be added or updated."
+    },
+    {
+     "type": "h2",
+     "text": "Company Notebook Library"
+    },
+    {
+     "type": "p",
+     "text": "The Company Notebook Library allows analysts to share approved notebooks across your organization. Once a notebook has been reviewed and approved by the Omnisient team, it becomes available to all users within the company and can be copied into any project."
+    },
+    {
+     "type": "h2",
+     "text": "Accessing the library"
+    },
+    {
+     "type": "image",
+     "file": "8057225_09.png"
+    },
+    {
+     "type": "p",
+     "text": "The Notebook Library panel is available in the left sidebar within Jupyter. It displays all notebooks your organization has had approved."
+    },
+    {
+     "type": "p",
+     "text": "To use a notebook, right-click it and select Copy into Project - a copy is added to your current project's file browser."
+    },
+    {
+     "type": "image",
+     "file": "8057225_10.png"
+    },
+    {
+     "type": "h2",
+     "text": "Promoting a notebook to the library"
+    },
+    {
+     "type": "p",
+     "text": "Any analyst can submit a notebook for inclusion in the Company Notebook Library."
+    },
+    {
+     "type": "image",
+     "file": "8057225_11.png"
+    },
+    {
+     "type": "note",
+     "text": "Clear your notebook outputs before submitting. Notebooks submitted with outputs will be declined. Before promoting, clear all outputs - go to Edit > Clear All Outputs, or Kernel > Restart Kernel and Clear All Outputs."
+    },
+    {
+     "type": "p",
+     "text": "To submit a notebook:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "In the file browser, right-click the notebook you want to promote.",
+      "Select Promote to Library.",
+      "A confirmation modal appears - review and confirm your submission.",
+      "Your submission has been logged, and the Omnisient team has been notified to begin the review process."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "h2",
+     "text": "What happens next"
+    },
+    {
+     "type": "p",
+     "text": "Once submitted, your notebook enters a review queue. The Omnisient team will review it and communicate the outcome by email."
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Approved - the notebook is added to your organization's library and becomes visible to all users in the Notebook Library panel.",
+      "Declined - you will receive an email with the reason for the decline. Review the feedback, make the necessary changes, and resubmit."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h2",
+     "text": "Sharing a notebook with a project member"
+    },
+    {
+     "type": "p",
+     "text": "To share directly with a specific project member, use omni_helper."
+    },
+    {
+     "type": "p",
+     "text": "Active participant in the project.",
+     "bold_lead": "Permissions required: "
+    },
+    {
+     "type": "p",
+     "text": "Jupyter Notebook open within your project.",
+     "bold_lead": "Prerequisites: "
+    },
+    {
+     "type": "p",
+     "text": "Step 1: Load the extension"
+    },
+    {
+     "type": "code",
+     "text": "%load_ext omni_helper"
+    },
+    {
+     "type": "p",
+     "text": "Step 2: Get the recipient's user address"
+    },
+    {
+     "type": "p",
+     "text": "Run omni_helper project-members to return a list of project members and their user addresses. Copy the User Address of the intended recipient."
+    },
+    {
+     "type": "note",
+     "text": "User addresses are project-specific - the same user has a different address in each project they belong to."
+    },
+    {
+     "type": "image",
+     "file": "8057225_12.png"
+    },
+    {
+     "type": "p",
+     "text": "Step 3: Send the file"
+    },
+    {
+     "type": "code",
+     "text": "omni_helper send-files --paths [filename.ipynb] --receiver [user_address]"
+    },
+    {
+     "type": "note",
+     "text": "Filenames cannot contain spaces. Rename the file before transferring if needed."
+    },
+    {
+     "type": "image",
+     "file": "8057225_13.png"
+    },
+    {
+     "type": "p",
+     "text": "Step 4: Check transfer status"
+    },
+    {
+     "type": "p",
+     "text": "Run omni_helper transfer-history and match the output against the REQUEST_ID returned when you submitted."
+    },
+    {
+     "type": "p",
+     "text": "The file appears in a shared folder within their Jupyter workspace inside a dated subfolder. There is no automatic notification - they will need to check manually.",
+     "bold_lead": "Recipient: "
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Issue",
+      "Likely cause",
+      "Fix"
+     ],
+     "rows": [
+      [
+       "Recipient not listed in project-members",
+       "Not an active participant in this project",
+       "Confirm they have been added to the project"
+      ],
+      [
+       "Transfer not completing",
+       "Filename contains spaces",
+       "Rename and retry"
+      ],
+      [
+       "Wrong user address",
+       "Address copied from a different project",
+       "Re-run omni_helper project-members in this project"
+      ]
+     ],
+     "col_widths": [
+      28,
+      40,
+      32
+     ]
+    }
+   ]
+  },
+  {
+   "key": "a9866691",
+   "title": "Using Jupyter Notebook for Package Management",
+   "part": "Analytics tools: SQLPad, Jupyter and Power BI",
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Starting 30 September 2024, you will now be able to install your own packages/libraries for use in Jupyter Notebook, and the platform will no longer pre-install the packages on your behalf. This allows for faster integrations with the exact libraries and versions you wish to work with."
+    },
+    {
+     "type": "p",
+     "text": "NOTE:"
+    },
+    {
+     "type": "p",
+     "text": "The installs do not persist across your different notebooks and will have to be run in a block at the beginning of the notebook."
+    },
+    {
+     "type": "h2",
+     "text": "How to Install Packages in Jupyter Notebook using PIP"
+    },
+    {
+     "type": "p",
+     "text": "Jupyter Notebook allows you to install and manage Python packages efficiently using PIP. This can speed up integrations and empower users with self-service capabilities. You can even install specific versions of libraries to ensure compatibility with your projects."
+    },
+    {
+     "type": "h2",
+     "text": "Step-by-step Guide"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Open your Jupyter Notebook:"
+     ],
+     "ordered": true
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Launch Jupyter Notebook from the Omnisient web app"
+     ],
+     "ordered": false,
+     "indent": 8
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Insert a new code cell:"
+     ],
+     "ordered": true,
+     "start": 2
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Click on a new cell or press B to create a new code block."
+     ],
+     "ordered": false,
+     "indent": 8
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Install a package using PIP:"
+     ],
+     "ordered": true,
+     "start": 3
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "In the code cell, type the following command to install any package:"
+     ],
+     "ordered": false,
+     "indent": 8
+    },
+    {
+     "type": "code",
+     "text": "!pip install <package_name>"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "For example, to install the pandas package, use:"
+     ],
+     "ordered": false,
+     "indent": 8
+    },
+    {
+     "type": "code",
+     "text": "!pip install pandas"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Install a specific version of a package:"
+     ],
+     "ordered": true,
+     "start": 4
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "If you want to install a particular version of a package, specify the version number in your command. For example:"
+     ],
+     "ordered": false,
+     "indent": 8
+    },
+    {
+     "type": "code",
+     "text": "!pip install pandas==1.3.3"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Run the cell:"
+     ],
+     "ordered": true,
+     "start": 5
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Press Shift + Enter to execute the command and install the package.",
+      "Jupyter will display the installation progress in the output below the code cell."
+     ],
+     "ordered": false,
+     "indent": 8
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Verify the installation:"
+     ],
+     "ordered": true,
+     "start": 6
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "You can verify that the package was installed successfully by importing it into a new cell:"
+     ],
+     "ordered": false,
+     "indent": 8
+    },
+    {
+     "type": "code",
+     "text": "import pandas as pd"
+    },
+    {
+     "type": "h2",
+     "text": "Available Libraries"
+    },
+    {
+     "type": "p",
+     "text": "See a full list of available libraries and packages."
+    },
+    {
+     "type": "h2",
+     "text": "Best Practices"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Check package compatibility: Before installing, make sure the package version is compatible with your environment or other libraries you are using."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h2",
+     "text": "Troubleshooting"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Permission denied error: If you encounter a permission issue, try adding the --user flag to your command:"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "code",
+     "text": "!pip install --user <package_name>"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Package not found: If PIP is unable to find the package, make sure that the package name is spelled correctly, or that it exists in the Python Package Index (PyPI)."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "p",
+     "text": "By following these steps, you can quickly install and manage the libraries you need for your projects, empowering faster integrations and more flexible, self-service development workflows."
+    }
+   ]
+  },
+  {
+   "key": "a11958191",
+   "title": "Available Packages and Libraries for Jupyter Notebook",
+   "part": "Analytics tools: SQLPad, Jupyter and Power BI",
+   "blocks": [
+    {
+     "type": "table",
+     "headers": [
+      "Package Name",
+      "Description",
+      "Version",
+      "Pip install"
+     ],
+     "rows": [
+      [
+       "absl-py",
+       "Google’s collection of Abseil Python Common Libraries: utilities for flags, logging, app startup, and more. Widely used and production‑tested.",
+       "2.1.0",
+       "pip install absl-py"
+      ],
+      [
+       "accumulation-tree",
+       "A red/black tree implementation that stores aggregation info at each node to enable fast range-based sums (O(log N)). Useful for Fenwick-like operations.",
+       "0.6.4",
+       "pip install accumulation-tree"
+      ],
+      [
+       "alembic",
+       "A lightweight database migration tool. Supports schema evolution via SQL ALTER scripts.",
+       "1.14.0",
+       "pip install alembic"
+      ],
+      [
+       "annotated-types",
+       "Support tools for PEP‑593's typing.Annotated, enabling runtime metadata like bounds, predicates, and size descriptors.",
+       "0.7.0",
+       "pip install annotated-types"
+      ],
+      [
+       "attrs",
+       "Reduces boilerplate for Python classes, handling dunder methods. Favored for concise and correct code, even NASA uses it.",
+       "24.2.0",
+       "pip install attrs"
+      ],
+      [
+       "azure-common",
+       "Part of the Azure SDK: foundational library for common utilities and shared code used by other Azure Python packages.",
+       "1.1.28",
+       "pip install azure-common"
+      ],
+      [
+       "azure-core",
+       "Core client library for Azure SDKs, providing shared exceptions, retries, transports, and telemetry following Azure SDK guidelines.",
+       "1.31.0",
+       "pip install azure-core"
+      ],
+      [
+       "azure-synapse-spark",
+       "Client library for interacting with Azure Synapse Spark from Python. Supports Synapse Spark workloads and SDK interactions.",
+       "0.7.0",
+       "pip install azure-synapse-spark"
+      ],
+      [
+       "bambi",
+       "A high‑level Bayesian model‑building interface in Python built on top of PyMC. It lets users specify models using formula syntax (like in R) and easily fit mixed‑effects or hierarchical Bayesian models.",
+       "0.15.0",
+       "pip install bambi"
+      ],
+      [
+       "blinker",
+       "A fast and simple in‑process signal/event dispatching system useful for decoupling components (e.g., event hooks).",
+       "1.9.0",
+       "pip install blinker"
+      ],
+      [
+       "Boruta",
+       "Feature selection algorithm based on Random Forest; Boruta methodology identifies important features by comparing them to randomized shadow features. Typically used in ML pipelines.",
+       "0.4.3",
+       "pip install Boruta"
+      ],
+      [
+       "Bottleneck",
+       "Fast NumPy array functions written in C/Cython for efficient operations like moving windows and NaN-aware reductions.",
+       "1.4.0",
+       "pip install Bottleneck"
+      ],
+      [
+       "cachetools",
+       "Extensible memoizing collections and decorators (e.g., LRUCache, TTLCache) as advanced variants of functools.lru_cache.",
+       "5.5.0",
+       "pip install cachetools"
+      ],
+      [
+       "catboost",
+       "High-performance gradient boosting on decision trees library with native handling of categorical features and GPU support",
+       "1.2.7",
+       "pip install catboost"
+      ],
+      [
+       "category-encoders",
+       "scikit-learn–style transformers for encoding categorical variables using methods like one-hot, target, weight of evidence, etc.",
+       "2.6.3",
+       "pip install category-encoders"
+      ],
+      [
+       "certifi",
+       "Provides Mozilla’s curated CA certificate bundle for SSL/TLS certificate verification.",
+       "2024.8.30",
+       "pip install certifi"
+      ],
+      [
+       "cffi",
+       "Foreign Function Interface for calling C code from Python; lets you interface with C directly.",
+       "1.17.1",
+       "pip install cffi"
+      ],
+      [
+       "charset-normalizer",
+       "A modern, reliable alternative to chardet for detecting and normalizing text encoding; pure Python.",
+       "3.4.0",
+       "pip install charset-normalizer"
+      ],
+      [
+       "clarabel",
+       "A Rust‑implemented interior‑point solver (accessible via Python) for convex optimization: LP, QP, SOCP, SDP problems.",
+       "0.9.0",
+       "pip install clarabel"
+      ],
+      [
+       "click",
+       "Simple and elegant command-line interface (CLI) creation package for Python.",
+       "8.1.7",
+       "pip install click"
+      ],
+      [
+       "cloudpickle",
+       "Enhanced pickling library that supports serializing more complex Python objects, such as lambdas or nested functions.",
+       "3.1.0",
+       "pip install cloudpickle"
+      ],
+      [
+       "contourpy",
+       "Python library for calculating contours of 2D quadrilateral grids, written in C++11 with pybind11, implementing Matplotlib’s older algorithms plus newer ones in both serial and multithreaded forms.",
+       "1.3.1",
+       "pip install contourpy"
+      ],
+      [
+       "creditpy",
+       "Python package for credit risk scoring and validation; successor to CreditR, supporting tasks like variable analysis, model development, calibration, and validation.",
+       "2.7",
+       "pip install creditpy"
+      ],
+      [
+       "cryptography",
+       "A robust Python library providing cryptographic recipes and primitives",
+       "43.0.1",
+       "pip install cryptography"
+      ],
+      [
+       "cvxpy",
+       "A Python‑embedded modeling language for convex optimization; lets you define problems naturally in math form rather than solver form.",
+       "1.5.3",
+       "pip install cvxpy"
+      ],
+      [
+       "cycler",
+       "Utility for creating composable cycles (e.g. line styles/colors) in plotting libraries like Matplotlib.",
+       "0.12.1",
+       "pip install cycler"
+      ],
+      [
+       "Cython",
+       "A static compiler for writing C extensions in Python; a superset of Python enabling optional static typing for high-performance code.",
+       "3.0.11",
+       "pip install Cython"
+      ],
+      [
+       "dacite",
+       "Simplifies creation of data classes (PEP 557) from dictionaries.",
+       "1.8.1",
+       "pip install dacite"
+      ],
+      [
+       "databricks-sdk",
+       "Python SDK to accelerate development with the Databricks Lakehouse; interfaces with public Databricks REST APIs and supports robust retries.",
+       "0.39.0",
+       "pip install databricks-sdk"
+      ],
+      [
+       "Deprecated",
+       "A simple decorator to mark functions or classes as deprecated with warnings.",
+       "1.2.15",
+       "pip install Deprecated"
+      ],
+      [
+       "dill",
+       "Extends Python’s pickle module to serialize a broader set of Python objects (e.g., functions, closures, classes).",
+       "0.3.9",
+       "pip install dill"
+      ],
+      [
+       "docker",
+       "Docker SDK for Python: Full control over the Docker Engine API for managing containers, images, swarms, and more via Python.",
+       "7.1.0",
+       "pip install docker"
+      ],
+      [
+       "duckdb",
+       "Embedded, high-performance analytical SQL database for Python; optimized for OLAP workloads over data like CSV/Parquet, with easy SQL execution.",
+       "1.1.1",
+       "pip install duckdb"
+      ],
+      [
+       "ecos",
+       "A numerical optimization solver for convex problems (e.g. SOCP), used by frameworks like cvxpy.",
+       "2.0.14",
+       "pip install ecos"
+      ],
+      [
+       "entrypoints",
+       "Discover and load Python entry points, often used to register plugins/extensions.",
+       "0.4",
+       "pip install entrypoints"
+      ],
+      [
+       "exceptiongroup",
+       "Backport of Python 3.11’s ExceptionGroup and BaseExceptionGroup, letting multiple exceptions be represented and caught, even prior to Python 3.11.",
+       "1.2.2",
+       "pip install exceptiongroup"
+      ],
+      [
+       "feature-engine",
+       "A Python library offering transformers for feature engineering and selection, following the scikit-learn fit()/transform() paradigm",
+       "1.8.1",
+       "pip install feature-engine"
+      ],
+      [
+       "Flask",
+       "A lightweight WSGI web application framework that’s easy to get started with and scalable.",
+       "3.1.0",
+       "pip install Flask"
+      ],
+      [
+       "folium",
+       "Creates interactive Leaflet.js maps from Python. Visualize geospatial data with minimal code.",
+       "0.19.4",
+       "pip install folium"
+      ],
+      [
+       "fonttools",
+       "A library for reading, manipulating, and converting font files.",
+       "4.55.3",
+       "pip install fonttools"
+      ],
+      [
+       "fpdf",
+       "A simple library for generating PDF files in Python, ported from PHP's FPDF.",
+       "1.7.2",
+       "pip install fpdf"
+      ],
+      [
+       "future",
+       "A compatibility layer to write code that runs cleanly on both Python 2 and 3. Includes porting tools like futurize and pasteurize.",
+       "1.0.0",
+       "pip install future"
+      ],
+      [
+       "gap-stat",
+       "Implements the Gap Statistic method for estimating the optimal number of clusters in data, with optional Rust optimizations.",
+       "2.0.3",
+       "pip install gap-stat"
+      ],
+      [
+       "gitdb",
+       "Provides low-level read/write access to Git object databases, used under the hood by GitPython.",
+       "4.0.11",
+       "pip install gitdb"
+      ],
+      [
+       "GitPython",
+       "A Pythonic interface for working with Git repositories programmatically. Supports both high and low-level Git operations.",
+       "3.1.43",
+       "pip install GitPython"
+      ],
+      [
+       "glmnet",
+       "This is a Python wrapper for the fortran library used in the R package glmnet. While the library includes linear, logistic, Cox, Poisson, and multiple-response Gaussian, only linear and logistic are implemented in this package.",
+       "2.2.1",
+       "pip install glmnet"
+      ],
+      [
+       "google-auth",
+       "Supports Google authentication using OAuth 2.0",
+       "2.36.0",
+       "pip install google-auth"
+      ],
+      [
+       "graphene",
+       "A code-first library for building GraphQL APIs in Python with built-in support for Relay and integrations with ORMs and web frameworks",
+       "3.4.3",
+       "pip install graphene"
+      ],
+      [
+       "graphql-core",
+       "A Python port of GraphQL.js, providing a reference implementation of GraphQL in Python.",
+       "3.2.5",
+       "pip install graphql-core"
+      ],
+      [
+       "graphql-relay",
+       "A library that enables creating Relay-compliant GraphQL servers using graphql-core.",
+       "3.2.0",
+       "pip install graphql-relay"
+      ],
+      [
+       "graphviz",
+       "Facilitates the creation and rendering of graph descriptions in DOT language, using Graphviz's layout and rendering capabilities from Python.",
+       "0.20.3",
+       "pip install graphviz"
+      ],
+      [
+       "greenlet",
+       "Lightweight in‑process coroutines (\"greenlets\") for concurrent programming.",
+       "3.1.1",
+       "pip install greenlet"
+      ],
+      [
+       "gunicorn",
+       "A fast, simple, and broadly compatible WSGI HTTP server for UNIX, using a pre‑fork worker model and optimized for low resource usage.",
+       "23.0.0",
+       "pip install gunicorn"
+      ],
+      [
+       "htmlmin",
+       "A configurable HTML minifier with safety features, capable of removing comments, collapsing whitespace, and offering WSGI middleware or decorator support.",
+       "0.1.12",
+       "pip install htmlmin"
+      ],
+      [
+       "idna",
+       "Supports the IDNA2008 protocol (RFC 5891) for handling internationalized domain names (IDNs), intended as a drop‑in replacement for the built‑in encodings.idna module.",
+       "3.1",
+       "pip install idna"
+      ],
+      [
+       "ImageHash",
+       "A Python library for perceptual image hashing techniques like average‑hash, perceptual‑hash, difference‑hash, wavelet‑hash, color‑hash, etc., used to detect image similarity.",
+       "4.3.1",
+       "pip install ImageHash"
+      ],
+      [
+       "imbalanced-learn",
+       "Tools to handle imbalanced datasets in machine learning; includes resampling methods like SMOTE and pipelines that integrate with scikit‑learn.",
+       "0.12.3",
+       "pip install imbalanced-learn"
+      ],
+      [
+       "immutabledict",
+       "An immutable (hashable) dictionary type. Useful when needing dict-like types that can be used as keys or safely cached.",
+       "4.2.0",
+       "pip install immutabledict"
+      ],
+      [
+       "importlib-metadata",
+       "Provides programmatic access to metadata for installed Python packages (e.g., version, entry points). Acts as a backport for Python versions before 3.8.",
+       "8.5.0",
+       "pip install importlib-metadata"
+      ],
+      [
+       "importlib-resources",
+       "Enables access to non-code resources bundled within Python packages (e.g., data files or templates); backported for older Python versions.",
+       "6.4.5",
+       "pip install importlib-resources"
+      ],
+      [
+       "iniconfig",
+       "Parses .ini configuration files and is often used under the hood by pytest and other tools to manage configuration settings.",
+       "2.0.0",
+       "pip install iniconfig"
+      ],
+      [
+       "isodate",
+       "Parses and formats ISO 8601 date, time, and duration strings in Python, converting them to datetime or timedelta.",
+       "0.6.1",
+       "pip install isodate"
+      ],
+      [
+       "itsdangerous",
+       "Implements cryptographic signing to safely serialize data, commonly used for managing secure tokens (e.g., in Flask session cookies).",
+       "2.2.0",
+       "pip install itsdangerous"
+      ],
+      [
+       "Jinja2",
+       "Fast, expressive, extensible templating engine for Python. Offers template inheritance, sandboxed environments, autoescaping for XSS prevention, and async support.",
+       "3.1.4",
+       "pip install Jinja2"
+      ],
+      [
+       "joblib",
+       "Offers lightweight pipelining, transparent disk‑caching, memoization, and simple parallel computing optimized for large data and NumPy arrays.",
+       "1.4.2",
+       "pip install joblib"
+      ],
+      [
+       "kiwisolver",
+       "Fast and lightweight C++ implementation of the Cassowary constraint solver (e.g., for UI layout), up to 500× faster and using far less memory.",
+       "1.4.7",
+       "pip install kiwisolver"
+      ],
+      [
+       "llvmlite",
+       "A lightweight LLVM Python binding for building JIT compilers; initially developed for Numba, it wraps parts of the LLVM C++ API in C and ctypes layers.",
+       "0.43.0",
+       "pip install llvmlite"
+      ],
+      [
+       "Mako",
+       "Python-based templating engine (inspired by Django and Jinja2) that compiles templates into Python modules for high performance; used by web frameworks like Pyramid and Reddit.",
+       "1.3.8",
+       "pip install Mako"
+      ],
+      [
+       "Markdown",
+       "Python implementation of John Gruber’s Markdown; compliant with reference implementation and supports extensible add-ons.",
+       "3.7",
+       "pip install Markdown"
+      ],
+      [
+       "MarkupSafe",
+       "Provides a way to safely handle and escape strings for use in HTML/XML contexts, protecting against injection attacks.",
+       "3.0.2",
+       "pip install MarkupSafe"
+      ],
+      [
+       "matplotlib",
+       "Comprehensive 2D plotting library for Python, supporting line, scatter, bar, histogram, heatmap plots and more, often paired with NumPy.",
+       "3.9.3",
+       "pip install matplotlib"
+      ],
+      [
+       "mlflow",
+       "Open-source platform for managing the ML lifecycle: experimentation, reproducibility, deployment, and model tracking.",
+       "2.19.0",
+       "pip install mlflow"
+      ],
+      [
+       "mlflow-skinny",
+       "Minimal version of MLflow, excluding heavy dependencies (like Spark and databases), ideal for lightweight use cases or small environments.",
+       "2.19.0",
+       "pip install mlflow-skinny"
+      ],
+      [
+       "mlxtend",
+       "Provides reproducible machine learning tools: includes utilities like stacking, feature selection methods, and plotting functions that extend scikit‑learn.",
+       "0.23.1",
+       "pip install mlxtend"
+      ],
+      [
+       "more-itertools",
+       "Provides additional building blocks and routines for working with Python iterables. Extends the standard itertools module with many handy utilities.",
+       "10.5.0",
+       "pip install more-itertools"
+      ],
+      [
+       "msrest",
+       "A client-side, REST-based helper library from Microsoft for building HTTP-based SDKs, especially in Azure.",
+       "0.7.1",
+       "pip install msrest"
+      ],
+      [
+       "multimethod",
+       "Enables function overloading based on argument types, allowing multiple methods with the same name to dispatch dynamically.",
+       "1.12",
+       "pip install multimethod"
+      ],
+      [
+       "networkx",
+       "A comprehensive library for the creation, manipulation, and study of complex networks (graphs). Supports graph algorithms, data structures, and visualizations.",
+       "3.3",
+       "pip install networkx"
+      ],
+      [
+       "numba",
+       "A just-in-time (JIT) compiler. Compiles Python functions to optimized machine code at runtime using LLVM, improving performance for numeric workloads.",
+       "0.60.0",
+       "pip install numba"
+      ],
+      [
+       "numpy",
+       "Foundational library for numerical computing in Python. Supports n-dimensional arrays, mathematical functions, and linear algebra operations.",
+       "2.2.0",
+       "pip install numpy"
+      ],
+      [
+       "numpyro",
+       "A lightweight probabilistic programming library that provides a NumPy (and JAX) backend for Pyro, allowing automatic differentiation, JIT compilation (GPU/CPU), and high performance for Bayesian modeling.",
+       "0.18.0",
+       "pip install numpyro"
+      ],
+      [
+       "nvidia-nccl-cu12",
+       "NVIDIA’s Collective Communication Library (NCCL) runtime for GPU-based collective operations like all-reduce, broadcast, and gather. Optimized for deep learning communication.",
+       "2.23.4",
+       "pip install nvidia-nccl-cu12"
+      ],
+      [
+       "oauthlib",
+       "A generic, spec-compliant library for building OAuth 1.0 and 2.0 clients and servers in Python. Used in projects requiring OAuth authentication.",
+       "3.2.2",
+       "pip install oauthlib"
+      ],
+      [
+       "opentelemetry-api",
+       "Defines the OpenTelemetry API specification for metrics and tracing; used to instrument applications for distributed observability.",
+       "1.28.2",
+       "pip install opentelemetry-api"
+      ],
+      [
+       "opentelemetry-sdk",
+       "The reference implementation of the OpenTelemetry API. Provides concrete exporters and sampling policies for telemetry data.",
+       "1.28.2",
+       "pip install opentelemetry-sdk"
+      ],
+      [
+       "opentelemetry-semantic-conventions",
+       "Provides standardized semantic attributes (key naming conventions) for telemetry data via OpenTelemetry. Ensures consistent metric and trace labeling across applications.",
+       "0.49b2",
+       "pip install opentelemetry-semantic-conventions"
+      ],
+      [
+       "optbinning",
+       "Offers optimal binning algorithms for numeric and categorical variables. Particularly valuable in credit scoring and regulatory-compliant modeling.",
+       "0.19.0",
+       "pip install optbinning"
+      ],
+      [
+       "optuna",
+       "Optuna is an automatic hyperparameter optimization software framework, particularly designed for machine learning. It features an imperative, define-by-run style user API.",
+       "4.6.0",
+       "pip install optuna"
+      ],
+      [
+       "ortools",
+       "Google’s Operations Research tools for solving combinatorial optimization problems like routing, assignment, and scheduling via CP-SAT, CP, and linear solvers.",
+       "9.11.4210",
+       "pip install ortools"
+      ],
+      [
+       "osqp",
+       "A Python wrapper for OSQP: the Operator Splitting Quadratic Program solver, used for efficiently solving convex QP problems.",
+       "0.6.7.post1",
+       "pip install osqp"
+      ],
+      [
+       "packaging",
+       "Provides tools to parse and compare Python package versions and metadata, supporting PEP‑440 version specifiers.",
+       "24.2",
+       "pip install packaging"
+      ],
+      [
+       "pandas",
+       "The core Python library for data manipulation and analysis. Offers DataFrame, Series, and time-series functionality.",
+       "2.2.3",
+       "pip install pandas"
+      ],
+      [
+       "patsy",
+       "Allows building statistical models using a formula language similar to R, with support for categorical encoding and transformations.",
+       "1.0.1",
+       "pip install patsy"
+      ],
+      [
+       "phik",
+       "Implements the Phi_K correlation coefficient, a practical measure of feature correlation capturing linear/non-linear dependencies across mixed-variable types.",
+       "0.12.4",
+       "pip install phik"
+      ],
+      [
+       "pillow",
+       "The actively maintained fork of PIL (Python Imaging Library), used for opening, manipulating, and saving many image formats.",
+       "11.0.0",
+       "pip install pillow"
+      ],
+      [
+       "plotly",
+       "A feature-rich library for interactive and declarative plotting in Python; supports web-ready charts and dashboards.",
+       "5.24.1",
+       "pip install plotly"
+      ],
+      [
+       "pluggy",
+       "A plugin and hook management system used by pytest and other frameworks to enable extensibility.",
+       "1.5.0",
+       "pip install pluggy"
+      ],
+      [
+       "polars",
+       "A high-performance DataFrame library implemented in Rust, supporting fast query execution and lazy evaluation.",
+       "1.8.2",
+       "pip install polars"
+      ],
+      [
+       "protobuf",
+       "Google's Protocol Buffers implementation for Python. Used to serialize structured data in a language-neutral binary format.",
+       "5.29.1",
+       "pip install protobuf"
+      ],
+      [
+       "pure-sasl",
+       "A pure-Python implementation of the SASL (Simple Authentication and Security Layer) protocol, used for authentication in services like Hive and Kafka.",
+       "0.6.2",
+       "pip install pure-sasl"
+      ],
+      [
+       "py",
+       "A namespace package historically used in pytest to manage modules like pytest.py; largely deprecated and replaced by standalone packages.",
+       "1.11.0",
+       "pip install py"
+      ],
+      [
+       "py4j",
+       "Enables Python programs to dynamically access Java objects in a Java Virtual Machine, allowing bidirectional communication between Python and Java.",
+       "0.10.9.9",
+       "pip install py4j"
+      ],
+      [
+       "pyarrow",
+       "Python bindings for Apache Arrow: a high-performance, language-agnostic columnar memory format for data interchange and analytics.",
+       "18.1.0",
+       "pip install pyarrow"
+      ],
+      [
+       "pyasn1",
+       "Pure-Python implementation of ASN.1 data structures and codecs, commonly used in cryptographic and network protocols.",
+       "0.6.1",
+       "pip install pyasn1"
+      ],
+      [
+       "pyasn1-modules",
+       "Collection of ASN.1 modules required for various protocols (e.g., X.509, LDAP), designed to work with pyasn1.",
+       "0.4.1",
+       "pip install pyasn1-modules"
+      ],
+      [
+       "pycparser",
+       "Complete parser of the C language, in pure Python; parses C code into ASTs, often used as a backend for projects like CFFI.",
+       "2.22",
+       "pip install pycparser"
+      ],
+      [
+       "pydantic",
+       "Data validation and settings management using Python type annotations; parses/serializes JSON using type-safe models.",
+       "2.9.2",
+       "pip install pydantic"
+      ],
+      [
+       "pydantic-core",
+       "Rust‑backed core library used by pydantic for high‑performance validation and serialization.",
+       "2.23.4",
+       "pip install pydantic-core"
+      ],
+      [
+       "pyHive",
+       "Python client for Hive and Presto, enabling SQL-style access to Hadoop-based data warehouses.",
+       "0.7.0",
+       "pip install PyHive"
+      ],
+      [
+       "pyMC",
+       "A Python package for Bayesian statistical modeling and probabilistic programming. It allows you to build models and fit them using advanced MCMC and variational‑inference algorithms.",
+       "",
+       "pip install pymc"
+      ],
+      [
+       "Pympler",
+       "Development tool to profile memory consumption in Python programs; offers heap tracking, object summary, and reference graph analysis.",
+       "1.1",
+       "pip install Pympler"
+      ],
+      [
+       "pyodbc",
+       "Python DB API-compliant interface to ODBC databases; enables database connectivity to SQL Server, Access, MySQL, etc.",
+       "5.1.0",
+       "pip install pyodbc"
+      ],
+      [
+       "pyparsing",
+       "A library for building recursive-descent parsers in Python using an easy-to-use syntax, often used for DSLs or config parsing.",
+       "3.2.0",
+       "pip install pyparsing"
+      ],
+      [
+       "pyspark",
+       "Python API for Apache Spark, providing distributed dataframe and ML capabilities across big data instances.",
+       "3.5.5",
+       "pip install pyspark"
+      ],
+      [
+       "pytest",
+       "A mature testing framework for Python that enables clean, scalable test writing using fixtures, parameterization, and plugins.",
+       "8.3.4",
+       "pip install pytest"
+      ],
+      [
+       "pyro",
+       "A flexible, scalable deep probabilistic programming library built on PyTorch. It is designed to represent any computable probability distribution and scale to large datasets.",
+       "4.82",
+       "pip install pyro-ppl"
+      ],
+      [
+       "pytest-runner",
+       "A setuptools extension that adds pytest command integration into the build process. Now deprecated and not recommended for new projects.",
+       "6.0.1",
+       "pip install pytest-runner"
+      ],
+      [
+       "python-dateutil",
+       "Enhances Python’s datetime module with powerful parsing, relative deltas, and timezone support.",
+       "2.9.0.post0",
+       "pip install python-dateutil"
+      ],
+      [
+       "pytz",
+       "Enables accurate and cross-platform timezone calculations using the eponymous time zone database.",
+       "2024.2",
+       "pip install pytz"
+      ],
+      [
+       "pyudorandom",
+       "Provides deterministic, non-successive iteration or shuffling of lists using modular arithmetic, without randomness guarantees.",
+       "1.0.0",
+       "pip install pyudorandom"
+      ],
+      [
+       "PyWavelets",
+       "Implements wavelet transforms for signal and image processing. Frequently used for denoising and multiresolution analysis.",
+       "1.7.0",
+       "pip install PyWavelets"
+      ],
+      [
+       "PyYAML",
+       "YAML parser and emitter for Python, enabling configuration or data serialization in YAML format.",
+       "6.0.2",
+       "pip install PyYAML"
+      ],
+      [
+       "qdldl",
+       "Python bindings for the QDLDL (Quadruple-precision LDL) solver, used in quadratic programming contexts.",
+       "0.1.7.post4",
+       "pip install qdldl"
+      ],
+      [
+       "querystring-parser",
+       "Parses HTTP query strings into nested Python data structures; supports advanced parsing as required in API backends.",
+       "1.2.4",
+       "pip install querystring-parser"
+      ],
+      [
+       "requests",
+       "Elegant and simple HTTP library for Python, simplifying making API calls with support for URL parameters, headers, sessions, and more.",
+       "2.32.3",
+       "pip install requests"
+      ],
+      [
+       "requests-oauthlib",
+       "Adds OAuth 1 and OAuth 2 support on top of requests, enabling authenticated API workflows with providers like Google, Twitter, etc.",
+       "2.0.0",
+       "pip install requests-oauthlib"
+      ],
+      [
+       "ropwr",
+       "A library written in Python implementing several mathematical programming formulations to compute the optimal continuous/discontinuous piecewise polynomial regression given a list of split points.",
+       "1.0.0",
+       "pip install ropwr"
+      ],
+      [
+       "rsa",
+       "Pure-Python implementation of RSA cryptography for encrypting, decrypting, and signing messages. Frequently used for simple crypto tasks.",
+       "4.9",
+       "pip install rsa"
+      ],
+      [
+       "sasl",
+       "Python bindings for Cyrus SASL, providing authentication layers for various protocols.",
+       "0.3.1",
+       "pip install sasl"
+      ],
+      [
+       "scikit-learn",
+       "A robust machine learning library offering tools for classification, regression, clustering, dimensionality reduction, and evaluation.",
+       "1.6.0",
+       "pip install scikit-learn"
+      ],
+      [
+       "scikit-learn-extra",
+       "Extends scikit‑learn with additional algorithms (e.g. clustering, robust models) not included in the main package.",
+       "0.3.0",
+       "pip install scikit-learn-extra"
+      ],
+      [
+       "scipy",
+       "Core scientific computing library for Python, providing routines for optimization, integration, linear algebra, and signal processing.",
+       "1.14.1",
+       "pip install scipy"
+      ],
+      [
+       "scorecardpy",
+       "Implements credit scorecard modeling techniques including binning, WOE encoding, and model evaluation, popular in financial risk analytics.",
+       "0.1.9.7",
+       "pip install scorecardpy"
+      ],
+      [
+       "scs",
+       "A solver for convex cone problems such as linear, quadratic, and second-order cone programs commonly used with optimizers like CVXPY.",
+       "3.2.7",
+       "pip install scs"
+      ],
+      [
+       "seaborn",
+       "Statistical data visualization library built on matplotlib; offers simplified syntax for complex plots and aesthetics.",
+       "0.13.2",
+       "pip install seaborn"
+      ],
+      [
+       "semantic-version",
+       "Implements semantic versioning (SemVer v2.0.0) with parsing, comparison, and validation of version strings.",
+       "2.10.0",
+       "pip install semantic-version"
+      ],
+      [
+       "setuptools",
+       "Python package for building and distributing Python distributions, managing dependencies, entry points, and package metadata.",
+       "75.6.0",
+       "pip install setuptools"
+      ],
+      [
+       "setuptools-rust",
+       "Plugin for setuptools that simplifies building Rust extensions for Python projects using Rust/Cargo.",
+       "1.10.2",
+       "pip install setuptools-rust"
+      ],
+      [
+       "sh",
+       "Python subprocess interface that lets you call shell commands as Python functions for more natural scripting.",
+       "2.0.7",
+       "pip install sh"
+      ],
+      [
+       "shap",
+       "Explains machine learning model predictions using SHAP values (based on explainable AI theory) for model interpretability.",
+       "0.46.0",
+       "pip install shap"
+      ],
+      [
+       "six",
+       "Cross‑Python compatibility library that smooths differences between Python 2 and Python 3.",
+       "1.17.0",
+       "pip install six"
+      ],
+      [
+       "slicer",
+       "Slicer wraps tensor-like objects and provides a uniform slicing interface via __getitem__.",
+       "0.0.8",
+       "pip install slicer"
+      ],
+      [
+       "smmap",
+       "A sliding-window memory map manager that wraps mmap, automatically unloading unused regions with an LRU strategy to conserve file handles on memory-limited or 32-bit systems.",
+       "5.0.1",
+       "pip install smmap"
+      ],
+      [
+       "splink",
+       "Fast, accurate, and scalable probabilistic record linkage and deduplication library for identifying and clustering duplicate records that lack unique identifiers.",
+       "4.0.16",
+       "pip install splink"
+      ],
+      [
+       "SQLAlchemy",
+       "Python toolkit and ORM for SQL databases; offers a Core SQL expression language and a powerful ORM for efficient, Pythonic DB interactions.",
+       "2.0.36",
+       "pip install SQLAlchemy"
+      ],
+      [
+       "sqlparse",
+       "Pure Python library to parse, format, and reindent SQL statements.",
+       "0.5.3",
+       "pip install sqlparse"
+      ],
+      [
+       "statsmodels",
+       "Provides classes and functions for the estimation of many statistical models (e.g. regression, time series) and conducting statistical tests.",
+       "0.14.4",
+       "pip install statsmodels"
+      ],
+      [
+       "sweetviz",
+       "Generates high-density visual EDA reports from pandas DataFrames with minimal code; outputs a standalone HTML report.",
+       "2.3.1",
+       "pip install sweetviz"
+      ],
+      [
+       "tabulate",
+       "Formats tabular data in plain-text tables, supporting multiple layouts like grid, plain, and Markdown.",
+       "0.9.0",
+       "pip install tabulate"
+      ],
+      [
+       "tangled-up-in-unicode",
+       "Helps categorize Unicode strings (e.g., digits, letters) per the Unicode standard; useful for parsing or validating text.",
+       "0.2.0",
+       "pip install tangled-up-in-unicode"
+      ],
+      [
+       "tdigest",
+       "Implements Ted Dunning’s t-Digest structure to estimate percentiles and quantiles efficiently from streaming or distributed data.",
+       "0.5.2.2",
+       "pip install tdigest"
+      ],
+      [
+       "tenacity",
+       "General-purpose retrying library for Python, allowing configurable retry behavior for flaky operations or functions.",
+       "9.0.0",
+       "pip install tenacity"
+      ],
+      [
+       "threadpoolctl",
+       "Detects and controls thread pools in use by compiled libraries (e.g. BLAS, OpenMP) for safe parallel behavior in scientific workflows.",
+       "3.5.0",
+       "pip install threadpoolctl"
+      ],
+      [
+       "thrift",
+       "Apache Thrift implementation in Python for defining RPC services and using them across languages with code generation.",
+       "0.22.0",
+       "pip install thrift"
+      ],
+      [
+       "thrift-sasl",
+       "Extends Apache Thrift with SASL support, enabling secure authentication layers for Thrift services.",
+       "0.4.3",
+       "pip install thrift-sasl"
+      ],
+      [
+       "toad",
+       "Toolkit for Operational Analytics and Data science, including tools for binning, WOE transformation, and variable selection, often in credit scoring.",
+       "0.1.3",
+       "pip install toad"
+      ],
+      [
+       "toml",
+       "TOML parser and writer for configuration files, compliant with the TOML format specification.",
+       "0.10.2",
+       "pip install toml"
+      ],
+      [
+       "tomli",
+       "Fast TOML parser in pure Python; TOML parsing (read-only) for configuration needs.",
+       "2.2.1",
+       "pip install tomli"
+      ],
+      [
+       "torch",
+       "PyTorch is a Python package that provides two high-level features:\nTensor computation (like NumPy) with strong GPU acceleration and deep neural networks built on a tape-based autograd system.",
+       "2.9.1",
+       "pip install torch"
+      ],
+      [
+       "tqdm",
+       "Fast, extensible progress bar library for Python loops and iterables.",
+       "4.66.5",
+       "pip install tqdm"
+      ],
+      [
+       "typeguard",
+       "Runtime type checker for functions using PEP 484 type annotations; supports @typechecked decorators and import hooks to validate argument and return types.",
+       "4.3.0",
+       "pip install typeguard"
+      ],
+      [
+       "typing-extensions",
+       "Backport of newer typing module features (e.g. TypeGuard, Literal) for older Python versions.",
+       "4.12.2",
+       "pip install typing-extensions"
+      ],
+      [
+       "tzdata",
+       "Time zone database supporting accurate timezone info (often used alongside pytz or Python’s zoneinfo).",
+       "2024.2",
+       "pip install tzdata"
+      ],
+      [
+       "urllib3",
+       "Powerful HTTP client for Python with thread-safe connection pooling, retries, and support for secure connections.",
+       "2.2.3",
+       "pip install urllib3"
+      ],
+      [
+       "visions",
+       "Provides logic to infer variable semantic types (e.g., categorical, numeric) to aid in exploratory data analysis.",
+       "0.7.6",
+       "pip install visions"
+      ],
+      [
+       "wcwidth",
+       "Measures the display width of Unicode characters, critical for properly aligning terminal output.",
+       "0.2.13",
+       "pip install wcwidth"
+      ],
+      [
+       "Werkzeug",
+       "A comprehensive WSGI utility library serving as the basis for Flask and providing request/response handling, routing, and other web utilities.",
+       "3.1.3",
+       "pip install Werkzeug"
+      ],
+      [
+       "wheel",
+       "Standard Python package format (built distribution), allowing installations without needing to compile code.",
+       "0.45.1",
+       "pip install wheel"
+      ],
+      [
+       "woe",
+       "Implements Weight of Evidence (WoE) encoding, commonly used in credit scoring models to transform categorical variables.",
+       "0.1.4",
+       "pip install woe"
+      ],
+      [
+       "wordcloud",
+       "Generates word clouds from text, sizing words based on frequency. A visual tool for textual data exploration.",
+       "1.9.3",
+       "pip install wordcloud"
+      ],
+      [
+       "wrapt",
+       "Offers decorators and function wrappers with proper introspection support. Commonly used to build robust and introspective instrumentation layers.",
+       "1.17.0",
+       "pip install wrapt"
+      ],
+      [
+       "xgboost",
+       "High-performance gradient boosting library optimized for speed and accuracy across ML tasks; includes GPU support and advanced model features.",
+       "2.1.1",
+       "pip install xgboost"
+      ],
+      [
+       "ydata-profiling",
+       "Formerly known as Pandas Profiling. Generates comprehensive exploratory data analysis reports (statistics, visualizations) in one line, exportable as HTML or JSON.",
+       "4.10.0",
+       "pip install ydata-profiling"
+      ],
+      [
+       "zipp",
+       "Backport of zipfile.Path (from Python 3.8+) for uniform handling of zip archives as path-like objects.",
+       "3.21.0",
+       "pip install zipp"
+      ]
+     ],
+     "col_widths": [
+      22,
+      44,
+      12,
+      22
+     ]
+    }
+   ]
+  },
+  {
+   "key": "a13229825",
+   "title": "How to Create a SQLPad Export",
+   "part": "Analytics tools: SQLPad, Jupyter and Power BI",
+   "blocks": [
+    {
+     "type": "p",
+     "text": "As part of our ongoing effort to help clients get the most out of their data collaborations, the Omnisient platform allows users to request SQLPad exports when they need to run further analysis or generate insights outside the platform. SQLPad exports provide a secure way to extract aggregated query results so you can continue your analysis in external tools, while ensuring all data shared through the export follows the same approval and security standards that apply across the platform.\nThe process is simple, secure, and designed to ensure that all exports go through the necessary partner and internal reviews before becoming available for download. Here’s how to create a SQLPad export."
+    },
+    {
+     "type": "h3",
+     "text": "Step 1: Navigate to the Project"
+    },
+    {
+     "type": "p",
+     "text": "Start by opening the project from which you want to create an export.\nClick Open with, then select SQLPad."
+    },
+    {
+     "type": "p",
+     "text": "Project types that currently support SQLPad exports include:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "ACE",
+      "Overlap",
+      "Predictive Modelling on Retail Data",
+      "Financial Inclusion"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "image",
+     "file": "13229825_01.png"
+    },
+    {
+     "type": "h3",
+     "text": "Step 2: Build and Run Your Query"
+    },
+    {
+     "type": "p",
+     "text": "Use SQLPad to build and run your query as usual.\nOnce the query completes successfully, a download icon will appear (only for supported project types). Select the icon and then choose Request CSV when you are satisfied with the results you want to export."
+    },
+    {
+     "type": "image",
+     "file": "13229825_02.png"
+    },
+    {
+     "type": "h3",
+     "text": "Step 3: Submit Your SQLPad Export Request"
+    },
+    {
+     "type": "p",
+     "text": "After selecting Request CSV, a modal will open prompting you to provide a few details."
+    },
+    {
+     "type": "note",
+     "text": "Note: This request is sent to your collaboration partners for approval, followed by an additional security check by Omnisient. Once fully approved, your export will be available for download."
+    },
+    {
+     "type": "image",
+     "file": "13229825_03.png"
+    },
+    {
+     "type": "table",
+     "headers": [],
+     "rows": [
+      [
+       "1. Sample of Records",
+       "A random sample of rows from your export will be shared with approvers to give them context and help them assess your request."
+      ],
+      [
+       "2. Aggregation Confirmation",
+       "You must confirm that Omnisient permits only the download of aggregated results.\nBy selecting this option, you acknowledge that your export does not contain information that could lead to the identification of any individual."
+      ],
+      [
+       "3. Terms & Conditions",
+       "Confirm that you’ve read and agree to Omnisient’s Terms and Conditions."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Once everything is complete and compliant, click Request Export to submit your request."
+    },
+    {
+     "type": "h3",
+     "text": "Step 4: Monitor Your Export’s Progress"
+    },
+    {
+     "type": "p",
+     "text": "You can track the status of all your SQLPad exports under the All Files section in the side navigation. Each export follows a clear lifecycle, and its current status will tell you exactly where it is in the process."
+    },
+    {
+     "type": "note",
+     "text": "Note: Only exports you have created will surface here."
+    },
+    {
+     "type": "image",
+     "file": "13229825_04.png"
+    },
+    {
+     "type": "p",
+     "text": "Statues to expect and what they mean:"
+    },
+    {
+     "type": "table",
+     "headers": [],
+     "rows": [
+      [
+       "Processing / New",
+       "The export has been received and Omnisient is performing additional automated security checks."
+      ],
+      [
+       "Awaiting Approval",
+       "Your collaboration partners are reviewing your export.\nThe Approvals column shows how many partners have approved so far."
+      ],
+      [
+       "Available",
+       "Your export has passed all reviews and is ready for download."
+      ],
+      [
+       "Rejected",
+       "A collaborator has rejected your export.\nYou’ll receive an email with the rejection reason so you can adjust and resubmit if needed."
+      ],
+      [
+       "Failed",
+       "The export did not pass Omnisient’s security checks.\nAn email will explain what failed and why."
+      ],
+      [
+       "Locked",
+       "The export has expired or the underlying project has locked (for example, due to a dataset share expiry)."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "h3",
+     "text": "And that’s it!"
+    },
+    {
+     "type": "p",
+     "text": "You’ve successfully created a SQLPad export.\nThis process ensures secure, transparent collaboration while enabling you to extract valuable insights from your projects."
+    }
+   ]
+  },
+  {
+   "key": "a14152998",
+   "title": "SQLPad Troubleshooting Guide",
+   "part": "Analytics tools: SQLPad, Jupyter and Power BI",
+   "blocks": [
+    {
+     "type": "h2",
+     "text": "Overview"
+    },
+    {
+     "type": "p",
+     "text": "SQLPad is the SQL query editor available from Own Data Prep or inside your Omnisient project. This guide covers the most common errors users encounter and how to resolve them."
+    },
+    {
+     "type": "note",
+     "text": "SQLPad connects directly to your project's data environment. Most errors are caused by connection timeouts, write-back errors, or session issues - not problems with your data."
+    },
+    {
+     "type": "h2",
+     "text": "How to Access SQLPad"
+    },
+    {
+     "type": "p",
+     "text": "SQLPad is accessed from Own Data Prep or inside a project:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Open your project from the Projects Dashboard",
+      "In the project detail view, locate the Open with option",
+      "Select SQLPad from the menu"
+     ],
+     "ordered": true
+    },
+    {
+     "type": "note",
+     "text": "If you don't see the Open with option, scroll down on the project detail page — it may be below the fold. Your project must also be in a Ready state before SQLPad can be opened."
+    },
+    {
+     "type": "h2",
+     "text": "Navigating Back to Your Project"
+    },
+    {
+     "type": "p",
+     "text": "To return to your project from SQLPad, use the breadcrumb navigation at the top of the page. Click your project name in the breadcrumb trail to go back to the project detail view."
+    },
+    {
+     "type": "h2",
+     "text": "Common Errors and Fixes"
+    },
+    {
+     "type": "h2",
+     "text": "1. Error When Writing a Dataframe to SQL"
+    },
+    {
+     "type": "p",
+     "text": "You run a write operation from Jupyter (e.g., writing a dataframe back to a SQL table) and receive an error.",
+     "bold_lead": "What you see: "
+    },
+    {
+     "type": "p",
+     "text": "Confirm the exact source table name - even a small difference will cause this error. Cross-check the table name against what appears in your dataset on the Datasets page.",
+     "bold_lead": "First thing to check: "
+    },
+    {
+     "type": "p",
+     "text": "If the table name is correct and the error persists, contact support with:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Your project name",
+      "The source table name you were writing to",
+      "The full error message"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h2",
+     "text": "2. SQL Server Timeouts"
+    },
+    {
+     "type": "p",
+     "text": "Queries run for a long time and then time out, or SQLPad becomes unresponsive.",
+     "bold_lead": "What you see: "
+    },
+    {
+     "type": "p",
+     "text": "Steps to fix:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Add a LIMIT clause to reduce your result set — start with LIMIT 1000",
+      "Avoid SELECT * on large tables — select only the columns you need",
+      "Add filters to narrow the dataset before running aggregations",
+      "If timeouts persist on simple queries, contact support — the issue may be server-side"
+     ],
+     "ordered": true
+    },
+    {
+     "type": "note",
+     "text": "If timeouts started suddenly and your query hasn't changed, log a support ticket so the team can check server status."
+    },
+    {
+     "type": "h2",
+     "text": "3. SQLPad Fails to Load / Connection Error"
+    },
+    {
+     "type": "p",
+     "text": "SQLPad opens but shows a connection error, blank screen, or spins indefinitely.",
+     "bold_lead": "What you see: "
+    },
+    {
+     "type": "p",
+     "text": "Steps to fix:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Refresh the page and try opening SQLPad again",
+      "Check your project status - if it shows Processing or Failed, SQLPad will not connect until the project is ready",
+      "Log out and log back in to refresh your session",
+      "Check with your IT team that all required URLs and IP ranges are whitelisted and are not being blocked by your firewall. View Firewall Access Required for more details."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "h2",
+     "text": "4. Query Returns No Results"
+    },
+    {
+     "type": "p",
+     "text": "Query runs successfully but returns 0 rows.",
+     "bold_lead": "What you see: "
+    },
+    {
+     "type": "p",
+     "text": "Steps to fix:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Remove all filters and run SELECT COUNT(*) FROM [table_name] to confirm the table has data",
+      "Check that your project is using the correct dataset version - if the dataset was re-uploaded, you may be querying an older version",
+      "Check for date filters in your query - the data range may not match what is in the dataset"
+     ],
+     "ordered": true
+    },
+    {
+     "type": "h2",
+     "text": "Still Stuck"
+    },
+    {
+     "type": "p",
+     "text": "Contact support with the following information - this helps the team diagnose faster:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Your project name",
+      "The full error message (screenshot if possible)",
+      "The query or operation you were running",
+      "The table name you were querying or writing to"
+     ],
+     "ordered": false
+    }
+   ]
+  },
+  {
+   "key": "a15968482",
+   "title": "Approvals",
+   "part": "Analytics tools: SQLPad, Jupyter and Power BI",
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Approvals is where you control what partners can do with your shared data. When a partner creates a project or a SQLPad export using your dataset, the request goes to Approvals, where an Admin decides whether it's allowed to proceed."
+    },
+    {
+     "type": "note",
+     "text": "Permissions\nOnly users with Admin permissions can access Approvals. See the User Management article."
+    },
+    {
+     "type": "h2",
+     "text": "Where to find Approvals"
+    },
+    {
+     "type": "p",
+     "text": "In the Omnisient Platform, go to Admin → Approvals. This is your central hub for reviewing every request."
+    },
+    {
+     "type": "image",
+     "file": "15968482_01.png"
+    },
+    {
+     "type": "p",
+     "text": "You'll get an email notification when a new request comes in, with a direct link to review it."
+    },
+    {
+     "type": "p",
+     "text": "If a request isn't actioned in time, it will lock and the partner will be blocked.",
+     "bold_lead": "Make sure to action requests as promptly. "
+    },
+    {
+     "type": "h2",
+     "text": "Approval request types"
+    },
+    {
+     "type": "p",
+     "text": "Approvals cover two request types:"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Request type",
+      "What it covers",
+      "Approval required from",
+      "Supported project types"
+     ],
+     "rows": [
+      [
+       "Project",
+       "Projects a partner creates using your shared dataset",
+       "You (data owner)",
+       "- ACE\n- Overlap\n- Predictive Modelling on Retail Data\n- Financial Inclusion"
+      ],
+      [
+       "SQLPad Export",
+       "SQLPad exports a partner creates from a project using your dataset",
+       "You (data owner) and an internal Omnisient reviewer",
+       "- ACE\n- Overlap\n- Predictive Modelling on Retail Data\n- Financial Inclusion"
+      ]
+     ]
+    },
+    {
+     "type": "h2",
+     "text": "Project approval"
+    },
+    {
+     "type": "p",
+     "text": "Approving projects created on your data gives you control, visibility, and peace of mind around how your data is being used. This process is designed to be simple and transparent, so you always stay in the loop."
+    },
+    {
+     "type": "h2",
+     "text": "Request statuses"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Status",
+      "What it means"
+     ],
+     "rows": [
+      [
+       "Awaiting Approval",
+       "Ready for you to review"
+      ],
+      [
+       "Approved",
+       "You have approved the project"
+      ],
+      [
+       "Rejected",
+       "You have rejected the project"
+      ],
+      [
+       "Locked",
+       "The dataset share behind the request has expired, or the subscription has expired."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "h2",
+     "text": "How to review"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Find the request and click Review in the final column.",
+      "Check the request details in the modal that opens. The review shows the request details, along with the shared dataset that the partner wants to use to create the project.",
+      "Click Approve or Reject."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Action",
+      "Detail"
+     ],
+     "rows": [
+      [
+       "Approve",
+       "The requestor gets a confirmation email and the request moves into processing."
+      ],
+      [
+       "Reject",
+       "A modal opens asking for a rejection reason. Be specific here. It appears in the requestor's rejection email, so a clear reason means they know exactly what to fix before resubmitting their request."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "p",
+     "text": "The review modal breaks the request into two sections:"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Section",
+      "What it shows"
+     ],
+     "rows": [
+      [
+       "Project Creation Details",
+       "The name of the partner, the project type, date of request and project code."
+      ],
+      [
+       "Shared Dataset",
+       "The shared dataset's name, dates, status, and who shared it."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "image",
+     "file": "15968482_02.png"
+    },
+    {
+     "type": "h2",
+     "text": "SQLPad export request approval"
+    },
+    {
+     "type": "p",
+     "text": "Approving SQLPad exports is an important part of ensuring that your data is used responsibly and transparently. It gives you clear visibility into how your data contributes to insights, while keeping you in control of what gets exported."
+    },
+    {
+     "type": "p",
+     "text": "Once a SQLPad export is approved, Omnisient can no longer track or control copies saved locally by the user."
+    },
+    {
+     "type": "h2",
+     "text": "Request statuses"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Status",
+      "What it means"
+     ],
+     "rows": [
+      [
+       "Awaiting Approval",
+       "Ready for you to review"
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "h2",
+     "text": "How to review"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Find the request and click Review in the final column.",
+      "Check the request details in the modal that opens.",
+      "Click Approve or Reject."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Action",
+      "Detail"
+     ],
+     "rows": [
+      [
+       "Approve",
+       "This will now be followed by an additional security check by Omnisient."
+      ],
+      [
+       "Reject",
+       "A modal opens asking for a rejection reason. Be specific here. It appears in the requestor's rejection email, so a clear reason means they know exactly what to fix before resubmitting their request."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "p",
+     "text": "The review modal breaks the request into six sections:"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Section",
+      "What it shows"
+     ],
+     "rows": [
+      [
+       "Export Details",
+       "Overview of what the export contains."
+      ],
+      [
+       "Project Code",
+       "Unique identifier linking the export to its originating project - reference this if you contact support."
+      ],
+      [
+       "Shared Dataset",
+       "The dataset used to generate the export."
+      ],
+      [
+       "Sample of Records",
+       "A preview of rows and columns, so you can judge whether you're comfortable with what's being shared. Unsure how to read it? See the Up-Skilling Guide: How to Assess SQLPad Exports with Confidence."
+      ],
+      [
+       "Additional Information",
+       "Record count once approved, plus a reminder that exports expire 14 days after approval."
+      ],
+      [
+       "Terms and Conditions Reminder",
+       "A prompt to confirm you acknowledge and agree to Omnisient's data usage terms governing SQLPad approvals."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "image",
+     "file": "15968482_03.png"
+    }
+   ]
+  },
+  {
+   "key": "a13230382",
+   "title": "Up-Skilling Guide: How to Assess SQLPad Exports with Confidence",
+   "part": "Analytics tools: SQLPad, Jupyter and Power BI",
+   "blocks": [
+    {
+     "type": "p",
+     "text": "As part of our ongoing effort to help clients get the most out of the data collaboration and enhancement capabilities that the Omnisient platform provides we've added SQLPad exports as a way to support insight generation and data analysis."
+    },
+    {
+     "type": "p",
+     "text": "Protecting customer data sits at the core of everything that we do and our SQLPad export process is designed so that PII never leaves the system, and that export results are strictly limited to non-PII fields, with multiple guardrails in place to support this."
+    },
+    {
+     "type": "p",
+     "text": "The review and approval process adds a critical human validation layer, giving you final control over how your data generates value in the marketplace. Your approval controls what insights leave your datasets while protecting your data assets and customer privacy."
+    },
+    {
+     "type": "p",
+     "text": "This guide provides objective criteria to help you approve confidently while protecting your data assets."
+    },
+    {
+     "type": "h2",
+     "text": "The Golden Rule"
+    },
+    {
+     "type": "note",
+     "text": "If you're unsure about any aspect of an export request: Reject for clarification."
+    },
+    {
+     "type": "p",
+     "text": "Rejecting an export is not always a denial, it's a request for more information. The data buyer can revise their query or our support team can assist."
+    },
+    {
+     "type": "p",
+     "text": "It is always safer to reject and clarify than to approve something you don't fully understand."
+    },
+    {
+     "type": "p",
+     "text": "This protects both you and the data buyer: you maintain control over your data asset and they receive only compliant data exports that they can confidently use."
+    },
+    {
+     "type": "h2",
+     "text": "Understanding What You're Reviewing"
+    },
+    {
+     "type": "h3",
+     "text": "What the Platform Already Blocks (You Won't See These)"
+    },
+    {
+     "type": "p",
+     "text": "These are automatically restricted and cannot appear in export requests:"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Term",
+      "Definition"
+     ],
+     "rows": [
+      [
+       "PII (Personally Identifiable Information)",
+       "Information that can directly identify an individual, such as names, email addresses, phone numbers, or government-issued identifiers. PII is never allowed to leave the platform."
+      ],
+      [
+       "Hashed Data",
+       "Data that has been transformed into a fixed-length string using a mathematical process. Hashing is often used to protect sensitive values, but hashed data can still behave like an identifier and is therefore restricted."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "h3",
+     "text": "What You're Reviewing (Allowed if Appropriate)"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Term",
+      "Definition"
+     ],
+     "rows": [
+      [
+       "Aggregation",
+       "A method of summarising data (for example, counts or averages) rather than showing individual records."
+      ],
+      [
+       "Non-PII Data",
+       "Information that does not directly identify an individual. SQLPad exports are limited to non-PII fields."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "h3",
+     "text": "Red Flags to Watch For (Obfuscation Techniques)"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Term",
+      "Definition"
+     ],
+     "rows": [
+      [
+       "Column Aliasing",
+       "The practice of renaming a column when preparing data for export. This is commonly done to make data easier to read, but it can also make it less clear what the original field represents if the name is very generic or unexpected."
+      ],
+      [
+       "Identifiers",
+       "A value used to distinguish or reference a specific record, such as a key or reference number. Identifiers are often consistent in format and may appear sequential or structured."
+      ],
+      [
+       "SKEYS",
+       "A system-generated key used to link data across internal tables. SKEY values are not visible within SQLPad but may appear as references in exports under certain conditions."
+      ],
+      [
+       "DW Keys",
+       "A data warehouse key used internally to reference records. DW keys are identifiers and are restricted from being exported directly."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "note",
+     "text": "Your Job\nVerify that what buyers are requesting matches the category they claim, and watch for attempts to disguise restricted data as allowed data."
+    },
+    {
+     "type": "h2",
+     "text": "Awareness Tips for Reviewing Export Samples"
+    },
+    {
+     "type": "p",
+     "text": "While SQLPad exports has been designed with strong safeguards to prevent sensitive information from ever being exported, it’s still helpful to build familiarity with how data may appear in different formats. Occasionally, values might be presented in ways that are unexpected or unfamiliar, simply because of how users structure their queries or label their columns."
+    },
+    {
+     "type": "p",
+     "text": "By understanding these patterns, you’ll feel more confident when reviewing a sample and recognizing when something may need a second look or clarification. This section highlights a few indicators that may prompt you to pause and double-check."
+    },
+    {
+     "type": "h3",
+     "text": "1. Column Names and Labels"
+    },
+    {
+     "type": "p",
+     "text": "Column names provide the first layer of context when reviewing a dataset. In most cases, they clearly describe the information being shared. It can be helpful to pause and ensure the names align with the dataset and its intended purpose."
+    },
+    {
+     "type": "p",
+     "text": "Things to consider:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Do the column names make sense for this dataset? For example, would it be reasonable for a demographics export to include a column related to revenue or transactions?",
+      "Are any column names very generic (e.g. value, info, result) and therefore unclear about what they represent?",
+      "Do any column names reference inherently sensitive concepts (such as salary or credit-related terms) that might benefit from additional context?",
+      "Are there minor spelling variations or typos that make the meaning less clear?"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "p",
+     "text": "Clear and well-aligned naming generally makes review easier. If a name feels unclear, a quick clarification can help ensure shared understanding."
+    },
+    {
+     "type": "h3",
+     "text": "2. How the Data Behaves"
+    },
+    {
+     "type": "p",
+     "text": "Beyond the column name, the values themselves can provide useful context. Looking at how data behaves across rows often helps confirm whether it aligns with what the label suggests."
+    },
+    {
+     "type": "p",
+     "text": "Things to consider:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Do the values vary in a way you would normally expect for this type of data?",
+      "Are numbers unusually consistent, sequential, or uniformly structured?",
+      "Do text values appear to follow a fixed pattern or length across all rows?"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h3",
+     "text": "3. Formatting and Presentation"
+    },
+    {
+     "type": "p",
+     "text": "Formatting choices can sometimes make data easier to read and sometimes make it harder to interpret at a glance."
+    },
+    {
+     "type": "p",
+     "text": "Things to consider:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Are currency symbols, prefixes, or units applied consistently?",
+      "Do decimals, number formats, or text styles align with what you would expect?",
+      "Are there mixed formats within the same column (e.g. numbers and text together)?"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "p",
+     "text": "If formatting makes a column harder to interpret, it’s reasonable to pause and ask for clarification."
+    },
+    {
+     "type": "h3",
+     "text": "4. Dataset Context and Intended Use"
+    },
+    {
+     "type": "p",
+     "text": "Stepping back and considering the dataset as a whole can be one of the most helpful review techniques."
+    },
+    {
+     "type": "p",
+     "text": "Things to consider:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Does the sample feel consistent with the type of information being shared?",
+      "Does it align with what the data partner requested and would reasonably need?",
+      "Would the dataset still make sense if one or two column names were changed?"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "p",
+     "text": "This broader context check often helps confirm whether everything fits together as expected."
+    },
+    {
+     "type": "h2",
+     "text": "Examples: What to Approve vs. Reject"
+    },
+    {
+     "type": "h3",
+     "text": "Scenario 1: Rejected - Disguised Identifiers"
+    },
+    {
+     "type": "p",
+     "text": "A financial services company requests \"customer segmentation data\" for marketing purposes."
+    },
+    {
+     "type": "image",
+     "file": "13230382_01.png"
+    },
+    {
+     "type": "h3",
+     "text": "Why This Fails"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Criteria",
+      "Issue"
+     ],
+     "rows": [
+      [
+       "Column Names",
+       "Generic and vague. \"value_bracket\" and \"activity_score\" don't clearly describe what they measure."
+      ],
+      [
+       "Suspicious Patterns",
+       "Sequential numbering in \"customer_type\" (10001, 10002, 10003, 10004) suggests individual identifiers."
+      ],
+      [
+       "High Cardinality",
+       "Each row appears unique, this suggests data that's not truly aggregated."
+      ],
+      [
+       "Obfuscation",
+       "Column aliasing hides the true meaning. \"value_bracket\" could be income and \"activity_score\" could be a customer ID."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Reviewer Decision: Reject"
+    },
+    {
+     "type": "p",
+     "text": "\"This export contains sequential identifiers (PREM_10001, 10002...) rather than aggregated segments. Please revise to show true customer categories (e.g., 'Premium Customers', 'Standard Customers') with counts or percentages rather than individual customer records.\"",
+     "bold_lead": "Rejection Reason: "
+    },
+    {
+     "type": "h3",
+     "text": "Scenario 2: Rejected - Highly Granular Aggregations"
+    },
+    {
+     "type": "p",
+     "text": "A retailer requests \"aggregated shopping behavior insights\" across multiple dimensions."
+    },
+    {
+     "type": "image",
+     "file": "13230382_02.png"
+    },
+    {
+     "type": "h3",
+     "text": "Why This Fails"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Criteria",
+      "Issue"
+     ],
+     "rows": [
+      [
+       "Granularity",
+       "Five dimensions combined create micro-segments of 1-3 customers each."
+      ],
+      [
+       "Re-identification Risk",
+       "Highly specific combinations could identify individuals e.g., \"23-24 year old in Sandton earning 45-47K buying luxury beauty in March\"."
+      ],
+      [
+       "Pseudo-aggregation",
+       "Claims to be \"aggregated\" but group sizes are so small they're essentially individual records."
+      ],
+      [
+       "Privacy Violation",
+       "Combined attributes create unique or near-unique fingerprints."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Reviewer Decision: Reject"
+    },
+    {
+     "type": "p",
+     "text": "\"This aggregation is too granular, creating segments of 1-3 customers that could enable re-identification. Please reduce dimensions (e.g., broader age groups: '20-30', larger geographic areas: 'Northern Suburbs') or focus on fewer combined attributes to ensure meaningful group sizes of 10+ customers.\"",
+     "bold_lead": "Rejection Reason: "
+    },
+    {
+     "type": "h3",
+     "text": "Scenario 3: Rejected - Mismatched Columns and Values"
+    },
+    {
+     "type": "p",
+     "text": "A telecommunications company requests \"customer demographic insights\" for market research."
+    },
+    {
+     "type": "image",
+     "file": "13230382_03.png"
+    },
+    {
+     "type": "h3",
+     "text": "Why This Fails"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Criteria",
+      "Issue"
+     ],
+     "rows": [
+      [
+       "Value Mismatch",
+       "\"customer_segment\" shows sequential numbers instead of meaningful categories."
+      ],
+      [
+       "Disguised Identifiers",
+       "Numbers 8847392, 8847396 etc. appear to be system-generated customer IDs."
+      ],
+      [
+       "Inconsistent Data Types",
+       "\"customer_segment\" suggests categorical segments but contains numerical identifiers."
+      ],
+      [
+       "Pattern Recognition",
+       "Sequential numbering is a clear red flag for individual identifiers"
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Reviewer Decision: Reject"
+    },
+    {
+     "type": "p",
+     "text": "\"The 'customer_segment' column contains sequential numerical values (8847392, 8847393...) that appear to be customer identifiers rather than segment names. Please replace with descriptive segment labels like 'High Value', 'Regular User', 'Occasional Customer' etc.\"",
+     "bold_lead": "Rejection Reason: "
+    },
+    {
+     "type": "h3",
+     "text": "Scenario 4: Approved - Proper Aggregated Insights"
+    },
+    {
+     "type": "p",
+     "text": "A bank requests customer behavior analysis for product development and marketing strategy."
+    },
+    {
+     "type": "image",
+     "file": "13230382_04.png"
+    },
+    {
+     "type": "h3",
+     "text": "Why This Passes"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Criteria",
+      "Issue"
+     ],
+     "rows": [
+      [
+       "Clear Column Names",
+       "All columns clearly describe what they measure: age_group, account_type, etc."
+      ],
+      [
+       "Appropriate Granularity",
+       "Age ranges are broad (7-14 year spans), spending in ranges, not exact amounts."
+      ],
+      [
+       "Meaningful Groups",
+       "Customer counts range from 445-2,156 - true aggregation with substantial group sizes"
+      ],
+      [
+       "No Identifiers",
+       "No sequential numbering or unique values that could identify individuals."
+      ],
+      [
+       "Logical Categories",
+       "Account types and frequency bands use descriptive labels."
+      ],
+      [
+       "Business Relevance",
+       "Data aligns with data-buyers purpose of product development."
+      ]
+     ],
+     "col_widths": [
+      32,
+      68
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Reviewer Decision: Approved"
+    },
+    {
+     "type": "p",
+     "text": "This export demonstrates proper aggregation with meaningful customer segments, appropriate group sizes, and clear business utility without privacy risks."
+    },
+    {
+     "type": "h2",
+     "text": "A Quick Review Checklist to Guide Your Decision"
+    },
+    {
+     "type": "p",
+     "text": "Before approving an export, verify all of the following criteria is met. If any of the criteria fails reject for clarification. If you are unsure that the criteria has passed reject for clarification."
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Area",
+      "Criteria",
+      "Pass",
+      "Fail"
+     ],
+     "rows": [
+      [
+       "Columns",
+       "All column names clearly describe the data.",
+       "\"Age_Group\", \"Transaction_Month\", \"Product_Category\"",
+       "\"Value\", \"Info\", \"Data\", \"ID\", \"Key\""
+      ],
+      [
+       "",
+       "Columns do not reference restricted concepts.",
+       "",
+       "\"Salary\", \"Credit_Score\", \"SSN\", \"Email_Domain\", \"User_ID\""
+      ],
+      [
+       "",
+       "There is no obvious obfuscation through naming.",
+       "",
+       "Misspellings or very generic labels that could hide identifiers."
+      ],
+      [
+       "Data Values",
+       "The values match what column names suggest.",
+       "",
+       "\"Age_Group\" showing numbers like 10847392 instead of \"25-34\"."
+      ],
+      [
+       "",
+       "The data varies naturally, not in suspicious patterns.",
+       "",
+       "Sequential numbers (1,2,3,4) or uniform formats (AAAA1234, AAAA1235)"
+      ],
+      [
+       "",
+       "No high-cardinality in supposedly aggregated fields.",
+       "",
+       "\"Customer_Segment\" column has unique values across all rows"
+      ],
+      [
+       "Context Alignment",
+       "Level of detail is appropriate.",
+       "",
+       "Claims \"aggregated insights\" but every row is unique."
+      ],
+      [
+       "",
+       "Nothing feels inconsistent with previous approved exports from this buyer.",
+       "",
+       ""
+      ],
+      [
+       "Final Checks",
+       "Could these fields be combined with other data to re-identify individuals?",
+       "",
+       "If YES → Reject or escalate for expert review."
+      ],
+      [
+       "",
+       "Would you be comfortable explaining this approval in a compliance audit?",
+       "",
+       "If NO → Reject for clarification."
+      ]
+     ]
+    },
+    {
+     "type": "h2",
+     "text": "Support & Escalation"
+    },
+    {
+     "type": "p",
+     "text": "If you need support or feel unsure about an export, don’t hesitate to reach out to the support team. The requester’s email is included in the export, so you may also contact them directly if you’d like additional clarity or context."
+    },
+    {
+     "type": "h3",
+     "text": "Reject an export directly if:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "The issue is clear (disguised identifiers, mismatched columns, vague naming).",
+      "Your rejection reason can guide the buyer to fix it.",
+      "This is a standard case covered by the guide."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h3",
+     "text": "Escalate to support if:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "You suspect intentional policy violation or repeated problematic requests from the same buyer.",
+      "Technical question about data formats you can't interpret.",
+      "Disagreement with a buyer after an export is rejected and clarification has been attempted.",
+      "An urgent business need that requires faster resolution than a standard rejection/resubmission."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h3",
+     "text": "What to Include in Your Escalation:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Project code and creation date from the export request.",
+      "Screenshot highlighting the specific concern.",
+      "What you've already tried.",
+      "Why this needs escalation (e.g., \"Buyer claims urgent business deadline\")."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h2",
+     "text": "What Buyers See"
+    },
+    {
+     "type": "p",
+     "text": "Understanding what guidance buyers receive helps you provide better feedback:"
+    },
+    {
+     "type": "h3",
+     "text": "Buyers are told the following:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "\"Omnisient permits only the download of aggregated results\".",
+      "They must confirm their export \"does not contain information that could lead to the identification of any individual\".",
+      "Their request will be reviewed by data partners and Omnisient."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h3",
+     "text": "What buyers don't automatically see:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Specific examples of what qualifies as \"aggregated\".",
+      "The red flags you're checking for (sequential IDs, obfuscation, etc.)"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "p",
+     "text": "Your rejection feedback is often the first time a buyer learns what's actually required. Ensure your rejection reason is educational:"
+    },
+    {
+     "type": "p",
+     "text": "\"This doesn't look aggregated\"",
+     "bold_lead": "Not helpful: "
+    },
+    {
+     "type": "p",
+     "text": "\"This export contains fields with sequential values (Customer_Type: CUST_10001, CUST_10002...) which appear to be identifiers rather than aggregated categories. Please revise your query to group data into meaningful segments (e.g., customer types: 'Frequent Buyer', 'Occasional', 'New') rather than exporting individual customer records.\"",
+     "bold_lead": "Helpful: "
+    },
+    {
+     "type": "h2",
+     "text": "Maintaining Consistency Across Your Review Team"
+    },
+    {
+     "type": "p",
+     "text": "If multiple people at your organization review SQLPad exports:"
+    },
+    {
+     "type": "h3",
+     "text": "Best Practices"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Designate a lead reviewer who makes final calls on edge cases.",
+      "Review first 5-10 exports together to calibrate standards.",
+      "Document your decisions. Keep internal notes on why specific exports were approved/rejected to build institutional knowledge.",
+      "Weekly sync (15 min) to discuss any unclear cases and align on standards.",
+      "Share this guide with all reviewers and confirm everyone understands the \"reject if unsure\" principle."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "h3",
+     "text": "If Reviewers Disagree"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Default to the MORE CAUTIOUS position: rejection.",
+      "Escalate to your lead reviewer or our support team.",
+      "Never approve if any reviewer has unresolved concerns."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h3",
+     "text": "Building Your Review Library"
+    },
+    {
+     "type": "p",
+     "text": "Consider keeping screenshots of:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Good examples you've approved (reference for future).",
+      "Bad examples you've rejected (training for new reviewers).",
+      "Edge cases you escalated (learn from support's guidance)."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h2",
+     "text": "Conclusion"
+    },
+    {
+     "type": "p",
+     "text": "Reviewing SQLPad exports doesn’t need to feel complex or intimidating. With a small amount of attention and familiarity, most samples can be assessed quickly and confidently. Paying thoughtful attention to column names, formatting, and overall consistency helps ensure the data aligns with what was intended to be shared."
+    },
+    {
+     "type": "p",
+     "text": "If something doesn’t immediately make sense, it’s perfectly reasonable to pause, seek clarification, or make use of the Support & Escalation guidance."
+    },
+    {
+     "type": "p",
+     "text": "By taking a considered approach and using the tools and guidance available, you play an important role in maintaining consistent, well-reviewed data sharing."
+    },
+    {
+     "type": "h2",
+     "text": "Help Us Improve"
+    },
+    {
+     "type": "p",
+     "text": "This guide will evolve based on your feedback."
+    },
+    {
+     "type": "p",
+     "text": "Have you encountered:"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "An edge case not covered here?",
+      "An obfuscation technique we didn't describe?",
+      "Unclear guidance that needs improvement?"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "p",
+     "text": "Share your feedback with us."
+    }
+   ]
+  },
+  {
+   "key": "a9127106",
+   "title": "Power BI Reports",
+   "part": "Analytics tools: SQLPad, Jupyter and Power BI",
+   "blocks": [
+    {
+     "type": "h2",
+     "text": "Power BI: Unveiling the Power of Data Visualization"
+    },
+    {
+     "type": "p",
+     "text": "Power BI is a dynamic ecosystem comprising software services, applications, and connectors, harmoniously engineered to transform disparate data sources into cohesive, visually captivating, and interactive insights. Power BI seamlessly connects to your data sources, enabling you to visualize, explore, and communicate key insights with ease."
+    },
+    {
+     "type": "h2",
+     "text": "Connecting and Visualizing Data"
+    },
+    {
+     "type": "p",
+     "text": "Build visually engaging reports that bring your data to life and help you uncover valuable insights."
+    },
+    {
+     "type": "h2",
+     "text": "Paginated Reports for Operational Insights"
+    },
+    {
+     "type": "p",
+     "text": "Explore another essential workflow in Power BI, focused on paginated reports."
+    },
+    {
+     "type": "p",
+     "text": "Paginated reports are meticulously designed to fit neatly on a page and are often utilized for operational reporting purposes."
+    },
+    {
+     "type": "p",
+     "text": "These reports present all data in a tabular format, ensuring comprehensive visibility, even across multiple pages."
+    },
+    {
+     "type": "h2",
+     "text": "Consuming Reports in the Power BI Service"
+    },
+    {
+     "type": "p",
+     "text": "In the Power BI service, you can seamlessly consume and interact with reports, as well as individual visual elements, directly from the Omnisient app."
+    },
+    {
+     "type": "p",
+     "text": "Gain actionable insights and make informed decisions based on the reports generated within the Power BI environment."
+    },
+    {
+     "type": "p",
+     "text": "With Power BI, the power of data visualization is at your fingertips. Empower yourself to unlock the full potential of your data, from connecting to diverse data sources to creating compelling reports and paginated insights. Whether you're a data analyst, business user, or decision-maker, Power BI equips you with the tools to drive meaningful outcomes and propel your organization forward. Explore the possibilities with Power BI and revolutionize the way you harness data-driven insights."
+    },
+    {
+     "type": "image",
+     "file": "9127106_01.jpg"
+    }
+   ]
+  },
+  {
+   "key": "a11496645",
+   "title": "Export Power BI Reports as PDF, PNG, or PPT",
+   "part": "Analytics tools: SQLPad, Jupyter and Power BI",
+   "blocks": [
+    {
+     "type": "p",
+     "text": "We’ve introduced a powerful export feature for Power BI reports in the Omnisient platform. This guide explains how to export reports in PDF, PNG, or PPT formats, either as individual pages or as a full report."
+    },
+    {
+     "type": "h2",
+     "text": "Target Audience"
+    },
+    {
+     "type": "p",
+     "text": "This feature is available to all users who have access to view reports on the platform."
+    },
+    {
+     "type": "h2",
+     "text": "How to Export a Power BI Report"
+    },
+    {
+     "type": "h2",
+     "text": "Step-by-step Instructions"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Open a Power BI Report Navigate to the report you want to export.",
+      "Click either the Export Full Report Button or Export Page Button Locate the Export button, now visible at the top of your report view."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Choose File Format Select your preferred file format from the dropdown:"
+     ],
+     "ordered": true,
+     "indent": 8
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "PDF",
+      "PNG",
+      "PPT"
+     ],
+     "ordered": false,
+     "indent": 16
+    },
+    {
+     "type": "image",
+     "file": "11496645_01.png"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "You’ll see a confirmation message once your export is queued.",
+      "Receive Your Report via Email You’ll receive an email with a download link once your report is ready."
+     ],
+     "ordered": true,
+     "start": 3
+    },
+    {
+     "type": "h2",
+     "text": "Tips and Best Practices"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "For quicker downloads, export individual pages instead of full reports."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h2",
+     "text": "Troubleshooting"
+    },
+    {
+     "type": "bullets",
+     "items": [
+      "Didn’t receive an email? Check your spam or junk folder. If it’s not there, try exporting again or contact support.",
+      "Button not visible? Ensure you have the correct report access permissions. If issues persist, reach out to your administrator or support support@omnisient.com."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "p",
+     "text": "If you have further questions, contact support@omnisient.com or use the Help button in the web app."
+    }
+   ]
+  }
+ ]
+}

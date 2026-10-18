@@ -49,18 +49,18 @@ Fonts default to the bundled Poppins (`assets/fonts/Poppins-{Regular,Bold}.ttf`)
 
 ## Block types
 
-Each chapter is `{"key": "...", "title": "...", "blocks": [...]}`. `key` is a short slug (used internally for TOC/bookmark links — not shown to the reader). Blocks render in array order, top to bottom, no exceptions.
+Each chapter is `{"key": "...", "title": "...", "blocks": [...]}` with an optional `"part": "..."`. `key` is a short slug (used internally for TOC/bookmark links — not shown to the reader). When any chapter carries a `part`, the TOC groups chapters under bold part labels (consecutive chapters with the same `part` share one label) and uses slightly tighter rows so long guides fit; the TOC flows onto a second page automatically if needed. Blocks render in array order, top to bottom, no exceptions.
 
 | type | fields | notes |
 |---|---|---|
 | `p` | `text`, optional `bold_lead` | Paragraph. `bold_lead` bolds a leading phrase inline (e.g. "Note: ") before the regular text. |
 | `h2` | `text` | Section heading within a chapter. |
 | `h3` | `text` | Sub-heading. |
-| `bullets` | `items` (list of str), `ordered` (bool), optional `start` (int, default 1) | Numbered (`1.`, `2.`, ...) if `ordered: true`; real bullet points (•) otherwise — never dashes. Numbering restarts at `start` (or 1) for every block — if a single numbered sequence is split across multiple `bullets` blocks (e.g. an `image` block sits between step 3 and step 4), set `start` on each later block so the count continues instead of resetting to 1. |
+| `bullets` | `items` (list of str), `ordered` (bool), optional `start` (int, default 1), optional `indent` (mm, default 0) | Numbered (`1.`, `2.`, ...) if `ordered: true`; real bullet points (•) otherwise — never dashes. Numbering restarts at `start` (or 1) for every block — if a single numbered sequence is split across multiple `bullets` blocks (e.g. an `image` block sits between step 3 and step 4), set `start` on each later block so the count continues instead of resetting to 1. `indent` shifts the whole block right (use ~8 per nesting level) for sub-lists; indented unordered items get an en-dash marker so they read as sub-points. |
 | `code` | `text` | Monospace block with a light-gray background. Long lines wrap automatically with a hanging indent — don't pre-wrap them yourself. |
 | `note` | `text` | Callout box (light blue fill) for tips/warnings. |
 | `image` | `file`, optional `caption`, optional `max_w_ratio` (default 0.85) | `file` is a filename inside `images_dir` (not a path). Auto-paginates if it won't fit on the current page. If an `image` block directly follows an `h2`/`h3` block, the renderer keeps them together — it measures both before drawing either, and pushes the heading to the next page rather than leaving it orphaned above an image that got bumped down on its own. This only looks at the block immediately after the heading, so if you want a heading to stay glued to its screenshot, put the `image` block right after the `h2`/`h3` with nothing in between. |
-| `table` | `headers` (list), `rows` (list of list), optional `col_widths` (relative weights, e.g. `[30, 45, 100]`) | Auto-wraps cell text and computes row height. Rows split across pages automatically. |
+| `table` | `headers` (list), `rows` (list of list), optional `col_widths` (relative weights, e.g. `[30, 45, 100]`) | Auto-wraps cell text and computes row height. Rows split across pages automatically. Pass `headers: []` for a label/description table that has no header row in the source (the shaded header row is then skipped). |
 | `link_card` | `title`, `url` | A bordered card with a bold title and the URL underneath, both part of one clickable region. Use for videos, external docs, anything you can't embed directly. Only use URLs you actually fetched/confirmed — never invent one. |
 
 ## Converting Intercom HTML to blocks

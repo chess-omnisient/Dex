@@ -130,18 +130,58 @@ class GuidePDF(FPDF):
         right = self.cfg.get("breadcrumb", "") if show_breadcrumb else ""
         w = self.w - 36
         y = 281
+        # Optional back-link to the TOC in the footer's left slot. Set
+        # "footer_toc_link": false in the config to drop it entirely.
+        show_toc_link = self.cfg.get("include_toc", True) and self.cfg.get("footer_toc_link", True)
         self.set_xy(18, y)
-        if not self.cfg.get("include_toc", True):
-            pass  # no Table of Contents page to link back to
+        if not show_toc_link:
+            pass  # footer's left slot is unused
         elif toc_link is not None and self.page_no() > 1:
             self.set_text_color(*self.c_blue)
             self.cell(35, 5, left, link=toc_link)
         else:
             self.set_text_color(*self.c_gray_muted)
             self.cell(35, 5, left)
-        prefix_w = self.get_string_width(prefix)
-        legal_w = self.get_string_width(legal_text)
-        start_x = 18 + (w - prefix_w - legal_w) / 2
+        # Fit the centred copyright/legal block between the TOC link and the breadcrumb:
+        # shrink the footer font a little if needed, and drop the breadcrumb if it still won't fit.
+        span_l = (18 + 35 + 2) if show_toc_link else 18   # after the TOC link, if shown
+        for size in (7.2, 6.8, 6.4, 6.0):
+            self.set_font("Body", "", size)
+            prefix_w = self.get_string_width(prefix)
+            legal_w = self.get_string_width(legal_text)
+            right_w = self.get_string_width(right) if right else 0
+            span_r = 18 + w - right_w - 3    # before the right-aligned breadcrumb
+            if prefix_w + legal_w <= span_r - span_l:
+                break
+        else:
+            right, right_w = "", 0
+            span_r = 18 + w
+        # Position the copyright/legal block. With a TOC link present, space the
+        # three groups evenly (equal gaps either side of the block) — centring it
+        # looks lopsided whenever the left and right items differ in width. With
+        # no TOC link, centre the block on the page and let the breadcrumb sit
+        # right-aligned, which is the conventional two-element footer.
+        # Position the copyright/legal block.
+        #
+        # With a TOC link in the left slot, three groups share the footer, so
+        # split the free space between the two fixed neighbours evenly.
+        #
+        # Without it there are only two groups, and the conventional layout is a
+        # page-centred block with the breadcrumb right-aligned. Centring on the
+        # leftover span instead would leave visibly lopsided gaps, because that
+        # span excludes the breadcrumb's width on the right but has no
+        # equivalent item on the left. Fall back to span-centring only if a
+        # page-centred block would actually collide with a neighbour.
+        block_w = prefix_w + legal_w
+        if show_toc_link:
+            start_x = span_l + (span_r - span_l - block_w) / 2
+        else:
+            page_centre_x = 18 + w / 2 - block_w / 2
+            if page_centre_x >= span_l and page_centre_x + block_w <= span_r:
+                start_x = page_centre_x
+            else:
+                start_x = span_l + (span_r - span_l - block_w) / 2
+        start_x = max(start_x, span_l)
         self.set_xy(start_x, y)
         self.set_text_color(*self.c_gray_muted)
         self.cell(prefix_w, 5, prefix)
@@ -172,8 +212,10 @@ class GuidePDF(FPDF):
         self.ln(7)
 
     def _continue_on_new_page(self):
+        # Continuation pages reuse the chapter's running header (drawn from
+        # self.current_chapter), so they must NOT call start_section again —
+        # that would add a duplicate PDF bookmark for every overflow page.
         self.add_page()
-        self.start_section(self.current_chapter, level=1)
 
     def b_h2(self, text):
         self.ln(1)
@@ -201,12 +243,12 @@ class GuidePDF(FPDF):
             self.multi_cell(0, 5.6, text, align="L")
         self.ln(1.5)
 
-    def b_bullets(self, items, ordered=False, start=1):
+    def b_bullets(self, items, ordered=False, start=1, indent=0):
         self.set_font("Body", "", 10.3)
         self.set_text_color(*self.c_gray_text)
         for i, item in enumerate(items, start):
-            marker = f"{i}." if ordered else "•"
-            x0 = self.get_x()
+            marker = f"{i}." if ordered else ("–" if indent else "•")
+            x0 = self.get_x() + indent
             self.set_x(x0 + 4)
             # bypass the sanitize-wrapped cell() so the bullet glyph survives
             FPDF.cell(self, 6, 5.6, marker)
@@ -313,10 +355,28 @@ class GuidePDF(FPDF):
         else:
             self.ln(4)
 
+    def _table_head_height(self, headers, rows, col_widths=None):
+        """Vertical space the header row plus the first body row will take, without drawing."""
+        self.set_font("Body", "", 8.6)
+        avail = self.w - self.l_margin - self.r_margin
+        n = len(headers) if headers else max(len(r) for r in rows)
+        if col_widths:
+            widths = [avail * (w / sum(col_widths)) for w in col_widths]
+        else:
+            widths = [avail / n] * n
+        total = 0
+        for cells in ([headers] if headers else []) + rows[:1]:
+            h = 5.2
+            for i, c in enumerate(cells):
+                lines = self.multi_cell(widths[i] - 4, 4.6, c, dry_run=True, output="LINES")
+                h = max(h, len(lines) * 4.6 + 2.6)
+            total += h
+        return total
+
     def b_table(self, headers, rows, col_widths=None):
         self.set_font("Body", "", 8.6)
         avail = self.w - self.l_margin - self.r_margin
-        n = len(headers)
+        n = len(headers) if headers else max(len(r) for r in rows)
         if col_widths:
             widths = [avail * (w / sum(col_widths)) for w in col_widths]
         else:
@@ -350,7 +410,12 @@ class GuidePDF(FPDF):
                 x += widths[i]
             self.set_xy(x0, y0 + h)
 
-        draw_row(headers, is_header=True)
+        if headers:
+            # Keep the header row together with the first body row.
+            need = row_height(headers) + (row_height(rows[0]) if rows else 0)
+            if self.get_y() + need > 270:
+                self._continue_on_new_page()
+            draw_row(headers, is_header=True)
         for r in rows:
             draw_row(r)
         self.ln(3)
@@ -377,7 +442,9 @@ BLOCK_HANDLERS = {
     "h2": lambda pdf, b: pdf.b_h2(b["text"]),
     "h3": lambda pdf, b: pdf.b_h3(b["text"]),
     "p": lambda pdf, b: pdf.b_p(b["text"], bold_lead=b.get("bold_lead")),
-    "bullets": lambda pdf, b: pdf.b_bullets(b["items"], ordered=b.get("ordered", False), start=b.get("start", 1)),
+    "bullets": lambda pdf, b: pdf.b_bullets(
+        b["items"], ordered=b.get("ordered", False), start=b.get("start", 1), indent=b.get("indent", 0)
+    ),
     "code": lambda pdf, b: pdf.b_code(b["text"]),
     "note": lambda pdf, b: pdf.b_note(b["text"]),
     "image": lambda pdf, b: pdf.b_image(
@@ -406,6 +473,17 @@ def render_chapter(pdf, chapter):
             )
             if pdf.get_y() + heading_h + image_h > 268:
                 pdf._continue_on_new_page()
+        elif block["type"] in ("h2", "h3") and i + 1 < len(blocks):
+            # Don't leave a heading stranded at the foot of a page with its content on the next one.
+            heading_h = pdf._heading_height(block["text"], level=2 if block["type"] == "h2" else 3)
+            next_block = blocks[i + 1]
+            need = 18
+            if next_block["type"] == "table":
+                need = pdf._table_head_height(
+                    next_block["headers"], next_block["rows"], next_block.get("col_widths")
+                ) + 2
+            if pdf.get_y() + heading_h + need > 268:
+                pdf._continue_on_new_page()
         BLOCK_HANDLERS[block["type"]](pdf, block)
 
 
@@ -431,15 +509,31 @@ def build(cfg, with_real_page_numbers, page_map=None):
         pdf.cell(0, 12, "Table of Contents", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(6)
 
+        has_parts = any(ch.get("part") for ch in cfg["chapters"])
+        row_h = 7.4 if has_parts else 8.5
+        last_part = None
         for ch in cfg["chapters"]:
+            part = ch.get("part")
+            if has_parts and part != last_part:
+                if pdf.get_y() + 3 + row_h * 3 > 270:
+                    pdf.add_page()
+                pdf.ln(3 if last_part is not None else 0)
+                pdf.set_font("Body", "B", 11)
+                pdf.set_text_color(*pdf.c_blue_dark)
+                pdf.cell(0, row_h, part or "", new_x="LMARGIN", new_y="NEXT")
+                last_part = part
             page_label = "  " if not with_real_page_numbers else str(page_map[ch["key"]] + pdf.page_offset)
-            pdf.set_font("Body", "", 11)
+            if pdf.get_y() + row_h > 272:
+                pdf.add_page()
+            indent = 6 if has_parts else 0
+            pdf.set_x(pdf.l_margin + indent)
+            pdf.set_font("Body", "", 10.5 if has_parts else 11)
             pdf.set_text_color(0, 0, 0)
-            pdf.cell(150, 8.5, ch["title"], link=pdf.toc_links[ch["key"]])
-            pdf.set_font("Body", "", 11)
+            pdf.cell(150 - indent, row_h, ch["title"], link=pdf.toc_links[ch["key"]])
+            pdf.set_font("Body", "", 10.5 if has_parts else 11)
             pdf.set_text_color(*pdf.c_blue)
-            pdf.cell(0, 8.5, page_label, align="R", link=pdf.toc_links[ch["key"]])
-            pdf.ln(8.5)
+            pdf.cell(0, row_h, page_label, align="R", link=pdf.toc_links[ch["key"]])
+            pdf.ln(row_h)
 
     for ch in cfg["chapters"]:
         render_chapter(pdf, ch)

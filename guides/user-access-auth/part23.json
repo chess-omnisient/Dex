@@ -1,0 +1,1061 @@
+[
+ {
+  "key": "usermgmt",
+  "part": "Granting and Managing Access",
+  "title": "User Management",
+  "blocks": [
+   {
+    "type": "p",
+    "text": "Admins manage who has access to the Omnisient Platform. From here you can invite new users, edit their details and permissions, and deactivate users who no longer need access."
+   },
+   {
+    "type": "note",
+    "text": "Permissions: Only users with Admin permissions can access Users."
+   },
+   {
+    "type": "h2",
+    "text": "Where to find Users"
+   },
+   {
+    "type": "image",
+    "file": "users-nav.png",
+    "max_w_ratio": 0.22
+   },
+   {
+    "type": "p",
+    "text": "In the Omnisient Platform, go to Admin > Users. The Users page lists all the users in your company."
+   },
+   {
+    "type": "h2",
+    "text": "Adding a user to the Omnisient Platform"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Go to Admin > Users.",
+     "Click + Add User.",
+     "Fill in their details.",
+     "Click Add User."
+    ],
+    "ordered": true
+   },
+   {
+    "type": "image",
+    "file": "users-add.png",
+    "max_w_ratio": 0.62
+   },
+   {
+    "type": "p",
+    "text": "The new user receives a welcome email with:"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "A link to set a secure password",
+     "A link to download and install Desktop Connect",
+     "Their login email and instructions for logging in to the Platform and Desktop Connect",
+     "A link to the Help Center for further guidance"
+    ],
+    "ordered": false
+   },
+   {
+    "type": "image",
+    "file": "users-welcome-email.png",
+    "max_w_ratio": 0.42
+   },
+   {
+    "type": "h2",
+    "text": "Editing a user"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Go to Admin > Users.",
+     "Open the actions menu next to the user and select Edit.",
+     "Update their details."
+    ],
+    "ordered": true
+   },
+   {
+    "type": "image",
+    "file": "users-edit.png",
+    "max_w_ratio": 0.72
+   },
+   {
+    "type": "h2",
+    "text": "Deactivating a user"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Go to Admin > Users.",
+     "Open the actions menu next to the user and select Deactivate.",
+     "Confirm in the dialog that appears."
+    ],
+    "ordered": true
+   },
+   {
+    "type": "image",
+    "file": "users-deactivate.png",
+    "max_w_ratio": 0.36
+   },
+   {
+    "type": "note",
+    "text": "Deactivation can't be undone, so if you're deactivating your own account as an Admin, make sure another Admin is available first. Doing so immediately removes your access to the Platform and Desktop Connect."
+   },
+   {
+    "type": "h2",
+    "text": "Editing a user's permissions"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Go to Admin > Users.",
+     "Open the actions menu next to the user and select Edit Permissions.",
+     "Select / deselect relevant permissions."
+    ],
+    "ordered": true
+   },
+   {
+    "type": "p",
+    "text": "As different companies may have varying roles and responsibilities, users with Admin privileges can configure permissions according to their specific requirements. Admin users can modify the profiles of user-type users, restricting their access to only the functions that are relevant to their responsibilities."
+   },
+   {
+    "type": "p",
+    "text": "By granting different levels of access and allowing Admin users to customize permissions, the Omnisient Platform ensures that each user has tailored access to the necessary features and functionalities based on their role within the company."
+   },
+   {
+    "type": "note",
+    "text": "Role: Each user is either a User or an Admin. Refer to the tables below for permissions."
+   },
+   {
+    "type": "h3",
+    "text": "Desktop Connect"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "",
+     "Admin",
+     "User"
+    ],
+    "rows": [
+     [
+      "Desktop Connect",
+      "Yes",
+      "Yes"
+     ]
+    ],
+    "col_widths": [
+     60,
+     20,
+     20
+    ]
+   },
+   {
+    "type": "h3",
+    "text": "User Profile"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "",
+     "Admin",
+     "User"
+    ],
+    "rows": [
+     [
+      "User Profile",
+      "Yes",
+      "Yes"
+     ],
+     [
+      "Reset Password",
+      "Yes",
+      "Yes"
+     ],
+     [
+      "Switch Companies",
+      "Yes",
+      "Yes"
+     ]
+    ],
+    "col_widths": [
+     60,
+     20,
+     20
+    ]
+   },
+   {
+    "type": "h3",
+    "text": "Dashboard"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "",
+     "Admin",
+     "User"
+    ],
+    "rows": [
+     [
+      "Dashboard",
+      "Yes",
+      "Yes"
+     ]
+    ],
+    "col_widths": [
+     60,
+     20,
+     20
+    ]
+   },
+   {
+    "type": "h3",
+    "text": "Datasets"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "",
+     "Admin",
+     "User"
+    ],
+    "rows": [
+     [
+      "My Datasets",
+      "Yes",
+      "Yes"
+     ],
+     [
+      "Partner Datasets",
+      "Yes",
+      "Yes"
+     ],
+     [
+      "Own Data Preparation",
+      "Yes",
+      "Yes"
+     ],
+     [
+      "Data Mapping Schemas",
+      "Yes",
+      "Yes (if assigned)"
+     ],
+     [
+      "Reports",
+      "Yes",
+      "Yes"
+     ],
+     [
+      "Upload Activity Log",
+      "Yes",
+      "Yes"
+     ]
+    ],
+    "col_widths": [
+     60,
+     20,
+     24
+    ]
+   },
+   {
+    "type": "h3",
+    "text": "Data Collaboration"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "",
+     "Admin",
+     "User"
+    ],
+    "rows": [
+     [
+      "Data Collaboration",
+      "Yes",
+      "Yes"
+     ],
+     [
+      "Partner Activity Log",
+      "Yes",
+      "Yes"
+     ],
+     [
+      "Connections",
+      "Yes",
+      "Yes"
+     ]
+    ],
+    "col_widths": [
+     60,
+     20,
+     20
+    ]
+   },
+   {
+    "type": "h3",
+    "text": "Projects"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "",
+     "Admin",
+     "User"
+    ],
+    "rows": [
+     [
+      "Projects Dashboard",
+      "Yes",
+      "Yes"
+     ],
+     [
+      "Create New",
+      "Yes",
+      "Yes"
+     ],
+     [
+      "View Projects",
+      "Yes",
+      "Yes"
+     ],
+     [
+      "Delete Project",
+      "Yes (project owner)",
+      "Yes (tables and reports)"
+     ],
+     [
+      "Edit Project",
+      "Yes (project owner)",
+      "No"
+     ],
+     [
+      "Manage Project",
+      "Yes (project owner)",
+      "No"
+     ],
+     [
+      "Access to Project Data",
+      "Yes (project owner)",
+      "Yes"
+     ],
+     [
+      "View & Update Project Permissions",
+      "Yes (project owner)",
+      "No"
+     ],
+     [
+      "Make Selections, Downloads, Delete and Reload Selections",
+      "Yes (project owner)",
+      "Yes"
+     ],
+     [
+      "View Reports",
+      "Yes",
+      "Yes"
+     ],
+     [
+      "Can Delete Project Tables and Reports",
+      "Yes",
+      "Yes"
+     ],
+     [
+      "Own Data Preparation",
+      "Yes",
+      "Yes"
+     ]
+    ],
+    "col_widths": [
+     58,
+     24,
+     24
+    ]
+   },
+   {
+    "type": "h3",
+    "text": "Admin"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "",
+     "Admin",
+     "User"
+    ],
+    "rows": [
+     [
+      "Activity Log",
+      "Yes",
+      "No"
+     ],
+     [
+      "Users",
+      "Yes",
+      "No"
+     ],
+     [
+      "API Keys",
+      "Yes",
+      "No"
+     ],
+     [
+      "Edit Billing",
+      "Yes",
+      "No"
+     ],
+     [
+      "Ad Accounts",
+      "Yes",
+      "No"
+     ]
+    ],
+    "col_widths": [
+     60,
+     20,
+     20
+    ]
+   }
+  ]
+ },
+ {
+  "key": "projperms",
+  "part": "Granting and Managing Access",
+  "title": "Assigning User Permissions During Project Creation",
+  "blocks": [
+   {
+    "type": "p",
+    "text": "User access is configured during the first step of the project creation wizard. You can add users from your organization and assign their roles before the project is submitted."
+   },
+   {
+    "type": "note",
+    "text": "Quick summary: Add users and assign roles in the first step of project creation. Search and select users by name or email. Default permission is Read Only, with easy dropdown editing. Reduce access errors and streamline collaboration from day one."
+   },
+   {
+    "type": "h2",
+    "text": "Who is this for?"
+   },
+   {
+    "type": "p",
+    "text": "This feature is ideal for all users creating new projects on the Omnisient platform, especially those managing teams or projects that require input from multiple collaborators within the same organization."
+   },
+   {
+    "type": "h2",
+    "text": "How it works: step-by-step"
+   },
+   {
+    "type": "h3",
+    "text": "1. Start a new project"
+   },
+   {
+    "type": "p",
+    "text": "Begin by clicking Create New Project and selecting your project template."
+   },
+   {
+    "type": "h3",
+    "text": "2. Add additional users"
+   },
+   {
+    "type": "p",
+    "text": "In the first step of the wizard, you'll now see a section labeled \u201cUser Access and Permissions\u201d."
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Use the search bar to find users by name or email address.",
+     "Only users from your organization are shown.",
+     "Users already added to the project won't appear again in the search."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "image",
+    "file": "proj-search-users.png",
+    "max_w_ratio": 0.55
+   },
+   {
+    "type": "h3",
+    "text": "3. View and manage the user list"
+   },
+   {
+    "type": "p",
+    "text": "Once selected, users appear under the \u201cUsers\u201d section with their name and email."
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "You, the project creator, will automatically be listed as Owner.",
+     "Your role and the delete option will be disabled (since you can't remove yourself).",
+     "All added users are given Read Only permission by default."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "image",
+    "file": "proj-user-list.png",
+    "max_w_ratio": 0.5
+   },
+   {
+    "type": "h3",
+    "text": "4. Assign roles"
+   },
+   {
+    "type": "p",
+    "text": "Next to each user's name, a dropdown allows you to assign their role: Owner, Read and Write, or Read Only."
+   },
+   {
+    "type": "image",
+    "file": "proj-roles.png",
+    "max_w_ratio": 0.5
+   },
+   {
+    "type": "table",
+    "headers": [],
+    "rows": [
+     [
+      "Owner",
+      "Full control: can manage users, edit all content, delete the project, and update permissions."
+     ],
+     [
+      "Read and Write",
+      "Can view and edit the project, manage data and reports, and perform selections."
+     ],
+     [
+      "Read Only",
+      "View-only access to the project, data, and reports, with no editing capabilities."
+     ]
+    ],
+    "col_widths": [
+     30,
+     100
+    ]
+   },
+   {
+    "type": "p",
+    "text": "To remove a user before completing project setup, simply click the delete icon."
+   },
+   {
+    "type": "h2",
+    "text": "Best practices"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Set permissions based on responsibilities: Only assign Owner permissions to those who truly need full control.",
+     "Keep access lean: Avoid over-permissioning, more is not always better.",
+     "Review before publishing: Take a moment to confirm all necessary users and roles are in place."
+    ],
+    "ordered": false
+   }
+  ]
+ },
+ {
+  "key": "activitylog",
+  "part": "Review and Audit",
+  "title": "Activity Log",
+  "blocks": [
+   {
+    "type": "p",
+    "text": "Activity Log is an audit trail that records account activity across the Omnisient Platform: what happened, who did it, and when. It gives Admin users visibility into user actions and permission changes without needing to check with the team."
+   },
+   {
+    "type": "note",
+    "text": "Permissions: Only users with Admin permissions can access Activity Log. See the User Management chapter."
+   },
+   {
+    "type": "h2",
+    "text": "Where to find Activity Log"
+   },
+   {
+    "type": "image",
+    "file": "activitylog-nav.png",
+    "max_w_ratio": 0.22
+   },
+   {
+    "type": "p",
+    "text": "In the Omnisient Platform, go to Admin > Activity Log."
+   },
+   {
+    "type": "h2",
+    "text": "How Activity Log works"
+   },
+   {
+    "type": "p",
+    "text": "Every entry in the Activity Log includes four fields:"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "Name",
+     "Description"
+    ],
+    "rows": [
+     [
+      "Action",
+      "The event that occurred"
+     ],
+     [
+      "Activity",
+      "The specific detail of that action"
+     ],
+     [
+      "User",
+      "The email address of the user who performed it"
+     ],
+     [
+      "Date",
+      "When the action occurred"
+     ]
+    ],
+    "col_widths": [
+     30,
+     100
+    ]
+   },
+   {
+    "type": "image",
+    "file": "activitylog-table.png"
+   },
+   {
+    "type": "h2",
+    "text": "Actions"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "Name",
+     "Description"
+    ],
+    "rows": [
+     [
+      "Filtering",
+      "Narrow the log to the last 1, 2, or 3 months."
+     ],
+     [
+      "Exporting",
+      "Export to CSV. The export includes all four fields (Action, Activity, User, Date) for the selected date range."
+     ]
+    ],
+    "col_widths": [
+     30,
+     100
+    ]
+   }
+  ]
+ },
+ {
+  "key": "approvals",
+  "part": "Review and Audit",
+  "title": "Approvals",
+  "blocks": [
+   {
+    "type": "p",
+    "text": "Approvals is where you control what partners can do with your shared data. When a partner creates a project or a SQLPad export using your dataset, the request goes to Approvals, where an Admin decides whether it's allowed to proceed."
+   },
+   {
+    "type": "note",
+    "text": "Permissions: Only users with Admin permissions can access Approvals. See the User Management chapter."
+   },
+   {
+    "type": "h2",
+    "text": "Where to find Approvals"
+   },
+   {
+    "type": "image",
+    "file": "approvals-nav.png",
+    "max_w_ratio": 0.22
+   },
+   {
+    "type": "p",
+    "text": "In the Omnisient Platform, go to Admin > Approvals. This is your central hub for reviewing every request."
+   },
+   {
+    "type": "p",
+    "text": "You'll get an email notification when a new request comes in, with a direct link to review it."
+   },
+   {
+    "type": "p",
+    "text": "Make sure to action requests promptly. If a request isn't actioned in time, it will lock and the partner will be blocked.",
+    "bold_lead": "Make sure to action requests promptly. "
+   },
+   {
+    "type": "h2",
+    "text": "Approval request types"
+   },
+   {
+    "type": "p",
+    "text": "Approvals cover two request types:"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "Request type",
+     "What it covers",
+     "Approval required from",
+     "Supported project types"
+    ],
+    "rows": [
+     [
+      "Project",
+      "Projects a partner creates using your shared dataset",
+      "You (data owner)",
+      "ACE, Overlap, Predictive Modelling on Retail Data, Financial Inclusion"
+     ],
+     [
+      "SQLPad Export",
+      "SQLPad exports a partner creates from a project using your dataset",
+      "You (data owner) and an internal Omnisient reviewer",
+      "ACE, Overlap, Predictive Modelling on Retail Data, Financial Inclusion"
+     ]
+    ],
+    "col_widths": [
+     24,
+     44,
+     38,
+     44
+    ]
+   },
+   {
+    "type": "h2",
+    "text": "Project approval"
+   },
+   {
+    "type": "p",
+    "text": "Approving projects created on your data gives you control, visibility, and peace of mind around how your data is being used. This process is designed to be simple and transparent, so you always stay in the loop."
+   },
+   {
+    "type": "h3",
+    "text": "Request statuses"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "Status",
+     "What it means"
+    ],
+    "rows": [
+     [
+      "Awaiting Approval",
+      "Ready for you to review"
+     ],
+     [
+      "Approved",
+      "You have approved the project"
+     ],
+     [
+      "Rejected",
+      "You have rejected the project"
+     ],
+     [
+      "Locked",
+      "The dataset share behind the request has expired, or the subscription has expired."
+     ]
+    ],
+    "col_widths": [
+     30,
+     100
+    ]
+   },
+   {
+    "type": "h3",
+    "text": "How to review"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Find the request and click Review in the final column.",
+     "Check the request details in the modal that opens. The review shows the request details, along with the shared dataset that the partner wants to use to create the project.",
+     "Click Approve or Reject."
+    ],
+    "ordered": true
+   },
+   {
+    "type": "table",
+    "headers": [
+     "Action",
+     "Detail"
+    ],
+    "rows": [
+     [
+      "Approve",
+      "The requestor gets a confirmation email and the request moves into processing."
+     ],
+     [
+      "Reject",
+      "A modal opens asking for a rejection reason. Be specific here. It appears in the requestor's rejection email, so a clear reason means they know exactly what to fix before resubmitting their request."
+     ]
+    ],
+    "col_widths": [
+     26,
+     100
+    ]
+   },
+   {
+    "type": "p",
+    "text": "The review modal breaks the request into two sections:"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "Section",
+     "What it shows"
+    ],
+    "rows": [
+     [
+      "Project Creation Details",
+      "The name of the partner, the project type, date of request and project code."
+     ],
+     [
+      "Shared Dataset",
+      "The shared dataset's name, dates, status, and who shared it."
+     ]
+    ],
+    "col_widths": [
+     34,
+     100
+    ]
+   },
+   {
+    "type": "image",
+    "file": "approvals-review.png"
+   },
+   {
+    "type": "h2",
+    "text": "SQLPad export request approval"
+   },
+   {
+    "type": "p",
+    "text": "Approving SQLPad exports is an important part of ensuring that your data is used responsibly and transparently. It gives you clear visibility into how your data contributes to insights, while keeping you in control of what gets exported."
+   },
+   {
+    "type": "p",
+    "text": "Once a SQLPad export is approved, Omnisient can no longer track or control copies saved locally by the user."
+   },
+   {
+    "type": "h3",
+    "text": "Request statuses"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "Status",
+     "What it means"
+    ],
+    "rows": [
+     [
+      "Awaiting Approval",
+      "Ready for you to review"
+     ]
+    ],
+    "col_widths": [
+     30,
+     100
+    ]
+   },
+   {
+    "type": "h3",
+    "text": "How to review"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Find the request and click Review in the final column.",
+     "Check the request details in the modal that opens.",
+     "Click Approve or Reject."
+    ],
+    "ordered": true
+   },
+   {
+    "type": "table",
+    "headers": [
+     "Action",
+     "Detail"
+    ],
+    "rows": [
+     [
+      "Approve",
+      "This will now be followed by an additional security check by Omnisient."
+     ],
+     [
+      "Reject",
+      "A modal opens asking for a rejection reason. Be specific here. It appears in the requestor's rejection email, so a clear reason means they know exactly what to fix before resubmitting their request."
+     ]
+    ],
+    "col_widths": [
+     26,
+     100
+    ]
+   },
+   {
+    "type": "p",
+    "text": "The review modal breaks the request into six sections:"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "Section",
+     "What it shows"
+    ],
+    "rows": [
+     [
+      "Export Details",
+      "Overview of what the export contains."
+     ],
+     [
+      "Project Code",
+      "Unique identifier linking the export to its originating project. Reference this if you contact support."
+     ],
+     [
+      "Shared Dataset",
+      "The dataset used to generate the export."
+     ],
+     [
+      "Sample of Records",
+      "A preview of rows and columns, so you can judge whether you're comfortable with what's being shared."
+     ],
+     [
+      "Additional Information",
+      "Record count once approved, plus a reminder that exports expire 14 days after approval."
+     ],
+     [
+      "Terms and Conditions Reminder",
+      "A prompt to confirm you acknowledge and agree to Omnisient's data usage terms governing SQLPad approvals."
+     ]
+    ],
+    "col_widths": [
+     34,
+     100
+    ]
+   },
+   {
+    "type": "image",
+    "file": "approvals-sqlpad.png",
+    "max_w_ratio": 0.6
+   }
+  ]
+ },
+ {
+  "key": "firewall",
+  "part": "Review and Audit",
+  "title": "Firewall Access Required",
+  "blocks": [
+   {
+    "type": "p",
+    "text": "If your firewall is blocking the installation or use of the Omnisient app, send the URLs below to your IT administrator to add to your allowlist."
+   },
+   {
+    "type": "p",
+    "text": "You only need the domains for the region your organization uses, plus the General Domains, which apply to everyone."
+   },
+   {
+    "type": "p",
+    "text": "The IP ranges (Cloudflare + Azure) are only needed for firewalls that filter by IP rather than domain/hostname. Since Omnisient sits behind Cloudflare and Azure's shared infrastructure rather than having dedicated static IPs, IP-based firewalls require the full published ranges rather than a single specific address."
+   },
+   {
+    "type": "h2",
+    "text": "Before you start: IP ranges"
+   },
+   {
+    "type": "p",
+    "text": "Omnisient is served through Cloudflare. If your firewall filters by IP address, your IT team should also allow Cloudflare's IP ranges, published at https://www.cloudflare.com/ips/"
+   },
+   {
+    "type": "h3",
+    "text": "Azure App Services"
+   },
+   {
+    "type": "code",
+    "text": "102.133.122.160/27\n102.133.154.32/27\n102.133.218.32/28\n102.133.250.160/27\n2603:1000:104:402::a0/123\n2603:1000:104:802::a0/123\n2603:1000:104:c02::a0/123\n20.60.190.0/23\n20.150.21.0/24\n20.150.62.0/24\n20.150.101.0/24\n52.239.232.0/25"
+   },
+   {
+    "type": "p",
+    "text": "Azure Storage: 20.38.114.128/25 and 20.47.50.0/24",
+    "bold_lead": "Azure Storage: "
+   },
+   {
+    "type": "h3",
+    "text": "US-East Azure Storage"
+   },
+   {
+    "type": "code",
+    "text": "20.209.162.0/23"
+   },
+   {
+    "type": "h2",
+    "text": "Region domains"
+   },
+   {
+    "type": "h3",
+    "text": "South Africa: app.omnisient.com"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "App: app.omnisient.com",
+     "API: api.omnisient.com",
+     "Authentication: auth.omnisient.com",
+     "Static assets: static.omnisient.com",
+     "Blob storage: intersect.blob.core.windows.net"
+    ],
+    "ordered": false
+   },
+   {
+    "type": "h3",
+    "text": "UAE: uae.omnisient.com"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "App: uae.omnisient.com",
+     "API: api-uae.omnisient.com",
+     "Authentication: auth-uae.omnisient.com",
+     "Static assets: staticuae.omnisient.com",
+     "Blob storage: stblobomniprduan.blob.core.windows.net"
+    ],
+    "ordered": false
+   },
+   {
+    "type": "h3",
+    "text": "US East: us-east.omnisient.com"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "App: us-east.omnisient.com",
+     "API: api-eus.omnisient.com",
+     "Authentication: auth-eus.omnisient.com",
+     "Static assets: static-eus.omnisient.com",
+     "Blob storage: stblobomniprdeus.blob.core.windows.net"
+    ],
+    "ordered": false
+   },
+   {
+    "type": "h3",
+    "text": "United Kingdom: uk.omnisient.com"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "App: uk.omnisient.com",
+     "API: api-uk.omnisient.com",
+     "Authentication: auth-uk.omnisient.com",
+     "Static assets: static-uk.omnisient.com",
+     "Blob storage: stblobomniprduks.blob.core.windows.net"
+    ],
+    "ordered": false
+   },
+   {
+    "type": "h2",
+    "text": "General domains (all regions)"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "desktopv2files.omnisient.com",
+     "columnprediction.blob.core.windows.net"
+    ],
+    "ordered": false
+   }
+  ]
+ }
+]

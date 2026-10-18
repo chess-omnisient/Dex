@@ -1,0 +1,734 @@
+[
+ {
+  "key": "oidc",
+  "part": "Authentication",
+  "title": "Identity Provider Authentication with OpenID Connect",
+  "blocks": [
+   {
+    "type": "p",
+    "text": "Omnisient supports authentication through your organization's Identity Provider (IdP). This means your team can securely access Omnisient using their existing company credentials."
+   },
+   {
+    "type": "p",
+    "text": "By integrating with your Identity Provider via OpenID Connect (OIDC), Omnisient allows your organization to centrally manage authentication. This keeps access control, password policies, and user revocations within your own security environment."
+   },
+   {
+    "type": "p",
+    "text": "This approach provides a consistent and secure login experience for users, simplifies access management for administrators, and ensures that authentication always follows your organization's internal security policies."
+   },
+   {
+    "type": "h2",
+    "text": "Key terminology"
+   },
+   {
+    "type": "table",
+    "headers": [
+     "Term",
+     "Description"
+    ],
+    "rows": [
+     [
+      "Authentication",
+      "The process of confirming that a user is who they say they are. For example, entering a username and password or using multi-factor authentication (MFA)."
+     ],
+     [
+      "Multi-Factor Authentication (MFA)",
+      "MFA adds an extra layer of security to the login process by requiring users to provide two or more forms of verification before they can sign in."
+     ],
+     [
+      "Authorization",
+      "Once a user is authenticated, authorization determines what they're allowed to do. In Omnisient's case, authentication is handled by your Identity Provider, while authorization (what a user can access inside Omnisient) is managed through Omnisient roles and permissions."
+     ],
+     [
+      "Single Sign-On (SSO)",
+      "A feature that allows users to access multiple applications using one set of login credentials. With SSO, your team can sign in once to their Identity Provider and automatically gain access to Omnisient and other connected systems without needing to log in separately each time."
+     ],
+     [
+      "Identity Provider (IdP)",
+      "The service that handles authentication for your organization. It verifies user credentials and sends confirmation back to Omnisient. Examples: Microsoft Azure Entra, Okta, Google Workspace, Ping Identity."
+     ],
+     [
+      "OpenID Connect (OIDC)",
+      "A secure standard that lets applications (like Omnisient) use an external identity system to verify who a user is. It builds on top of OAuth 2.0, adding an identity layer for authentication."
+     ],
+     [
+      "Tokens",
+      "Small bits of secure data sent between systems to prove your identity."
+     ]
+    ],
+    "col_widths": [
+     30,
+     100
+    ]
+   },
+   {
+    "type": "h2",
+    "text": "What is an Identity Provider (IdP)?"
+   },
+   {
+    "type": "p",
+    "text": "Your Identity Provider (IdP) is the system that manages all your organization's users and logins. When configured as an authentication method, your IdP is responsible for telling Omnisient that this person is who they say they are."
+   },
+   {
+    "type": "p",
+    "text": "Using an IdP means you stay in control by adding or removing users in one place, and it then automatically applies to Omnisient too."
+   },
+   {
+    "type": "note",
+    "text": "Common examples of IdPs are Microsoft Entra, Okta, Google Workspace and Ping Identity."
+   },
+   {
+    "type": "h2",
+    "text": "What is OpenID Connect (OIDC)?"
+   },
+   {
+    "type": "p",
+    "text": "OpenID Connect (OIDC) is an authentication layer built on top of the OAuth 2.0 security standard."
+   },
+   {
+    "type": "p",
+    "text": "It allows users to sign in to Omnisient using their existing company credentials instead of a separate Omnisient password."
+   },
+   {
+    "type": "p",
+    "text": "This approach makes authentication:"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "More secure, because passwords and policies are managed centrally by your organization.",
+     "Simpler for users, since there's no need to remember multiple passwords.",
+     "More compliant, as your organization can enforce its own MFA and access rules."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "h2",
+    "text": "How OIDC works in Omnisient"
+   },
+   {
+    "type": "p",
+    "text": "Here's a quick look at what happens during sign-in:"
+   },
+   {
+    "type": "image",
+    "file": "oidc-flow.png",
+    "max_w_ratio": 0.62
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "The user opens the Omnisient login page.",
+     "Omnisient detects their organization and redirects them to the configured IdP.",
+     "The IdP authenticates the user.",
+     "The IdP sends a secure token back to Omnisient.",
+     "Omnisient validates the token and logs the user in."
+    ],
+    "ordered": true
+   },
+   {
+    "type": "note",
+    "text": "Note: The user must already exist in Omnisient but Omnisient won't handle the password. Authentication happens entirely through the IdP."
+   },
+   {
+    "type": "h2",
+    "text": "Configuring OIDC to authenticate with your IdP"
+   },
+   {
+    "type": "p",
+    "text": "To connect your organization's IdP with Omnisient using OIDC, we'll need a few key details from your IdP setup."
+   },
+   {
+    "type": "h3",
+    "text": "Who can provide this information?"
+   },
+   {
+    "type": "p",
+    "text": "The information below is typically provided by someone who manages your organization's identity or security systems such as:"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Your IT Administrator,",
+     "A Security or Compliance Manager, or",
+     "Anyone responsible for your organization's SSO or Identity Provider configuration."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "p",
+    "text": "If you're unsure who this is, reach out to your internal IT or Security team and they'll be able to retrieve these details from your IdP."
+   },
+   {
+    "type": "h3",
+    "text": "Information required from your IdP"
+   },
+   {
+    "type": "p",
+    "text": "Here's what we'll need to set up OpenID Connect for your organization."
+   },
+   {
+    "type": "table",
+    "headers": [
+     "Field",
+     "What it is",
+     "Where to find it",
+     "Why we need it"
+    ],
+    "rows": [
+     [
+      "Issuer",
+      "The unique URL that identifies your IdP.",
+      "",
+      "Used to verify the authenticity of tokens sent by your IdP."
+     ],
+     [
+      "Well-Known Endpoint",
+      "A standard OIDC endpoint (usually ending in /.well-known/openid-configuration) that provides metadata about your IdP.",
+      "",
+      "Allows Omnisient to automatically discover your IdP's configuration details and endpoints."
+     ],
+     [
+      "Client ID",
+      "A unique identifier for Omnisient within your IdP.",
+      "Generated when you register Omnisient as a new application in your IdP.",
+      "Tells the IdP which app is requesting authentication."
+     ],
+     [
+      "Client Secret",
+      "A secure key created in your IdP to authenticate Omnisient's requests.",
+      "Created alongside the Client ID during app registration.",
+      "Ensures communication between Omnisient and your IdP is secure and trusted."
+     ],
+     [
+      "Scope",
+      "Defines the information Omnisient can request from your IdP (commonly openid email profile).",
+      "",
+      "Allows Omnisient to receive the user's verified identity details."
+     ]
+    ],
+    "col_widths": [
+     26,
+     42,
+     38,
+     42
+    ]
+   },
+   {
+    "type": "h2",
+    "text": "Best practices for managing your IdP"
+   },
+   {
+    "type": "h3",
+    "text": "Keep access management centralized"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Manage access only through your IdP. All user access, whether adding, removing, or suspending users, should happen in your organization's IdP. This keeps control centralized and ensures any changes automatically apply to Omnisient.",
+     "Don't manually share login credentials or create shared Omnisient accounts. Each user should have their own identity managed through the IdP."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "h3",
+    "text": "Use guest or external user management for partners"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "If you need to grant access to external collaborators or contractors, add them as guests in your IdP."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "This keeps all access requests, MFA policies, and audit trails under your organization's security policies.",
+     "You can revoke their access easily and immediately when their work ends."
+    ],
+    "ordered": false,
+    "indent": 8
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Most IdPs (like Entra and Okta) support secure guest user functionality that works seamlessly with OIDC."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "p",
+    "text": "Using OpenID Connect with your organization's Identity Provider allows you to manage authentication to Omnisient through your own secure systems. This setup ensures that:"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Access is controlled and monitored by your organization.",
+     "Authentication follows your internal password and MFA policies.",
+     "User access can be granted or revoked centrally through your IdP."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "p",
+    "text": "If your organization would like to set up OpenID Connect authentication or learn more about the configuration process, please contact Omnisient Support at support@omnisient.com. Our team will guide you through the required details and help ensure everything is configured securely and correctly."
+   }
+  ]
+ },
+ {
+  "key": "settings",
+  "part": "Authentication",
+  "title": "Organization and User Security Settings",
+  "blocks": [
+   {
+    "type": "note",
+    "text": "Quick summary: Access Settings from the top navigation bar. Update organization details from General Organization Settings. Use the Profile section to update your personal details. Change your password in the User Security section. Contact Support to update locked fields."
+   },
+   {
+    "type": "h2",
+    "text": "Navigating to Settings"
+   },
+   {
+    "type": "p",
+    "text": "You can access Settings from the top navigation bar. In the Settings area, use the left-side menu to move between:"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Organization"
+    ],
+    "ordered": false
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "General",
+     "Security"
+    ],
+    "ordered": false,
+    "indent": 8
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "User Settings"
+    ],
+    "ordered": false
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Profile",
+     "Security"
+    ],
+    "ordered": false,
+    "indent": 8
+   },
+   {
+    "type": "p",
+    "text": "Breadcrumbs at the top of the page (e.g., Settings > General Organization Settings) help you keep track of where you are."
+   },
+   {
+    "type": "image",
+    "file": "settings-nav.png",
+    "max_w_ratio": 0.5
+   },
+   {
+    "type": "h2",
+    "text": "General organization settings"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Organization Display Name: This field is visible to all users but is editable only by organization admins. If you're not an admin, the field will appear disabled.",
+     "Industry: This field is always read-only for all users. However, if you wish to edit this for your organization, please contact support for assistance."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "h2",
+    "text": "Organization security settings"
+   },
+   {
+    "type": "p",
+    "text": "The Organization Security Settings page allows you to manage how users in your organization authenticate into Omnisient."
+   },
+   {
+    "type": "p",
+    "text": "From here, organization owners can view and configure authentication options either through an external Identity Provider (IdP) or through locally managed authentication within Omnisient."
+   },
+   {
+    "type": "p",
+    "text": "This page is designed to give organizations control over who can sign in and how, aligning Omnisient access with your company's security standards."
+   },
+   {
+    "type": "image",
+    "file": "settings-org-security.png"
+   },
+   {
+    "type": "h3",
+    "text": "1. Identity Provider authentication"
+   },
+   {
+    "type": "p",
+    "text": "Your organization can choose to use an Identity Provider (IdP) such as Microsoft Entra, Okta, or Google Workspace to handle user authentication into Omnisient."
+   },
+   {
+    "type": "p",
+    "text": "When Identity Provider authentication is enabled:"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Users are redirected to your organization's IdP login page instead of entering a password directly into Omnisient.",
+     "Authentication is handled by your IdP following your organization's password policies, MFA, and access controls.",
+     "Access can be granted or revoked directly from your IdP, keeping security management centralized."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "p",
+    "text": "Once configured, users within your organization will log in using their existing company credentials, ensuring a consistent and secure login experience."
+   },
+   {
+    "type": "h3",
+    "text": "1.1 OpenID Connect (OIDC)"
+   },
+   {
+    "type": "p",
+    "text": "Omnisient currently supports connecting to your Identity Provider (IdP) using OpenID Connect (OIDC): a secure, industry-standard method for enabling authentication through your organization's chosen IdP."
+   },
+   {
+    "type": "p",
+    "text": "When configured, OIDC allows Omnisient to rely on your organization's IdP to verify users' identities and grant access securely."
+   },
+   {
+    "type": "note",
+    "text": "Note: OpenID Connect (OIDC) requires configuration. Your organization's IT or security administrator will need to provide specific details from your Identity Provider to enable this connection. For detailed guidance on what's needed and how to set it up, see the chapter Identity Provider Authentication with OpenID Connect."
+   },
+   {
+    "type": "h3",
+    "text": "2. Locally managed authentication"
+   },
+   {
+    "type": "p",
+    "text": "Omnisient also supports locally managed authentication, allowing users to sign in directly using:"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Their Omnisient username and password, or",
+     "An existing Microsoft account"
+    ],
+    "ordered": false
+   },
+   {
+    "type": "p",
+    "text": "This method is ideal for organizations that don't yet have a centralized Identity Provider or prefer to manage user access directly within Omnisient."
+   },
+   {
+    "type": "note",
+    "text": "Note: Microsoft account login is a convenience feature for individual users and is not the same as connecting Omnisient to a Microsoft Entra Identity Provider."
+   },
+   {
+    "type": "h2",
+    "text": "User settings: Profile"
+   },
+   {
+    "type": "p",
+    "text": "The Profile section allows you to manage your individual user information. Here you can view or update your personal details:"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "First Name and Last Name: Editable fields you can update at any time.",
+     "Mobile Number: Optional, but editable for your convenience.",
+     "Default Company: If you're assigned to more than one company, you'll see a dropdown to select your default. This option is hidden for single-company users.",
+     "Email Address: This field is always read-only for all users. However, if you wish to edit this aspect of your organization, please contact support for assistance."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "h2",
+    "text": "User security settings"
+   },
+   {
+    "type": "p",
+    "text": "This section allows you to update your password. You'll be asked to provide:"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Your current password",
+     "A new password that meets platform security rules",
+     "Confirm the new password"
+    ],
+    "ordered": false
+   },
+   {
+    "type": "note",
+    "text": "Changing your password regularly makes your account safer."
+   }
+  ]
+ },
+ {
+  "key": "twofa",
+  "part": "Authentication",
+  "title": "Enabling Two-Factor Authentication (2FA)",
+  "blocks": [
+   {
+    "type": "p",
+    "text": "To enable 2FA, your company must contact Omnisient to request activation on your account. This guide outlines the steps involved in setting up 2FA after it's enabled by Omnisient support."
+   },
+   {
+    "type": "h2",
+    "text": "Requesting 2FA activation"
+   },
+   {
+    "type": "p",
+    "text": "To activate 2FA, an authorized representative from your company should reach out to your Omnisient account manager or send a request to support@omnisient.com. Once activated, 2FA setup will be accessible from your account's security settings."
+   },
+   {
+    "type": "h2",
+    "text": "Prerequisites"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "A smartphone with an authenticator app installed, such as Microsoft Authenticator.",
+     "Access to your Omnisient account login credentials."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "h2",
+    "text": "Step-by-step instructions"
+   },
+   {
+    "type": "h3",
+    "text": "1. Log into your Omnisient account"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Visit app.omnisient.com and log in using your username and password."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "h3",
+    "text": "2. Scan the QR code"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Open your authenticator app.",
+     "Scan the QR code displayed on the Omnisient platform."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "h3",
+    "text": "3. Enter the 6-digit code"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "After scanning, your authenticator app will generate a 6-digit code.",
+     "Enter this code on Omnisient to complete the 2FA setup."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "h2",
+    "text": "Important tips"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Device Management: If you switch devices, you may need to disable and re-enable 2FA with your new device promptly."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "h2",
+    "text": "Troubleshooting"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Incorrect Code Error: Ensure your device's time settings are accurate, as authenticator apps rely on synchronized time.",
+     "Lost Access to Authenticator App: Use a backup code or contact Omnisient support for assistance."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "p",
+    "text": "Enabling 2FA provides an added layer of security for your Omnisient account. Contact your account manager or support@omnisient.com to begin the setup process."
+   }
+  ]
+ },
+ {
+  "key": "scauth",
+  "part": "Authentication",
+  "title": "Server Connect Authentication Options",
+  "blocks": [
+   {
+    "type": "p",
+    "text": "When you launch Server Connect, you choose how to authenticate. There are two options: your username and password, or an API Key and Secret. Pick whichever suits your security requirements and your use of Server Connect."
+   },
+   {
+    "type": "h2",
+    "text": "Username and password"
+   },
+   {
+    "type": "p",
+    "text": "Log in with your Omnisient account credentials."
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Open Server Connect.",
+     "Select Use Username and Password.",
+     "Enter your username and password, then click Authenticate. If you have forgotten your password, use the Forgot Password link.",
+     "Select your company from the dropdown and click Set Company to continue."
+    ],
+    "ordered": true
+   },
+   {
+    "type": "p",
+    "text": "Best for: interactive, hands-on use.",
+    "bold_lead": "Best for: "
+   },
+   {
+    "type": "image",
+    "file": "sc-auth-userpass.png"
+   },
+   {
+    "type": "h2",
+    "text": "API Key and Secret"
+   },
+   {
+    "type": "p",
+    "text": "Authenticate using an API Key (ID) and Secret instead of a username and password. This does not require an interactive login, which makes it the right choice for automated or scheduled uploads."
+   },
+   {
+    "type": "p",
+    "text": "You need an API Key generated in the platform before you can use this option. To create one, see the API Keys chapter."
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Open Server Connect.",
+     "Select Use API Key.",
+     "Enter your API Key ID and Secret.",
+     "Click Authenticate."
+    ],
+    "ordered": true
+   },
+   {
+    "type": "p",
+    "text": "Best for: automated or scheduled uploads.",
+    "bold_lead": "Best for: "
+   },
+   {
+    "type": "image",
+    "file": "sc-auth-apikey.png"
+   },
+   {
+    "type": "h2",
+    "text": "Tips and best practices"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Choose the login option that aligns with your security requirements and workflow.",
+     "Treat your API Key and Secret as confidential, like a password. Do not share them or store them in plain text.",
+     "Use the API Key option for automated workflows and username and password for interactive use."
+    ],
+    "ordered": false
+   }
+  ]
+ },
+ {
+  "key": "apikeys",
+  "part": "Authentication",
+  "title": "API Keys",
+  "blocks": [
+   {
+    "type": "p",
+    "text": "API keys give Server Connect programmatic access to the Omnisient Platform, so it can upload data securely. Each key is a pair of values: an ID and a Secret. These credentials are what Server Connect uses to authenticate automated, server-side uploads."
+   },
+   {
+    "type": "note",
+    "text": "Permissions: Only users with Admin permissions can access API Keys. See the User Management chapter."
+   },
+   {
+    "type": "h2",
+    "text": "Where to find API keys"
+   },
+   {
+    "type": "image",
+    "file": "apikeys-nav.png",
+    "max_w_ratio": 0.22
+   },
+   {
+    "type": "p",
+    "text": "In the Omnisient Platform go to Admin > API Keys. The API Keys page lists all keys for your organization, with a Name column and an Actions menu."
+   },
+   {
+    "type": "h2",
+    "text": "Create an API key"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Click + Add API Key",
+     "Enter a name for the key. This is for your own reference, so you can identify what the key is used for.",
+     "Click Save.",
+     "The platform generates a credential pair: an ID (the API key identifier) and a Secret (the API key secret token).",
+     "Use the copy button next to each value and store both somewhere safe."
+    ],
+    "ordered": true
+   },
+   {
+    "type": "image",
+    "file": "apikeys-created.png"
+   },
+   {
+    "type": "note",
+    "text": "Important: Save the ID and Secret as soon as they are shown. You will not be able to access them again. If you lose them, you will need to create a new API key."
+   },
+   {
+    "type": "h2",
+    "text": "Managing API keys"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "You can add as many API keys as you need, though generally one is enough.",
+     "The only action available on an existing key is Delete. Keys cannot be edited, and the secret cannot be retrieved after creation.",
+     "Deleting a key revokes it. Any server application using that key will stop processing new files, so only delete a key you are sure is no longer in use."
+    ],
+    "ordered": false
+   },
+   {
+    "type": "h2",
+    "text": "Best practices"
+   },
+   {
+    "type": "bullets",
+    "items": [
+     "Treat the Secret like a password. Never share it, email it, or commit it to source code. Store it in a secure secrets manager or another protected location, not in plain text.",
+     "Use a clear, descriptive name. Name each key for its purpose, application, or owner so you can tell at a glance what it is used for and who relies on it.",
+     "Use separate keys for separate applications or environments. This way you can revoke one without disrupting the others, and it is easier to trace activity back to a specific integration.",
+     "Keep the number of keys to a minimum. Generally one key per application is enough. Fewer active keys means a smaller surface to manage and secure.",
+     "Rotate keys periodically. Because keys cannot be edited, rotate by creating a new key, updating your application to use it, and then deleting the old key once the switch is confirmed.",
+     "Revoke promptly when needed. Delete a key as soon as it is no longer needed, an integration is decommissioned, or you suspect it has been exposed. Remember that revoking a key stops any server using it from processing new files, so update your application before deleting."
+    ],
+    "ordered": false
+   }
+  ]
+ }
+]

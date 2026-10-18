@@ -8,7 +8,7 @@ beneath, already fully painted) and replaced, or a new line can be added
 below an existing one, both without any image reconstruction.
 
 Usage:
-    python3 make_cover.py replace <template.pdf> "<old text>" "<new text>" <output.pdf>
+    python3 make_cover.py replace <template.pdf> "<old text>" "<new text>" <output.pdf> [size]
     python3 make_cover.py add-below <template.pdf> "<after text>" "<new text>" <output.pdf>
 
 replace    finds the span matching <old text> exactly, redacts it, and inserts
@@ -104,7 +104,7 @@ def _overlap_group(spans, seed):
     return group
 
 
-def replace_line(template_path, old_text, new_text, output_path):
+def replace_line(template_path, old_text, new_text, output_path, uniform_size=None):
     doc = fitz.open(template_path)
     page = doc[0]
 
@@ -126,10 +126,15 @@ def replace_line(template_path, old_text, new_text, output_path):
 
     font = fitz.Font(fontfile=POPPINS_BOLD)
     center_x = page.rect.width / 2  # Omnisient's title lines are page-centered
+    # uniform_size re-draws every line of the title group at one size, so the
+    # block reads as a single consistent unit. Without it each line keeps the
+    # template's own size, which leaves a long replacement line visibly smaller
+    # than its neighbours after auto-shrinking to fit.
     for s in group:
         bbox = fitz.Rect(s["bbox"])
         text = new_text if s is span else s["text"]
-        _draw_centered_line(page, font, text, s["size"], _color_from_int(s["color"]), center_x, bbox.y0)
+        size = uniform_size if uniform_size else s["size"]
+        _draw_centered_line(page, font, text, size, _color_from_int(s["color"]), center_x, bbox.y0)
 
     doc.save(output_path)
     doc.close()
@@ -172,12 +177,14 @@ def add_line_below(template_path, after_text, new_text, output_path, line_spacin
 
 
 def main():
-    if len(sys.argv) != 6 or sys.argv[1] not in ("replace", "add-below"):
+    if len(sys.argv) not in (6, 7) or sys.argv[1] not in ("replace", "add-below"):
         print(__doc__, file=sys.stderr)
         sys.exit(1)
-    mode, template_path, ref_text, new_text, output_path = sys.argv[1:]
+    mode, template_path, ref_text, new_text, output_path = sys.argv[1:6]
+    # Optional 6th arg: draw every line of the title block at this size.
+    uniform_size = float(sys.argv[6]) if len(sys.argv) == 7 else None
     if mode == "replace":
-        replace_line(template_path, ref_text, new_text, output_path)
+        replace_line(template_path, ref_text, new_text, output_path, uniform_size=uniform_size)
     else:
         add_line_below(template_path, ref_text, new_text, output_path)
     print(f"Saved: {output_path}")

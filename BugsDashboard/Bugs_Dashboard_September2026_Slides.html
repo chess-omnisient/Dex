@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>SLA Dashboard – All Clients (Slide Deck)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --navy:#0d1b4b;
+    --navy-ink:#333333;
+    --accent:#3a6fd8;
+    --accent-light:#7eb3f5;
+    --paper:#ffffff;
+    --surface:#f6f8fc;
+    --card:#ffffff;
+    --border:#dfe4f0;
+    --text:#333333;
+    --text-muted:#5b6178;
+    --text-faint:#8890a6;
+    --good:#1f9e6d;
+    --good-bg:#e6f6ef;
+    --warn:#e0902e;
+    --warn-bg:#fdf1e2;
+    --sev1:#d64545;
+    --sev2:#e0902e;
+    --sev3:#3a6fd8;
+    --sev4:#8b7cf0;
+    --unknown:#b7bccb;
+    --client-shoprite:#0f9d58;
+    --client-strive:#16a3a3;
+    --client-absa:#c2185b;
+    --client-standardbank:#8a6d3b;
+    --support:#5d2d79;
+    --client-legalwise:#9c27b0;
+    --client-scorpion:#795548;
+    --client-property24:#00838f;
+    --shadow: 0 1px 2px rgba(20,20,60,0.04), 0 8px 24px -12px rgba(20,20,60,0.12);
+  }
+  *{box-sizing:border-box;}
+  html{font-size:14px; scroll-behavior:smooth;}
+  body{
+    margin:0; background:#e7e9f2; color:var(--text);
+    font-family: 'Poppins', "Segoe UI", ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing:antialiased;
+    display:flex; flex-direction:column; align-items:center; gap:36px;
+    padding:36px 0 64px;
+  }
+
+  .slide{
+    width:1280px; height:720px; flex:none;
+    background:var(--paper); border-radius:10px; overflow:hidden;
+    box-shadow:0 4px 10px rgba(20,20,60,0.08), 0 20px 40px -16px rgba(20,20,60,0.25);
+    padding:26px 40px 22px; display:flex; flex-direction:column; gap:8px;
+    position:relative;
+  }
+  .slide-nav{position:absolute; top:7px; right:14px; display:flex; gap:4px; z-index:2;}
+  .slide-nav a{font-size:0.56rem; font-weight:600; color:var(--text-faint); text-decoration:none; padding:2px 7px;
+    border-radius:999px; border:1px solid transparent; letter-spacing:0.02em;}
+  .slide-nav a:hover{color:var(--accent); border-color:var(--border); background:var(--surface);}
+  .slide-nav a.current{color:var(--accent); background:var(--surface); border-color:var(--border);}
+  .slide-label{
+    position:absolute; bottom:6px; right:14px; font-size:0.58rem; color:var(--text-faint);
+    text-transform:uppercase; letter-spacing:0.06em; font-weight:600;
+  }
+
+  .top{
+    display:flex; align-items:flex-end; justify-content:space-between; gap:24px;
+    padding-bottom:8px; border-bottom:1px solid var(--border); flex:none;
+  }
+  .top-logo{height:18px; width:auto; display:block; margin-bottom:5px;}
+  .top h1{margin:0 0 2px; font-size:1.5rem; font-weight:700; letter-spacing:-0.01em; color:var(--navy-ink);}
+  .top .sub{color:var(--text-muted); font-size:0.72rem;}
+  .top .period{text-align:right; font-size:0.68rem; color:var(--accent-light); text-transform:uppercase; letter-spacing:0.06em; font-weight:600;}
+  .top .period strong{display:block; font-size:0.9rem; color:var(--navy); text-transform:none; letter-spacing:0; margin-top:2px;}
+
+  .section-title{font-size:0.86rem; font-weight:700; color:var(--navy-ink); margin:0 0 5px; display:flex; align-items:baseline; gap:8px; flex:none;}
+
+  .callout{
+    display:flex; gap:10px; align-items:flex-start; background:var(--warn-bg);
+    border:1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+    border-radius:8px; padding:8px 12px; font-size:0.68rem; color:var(--text); flex:none;
+  }
+  .callout .dot{flex:none; width:6px; height:6px; border-radius:50%; background:var(--warn); margin-top:4px;}
+  .callout b{color:var(--navy-ink);}
+
+  .kpi-section{flex:none;}
+  .kpi-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+  .kpi-grid.cols-4{grid-template-columns:repeat(4,1fr);}
+  .kpi{background:var(--surface); border:1px solid var(--border); border-radius:7px; padding:7px 10px;}
+  .kpi .label{font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.03em; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .kpi .value{font-size:1.15rem; font-weight:700; color:var(--navy-ink); margin-top:2px; font-variant-numeric:tabular-nums; line-height:1.1;}
+  .kpi .note{font-size:0.55rem; color:var(--text-faint); margin-top:2px; line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+
+  .charts-row{flex:1; display:grid; grid-template-columns:1fr 1fr; gap:10px; min-height:0;}
+  .charts-row.wide-left{grid-template-columns:1.3fr 1fr; flex:1.6;}
+  .panel{background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; min-height:0; overflow:hidden;}
+
+  .chart{display:flex; align-items:flex-end; gap:14px; flex:1; min-height:0; padding:0 2px;}
+  .chart .col{display:flex; flex-direction:column; align-items:center; flex:1; height:100%; justify-content:flex-end;}
+  .chart .bar-stack{width:100%; max-width:48px; display:flex; flex-direction:column-reverse; border-radius:3px 3px 2px 2px; overflow:hidden;}
+  .chart .seg{width:100%;}
+  .chart .col-label{margin-top:5px; font-size:0.64rem; color:var(--text-muted); font-weight:600; text-align:center;}
+  .chart .col-total{font-size:0.76rem; color:var(--navy-ink); font-weight:700; margin-bottom:3px;}
+
+  .legend{display:flex; gap:8px; margin-top:6px; flex-wrap:wrap; justify-content:center; font-size:0.62rem; color:var(--text-muted); flex:none;}
+  .legend .item{display:flex; align-items:center; gap:4px;}
+  .legend .swatch{width:8px; height:8px; border-radius:2px; flex:none;}
+
+  .stat-list{display:flex; flex-direction:column; gap:0; flex:1; justify-content:flex-start; min-height:0; overflow:hidden;}
+  .stat-row{display:flex; flex-direction:row; align-items:baseline; justify-content:space-between; gap:6px; padding:2px 0; border-bottom:1px solid var(--border);}
+  .stat-row:last-child{border-bottom:none;}
+  .stat-row .k{font-size:0.555rem; color:var(--navy-ink); font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0;}
+  .stat-row .v{font-size:0.515rem; font-weight:600; color:var(--text-muted); display:flex; align-items:center; gap:5px; flex:none; white-space:nowrap;}
+
+  .pill{display:inline-flex; align-items:center; gap:4px; padding:1px 7px; border-radius:100px; font-size:0.56rem; font-weight:700; white-space:nowrap;}
+  .pill.open{background:var(--warn-bg); color:var(--warn);}
+  .pill.closed{background:var(--good-bg); color:var(--good);}
+  .chip{display:inline-flex; padding:2px 7px; border-radius:6px; font-size:0.58rem; font-weight:600; color:#fff; white-space:nowrap;}
+
+  table{width:100%; height:100%; border-collapse:collapse; font-size:0.8rem;}
+  .table-wrap{flex:1; min-height:0; overflow:hidden; border:1px solid var(--border); border-radius:10px;}
+  .detail-table{table-layout:fixed;}
+  .detail-table tbody tr{height:1%;}
+  th{text-align:left; padding:9px 13px; background:var(--surface); color:var(--text-muted); font-size:0.64rem; text-transform:uppercase; letter-spacing:0.03em; font-weight:700; border-bottom:1px solid var(--border); vertical-align:middle;}
+  td{padding:8px 13px; border-bottom:1px solid var(--border); vertical-align:middle; color:var(--text); font-size:0.7rem; line-height:1.32; overflow-wrap:break-word; word-break:break-word;}
+  tr:last-child td{border-bottom:none;}
+  td.title{font-weight:700; color:var(--navy-ink);}
+  td.title + td.title{font-weight:400; color:var(--text-muted);}
+  td.mono{font-variant-numeric:tabular-nums; white-space:nowrap; color:var(--text-muted); font-size:0.66rem;}
+  .detail-table .chip{font-size:0.58rem; padding:2px 6px; white-space:nowrap;}
+  .detail-table .pill{font-size:0.58rem; padding:2px 7px;}
+
+  .sla-panel{background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px 14px 16px; flex:none; overflow:hidden;}
+  .sla-title{font-size:0.68rem; font-weight:700; color:var(--navy-ink); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;}
+  .sla-table{width:100%; border-collapse:collapse; font-size:0.66rem;}
+  .sla-table th{background:var(--surface); color:var(--text-muted); text-align:left; padding:6px 10px; font-size:0.58rem; text-transform:uppercase; letter-spacing:0.03em; font-weight:700; border-bottom:1px solid var(--border);}
+  .sla-table td{padding:8px 10px; border-bottom:1px solid var(--border); color:var(--text);}
+  .sla-table tr:last-child td{border-bottom:none;}
+  .sla-table td.desc{color:var(--text-muted);}
+
+  footer{font-size:0.58rem; color:var(--text-faint); line-height:1.4; flex:none;}
+  footer b{color:var(--text-muted);}
+
+  @media print{
+    body{background:#fff; padding:0; gap:0;}
+    .slide{box-shadow:none; border-radius:0; width:100vw; height:100vh; page-break-after:always;}
+    .slide-label{display:none;}
+    .slide-nav{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<!-- =========================================================
+     SLIDE 1 – EXECUTIVE SUMMARY
+========================================================= -->
+<div class="slide" id="slide-1">
+  <nav class="slide-nav"><a href="#slide-1" class="current">1. Summary</a><a href="#slide-2">2. Ticket detail 1</a><a href="#slide-3">3. Ticket detail 2</a></nav>
+  <span class="slide-label">1 / 3 &middot; Executive Summary</span>
+
+  <div class="top">
+    <div>
+      <h1>SLA Dashboard</h1>
+      <div class="sub">Technical Issue / Bug tickets, all clients</div>
+    </div>
+    <div class="period">Reporting period<strong>September 2026</strong></div>
+  </div>
+
+  <div class="callout">
+    <div class="dot"></div>
+    <div><b>Rough month on SLA</b> &ndash; 9 of 13 tracked bugs are outside their SLA window (5 open tickets aging past target, 3 closed tickets breached before closing, 1 closed with an unconfirmed resolution date).</div>
+  </div>
+
+  <div class="kpi-section">
+    <div class="section-title">Bug Stats</div>
+    <div class="kpi-grid cols-4">
+      <div class="kpi"><div class="label">Total Tickets</div><div class="value">13</div></div>
+      <div class="kpi"><div class="label">Created This Month</div><div class="value">11</div></div>
+      <div class="kpi"><div class="label">Carried Over</div><div class="value">2</div><div class="note">Both closed in Sept</div></div>
+      <div class="kpi"><div class="label">Open Tickets</div><div class="value">5</div><div class="note">of 13 tracked, incl. 1 reopened</div></div>
+      <div class="kpi"><div class="label">Closed Tickets</div><div class="value">8</div><div class="note">of 13 tracked</div></div>
+      <div class="kpi"><div class="label">Clients Affected</div><div class="value">4</div><div class="note">+2 unconfirmed, 1 platform-wide</div></div>
+      <div class="kpi"><div class="label">Avg Time to Resolve</div><div class="value">3.7<span style="font-size:0.55rem;font-weight:600;color:var(--text-faint);"> bd</span></div><div class="note">29.5hrs, n=8 closed</div></div>
+      <div class="kpi"><div class="label">Sev 1 Security</div><div class="value">1</div><div class="note">11.1 bh vs 8hr target</div></div>
+    </div>
+  </div>
+
+  <div class="charts-row">
+    <div class="panel">
+      <div class="section-title">New bugs by client</div>
+      <div class="chart">
+        <div class="col"><div class="col-total">2</div><div class="bar-stack" style="height:50%;"><div class="seg" style="height:100%; background:var(--client-shoprite);"></div></div><div class="col-label">Shoprite</div></div>
+        <div class="col"><div class="col-total">2</div><div class="bar-stack" style="height:50%;"><div class="seg" style="height:100%; background:var(--client-strive);"></div></div><div class="col-label">Strive</div></div>
+        <div class="col"><div class="col-total">4</div><div class="bar-stack" style="height:100%;"><div class="seg" style="height:100%; background:var(--client-absa);"></div></div><div class="col-label">ABSA</div></div>
+        <div class="col"><div class="col-total">2</div><div class="bar-stack" style="height:50%;"><div class="seg" style="height:100%; background:var(--unknown);"></div></div><div class="col-label">N/A</div></div>
+        <div class="col"><div class="col-total">1</div><div class="bar-stack" style="height:25%;"><div class="seg" style="height:100%; background:var(--support);"></div></div><div class="col-label">Platform</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="section-title">Bugs by severity level</div>
+      <div class="chart">
+        <div class="col"><div class="col-total">1</div><div class="bar-stack" style="height:8%;"><div class="seg" style="height:100%; background:var(--sev1);"></div></div><div class="col-label">Sev 1</div></div>
+        <div class="col"><div class="col-total">12</div><div class="bar-stack" style="height:100%;"><div class="seg" style="height:100%; background:var(--sev3);"></div></div><div class="col-label">Sev 3</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="charts-row wide-left">
+    <div class="panel">
+      <div class="section-title">New bugs by week &amp; client</div>
+      <div class="chart">
+        <div class="col"><div class="col-total">1</div><div class="bar-stack" style="height:25%;"><div class="seg" style="height:100%; background:var(--client-shoprite);"></div></div><div class="col-label">Jun 29</div></div>
+        <div class="col"><div class="col-total">1</div><div class="bar-stack" style="height:25%;"><div class="seg" style="height:100%; background:var(--client-standardbank);"></div></div><div class="col-label">Aug 17</div></div>
+        <div class="col"><div class="col-total">4</div><div class="bar-stack" style="height:100%;">
+          <div class="seg" style="height:24%; background:var(--client-shoprite);"></div>
+          <div class="seg" style="height:2px; background:var(--paper);"></div>
+          <div class="seg" style="height:49%; background:var(--client-strive);"></div>
+          <div class="seg" style="height:2px; background:var(--paper);"></div>
+          <div class="seg" style="height:24%; background:var(--client-absa);"></div>
+        </div><div class="col-label">Aug 31</div></div>
+        <div class="col"><div class="col-total">3</div><div class="bar-stack" style="height:75%;">
+          <div class="seg" style="height:32%; background:var(--client-shoprite);"></div>
+          <div class="seg" style="height:2px; background:var(--paper);"></div>
+          <div class="seg" style="height:32%; background:var(--client-absa);"></div>
+          <div class="seg" style="height:2px; background:var(--paper);"></div>
+          <div class="seg" style="height:32%; background:var(--support);"></div>
+        </div><div class="col-label">Sep 7</div></div>
+        <div class="col"><div class="col-total">3</div><div class="bar-stack" style="height:75%;">
+          <div class="seg" style="height:65%; background:var(--client-absa);"></div>
+          <div class="seg" style="height:2px; background:var(--paper);"></div>
+          <div class="seg" style="height:32%; background:var(--unknown);"></div>
+        </div><div class="col-label">Sep 14</div></div>
+        <div class="col"><div class="col-total">1</div><div class="bar-stack" style="height:25%;"><div class="seg" style="height:100%; background:var(--unknown);"></div></div><div class="col-label">Sep 21</div></div>
+      </div>
+      <div class="legend">
+        <div class="item"><span class="swatch" style="background:var(--client-shoprite);"></span>Shoprite</div>
+        <div class="item"><span class="swatch" style="background:var(--client-strive);"></span>Strive</div>
+        <div class="item"><span class="swatch" style="background:var(--client-absa);"></span>ABSA</div>
+        <div class="item"><span class="swatch" style="background:var(--client-standardbank);"></span>Standard Bank</div>
+        <div class="item"><span class="swatch" style="background:var(--support);"></span>Platform-wide</div>
+        <div class="item"><span class="swatch" style="background:var(--unknown);"></span>N/A</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="section-title">Bugs outside of SLA</div>
+      <div class="stat-list">
+        <div class="stat-row"><span class="k">Jupyter + SQLPad security (platform-wide)</span><span class="v"><span class="pill closed">Closed</span> 11.1 bh</span></div>
+        <div class="stat-row"><span class="k">SQLPad access (ABSA)</span><span class="v"><span class="pill closed">Closed</span> 5.2 bd</span></div>
+        <div class="stat-row"><span class="k">Auto logout (Standard Bank)</span><span class="v"><span class="pill closed">Closed</span> 15.4 bd</span></div>
+        <div class="stat-row"><span class="k">Notebook save, SBSASRX (Shoprite)</span><span class="v"><span class="pill closed">Closed</span> 50.0 bd*</span></div>
+        <div class="stat-row"><span class="k">Missing email alert (Shoprite)</span><span class="v"><span class="pill open">Open</span> 16.6 bd</span></div>
+        <div class="stat-row"><span class="k">ABSA_PRJ_00038 failed (ABSA)</span><span class="v"><span class="pill open">Open</span> 11.7 bd</span></div>
+        <div class="stat-row"><span class="k">Package install conflict (ABSA)</span><span class="v"><span class="pill open">Open</span> 9.0 bd</span></div>
+        <div class="stat-row"><span class="k">Can't reject notebook promotion (N/A)</span><span class="v"><span class="pill open">Reopened</span> 8.5 bd</span></div>
+        <div class="stat-row"><span class="k">Intercom bug, empty subject (N/A)</span><span class="v"><span class="pill open">Open</span> 5.0 bd</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================
+     SLIDE 2 – APPENDIX: TICKET DETAIL (1 of 2)
+========================================================= -->
+<div class="slide" id="slide-2">
+  <nav class="slide-nav"><a href="#slide-1">1. Summary</a><a href="#slide-2" class="current">2. Ticket detail 1</a><a href="#slide-3">3. Ticket detail 2</a></nav>
+  <span class="slide-label">2 / 3 &middot; Appendix</span>
+
+  <div class="top">
+    <div><h1>Ticket detail – 1 of 2</h1></div>
+    <div class="period">Appendix<strong>September 2026</strong></div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="detail-table">
+      <colgroup>
+        <col style="width:13%"><col style="width:30%"><col style="width:11%"><col style="width:11%"><col style="width:11%"><col style="width:8%"><col style="width:6%"><col style="width:9%">
+      </colgroup>
+      <thead>
+        <tr><th>Ticket</th><th>What happened</th><th>Client</th><th>Created</th><th>Resolved</th><th>TTR (bd)</th><th>Sev</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="title">Jupyter notebook + SQLPad security issue</td>
+          <td class="title">Security issue in the shared Jupyter/SQLPad environment. Raised internally; Sev 1 under the guide's vulnerability rule. Five senior engineers, urgent priority.</td>
+          <td><span class="chip" style="background:var(--support);">Platform-wide</span></td>
+          <td class="mono">2026-09-10 11:54</td>
+          <td class="mono">2026-09-13 14:13</td>
+          <td class="mono">1.4</td>
+          <td><span class="chip" style="background:var(--sev1);">Sev 1</span></td>
+          <td><span class="pill closed">Closed</span></td>
+        </tr>
+        <tr>
+          <td class="title">Export Failure for Shoprite_PRJ_00146 Selections</td>
+          <td class="title">Export failed for project Shoprite_PRJ_00146 selections. No root cause recorded beyond the failure.</td>
+          <td><span class="chip" style="background:var(--client-shoprite);">Shoprite</span></td>
+          <td class="mono">2026-09-02 12:51</td>
+          <td class="mono">2026-09-02 16:58</td>
+          <td class="mono">0.3</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td>
+          <td><span class="pill closed">Closed</span></td>
+        </tr>
+        <tr>
+          <td class="title">Data Preparation Process Failed for Wilhelm du Toit</td>
+          <td class="title">Data preparation process failed for a Strive user. No specific error or root cause recorded.</td>
+          <td><span class="chip" style="background:var(--client-strive);">Strive</span></td>
+          <td class="mono">2026-09-03 06:39</td>
+          <td class="mono">2026-09-07 13:02</td>
+          <td class="mono">2.8</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td>
+          <td><span class="pill closed">Closed</span></td>
+        </tr>
+        <tr>
+          <td class="title">Overlap Picture Rendering Issue in Omnisient Profile ACE Report</td>
+          <td class="title">Overlap picture failed to render, caused by a permissions issue on two report fields. Fixed via Power BI model hotfix.</td>
+          <td><span class="chip" style="background:var(--client-strive);">Strive</span></td>
+          <td class="mono">2026-09-03 07:48</td>
+          <td class="mono">2026-09-07 04:26</td>
+          <td class="mono">1.9</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td>
+          <td><span class="pill closed">Closed</span></td>
+        </tr>
+        <tr>
+          <td class="title">Unable to View Team's Projects and Datasets</td>
+          <td class="title">ABSA user could not view their team's projects/datasets. TTR rests on the “done” status-change time, not a confirmed fix.</td>
+          <td><span class="chip" style="background:var(--client-absa);">ABSA</span></td>
+          <td class="mono">2026-09-04 12:04</td>
+          <td class="mono">2026-09-04 12:38</td>
+          <td class="mono">0.1&dagger;</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td>
+          <td><span class="pill closed">Closed</span></td>
+        </tr>
+        <tr>
+          <td class="title">Missing Email Alert for SRX Download Request</td>
+          <td class="title">Download-request notification email failed to send for SHOPRITE_PRJ_00461.</td>
+          <td><span class="chip" style="background:var(--client-shoprite);">Shoprite</span></td>
+          <td class="mono">2026-09-07 10:01</td>
+          <td class="mono">&ndash;</td>
+          <td class="mono">&ndash;</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td>
+          <td><span class="pill open">In progress</span></td>
+        </tr>
+        <tr>
+          <td class="title">Users can't open SQLPad in Own Data Prep</td>
+          <td class="title">Multiple ABSA users unable to open SQLPad within Own Data Prep.</td>
+          <td><span class="chip" style="background:var(--client-absa);">ABSA</span></td>
+          <td class="mono">2026-09-08 13:03</td>
+          <td class="mono">2026-09-15 21:09</td>
+          <td class="mono">5.2</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td>
+          <td><span class="pill closed">Closed</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- =========================================================
+     SLIDE 3 – APPENDIX: TICKET DETAIL (2 of 2) + SLA TABLE
+========================================================= -->
+<div class="slide" id="slide-3">
+  <nav class="slide-nav"><a href="#slide-1">1. Summary</a><a href="#slide-2">2. Ticket detail 1</a><a href="#slide-3" class="current">3. Ticket detail 2</a></nav>
+  <span class="slide-label">3 / 3 &middot; Appendix</span>
+
+  <div class="top">
+    <div><h1>Ticket detail – 2 of 2</h1></div>
+    <div class="period">Appendix<strong>September 2026</strong></div>
+  </div>
+
+  <div class="table-wrap" style="flex:1.4;">
+    <table class="detail-table">
+      <colgroup>
+        <col style="width:13%"><col style="width:30%"><col style="width:11%"><col style="width:11%"><col style="width:11%"><col style="width:8%"><col style="width:6%"><col style="width:9%">
+      </colgroup>
+      <thead>
+        <tr><th>Ticket</th><th>What happened</th><th>Client</th><th>Created</th><th>Resolved</th><th>TTR (bd)</th><th>Sev</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="title">Custom project ABSA_PRJ_00038 Failed when adding dataset</td>
+          <td class="title">Custom project failed when adding a dataset shared by Shoprite. Under investigation.</td>
+          <td><span class="chip" style="background:var(--client-absa);">ABSA</span></td>
+          <td class="mono">2026-09-14 09:20</td>
+          <td class="mono">&ndash;</td>
+          <td class="mono">&ndash;</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td>
+          <td><span class="pill open">In progress</span></td>
+        </tr>
+        <tr>
+          <td class="title">ABSA Installing Packages Conflict</td>
+          <td class="title">NumPy 2.x / scikit-learn dependency conflict in the shared Jupyter image; affects all customers using that package.</td>
+          <td><span class="chip" style="background:var(--client-absa);">ABSA</span></td>
+          <td class="mono">2026-09-17 05:56</td>
+          <td class="mono">&ndash;</td>
+          <td class="mono">&ndash;</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td>
+          <td><span class="pill open">In progress</span></td>
+        </tr>
+        <tr>
+          <td class="title">Bug: Can't reject a request to promote a notebook</td>
+          <td class="title">Rejection fails when the user has no active project. Workaround confirmed 21 Sept; reopened 28 Sept as no permanent fix was made. Back-office function, no single client.</td>
+          <td><span class="chip" style="background:var(--unknown);">N/A</span></td>
+          <td class="mono">2026-09-17 11:07</td>
+          <td class="mono">&ndash;</td>
+          <td class="mono">8.5 open</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td>
+          <td><span class="pill open">Reopened</span></td>
+        </tr>
+        <tr>
+          <td class="title">Intercom Ticket #215475979340460</td>
+          <td class="title">Raised 23 Sept with an empty subject line, so no fault description. Logged from an internal address, leaving no client attribution.</td>
+          <td><span class="chip" style="background:var(--unknown);">N/A</span></td>
+          <td class="mono">2026-09-23 06:52</td>
+          <td class="mono">&ndash;</td>
+          <td class="mono">5.0 open</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td>
+          <td><span class="pill open">Awaiting feedback</span></td>
+        </tr>
+        <tr>
+          <td class="title">Error saving notebook on SBSASRX profile (24.1M file)</td>
+          <td class="title">Notebook save failed on the joint Standard Bank / Shoprite profile. 70-day gap to close is unexplained &ndash; see footer.</td>
+          <td><span class="chip" style="background:var(--client-shoprite);">Shoprite</span></td>
+          <td class="mono">2026-06-29 09:21</td>
+          <td class="mono">2026-09-07 09:41</td>
+          <td class="mono">50.0*</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td>
+          <td><span class="pill closed">Closed</span></td>
+        </tr>
+        <tr>
+          <td class="title">Auto logout issue during active use across all notebooks</td>
+          <td class="title">Users logged out mid-session after a 10-minute idle timeout, even during active use.</td>
+          <td><span class="chip" style="background:var(--client-standardbank);">Standard Bank</span></td>
+          <td class="mono">2026-08-18 08:16</td>
+          <td class="mono">2026-09-08 11:33</td>
+          <td class="mono">15.4</td>
+          <td><span class="chip" style="background:var(--sev3);">Sev 3</span></td>
+          <td><span class="pill closed">Closed</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sla-panel">
+    <div class="sla-title">SLA Resolution Windows</div>
+    <table class="sla-table">
+      <thead><tr><th>Severity</th><th>Resolution</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><span class="chip" style="background:var(--sev1);">Sev 1</span></td><td>8 hours</td><td class="desc">Critical – immediate business impact</td></tr>
+        <tr><td><span class="chip" style="background:var(--sev2);">Sev 2</span></td><td>24 hours</td><td class="desc">High – significant impact, workaround available</td></tr>
+        <tr><td><span class="chip" style="background:var(--sev3);">Sev 3</span></td><td>3 business days</td><td class="desc">Medium – moderate impact</td></tr>
+        <tr><td><span class="chip" style="background:var(--sev4);">Sev 4</span></td><td>5 business days</td><td class="desc">Low – minor impact or cosmetic</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer><b>* Resolution time</b> – Business-days figures apply Omnisient support hours (09:00–17:00 SAST, weekdays). The SBSASRX notebook-save ticket's 70-day span is unexplained in the thread and likely reflects a bulk status update rather than the true fix date; excluded from Average TTR. One ticket resting in “done” carries a status-change timestamp rather than a confirmed fix time, marked † and included in Average TTR on that basis. Client field caveat, scope exclusions (3 non-fault tickets, 3 test tickets, 12 undated carryovers) – see the full dashboard footer.</footer>
+</div>
+
+</body>
+</html>

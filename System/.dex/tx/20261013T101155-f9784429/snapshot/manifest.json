@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "relative": "System/.dex/analytics-attempts.jsonl",
+      "existed": true,
+      "mode": 384,
+      "sha256": "1b887edfd0990e1e8212882645d305e82b28ab19fa6a790353034dfea4fdfa31",
+      "size": 2337
+    }
+  ]
+}
