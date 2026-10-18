@@ -1,0 +1,25 @@
+{
+  "generated_at": "2026-10-13T08:12:36.826Z",
+  "window_days": 7,
+  "mode": "suggest",
+  "counts": {
+    "page": 0,
+    "suggested": 0,
+    "dismissed": 0,
+    "suppressed": 0,
+    "tracking": 0,
+    "unverified_identity": 0,
+    "disabled": 0
+  },
+  "companies": {
+    "counts": {
+      "page": 0,
+      "suggested": 0,
+      "tracking": 0,
+      "disabled": 0
+    },
+    "domains": []
+  },
+  "unresolved": [],
+  "dead_letter_count": 0
+}
