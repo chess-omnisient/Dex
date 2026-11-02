@@ -271,3 +271,6 @@ System/.doctor-last-run.json
 
 # Separate git repository - no remote, tracked independently
 Dex Private/
+
+# Separate git repository - versioned independently at github.com/Omnisient/Omnisient.CenterofExcellence
+Omnisient.CenterofExcellence/
