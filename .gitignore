@@ -262,3 +262,9 @@ System/.doctor-last-run.json
 
 # Local Lens-catalogue tooling venv (also created by CI on runners)
 .lens-venv/
+
+# Video files - keep out of git (purged from history 2026-11-02)
+*.mp4
+*.mov
+*.avi
+*.mkv
