@@ -268,3 +268,6 @@ System/.doctor-last-run.json
 *.mov
 *.avi
 *.mkv
+
+# Separate git repository - no remote, tracked independently
+Dex Private/
