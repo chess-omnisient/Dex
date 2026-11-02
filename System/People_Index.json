@@ -1,10 +1,10 @@
 {
   "version": 2,
-  "built_at": "2026-10-13T10:12:06.708384",
-  "total": 26,
+  "built_at": "2026-10-28T10:51:27.230164",
+  "total": 33,
   "by_type": {
-    "internal": 24,
-    "external": 2,
+    "internal": 30,
+    "external": 3,
     "cpo_network": 0
   },
   "people": [
@@ -47,6 +47,22 @@
       "path": "05-Areas/People/Internal/Ben.md",
       "role": null,
       "status": "stub",
+      "tags": [],
+      "type": "internal"
+    },
+    {
+      "aliases": [
+        "Tornado"
+      ],
+      "company": "Omnisient",
+      "email": null,
+      "emails": [],
+      "first_name": "chinedu",
+      "last_interaction": "2026-10-21",
+      "name": "Chinedu",
+      "path": "05-Areas/People/Internal/Chinedu.md",
+      "role": "Platform / Infrastructure engineer",
+      "status": "populated",
       "tags": [],
       "type": "internal"
     },
@@ -167,7 +183,10 @@
       "type": "internal"
     },
     {
-      "aliases": [],
+      "aliases": [
+        "Matla",
+        "Motla"
+      ],
       "company": "Omnisient",
       "email": null,
       "emails": [],
@@ -190,6 +209,20 @@
       "name": "Neels Oosthuizen",
       "path": "05-Areas/People/Internal/Neels_Oosthuizen.md",
       "role": "Engineer",
+      "status": "populated",
+      "tags": [],
+      "type": "internal"
+    },
+    {
+      "aliases": [],
+      "company": "Omnisient",
+      "email": null,
+      "emails": [],
+      "first_name": "nishen",
+      "last_interaction": "2026-10-21",
+      "name": "Nishen Misra",
+      "path": "05-Areas/People/Internal/Nishen_Misra.md",
+      "role": "Delivery / Scrum lead",
       "status": "populated",
       "tags": [],
       "type": "internal"
@@ -219,6 +252,20 @@
       "path": "05-Areas/People/Internal/Pardon.md",
       "role": null,
       "status": "stub",
+      "tags": [],
+      "type": "internal"
+    },
+    {
+      "aliases": [],
+      "company": "Omnisient",
+      "email": null,
+      "emails": [],
+      "first_name": "robin",
+      "last_interaction": "2026-10-22",
+      "name": "Robin",
+      "path": "05-Areas/People/Internal/Robin.md",
+      "role": "Head of Data Engineering",
+      "status": "populated",
       "tags": [],
       "type": "internal"
     },
@@ -301,7 +348,21 @@
       "last_interaction": null,
       "name": "Tegan Carton-Barber",
       "path": "05-Areas/People/Internal/Tegan_Carton-Barber.md",
-      "role": "Head of product",
+      "role": "Head of Product",
+      "status": "populated",
+      "tags": [],
+      "type": "internal"
+    },
+    {
+      "aliases": [],
+      "company": "Omnisient",
+      "email": null,
+      "emails": [],
+      "first_name": "thomas",
+      "last_interaction": "2026-10-22",
+      "name": "Thomas",
+      "path": "05-Areas/People/Internal/Thomas.md",
+      "role": "Team Lead, Engineering",
       "status": "populated",
       "tags": [],
       "type": "internal"
@@ -335,15 +396,53 @@
       "type": "internal"
     },
     {
-      "aliases": [],
-      "company": "Internal",
+      "aliases": [
+        "Vanna",
+        "Banner"
+      ],
+      "company": "Omnisient",
       "email": null,
       "emails": [],
-      "first_name": "vian",
+      "first_name": "werner",
+      "last_interaction": "2026-10-22",
+      "name": "Werner",
+      "path": "05-Areas/People/Internal/Werner.md",
+      "role": "Engineering",
+      "status": "populated",
+      "tags": [],
+      "type": "internal"
+    },
+    {
+      "aliases": [
+        "Vian",
+        "Vyond"
+      ],
+      "company": "Omnisient",
+      "email": null,
+      "emails": [],
+      "first_name": "wiehan",
       "last_interaction": null,
-      "name": "Vian",
+      "name": "Wiehan",
       "path": "05-Areas/People/Internal/Wiehan.md",
       "role": "Head of Integrations",
+      "status": "populated",
+      "tags": [],
+      "type": "internal"
+    },
+    {
+      "aliases": [
+        "Sahir",
+        "Zahir",
+        "Saya"
+      ],
+      "company": "Omnisient",
+      "email": null,
+      "emails": [],
+      "first_name": "zaheer",
+      "last_interaction": "2026-10-22",
+      "name": "Zaheer",
+      "path": "05-Areas/People/Internal/Zaheer.md",
+      "role": null,
       "status": "populated",
       "tags": [],
       "type": "internal"
@@ -372,6 +471,20 @@
       "name": "Riaan",
       "path": "05-Areas/People/External/Riaan.md",
       "role": "Head of Product",
+      "status": "populated",
+      "tags": [],
+      "type": "external"
+    },
+    {
+      "aliases": [],
+      "company": "Mintlify",
+      "email": null,
+      "emails": [],
+      "first_name": "santiago",
+      "last_interaction": "2026-10-22",
+      "name": "Santiago",
+      "path": "05-Areas/People/External/Santiago.md",
+      "role": null,
       "status": "populated",
       "tags": [],
       "type": "external"

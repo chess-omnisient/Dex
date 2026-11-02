@@ -1,11 +1,18 @@
 ---
 name: comms-way-forward-custom
-description: Prepares the Product Release Comms Way Forward deck for the upcoming sprint. Pulls live release tasks from the ClickUp Release Communications Board, classifies and tags each item, shows a preview for confirmation, then generates a sprint-named HTML file and PDF ready to circulate.
+description: Prepares the Product Release Comms Way Forward deck for the upcoming sprint. Always reads the previous sprint's comms wrap-up first for real action item statuses and settled comms decisions, then pulls live release tasks from the ClickUp Release Communications Board, reconciles the two and reports any conflicts, shows a preview for confirmation, and generates a sprint-named HTML file and PDF ready to circulate.
 ---
 
 # Comms Way Forward
 
-Prepares the Product Release Comms Way Forward deck for the upcoming sprint. Pulls live release tasks from the ClickUp Release Communications Board, classifies and tags each item, shows a preview for confirmation, then generates a sprint-named HTML file and PDF ready to circulate.
+Prepares the Product Release Comms Way Forward deck for the upcoming sprint. Reads the previous
+sprint's comms wrap-up for what was actually decided and completed, pulls live release tasks from the
+ClickUp Release Communications Board, reconciles the two, shows a preview for confirmation, then
+generates a sprint-named HTML file and PDF ready to circulate.
+
+**The wrap-up is not optional.** ClickUp holds tickets; the wrap-up holds the decisions made about
+them. A deck built from the board alone reports finished work as outstanding and re-opens questions
+the last session already closed.
 
 ## Usage
 
@@ -44,7 +51,45 @@ Abort.
 
 ---
 
-## Step 2 — Query ClickUp Release Communications Board
+## Step 2 — Read the previous sprint's wrap-up (MANDATORY)
+
+**Never build a way forward deck from ClickUp alone.** The board holds tickets; it does not hold the
+decisions the last session made about them. Those live in the previous sprint's wrap-up deck, and
+skipping it produces a deck that re-asks settled questions and reports completed work as outstanding.
+
+Read `sprint{N-1}-comms-wrap-up.html` in the deck directory. If it is missing, say so plainly and
+continue — but tell the user the carry-over statuses and comms decisions are unverified, and do not
+present invented statuses as fact.
+
+Extract three things:
+
+1. **Action item statuses** from the "Sprint {N-2} & {N-1} Action Items – Follow-Up" slide. Each row
+   carries an explicit Done / To do. These are the real statuses for the way forward deck's
+   "Revisiting Actions from Sprint {N-1}" slide. Carry forward the wrap-up's status verbatim; never
+   default every row to "Carried over", and never infer a status from outside evidence (a published
+   article does not close an item the wrap-up still lists as To do — the item may have further steps).
+
+2. **Items rolling to this sprint**, from the "Items Rolling to Sprint {N}" slide. Each row carries a
+   **Decision** that is already settled. Honour it:
+   - A decision of "internal comms only" means no client-facing comms slide entry and no action item
+     asking whether a client article is needed.
+   - "No comms this sprint" means the item is reported as deferred, not raised as a TBC.
+   - A Release Type stated here (e.g. Minor) overrides the ClickUp Release Type when the two disagree;
+     flag the disagreement to the user rather than silently picking one.
+
+3. **Comms status and tier placement** for anything that appeared in the wrap-up's own Major / Minor /
+   Patch slides, so an item does not silently change tier between decks.
+
+Then reconcile against the ClickUp pull in Step 3. Report every conflict to the user in the Step 6
+preview — a ticket whose board state contradicts a wrap-up decision is the single most important thing
+for them to see, because the wrap-up decision is usually the newer and more considered of the two.
+
+Tickets created on the board *after* the wrap-up date have no wrap-up entry. That is expected, not a
+conflict; treat them as new and mark them as such in the preview.
+
+---
+
+## Step 3 — Query ClickUp Release Communications Board
 
 Use `clickup_filter_tasks` on list **`901218643488`** (Release Communications Board).
 
@@ -71,7 +116,7 @@ Abort.
 
 ---
 
-## Step 3 — Enrich each task
+## Step 4 — Enrich each task
 
 For every task returned, resolve the following three attributes:
 
@@ -80,7 +125,7 @@ For every task returned, resolve the following three attributes:
 Check the task's assignee list:
 - Olivia Landsberg (member ID `87874670`) is an assignee → tag = **Platform** (`tag-platform`)
 - Tristan Venter (member ID `99769856`) is an assignee → tag = **Data Product** (`tag-dataproduct`)
-- Neither → mark as **untagged** (dealt with in Step 4)
+- Neither → mark as **untagged** (dealt with in Step 5)
 
 If both assignees are present on one task, apply the primary assignee's tag. If unclear, flag as untagged.
 
@@ -109,7 +154,7 @@ Check the task description and any subtask names for comms deliverable keywords 
 
 ---
 
-## Step 4 — Resolve untagged tasks
+## Step 5 — Resolve untagged tasks
 
 If any tasks were flagged as untagged (neither Olivia nor Tristan in assignees), present them for manual classification:
 
@@ -129,7 +174,7 @@ If there are no untagged tasks, skip this step silently.
 
 ---
 
-## Step 5 — Preview and confirm
+## Step 6 — Preview and confirm
 
 Before generating the HTML, show a structured summary of what will be written:
 
@@ -152,18 +197,31 @@ PATCH & HOTFIX ({count})
   • {task name} [Patch | Hotfix] — Confirmed / TBC
   ...
 
+CARRIED OVER FROM SPRINT {N-1} ({count})
+  Done ({count}):      {items the wrap-up marked Done}
+  Still open ({count}): {items the wrap-up marked To do}
+
+CONFLICTS WITH THE SPRINT {N-1} WRAP-UP ({count})
+  • {task name} — board says {X}, wrap-up decided {Y} on {date}
+  ...
+
 DECISIONS REQUIRED ({TBC count} items)
   • {task name}
   ...
+  (excludes anything the wrap-up already settled)
 ─────────────────────────────────────────────
 Proceed? Press Enter to generate the deck, or reply with corrections.
 ```
 
 Wait for user confirmation or corrections. If the user provides corrections (e.g. "move X from minor to patch", "mark Y as confirmed"), apply them before proceeding.
 
+**The conflicts block is not optional.** If it is empty, print "No conflicts with the Sprint {N-1}
+wrap-up" so the user can see the check ran. An item the wrap-up settled must never reappear as a
+decision required — that is the main failure this step exists to catch.
+
 ---
 
-## Step 6 — Read CSS from template
+## Step 7 — Read CSS from template
 
 Find the most recently modified file matching `sprint wrap up and way forward/product-release-comms-way-forward*.html`.
 
@@ -178,9 +236,26 @@ Extract the full `<head>` block from that file (from `<!DOCTYPE html>` through `
 
 ---
 
-## Step 7 — Generate 4-slide HTML
+## Step 8 — Generate the HTML
 
-Assemble the new HTML file with these four slides in order.
+Assemble the new HTML file in this slide order. The deck is **not** four slides — that was an early
+version. The shipped format, set by the Sprint 10 deck, is:
+
+1. **Cover**
+2. **Agenda** + Sprint {N-1} Spotlight (5 headline carried-over items, owner + item)
+3. **Revisiting Actions from Sprint {N-1}** — statuses taken from the Step 2 wrap-up, not invented
+4. *(continued)* — split when the table exceeds ~7 rows
+5. **Major Releases** — one release per slide when a row's text is long
+6. *(continued)*
+7. **Minor Releases – Platform-wide**
+8. **Minor Releases – {Client}** — one slide per client grouping
+9. **Minor Releases – {Other clients}**
+10. **Patch & Hotfix Releases**
+11. **Action Items Out of Sprint {N}**
+
+Split any slide rather than letting it overflow (see the fit rules at the end of this step). Add an
+**AM Actions** slide carrying a ready-to-send client email only when something in the window has
+actually shipped and warrants a client notification.
 
 ### Slide 1 — Cover
 
@@ -234,7 +309,11 @@ For each major task row:
 </div>
 ```
 
-Each `.minor-item`:
+**Markup note:** the shipped decks do not use `.minor-item` divs and the template CSS defines no such
+class. Each `.minor-col` holds an `<h4>` header and a `<ul>`, with one `<li>` per task (`<li class="tbd">`
+for TBC items). Follow the template's actual markup, not the `.minor-item` shape sketched below.
+
+Each minor list item:
 - Platform-wide: task name + Platform/Data Product tag pill + comms note (`.comms-note`)
 - Client-specific: task name + client tag pill (e.g. `tag-shoprite`) + Platform/Data Product tag pill + comms note
 - TBD items: add class `tbd` to the `.minor-item` div
@@ -292,6 +371,33 @@ Use these exact class combinations:
 <span class="client-tag tag-airvantage">Airvantage</span>
 ```
 
+### Slide fit rules (slides are a fixed 960×540 — content does not reflow)
+
+Overflow is silently clipped: the browser shows no error, the PDF simply loses the bottom of the
+slide. Budget before generating, then verify after.
+
+- **Dense status tables** (`status-table-dense`, ~9px rows): about **7 rows** fit with a note box
+  below, or ~9 without one. Split beyond that and put the note box on the final part only.
+- **Tier tables** (`tier-table`, full prose in three columns): about **2 rows** of short text fit.
+  A row whose Description or Proposed Comms runs past ~400 characters needs a slide of its own.
+- **Split headings** take a part marker: `Major Releases <span style="font-weight:400;
+  opacity:0.6;">(1 of 2)</span>`. Keep related rows together when splitting — never separate two rows
+  describing the same item.
+
+**Verify visually before reporting done.** Count-based estimates are not enough; a single long cell
+overflows a two-row table. Screenshot each dense slide and look at it:
+
+```bash
+# split one slide into its own file, then:
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --disable-gpu \
+  --window-size=960,540 --screenshot=slide.png "file:///path/to/slide.html"
+```
+
+Check every slide carrying a tier table or more than 6 table rows. A slide whose content ends flush
+with the bottom edge is clipped, not merely full.
+
+---
+
 ### Print CSS to inject
 
 Add this block inside `<head>` of the generated file, after the main styles, to ensure clean PDF output:
@@ -318,7 +424,7 @@ Add this block inside `<head>` of the generated file, after the main styles, to 
 
 ---
 
-## Step 8 — Write HTML and export PDF
+## Step 9 — Write HTML and export PDF
 
 Write to `sprint wrap up and way forward/product-release-comms-way-forward-sprint-{N}.html`.
 
@@ -328,11 +434,23 @@ If that file already exists, ask:
 ```
 Wait for response. Abort if "no".
 
-After writing the HTML, automatically run the Edge headless PDF export (no prompt needed):
+After writing the HTML, automatically run the headless Chrome PDF export (no prompt needed). Run it
+from the deck directory so the paths stay relative and no absolute user path is hardcoded:
 
+```bash
+cd "<deck directory>" && "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --headless --disable-gpu --no-pdf-header-footer \
+  --print-to-pdf="product-release-comms-way-forward-sprint-{N}.pdf" \
+  "file://$(pwd | sed 's/ /%20/g')/product-release-comms-way-forward-sprint-{N}.html"
 ```
-msedge.exe --headless --print-to-pdf="C:/Users/AimeeMalan/OneDrive - omnisient.com/Documents/GitHub/Aimee's Omnisient repo/sprint wrap up and way forward/product-release-comms-way-forward-sprint-{N}.pdf" --print-to-pdf-no-header --no-margins --disable-gpu "file:///C:/Users/AimeeMalan/OneDrive%20-%20omnisient.com/Documents/GitHub/Aimee's%20Omnisient%20repo/sprint%20wrap%20up%20and%20way%20forward/product-release-comms-way-forward-sprint-{N}.html"
-```
+
+The deck's own `@page { size: 960px 540px; margin: 0 }` drives the output, so each slide becomes one
+720×405pt page (16:9) with no scaling. Chrome logs `CVDisplayLinkCreateWithCGDisplay failed` on macOS
+headless — that is harmless noise, not a failure; check the exit code and the written byte count.
+
+If Chrome is not at that path, fall back to `/html-to-pdf-custom`, which renders via Puppeteer.
+Verify the result with `mdls -name kMDItemNumberOfPages -name kMDItemPageWidth <pdf>` — expect 4 pages
+at 720pt wide.
 
 Confirm both outputs:
 
@@ -350,21 +468,36 @@ PDF saved:  sprint wrap up and way forward/product-release-comms-way-forward-spr
 |---|---|
 | Missing `--sprint` or `--window` | Show usage, abort |
 | No tasks found for window | Report window name, suggest checking ClickUp, abort |
+| Previous sprint's wrap-up missing | Say so plainly, continue, and state that carry-over statuses and comms decisions are unverified. Never invent statuses to fill the gap. |
+| Board state contradicts a wrap-up decision | Surface it in the Step 6 preview conflicts block and let the user choose. Do not silently pick one. |
 | No template HTML in `sprint wrap up and way forward/` | Report and abort |
 | Output HTML already exists | Ask before overwriting |
-| Edge headless PDF command fails | Report the error. HTML file is still saved. User can re-run PDF export manually. |
+| Headless Chrome PDF command fails | Report the error. HTML file is still saved. Fall back to `/html-to-pdf-custom`, or the user can re-run the export manually. |
 | ClickUp MCP unavailable | "ClickUp MCP is not connected. Connect it in Claude Code settings and re-run." Abort. |
 
 ---
 
 ## Key references
 
+- **Previous sprint's wrap-up:** `Omnisient.CenterofExcellence/sprint wrap up and way forward/sprint{N-1}-comms-wrap-up.html`
+  — the authoritative record of action item statuses and comms decisions. Always read it (Step 2).
+  Its "Items Rolling to Sprint {N}" slide carries decisions that override the ClickUp board.
 - **Release Communications Board list ID:** `901218643488`
 - **Olivia Landsberg (Platform):** member ID `87874670`
 - **Tristan Venter (Data Product):** member ID `99769856`
 - **Release Type values:** Major / Minor / Patch / Hotfix / Standard / Internal
-- **Release Window field:** free-text — must match ClickUp exactly
-- **Template file location:** `sprint wrap up and way forward/product-release-comms-way-forward*.html` (most recently modified)
-- **Output location:** `sprint wrap up and way forward/product-release-comms-way-forward-sprint-{N}.html` and `.pdf`
+- **Release Window field:** dropdown (field id `5ec0e701-fa08-4b95-bf24-8efa54a54c07`) — pass the plain
+  month-year option name, e.g. `"November 2026"`. Options run May 2026 through December 2026. A long
+  descriptive string such as `"November 2026 Window — Sprint 11, release 22 November"` matches nothing
+  and aborts at Step 3.
+- **Release Type field id:** `5433b55a-54c6-4882-968a-8798b0db8414` (Hotfix / Patch / Minor / Major / Standard)
+- **Reading field values:** `clickup_get_task` does not expose custom field values in its response. To
+  group by Release Type, call `clickup_filter_tasks` once per type with a `custom_fields` filter on both
+  the window and the type option id. `task.get_many` via `clickup_execute_operator` returns 400 here —
+  do not spend calls on it.
+- **Template file location:** `Omnisient.CenterofExcellence/sprint wrap up and way forward/product-release-comms-way-forward*.html` (most recently modified)
+- **Output location:** same directory, `product-release-comms-way-forward-sprint-{N}.html` and `.pdf`
+- **Logo:** each slide embeds an inline base64 SVG. Reuse the data URI from the template rather than
+  regenerating it — the cover uses `filter: brightness(0) invert(1)`, inner slides `height:22px`.
 
 **Note:** This skill uses `clickup_filter_tasks` and related tools. Prefer the `claude_ai_ClickUp` tools if both ClickUp MCP integrations are connected (`clickup-mcp` lacks `clickup_filter_tasks`); fall back to whichever ClickUp MCP is available if names differ slightly.

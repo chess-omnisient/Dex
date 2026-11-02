@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Omnisient Release Notes – {{COMMS_MONTH}}</title>
+<!--
+  Omnisient product newsletter. Placeholders: {{COMMS_MONTH}}, {{INTRO}},
+  {{NOTES_URL}}, {{HEADLINE_N}}, {{BODY_N}}, {{LEARN_URL_N}}, {{PIECE_N_LABEL}}.
+  Table layout + inline styles are deliberate: email clients, not browsers.
+  Swap each placeholder div for <img ... id="same-id"> keeping the id.
+-->
+</head>
+<body style="margin:0;padding:0;background:#f2f2f2;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f2f2f2;">
+<tr><td align="center" style="padding:0;">
+
+<table role="presentation" width="800" cellpadding="0" cellspacing="0" border="0" style="width:800px;max-width:100%;background:#ffffff;">
+
+  <!-- HEADER -->
+  <tr><td style="padding:0;">
+    <div id="img-header" style="height:250px;background:linear-gradient(120deg,#3272B9 0%,#30297E 100%);border:2px dashed #ffffff;text-align:center;font-family:'Poppins',&quot;Segoe UI&quot;,Helvetica,Arial,sans-serif;color:#ffffff;padding:40px 24px;box-sizing:border-box;">
+      <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;opacity:.85;">Image placeholder – img-header</div>
+      <div style="font-size:12px;opacity:.9;margin-top:10px;">Must carry the Omnisient logo (06-Resources/logo.png), "Release Notes." and the month</div>
+      <div style="font-size:40px;font-weight:700;margin:14px 0 10px;">Release Notes.</div>
+      <div style="font-size:15px;">What's new in {{COMMS_MONTH}}</div>
+      <div style="font-size:12px;opacity:.8;margin-top:14px;">Swap for the dated header graphic – 800 × 250</div>
+    </div>
+  </td></tr>
+
+  <!-- INTRO -->
+  <tr><td style="padding:40px 48px 32px;font-family:'Poppins',&quot;Segoe UI&quot;,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.7;color:#333333;">
+    <p style="margin:0 0 24px;">Hi there,</p>
+    <p style="margin:0 0 28px;">{{INTRO}}</p>
+    <p style="margin:0 0 8px;"><a href="{{NOTES_URL}}" style="color:#1a73c7;text-decoration:underline;">Read the full release notes&nbsp;&nbsp;→</a></p>
+    <p style="margin:0;font-size:14px;font-style:italic;color:#6B7280;">💡 Remember to login to the Omnisient platform to view release notes.</p>
+  </td></tr>
+
+  <!-- IMAGES -->
+  <tr><td style="padding:0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td width="50%" style="width:50%;padding:0;background:#3272B9;">
+          <div id="img-piece-1" style="height:300px;border:2px dashed #ffffff;text-align:center;font-family:'Poppins',Helvetica,Arial,sans-serif;font-size:13px;color:#ffffff;padding:24px;box-sizing:border-box;">
+            <div style="padding-top:110px;">IMAGE PLACEHOLDER – img-piece-1<br>Screenshot: {{PIECE_1_LABEL}}<br>400 × 300</div>
+          </div>
+        </td>
+        <td width="50%" style="width:50%;padding:0;background:#6E6AC9;">
+          <div id="img-piece-2" style="height:300px;border:2px dashed #ffffff;text-align:center;font-family:'Poppins',Helvetica,Arial,sans-serif;font-size:13px;color:#ffffff;padding:24px;box-sizing:border-box;">
+            <div style="padding-top:110px;">IMAGE PLACEHOLDER – img-piece-2<br>Screenshot: {{PIECE_2_LABEL}}<br>400 × 300</div>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+
+  <!-- PIECES -->
+  <tr><td style="padding:40px 48px 44px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td width="50%" valign="top" style="width:50%;padding:0 20px 0 0;font-family:'Poppins',&quot;Segoe UI&quot;,Helvetica,Arial,sans-serif;">
+          <h2 style="margin:0 0 20px;font-size:19px;line-height:1.4;font-weight:700;color:#111111;">{{HEADLINE_1}}</h2>
+          <div style="font-size:15px;line-height:1.7;color:#333333;">{{BODY_1}}</div>
+          <p style="margin:24px 0 0;"><a href="{{LEARN_URL_1}}" style="color:#1a73c7;text-decoration:underline;font-size:15px;">Learn more →</a></p>
+        </td>
+        <td width="50%" valign="top" style="width:50%;padding:0 0 0 20px;font-family:'Poppins',&quot;Segoe UI&quot;,Helvetica,Arial,sans-serif;">
+          <h2 style="margin:0 0 20px;font-size:19px;line-height:1.4;font-weight:700;color:#111111;">{{HEADLINE_2}}</h2>
+          <div style="font-size:15px;line-height:1.7;color:#333333;">{{BODY_2}}</div>
+          <p style="margin:24px 0 0;"><a href="{{LEARN_URL_2}}" style="color:#1a73c7;text-decoration:underline;font-size:15px;">Learn more →</a></p>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+
+  <!-- FOOTER -->
+  <tr><td style="padding:36px 48px 40px;background:linear-gradient(120deg,#3272B9 0%,#30297E 100%);font-family:'Poppins',&quot;Segoe UI&quot;,Helvetica,Arial,sans-serif;color:#ffffff;">
+    <p style="margin:0 0 28px;font-size:15px;"><span style="display:inline-block;width:20px;height:20px;background:#ffffff;color:#30297E;font-size:12px;font-weight:700;line-height:20px;text-align:center;border-radius:3px;vertical-align:middle;">in</span>&nbsp;&nbsp;Never miss an update, follow us on <a href="https://www.linkedin.com/company/omnisient/" style="color:#ffffff;text-decoration:underline;">LinkedIn</a>.</p>
+    <p style="margin:0 0 14px;font-size:13px;"><strong>United States of America</strong><br><span style="opacity:.85;">838 Walker Road, Suite 21-2, Dover, DE 19904</span></p>
+    <p style="margin:0 0 14px;font-size:13px;"><strong>United Kingdom</strong><br><span style="opacity:.85;">5 Churchill Place, Canary Wharf, London E14 5HU</span></p>
+    <p style="margin:0 0 14px;font-size:13px;"><strong>South Africa</strong><br><span style="opacity:.85;">Great Westerford, Unit SG110, 240 Main Road, Rondebosch, Cape Town 7700</span></p>
+    <p style="margin:0;font-size:13px;"><strong>United Arab Emirates</strong><br><span style="opacity:.85;">Office 225, Floor 38, API Trio Tower, Al Barsha, Dubai</span></p>
+  </td></tr>
+
+  <!-- LEGAL -->
+  <tr><td align="center" style="padding:28px 48px 36px;font-family:'Poppins',&quot;Segoe UI&quot;,Helvetica,Arial,sans-serif;font-size:14px;">
+    <a href="{{UNSUBSCRIBE_URL}}" style="color:#1a73c7;text-decoration:underline;">Unsubscribe</a>
+    &nbsp;&nbsp;&nbsp;&nbsp;<a href="{{PREFERENCES_URL}}" style="color:#1a73c7;text-decoration:underline;">Manage Preferences</a>
+    &nbsp;&nbsp;&nbsp;&nbsp;<a href="{{CONTACT_URL}}" style="color:#1a73c7;text-decoration:underline;">Contact Us</a>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>

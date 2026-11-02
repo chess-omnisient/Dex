@@ -1,6 +1,6 @@
 ---
 name: process-meetings
-description: "Turn synced meetings into updated person pages, extracted tasks and organized notes. Use when the user says 'process my meetings', 'catch up my notes', or after Granola/Otter syncs. Also use proactively when unprocessed meetings exist. Not for prepping an upcoming meeting; use `meeting-prep`."
+description: "Turn a pasted meeting transcript into a structured meeting note, updated person pages and extracted tasks. Use when the user says 'process my meetings', 'process this meeting', 'here's a transcript', 'catch up my notes', or pastes meeting notes or a transcript. Also use to re-process unprocessed notes already in 00-Inbox/Meetings/. Not for prepping an upcoming meeting; use `meeting-prep`."
 model_hint: balanced
 hooks:
   PostToolUse:
@@ -11,509 +11,382 @@ hooks:
 
 ## Execution mode
 
-Run inline in the current conversation by default, so this work can see what the
-user has already discussed, decided, or settled this session. Do not fork merely
-because this skill was selected. Only run in the background when the user
-explicitly asks for a background run or the host has already obtained a specific
-background-work approval for this run.
+Run inline in the current conversation. This skill asks the user for the
+transcript, so it cannot be delegated to a subagent that has no way to reach
+them. Do not fork, and do not call the Agent tool.
 
-### Delegated gathering (large-vault scaling)
+The only exception is a bulk re-processing pass over many existing unprocessed
+notes in `00-Inbox/Meetings/`, where the user explicitly asks for a background
+run. In that case the gathering phase may be delegated using
+`AGENT_INSTRUCTIONS.md`. Everything else — asking for the paste, confirming soft
+commitments, resolving ambiguous person matches, presenting the summary — stays
+in this conversation.
 
-This skill stays inline as described above: it keeps session awareness, it asks
-the user the questions, and it owns every interactive step. What it does NOT do
-inline is the bulk read-gathering, which on a mature vault (hundreds of notes,
-thousands of indexed messages, a live calendar and multiple integrations) can be
-large enough to exhaust the main conversation before the useful work starts.
+**If any delegated run fails, times out, or returns nothing usable,** say so
+plainly and run the processing inline from the same `AGENT_INSTRUCTIONS.md`.
 
-So the gathering-and-processing phase is delegated to one `general-purpose`
-subagent via the Agent tool, using the self-contained prompt in this skill's
-`AGENT_INSTRUCTIONS.md`:
+**A report from a subagent is a claim, not evidence.** Before repeating its
+counts, verify them cheaply against the vault:
 
-1. Read `.claude/skills/process-meetings/AGENT_INSTRUCTIONS.md`.
-2. Substitute its placeholders (`{{ARGS}}`, the arguments passed to this skill).
-3. Call the Agent tool with `subagent_type: "general-purpose"`, that prompt, and
-   a short description.
-4. Display its summary report.
-
-The subagent inherits MCP connections, runs in its own context, and that context
-is freed when it completes, so only its findings reach this conversation.
-
-**Use `AGENT_INSTRUCTIONS.md` verbatim.** Read the file and pass its content as
-the subagent prompt, substituting only the placeholders. Do NOT hand-write a
-replacement brief from what you already know about the meetings: that is how
-steps get silently dropped, and the omission looks complete because nothing
-errors. If context from this conversation is worth adding, APPEND it to the
-file's content; never substitute for it.
-
-**Two caveats that are load-bearing:**
-
-- **Do not count on this skill's hook for the subagent's writes.** The
-  PostToolUse hook `post-meeting-person-update.cjs` is declared in this
-  SKILL.md's frontmatter, so it belongs to this skill's run and must not be
-  assumed to cover a subagent's writes. `AGENT_INSTRUCTIONS.md` therefore has
-  the subagent update person pages itself. Do not remove that instruction
-  believing the hook covers it. It is also safe if the hook does run for those
-  writes: both write the same "Recent Interactions" line format, and both skip
-  a person page that already references the meeting, so the entry cannot be
-  added twice.
-- **Always fall back.** If the subagent fails, times out, or returns nothing
-  usable, say so plainly and run the processing inline from the same
-  `AGENT_INSTRUCTIONS.md`. A missing subagent must never mean a missing result.
-
-**Stays inline:** the background-sync status check when it needs setup guidance
-(`--setup`), the Granola pre-flight message when no API key is connected,
-confirming each detected soft commitment before any task is created, resolving
-ambiguous person matches and entity suggestions, and presenting the final
-summary report.
-
-**Check the report for unstamped meetings.** The subagent leaves a meeting
-without its `tasks-extracted` marker whenever a task failed to create or stamp,
-and reports the exact failing line. Surface those lines rather than burying
-them: an unstamped meeting is the safe state, but it stays flagged as waiting
-until someone resolves it.
-
-**The report is a claim, not evidence — check it before repeating it.** This
-subagent writes to the vault, and its summary states counts the user will act
-on. Before displaying it, verify the claims cheaply against the vault:
-
-- Every task it says it created: confirm the ID appears in `03-Tasks/Tasks.md`
-  (`list_tasks`, or read the file).
-- Every meeting it says it stamped: confirm the `tasks-extracted` marker is
-  actually in that note.
+- Every task it says it created: confirm the ID appears in `03-Tasks/Tasks.md`.
+- Every meeting it says it stamped: confirm the `tasks-extracted` marker is in
+  that note.
 - Every person or company page it says it created: confirm the file exists.
 
-If a claim does not hold, say so plainly in the summary you present and treat
-that meeting as unprocessed. Never pass an unverified count to the user as fact,
-and never repeat "processing complete" on the strength of the report alone.
+If a claim does not hold, say so and treat that meeting as unprocessed.
 
 # Process Meetings
 
-Process meetings that have been synced from Granola by the background automation. Updates person pages, extracts tasks, and organizes meeting notes.
+Turn a meeting transcript the user pastes into Claude into a structured meeting
+note in the vault, with person and company pages updated, tasks extracted to
+`03-Tasks/Tasks.md`, and everything linked together.
 
-## Background Execution
-
-This skill supports background execution. When invoked:
-1. Acknowledge: "Processing [N] meetings in the background. I'll let you know when done."
-2. Process all meetings
-3. On completion, provide summary: "[N] meetings processed. [X] person pages updated. [Y] action items created."
-
-## How It Works
-
-Meetings are synced automatically every 30 minutes by a background process. This command reads those synced files and:
-- Creates/updates person and company pages
-- Extracts action items to 03-Tasks/Tasks.md
-- Links everything together
-
-**No terminal commands are shown** - the heavy lifting happens in the background.
+**There is no automatic meeting sync.** Granola, Otter, Zoom and Teams are not
+connected. Meetings arrive one way: the user pastes the transcript (or the
+summary plus transcript) into the conversation. Never tell the user to check a
+sync, never offer `/granola-setup`, and never report "no meetings synced" —
+if there is nothing to process, ask for a paste.
 
 ## Arguments
 
-- No arguments: Process all unprocessed meetings from the last 7 days
-- `today`: Only process today's meetings
-- `"search term"`: Find meetings by title/attendee
-- `--people-only`: Only update person/company pages (skip tasks)
-- `--no-todos`: Create notes but don't extract tasks
-- `--setup`: Install/check background automation
-
-## Pre-flight: Local Source Check
-
-Read `meeting_sources` in `System/user-profile.yaml` before assuming a recorder.
-The configured `primary` is provenance, not permission or tool access. A valid
-vault-relative `notes_folder` outranks the default landing zone. Missing or
-malformed config, an invalid primary, an absolute path, `..`, the vault root, or
-a symlink escape must be reported and ignored; continue with safe local notes.
-Never widen into an external service just because the profile names it.
-
-For `primary: granola`, Granola sync uses the official public API. If
-`GRANOLA_API_KEY` is absent, offer `/granola-setup` and continue with local
-notes. Other primaries do not inherit a direct reader from this setting.
+- No arguments: ask the user to paste the transcript (Step 1)
+- Transcript already pasted in this conversation: skip the ask, process it
+- `"search term"`: find an existing note in `00-Inbox/Meetings/` by title or
+  attendee and re-process it
+- `--people-only`: only update person/company pages (skip tasks)
+- `--no-todos`: create the note but don't extract tasks
+- `--backlog`: process unstamped notes already in `00-Inbox/Meetings/`
 
 ---
 
 ## Process
 
-### Step 1: Check Source and Sync Status
+### Step 1: Get the Transcript
 
-Resolve `meeting_sources.notes_folder` using the rules above: only a valid
-vault-relative folder is accepted; missing or malformed config, an absolute
-path, `..`, the vault root, or a symlink escape falls back safely. The configured
-primary does not grant access to an external service. Then check whether
-Granola background sync has left its optional state file:
+If the user has already pasted a transcript or meeting notes in this
+conversation, use it and go straight to Step 2. Don't ask for something you
+already have.
 
-```bash
-# Check for state file (indicates sync has run)
-ls .scripts/meeting-intel/processed-meetings.json
+Otherwise ask for it, in one short message:
+
+> "Paste the meeting transcript here — the summary and the transcript if you
+> have both, or just whatever you've got. I'll handle the rest."
+
+Accept whatever shape it arrives in: a full recorder export with an overview,
+key takeaways, next steps and a verbatim transcript; a bare transcript; or
+rough typed notes. Work with what's there and never ask the user to reformat it.
+
+**Only ask follow-up questions when the answer changes the note.** Everything
+below is usually inferable from the paste itself, so infer first and ask only
+what you genuinely can't resolve:
+
+- **Date:** read it from the paste. If absent, assume today and say so in one
+  line rather than asking.
+- **Title:** derive it from the subject matter and the attendees, matching the
+  vault's existing naming (for example "Aimee Chess Check-in", "CNL Week 0
+  Working Session"). Confirm the title with the user when presenting the
+  summary, not before processing.
+- **Attendees:** read them from the attendee line or from the speaker labels in
+  the transcript.
+- **Company:** default to the user's own company from
+  `System/user-profile.yaml` for an internal meeting; use the client's name
+  when the meeting is clearly external.
+
+Batch anything you genuinely must ask into a single question, not a series.
+
+### Step 2: Write the Meeting Note
+
+Create `00-Inbox/Meetings/YYYY-MM-DD - {Title}.md` in the vault's established
+format:
+
+```markdown
+---
+date: YYYY-MM-DD
+time: "HH:MM"
+type: meeting-note
+source: manual-paste
+title: "{Title}"
+participants: ["{Name}", "{Name}"]
+company: "{Company}"
+duration: "{Duration, if stated}"
+---
+# {Title}
+
+**Date:** YYYY-MM-DD | **Duration:** {duration}
+**Attendees:** [[Firstname_Lastname|Firstname Lastname]], {names without pages left plain}
+
+## Overview
+
+{2-4 sentences: what the meeting was about and what changed as a result.}
+
+## Key Decisions
+
+- **{The decision in bold}** — {the reasoning, constraint or caveat behind it.}
+
+## Discussion Notes
+
+### {Topic}
+{What was actually said, with names, numbers, dates and constraints. Prose, not
+bullets. One section per substantive topic.}
+
+## Action Items
+
+### For Me
+- [ ] {Task}
+
+### For Others
+- [ ] {Name}: {Task}
+
 ```
 
-**If the state file exists:** Granola background sync has run. Continue to Step 2.
+Rules for the note itself:
 
-**If it does not exist and Granola is the configured source:** offer setup, but
-continue with local notes. The missing file is not a gate for an
-`exported-folder`, Zoom, Teams, manual note, or provider-neutral local source.
+- **Only what's in the transcript.** Every claim must be traceable to the
+  paste. Don't infer decisions that weren't made or soften ones that were.
+- **Keep the specifics.** Names, dates, numbers, deadlines, the exact wording of
+  a commitment. Those are the reason the note exists.
+- **Wiki-link people who have pages**, plain text for those who don't (Step 3
+  may create the page; link it then).
+- **Leave the raw transcript out of the note** unless the user asks for it. The
+  structured note is the artifact. If the transcript is worth keeping, save it
+  under the same date as `YYYY-MM-DD - {Title} - transcript.md`.
+- **Split "For Me" from "For Others" accurately.** Only items the user
+  themselves owns go under "For Me" — those become tasks in Step 5. Items owned
+  by other people stay as a record and never become the user's tasks.
+- **Personal and off-topic chat does not go in the note.** Leave, family,
+  weekend plans and similar are not meeting content.
 
-For Granola setup guidance:
-> "Background meeting sync isn't set up yet. This runs automatically every 30 minutes so `/process-meetings` doesn't need terminal commands.
->
-> **To set up (one-time, takes 30 seconds):**
-> ```bash
-> cd .scripts/meeting-intel && ./install-automation.sh
-> ```
->
-> Or run `/process-meetings --setup` and I'll do it for you.
->
-> **Requirements:**
-> - A Granola Business plan, with your Granola API key connected via `/granola-setup`
-> - An LLM API key in the vault-root `.env` (GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY) — keep that file owner-only (`chmod 600 .env`)"
-
-If user runs `--setup`:
-```bash
-cd .scripts/meeting-intel && ./install-automation.sh
-```
-
-### Step 2: Find Waiting Meetings
-
-Read the processed meetings state when it exists:
-```javascript
-const state = JSON.parse(fs.readFileSync('.scripts/meeting-intel/processed-meetings.json'));
-```
-
-Search the valid configured folder first, then `00-Inbox/Meetings/`. If neither
-contains a candidate, use bounded provider-neutral Markdown discovery in the
-vault by date plus title, attendee, or meeting frontmatter. Exclude Dex
-internals, dependencies, binaries, and archives outside the requested window;
-never treat arbitrary Markdown as a meeting. For the default folder:
-```bash
-find 00-Inbox/Meetings -name "*.md" -mtime -7 | head -50
-```
-
-This includes synced notes in day directories and flat `*.md` notes in the
-folder root. A manual note with no capture id is valid; process and stamp it
-with the same `tasks-extracted` marker as any other meeting note. The `queue/`
-subfolder is handled in Step 2.5.
-
-For each meeting file, skip notes containing `<!-- dex:skip-processing -->`:
-1. Preserve the actual vault-relative source path. Read `participants`,
-   `company`, `date`, and any non-empty scalar key ending in `_id`. Prefer the
-   key matching a string `source`; if that key is absent, report the mismatch
-   and use the note path. When `source` is absent, use an id only when exactly
-   one non-empty scalar candidate is present. `granola_id` and `wispr_id` are
-   examples, not a closed list. Empty or non-scalar values do not count;
-   multiple ids fall back to note-path identity.
-   The path identity is the normalized vault-relative Markdown path, with `/`
-   separators and the `.md` extension retained; never reduce it to a basename
-2. Check if person/company pages need updating
-3. Check if tasks need extracting (look for unchecked items in "For Me" section)
-
-Report findings:
-> "Found X waiting meetings from the last 7 days. Y need person page updates, Z have unextracted tasks."
-
-#### Match capture identity to Calendar
-
-For a synced note with an aware ISO `capture_started_at`, call
-`calendar_get_events_with_attendees` for that date after applying CLAUDE.md's
-**Calendar response confidence contract**, then call the Work MCP
-`match_capture_to_calendar` tool with the capture title, start time, attendees,
-and the Calendar response's `events` array as `calendar_events` (not the whole
-response object). Use a matched result's **identity only** (title, normalized
-start, attendees); if the safe title differs, carry it into the note. Leave an
-unmatched or ambiguous capture unchanged, and continue unchanged when Calendar
-is unavailable. The matcher owns the hard five-minute limit, timezone parsing,
-tie order, poor-title rule, and ambiguity decision—never redo or stretch them.
-Never copy join URLs, dial-ins, access codes, location, notes, descriptions,
-conferencing fields, or any other invite payload.
-
-### Step 2.5: Consume Queued Meetings (manual mode)
-
-If `00-Inbox/Meetings/queue/*.json` files exist, consume each queued meeting
-before continuing:
-
-1. Read the complete JSON: `id`, `title`, `createdAt`, `participants`,
-   `attendees`, `company`, `notes`, and `transcript`.
-2. Check whether a meeting note with that JSON object's `id` as its
-   `granola_id` already exists. If it does, delete the queue JSON and continue
-   to the next one.
-3. Otherwise, create the meeting note under
-   `00-Inbox/Meetings/{date}/` (with `{date}` and `time` derived from
-   `createdAt`) in the standard format, including frontmatter for `date`,
-   `time`, `type: meeting-note`, `source: granola`, `title`, `participants`,
-   `attendees`, `company`, and `granola_id` from the JSON `id`. Include the
-   queued `notes` and `transcript` in the note body.
-4. Delete the queue JSON only after its note has been written successfully.
-
-The new note then flows through the normal processing steps. Never delete a queue file before its meeting note is written.
+Write the note, then show the user the Overview, Key Decisions and both Action
+Items lists for confirmation before creating any tasks.
 
 ### Step 3: Update Person Pages
 
-For each participant in synced meetings:
+For each participant:
 
-1. **Load user profile** for email domain:
-   ```
-   Read System/user-profile.yaml → get email_domain
-   ```
+1. **Load the email domain** from `System/user-profile.yaml` (`email_domain`).
 
-2. **Classify as Internal/External:**
-   - If participant email domain matches user's domain → Internal
-   - Otherwise → External
+2. **Classify Internal/External:** domain matches → Internal, otherwise
+   External. With no email address, infer from context (a colleague named in
+   internal discussion is Internal; a named client contact is External). When
+   genuinely unclear, ask rather than guess.
 
-3. **Look up the person with the Work MCP `lookup_person` tool.**
-   - If lookup returns `ambiguous: true`, do not create a page. Surface the possible matches to the user.
+3. **Look up the person** with the Work MCP `lookup_person` tool.
+   - If it returns `ambiguous: true`, do not create a page. Surface the possible
+     matches to the user.
    - If a match exists, update that existing page.
 
-4. **If no match exists, call the Work MCP `create_person` tool:**
-   - Pass `name`, `role` when known, `emails` from the meeting's `attendees` block, and `location` from that attendee's `location` field.
-   - Pass the meeting company and a short source note when available.
+4. **If no match exists**, call the Work MCP `create_person` tool with `name`,
+   `role` when known, `emails` when available, `location` (internal/external),
+   the company, and a short source note. Do not hand-write the page template.
 
-<!-- What the create_person tool creates (reference only; do not hand-write this template). -->
-   ```markdown
-   ---
-   type: person
-   name: "{Name}"
-   role: null
-   company: "{company from meeting}"
-   company_page: null
-   emails: ["{lowercased email, if available}"]
-   aliases: []
-   location: {internal|external}
-   last_interaction: {meeting date}
-   ---
-   # {Name}
+5. **If the page exists**, add the meeting under "Recent Interactions" inside
+   the `<!-- dex:auto:recent-interactions -->` block, in exactly this format:
 
-   ## Notes
+   ```
+   - [{Meeting Title}](00-Inbox/Meetings/{date} - {Title}.md) — {date}
+   ```
 
-   *Auto-created from meeting on {date}*
+   Keep a maximum of 20 entries, drop the oldest, and update `last_interaction`
+   in the frontmatter. If a line for that meeting path is already there, change
+   nothing.
 
-   ## Recent Interactions
-
-   <!-- dex:auto:recent-interactions -->
-   - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
-   <!-- /dex:auto -->
-
-   ## Key Context
-    ```
-
-5. **If page exists, add meeting to Recent Interactions:**
-   - Read existing page
-   - Add new meeting link under "## Recent Interactions"
-   - Keep max 20 entries (remove oldest if needed)
-   - Update "Last Interaction" in frontmatter
+6. **Capture significant context.** If the transcript reveals a role change,
+   a new reporting line, a project someone now owns, or a standing
+   constraint, update that person's "Key Context" section. This is the whole
+   point of processing a meeting — don't skip it because it wasn't an action
+   item.
 
 ### Step 4: Update Company Pages
 
-For each unique external company domain:
+For each external company mentioned as a counterparty:
 
-1. **Check if company page exists:** `05-Areas/Companies/{Company}.md`
+1. Check whether `05-Areas/Companies/{Company}.md` exists.
+2. If not, create it with an Overview table, Key Contacts linking the person
+   pages, Meeting History, and a note that it was auto-created from the meeting.
+3. If it exists, add any new contacts to "Key Contacts" and the meeting to
+   "Meeting History".
 
-2. **If doesn't exist, create it:**
-   ```markdown
-   ---
-   type: company
-   name: "{Company Name}"
-   domains: ["{lowercased domain}"]
-   website: "{website, if known}"
-   status: "Prospect"
-   ---
-   # {Company Name}
+Skip this for a purely internal meeting.
 
-   ## Key Contacts
+### Step 4.5: Enrichment
 
-   <!-- dex:auto:key-contacts -->
-   - [[05-Areas/People/External/{Person}|{Person}]]
-   <!-- /dex:auto -->
+**Soft commitments (always runs).** Run the Work MCP `detect_soft_commitments`
+tool over the discussion notes to catch the things the user said they'd do
+without writing them down ("we should revisit pricing", "let me think about the
+migration", "I'll take a look at that"). Also read for them yourself — the
+transcript is right there and a pasted conversation carries far more of these
+than a recorder summary does.
 
-   ## Meeting History
+**Never auto-create a task from a soft commitment.** List each one, marked
+*(soft commitment — confirm before creating)*, and let the user decide.
 
-   <!-- dex:auto:meeting-history -->
-   - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
-   <!-- /dex:auto -->
-
-   ## Notes
-
-   *Auto-created from meeting on {date}*
-   ```
-
-3. **If exists, update:**
-   - Add any new contacts to "Key Contacts"
-   - Add meeting to "Meeting History"
-
-### Step 4.5: Semantic Enrichment (if QMD available)
-
-**Check if semantic search is available** by looking for `qmd` in PATH.
-
-If available, enhance meeting processing with meaning-based intelligence:
-
-1. **Detect implicit commitments:** For each meeting's discussion notes, search semantically:
-   ```
-   qmd query "we should circle back on..." --limit 3
-   qmd query "let me think about..." --limit 3
-   ```
-   Catch soft commitments that regex action-item extraction misses.
-   - Examples: "we should probably revisit the pricing model" → implicit action item
-   - "I need to noodle on the migration approach" → implicit commitment
-   - "Let's reconnect after the board meeting" → implicit follow-up
-
-2. **Link meetings to projects:** For the meeting topic, search:
-   ```
-   qmd query "meeting topic/title" --limit 3
-   ```
-   against `04-Projects/` to auto-link the meeting to relevant projects that keyword matching would miss.
-
-3. **Enrich person context:** For each new person encountered, search:
-   ```
-   qmd query "person name + company" --limit 3
-   ```
-   Find if they've been mentioned in other meetings/notes, even if they weren't a direct participant.
-
-**Deterministic soft-commitment pass (always runs):** Independently of QMD
-availability, run the `detect_soft_commitments` Work-MCP tool over each meeting's
-discussion notes. Add matches to the action-items list marked
-"*(soft commitment — confirm before creating)*" so Step 5 confirms, creates, and
-reads back every task ID. QMD is the semantic complement; NEVER auto-create.
-
-**Integration:**
-- Add implicit commitments to the action items list with a note: "*(detected — not explicitly stated)*"
-- Add project links to meeting frontmatter
-- Merge person context into newly-created person pages
-- If QMD unavailable, skip silently — regex extraction still works
+**Semantic links (if QMD available).** Check the QMD `status` tool. If healthy,
+use `query` to link the meeting to related projects in `04-Projects/` and to
+find earlier mentions of new people. If QMD isn't installed, skip silently.
 
 ### Step 5: Extract Tasks (unless --no-todos or --people-only)
 
-For each meeting with unextracted tasks:
+For each unchecked item under "## Action Items > ### For Me":
 
-1. **Find action items** in the "## Action Items > ### For Me" section
-2. **For each unchecked item** (`- [ ]`):
-   - Extract task description
-   - Read pillar from meeting frontmatter, then resolve it to the unique pillar
-     ID in `System/pillars.yaml` by matching either `id` or display `name`
-   - Preserve the exact source checkbox line text for `stamp_source_line`
-   - Let `create_task` generate the task ID and stamp it back onto that line
+1. Extract the task description.
+2. **Infer the pillar** by matching the task against each pillar's `keywords`
+   and `description` in `System/pillars.yaml`, and resolve it to the unique
+   pillar `id`. Per CLAUDE.md, default to Customer Experience when no pillar
+   clearly matches.
+3. **Preserve the exact source checkbox line text** verbatim for
+   `stamp_source_line`.
+4. Create the task, letting `create_task` generate the ID and stamp it back:
 
-3. **Create task** using Work MCP:
    ```
    create_task(
-     title: "Task description",
-     priority: "P2",  // default, P1 if "urgent" mentioned
+     title: "{task description}",
+     priority: "P2",   // P1 if the transcript says urgent or names a deadline today
      pillar: "{resolved pillar ID}",
      people: ["{participant page paths}"],
-     source: "{meeting path}",
+     source: "{meeting note path}",
      stamp_source_line: "{exact source checkbox line text}"
    )
    ```
 
-   `people` values must resolve to existing person page paths. Prefer the paths
-   returned by Step 3's `lookup_person`/`create_person` flow; if only a bare
-   participant name is available, pass that name unchanged and let `create_task`
-   resolve it. Never construct or guess a person page path.
+   `people` values must resolve to existing person page paths — prefer the ones
+   returned by Step 3. If only a bare name is available, pass that name
+   unchanged and let `create_task` resolve it. Never construct or guess a path.
 
-4. **Verify every result before marking the meeting extracted:**
+   **Why `stamp_source_line` is mandatory:** completion sync only finds a line
+   containing BOTH a checkbox AND the `^task-YYYYMMDD-XXX` anchor. Omit the
+   stamp and the action item is permanently invisible to sync.
+
+5. **Verify every result before marking the meeting extracted:**
    - Require `success: true` for every `create_task` call.
-   - Require either `stamp.stamped: true`, or `reason: "already_anchored"`
-     with the exact source line's existing anchor equal to the returned
-     `task.task_id`.
-   - If entity resolution or stamping is unresolved, surface the exact failed
-     line and leave the meeting unmarked for reconciliation. Do not blindly
-     retry a task that was created but not stamped.
+   - Require either `stamp.stamped: true`, or `reason: "already_anchored"` with
+     that line's existing anchor equal to the returned `task.task_id`.
+   - If creation or stamping is unresolved, surface the exact failed line and
+     leave the meeting unstamped. Do not retry a task that was created but not
+     stamped.
 
-   A user can add `<!-- dex:skip-processing -->` to any meeting note to
-   permanently exclude it from processing and from the session-start sweep.
-   Skip such notes entirely: do not extract tasks or add a completion stamp.
+6. **Only after every action item is verified**, append the marker to the note:
 
-   Only after every action item is verified, add this comment to the meeting note:
    ```markdown
-   <!-- tasks-extracted: 2026-02-03T10:30:00Z -->
+   <!-- tasks-extracted: 2026-10-28T10:30:00Z -->
    ```
 
-   **Also stamp meetings with nothing to extract.** If a meeting note has no
-   action items (or you just added AI analysis to a basic note and found none),
-   add the same `tasks-extracted` comment once processing is complete. The
-   session-start check uses this marker to know a meeting is done — an
-   unstamped note keeps being flagged as waiting.
+   **The marker is a one-way door.** Stamping a note whose tasks failed to
+   create loses those action items silently. When in doubt, leave it unstamped
+   and say so.
 
-### Step 6: Auto-link People in Processed Notes
+7. **Also stamp a meeting with nothing to extract.** A note with no action items
+   still gets the marker once processed; an unstamped note keeps being flagged
+   as waiting.
 
-After finishing edits to each processed meeting note, run this once for every processed note:
+A note containing `<!-- dex:skip-processing -->` is excluded entirely: no tasks,
+no stamp.
+
+### Step 6: Auto-link People in the Note
+
+After finishing edits, run once for the note:
+
 ```bash
 node .scripts/auto-link-people.cjs "<note-file>"
 ```
 
-Use `node .scripts/auto-link-people.cjs --dry-run "<note-file>"` to preview what would be linked without changing the file.
+Use `--dry-run` first to preview.
 
 ### Step 7: Verify Entity Coverage
 
-Run `node .scripts/meeting-intel/verify-entities.cjs` and show its one-line summary.
-If `ENTITY_SUGGESTIONS_FILE` contains suggested people, list them and ask: "Want me to create these pages? (creates via `create_person`; `dismiss` or `never` also fine)"
+Run `node .scripts/meeting-intel/verify-entities.cjs` and show its one-line
+summary. If `ENTITY_SUGGESTIONS_FILE` lists suggested people, list them and ask:
+"Want me to create these pages? (`dismiss` or `never` also fine)"
 
-- Accepted: call `create_person`, set the suggestion to `accepted`, and set the contact state to `created` with its page path.
-- Dismissed: set the suggestion to `dismissed`.
-- Never: set the suggestion to `suppressed`.
+- Accepted: call `create_person`, mark the suggestion `accepted`, set the
+  contact state to `created` with its page path.
+- Dismissed: mark the suggestion `dismissed`.
+- Never: mark the suggestion `suppressed`.
 
 ### Step 8: Summary Report
 
 ```
-## Meeting Processing Complete ✅
+## Meeting Processed ✅
 
-**Synced meetings found:** X (last 7 days)
-**Background sync status:** Running (last sync: 10 min ago)
+**Note:** [2026-10-28 - {Title}](00-Inbox/Meetings/2026-10-28 - {Title}.md)
 
 ### Updates Made
 
 **Person pages:**
-- Created: 3 new (Alice Chen, Bob Smith, Carol Wang)
-- Updated: 5 existing
+- Created: 1 new (Neels Oosthuizen)
+- Updated: 2 existing (Aimee Malan, Olivia Landsberg)
 
-**Company pages:**
-- Created: 1 new (Acme Corp)
-- Updated: 2 existing
+**Company pages:** none (internal meeting)
 
-**Tasks extracted:** 7 items added to 03-Tasks/Tasks.md
+**Tasks extracted:** 6 items added to 03-Tasks/Tasks.md
 
-### Recent Meetings
+| Task | Pillar | ID |
+|------|--------|-----|
+| ... | ... | task-20261028-001 |
 
-| Date | Meeting | Company | Participants |
-|------|---------|---------|--------------|
-| Feb 3 | Product Review | Acme | Alice, Bob |
-| Feb 2 | Strategy Call | BigCo | Carol |
+### Needs You
+
+- Soft commitments detected, *(confirm before creating)*: [list, or none]
+- Ambiguous person matches: [list, or none]
+- Entity suggestions awaiting a decision: [list, or none]
+- Action items left unstamped because a task failed: [list with the exact line]
+```
 
 ---
-*Background sync runs every 30 min. Check status: `.scripts/meeting-intel/install-automation.sh --status`*
+
+## Backlog Mode (`--backlog`)
+
+To catch up on notes already in `00-Inbox/Meetings/` that were never processed:
+
+```bash
+find 00-Inbox/Meetings -name "*.md" -mtime -30 | head -50
 ```
+
+A note is unprocessed if it has no `<!-- tasks-extracted: -->` marker and no
+`<!-- dex:skip-processing -->`. Report what's waiting, then run Steps 3-7 for
+each one the user confirms. Skip Steps 1-2: the note already exists.
+
+---
 
 ## Error Handling
 
-For MCP responses, follow CLAUDE.md's `feature_status` rendering convention before applying these fallbacks.
+For MCP responses, follow CLAUDE.md's `feature_status` rendering convention.
 
-**If no meetings found:**
-> "No meetings synced in the last 7 days. Make sure:
-> 1. Your Granola API key is connected (run `/granola-setup` if not)
-> 2. Background sync is set up (run `/process-meetings --setup`)
-> 3. Check logs: `.scripts/logs/meeting-intel.stdout.log`"
+**If the user runs the skill with nothing pasted:** ask for the transcript
+(Step 1). That is the normal path, not an error.
 
-**If background sync isn't running:**
-> "Background sync appears to be stopped. To restart:
-> ```bash
-> cd .scripts/meeting-intel && ./install-automation.sh
-> ```"
+**If `create_task` fails:** report the exact action item line that failed, leave
+the note unstamped, and keep going with the remaining items. Never silently drop
+one.
+
+**If `lookup_person` is ambiguous:** never guess. Show the candidates and ask.
+
+---
 
 ## Examples
 
 ```
 /process-meetings
 ```
-> "Found 8 synced meetings. Updating 12 person pages, extracting 5 tasks..."
+> "Paste the meeting transcript here — the summary and the transcript if you have
+> both, or just whatever you've got."
 
 ```
-/process-meetings today
+/process-meetings
+[user pastes a transcript]
 ```
-> "Found 2 meetings from today. Processing..."
+> "Processing the Aimee / Neels / Chess catch-up from today. Here's the note
+> before I create tasks..."
 
 ```
-/process-meetings --setup
+/process-meetings --backlog
 ```
-> "Installing background automation..." [runs install script]
+> "3 notes in 00-Inbox/Meetings/ have never been processed. Want me to do all
+> three?"
 
 ```
 /process-meetings --people-only
 ```
-> "Updating person and company pages only (skipping task extraction)..."
+> "Updating person and company pages only, skipping task extraction."
 
 ---
 
@@ -528,4 +401,5 @@ Call `track_event` with event_name `meeting_processed` and properties:
 - `people_created`: number of new person pages created
 - `todos_extracted`: number of tasks extracted
 
-This only fires if the user has opted into analytics. No action needed if it returns "analytics_disabled".
+This only fires if the user has opted into analytics. No action needed if it
+returns "analytics_disabled".
